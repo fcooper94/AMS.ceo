@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(node -e:*)",
+      "Bash(node update-worlds.js:*)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run db:sync:*)",
+      "Bash(taskkill //F //PID 34444)"
+    ]
+  }
+}

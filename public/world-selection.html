@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Selection - Airline Control</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/world-selection.css">
+</head>
+<body class="dashboard-body">
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <div class="brand-mark">AC</div>
+        <div class="brand-info">
+          <span class="brand-text">AIRLINE CONTROL</span>
+          <span class="brand-subtitle">Operations Center</span>
+        </div>
+      </div>
+      <div class="nav-user">
+        <span class="user-label">OPERATOR</span>
+        <span class="user-name" id="userName">Loading...</span>
+        <a href="/auth/logout" class="btn btn-logout">Sign Out</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="world-selection-container">
+    <div class="selection-header">
+      <h1>WORLD SELECTION</h1>
+      <p class="subtitle">SELECT AN OPERATIONAL ENVIRONMENT</p>
+    </div>
+
+    <div id="myWorlds" class="worlds-section" style="display: none;">
+      <h2 class="section-title">YOUR AIRLINES</h2>
+      <div id="myWorldsList" class="worlds-grid"></div>
+    </div>
+
+    <div class="worlds-section">
+      <h2 class="section-title">AVAILABLE WORLDS</h2>
+      <div id="worldsList" class="worlds-grid"></div>
+    </div>
+  </div>
+
+  <!-- Join World Modal -->
+  <div id="joinModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>JOIN WORLD</h2>
+        <button class="modal-close" onclick="closeJoinModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>WORLD</label>
+          <div id="selectedWorldName" class="form-value"></div>
+        </div>
+        <div class="form-group">
+          <label for="airlineName">AIRLINE NAME *</label>
+          <input type="text" id="airlineName" maxlength="50" placeholder="e.g., Transatlantic Airways">
+        </div>
+        <div class="form-group">
+          <label for="airlineCode">ICAO CODE * (3 letters)</label>
+          <input type="text" id="airlineCode" maxlength="3" placeholder="e.g., TRA" style="text-transform: uppercase;">
+        </div>
+        <div class="form-info">
+          <p>Starting Capital: $1,000,000</p>
+          <p>Starting Reputation: 50/100</p>
+        </div>
+        <div id="joinError" class="error-message" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeJoinModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmJoin()">Join World</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/world-selection.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+/**
+ * User Model
+ * Represents a VATSIM user who can participate in multiple worlds
+ */
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  vatsimId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    field: 'vatsim_id'
+  },
+  firstName: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    field: 'first_name'
+  },
+  lastName: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    field: 'last_name'
+  },
+  email: {
+    type: DataTypes.STRING,
+    field: 'email'
+  },
+  rating: {
+    type: DataTypes.INTEGER,
+    comment: 'VATSIM controller rating'
+  },
+  pilotRating: {
+    type: DataTypes.INTEGER,
+    comment: 'VATSIM pilot rating',
+    field: 'pilot_rating'
+  },
+  division: {
+    type: DataTypes.STRING,
+    comment: 'VATSIM division'
+  },
+  subdivision: {
+    type: DataTypes.STRING,
+    comment: 'VATSIM subdivision'
+  },
+  lastLogin: {
+    type: DataTypes.DATE,
+    field: 'last_login'
+  }
+}, {
+  tableName: 'users',
+  timestamps: true,
+  underscored: true
+});
+
+module.exports = User;
