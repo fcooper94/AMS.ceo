@@ -1,0 +1,75 @@
+<!-- TITLE: Aircraft Marketplace - Airline Manager -->
+<!-- SUBTITLE: Aircraft Marketplace -->
+<!-- SCRIPTS: /js/aircraft-marketplace.js -->
+
+<div class="world-selection-container">
+  <div class="selection-header">
+    <h1>AIRCRAFT MARKETPLACE</h1>
+    <p class="subtitle" id="marketplaceSubtitle">BROWSE AVAILABLE AIRCRAFT</p>
+  </div>
+
+  <div class="worlds-section">
+    <div class="form-group">
+      <label for="searchAircraftInput">SEARCH AIRCRAFT</label>
+      <input type="text" id="searchAircraftInput" placeholder="Search by model, manufacturer, or specifications..." onkeyup="searchAircraft()">
+    </div>
+
+    <div class="form-group" style="display: flex; gap: 1rem;">
+      <div style="flex: 1;">
+        <label for="manufacturerFilter">MANUFACTURER</label>
+        <select id="manufacturerFilter" onchange="filterAircraft()">
+          <option value="">All Manufacturers</option>
+          <option value="Boeing">Boeing</option>
+          <option value="Airbus">Airbus</option>
+          <option value="Embraer">Embraer</option>
+          <option value="Bombardier">Bombardier</option>
+          <option value="ATR">ATR</option>
+        </select>
+      </div>
+      <div style="flex: 1;">
+        <label for="typeFilter">AIRCRAFT TYPE</label>
+        <select id="typeFilter" onchange="filterAircraft()">
+          <option value="">All Types</option>
+          <option value="Narrowbody">Narrowbody</option>
+          <option value="Widebody">Widebody</option>
+          <option value="Regional">Regional</option>
+          <option value="Cargo">Cargo</option>
+        </select>
+      </div>
+      <div style="flex: 1;">
+        <label for="rangeFilter">RANGE CATEGORY</label>
+        <select id="rangeFilter" onchange="filterAircraft()">
+          <option value="">All Ranges</option>
+          <option value="Short Haul">Short Haul</option>
+          <option value="Medium Haul">Medium Haul</option>
+          <option value="Long Haul">Long Haul</option>
+        </select>
+      </div>
+    </div>
+
+    <h2 class="section-title" id="marketplaceTitle">AVAILABLE AIRCRAFT</h2>
+    <div id="aircraftGrid" style="width: 100%;">
+      <!-- Aircraft will be loaded here dynamically -->
+      <div class="empty-message">Loading aircraft inventory...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Aircraft Detail Modal -->
+<div id="aircraftDetailModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 800px;">
+    <div class="modal-header">
+      <h2 id="detailModalTitle">AIRCRAFT DETAILS</h2>
+      <button class="modal-close" onclick="closeAircraftDetailModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="aircraftDetailContent">
+        <!-- Aircraft details will be loaded here -->
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAircraftDetailModal()">Close</button>
+      <button class="btn btn-primary" id="purchaseAircraftBtn" onclick="purchaseAircraft()">Purchase Aircraft</button>
+    </div>
+  </div>
+</div>

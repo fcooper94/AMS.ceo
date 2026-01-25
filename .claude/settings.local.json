@@ -9,7 +9,9 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(npm run db:sync:*)",
-      "Bash(taskkill //F //PID 34444)"
+      "Bash(taskkill //F //PID 34444)",
+      "Bash(npm run world:list:*)",
+      "Bash(node src/scripts/listWorlds.js:*)"
     ]
   }
 }

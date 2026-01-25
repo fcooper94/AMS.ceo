@@ -29,10 +29,10 @@ router.get('/logout', (req, res) => {
 router.get('/status', async (req, res) => {
   if (req.isAuthenticated()) {
     try {
-      // Fetch full user data from database to get current credits
+      // Fetch full user data from database to get current credits and roles
       const dbUser = await User.findOne({
         where: { vatsimId: req.user.vatsimId },
-        attributes: ['credits']
+        attributes: ['credits', 'isAdmin', 'isContributor']
       });
 
       res.json({
@@ -41,7 +41,9 @@ router.get('/status', async (req, res) => {
           vatsimId: req.user.vatsimId,
           name: `${req.user.firstName} ${req.user.lastName}`,
           rating: req.user.rating,
-          credits: dbUser ? dbUser.credits : 0
+          credits: dbUser ? dbUser.credits : 0,
+          isAdmin: dbUser ? dbUser.isAdmin : false,
+          isContributor: dbUser ? dbUser.isContributor : false
         }
       });
     } catch (error) {
@@ -52,7 +54,9 @@ router.get('/status', async (req, res) => {
           vatsimId: req.user.vatsimId,
           name: `${req.user.firstName} ${req.user.lastName}`,
           rating: req.user.rating,
-          credits: 0
+          credits: 0,
+          isAdmin: false,
+          isContributor: false
         }
       });
     }

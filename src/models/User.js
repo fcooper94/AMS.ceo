@@ -57,6 +57,20 @@ const User = sequelize.define('User', {
     defaultValue: 20,
     allowNull: false,
     comment: 'User credits for participating in worlds (1 credit per game week)'
+  },
+  isAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    field: 'is_admin',
+    comment: 'Whether user has admin access'
+  },
+  isContributor: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    field: 'is_contributor',
+    comment: 'Whether user has contributor (elevated) access'
   }
 }, {
   tableName: 'users',

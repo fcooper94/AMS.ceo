@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="pageTitle">Airline Manager</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/world-selection.css">
+</head>
+<body class="dashboard-body">
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <div class="brand-mark">AC</div>
+        <div class="brand-info">
+          <span class="brand-text">AIRLINE MANAGER</span>
+          <span class="brand-subtitle" id="pageSubtitle">Operations Center</span>
+        </div>
+      </div>
+      <div class="nav-user">
+        <span class="user-label">CREDITS</span>
+        <span class="user-name" id="userCredits" style="margin-right: 2rem;">--</span>
+        <span class="user-label">OPERATOR</span>
+        <span class="user-name" id="userName">Loading...</span>
+        <a href="/admin" class="btn btn-secondary" id="adminLink" style="margin-right: 1rem; display: none;">Admin Panel</a>
+        <a href="/auth/logout" class="btn btn-logout">Sign Out</a>
+      </div>
+    </div>
+  </nav>
+
+  <div id="pageContent">
+    <!-- Page-specific content will be inserted here -->
+  </div>
+
+  <script src="/js/layout.js"></script>
+</body>
+</html>

@@ -19,7 +19,9 @@ router.get('/info', async (req, res) => {
 
     res.json(worldInfo);
   } catch (error) {
-    console.error('Error getting world info:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error getting world info:', error);
+    }
     res.status(500).json({ error: 'Failed to get world information' });
   }
 });
@@ -40,7 +42,9 @@ router.get('/time', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error getting world time:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error getting world time:', error);
+    }
     res.status(500).json({ error: 'Failed to get world time' });
   }
 });
@@ -53,7 +57,9 @@ router.post('/pause', async (req, res) => {
     await worldTimeService.pauseWorld();
     res.json({ message: 'World paused', status: 'paused' });
   } catch (error) {
-    console.error('Error pausing world:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error pausing world:', error);
+    }
     res.status(500).json({ error: 'Failed to pause world' });
   }
 });
@@ -66,7 +72,9 @@ router.post('/resume', async (req, res) => {
     await worldTimeService.resumeWorld();
     res.json({ message: 'World resumed', status: 'active' });
   } catch (error) {
-    console.error('Error resuming world:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error resuming world:', error);
+    }
     res.status(500).json({ error: 'Failed to resume world' });
   }
 });
@@ -89,7 +97,9 @@ router.post('/acceleration', async (req, res) => {
       factor: parseFloat(factor)
     });
   } catch (error) {
-    console.error('Error setting acceleration:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error setting acceleration:', error);
+    }
     res.status(500).json({ error: 'Failed to set time acceleration' });
   }
 });
@@ -105,7 +115,9 @@ router.get('/list', async (req, res) => {
 
     res.json(worlds);
   } catch (error) {
-    console.error('Error listing worlds:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error listing worlds:', error);
+    }
     res.status(500).json({ error: 'Failed to list worlds' });
   }
 });

@@ -23,7 +23,15 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+
+// Only use morgan logger in development mode
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined', {
+    skip: () => true // Skip logging in production
+  }));
+}
 
 // Session configuration
 app.use(session({
@@ -45,10 +53,16 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  // Only log in development mode
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Client connected:', socket.id);
+  }
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Client disconnected:', socket.id);
+    }
   });
 });
 
@@ -68,6 +82,56 @@ const adminRoutes = require('./routes/admin');
 // Import services
 const worldTimeService = require('./services/worldTimeService');
 
+// Helper function to render pages with base layout
+async function renderPage(pagePath) {
+  const fs = require('fs').promises;
+
+  try {
+    const [layoutHtml, pageHtml] = await Promise.all([
+      fs.readFile(path.join(__dirname, '../public/base-layout.html'), 'utf8'),
+      fs.readFile(pagePath, 'utf8')
+    ]);
+
+    // Extract metadata from HTML comments
+    const titleMatch = pageHtml.match(/<!--\s*TITLE:\s*(.+?)\s*-->/);
+    const subtitleMatch = pageHtml.match(/<!--\s*SUBTITLE:\s*(.+?)\s*-->/);
+    const scriptsMatch = pageHtml.match(/<!--\s*SCRIPTS:\s*(.+?)\s*-->/);
+
+    let result = layoutHtml;
+
+    // Replace title if specified
+    if (titleMatch) {
+      result = result.replace(/<title[^>]*>.*?<\/title>/, `<title>${titleMatch[1]}</title>`);
+    }
+
+    // Replace subtitle if specified
+    if (subtitleMatch) {
+      result = result.replace(
+        /<span class="brand-subtitle"[^>]*>.*?<\/span>/,
+        `<span class="brand-subtitle" id="pageSubtitle">${subtitleMatch[1]}</span>`
+      );
+    }
+
+    // Inject page content
+    result = result.replace(
+      /<div id="pageContent">[\s\S]*?<\/div>\s*<script/,
+      `<div id="pageContent">\n${pageHtml}\n  </div>\n\n  <script`
+    );
+
+    // Add additional scripts before closing body tag if specified
+    if (scriptsMatch) {
+      const scripts = scriptsMatch[1].split(',').map(s => s.trim());
+      const scriptTags = scripts.map(src => `  <script src="${src}"></script>`).join('\n');
+      result = result.replace('</body>', `${scriptTags}\n</body>`);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error rendering page:', error);
+    throw error;
+  }
+}
+
 // Auth routes
 app.use('/auth', authRoutes);
 
@@ -78,19 +142,44 @@ app.use('/api/admin', requireAuth, adminRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
+  // For the login page, we'll serve it normally since it has a different structure
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.get('/world-selection', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/world-selection.html'));
+app.get('/world-selection', requireAuth, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/world-selection.html'));
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
 });
 
-app.get('/dashboard', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/dashboard.html'));
+app.get('/dashboard', requireAuth, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/dashboard.html'));
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
 });
 
-app.get('/admin', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/admin.html'));
+app.get('/admin', requireAuth, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/admin.html'));
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/aircraft-marketplace', requireAuth, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/aircraft-marketplace.html'));
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
 });
 
 // API routes
@@ -110,7 +199,12 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  if (process.env.NODE_ENV === 'development') {
+    console.error(err.stack);
+  } else {
+    // In production, only log to file or external service if needed
+    console.error('Server Error:', err.message);
+  }
   res.status(500).json({
     error: 'Internal Server Error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -119,7 +213,9 @@ app.use((err, req, res, next) => {
 
 // Start server
 server.listen(PORT, async () => {
-  console.log(`
+  // Only show detailed startup message in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`
 ╔════════════════════════════════════════╗
 ║     Airline Control Server v1.0.0      ║
 ╠════════════════════════════════════════╣
@@ -128,10 +224,13 @@ server.listen(PORT, async () => {
 ║  WebSocket: enabled                    ║
 ╚════════════════════════════════════════╝
   `);
+  } else {
+    console.log(`Server running on port ${PORT}`);
+  }
 
   // Start world time service
   const worldStarted = await worldTimeService.start();
-  if (!worldStarted) {
+  if (!worldStarted && process.env.NODE_ENV === 'development') {
     console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
   }
 });

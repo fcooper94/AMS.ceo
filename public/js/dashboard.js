@@ -15,10 +15,10 @@ function formatGameTime(dateString) {
 
 function formatGameDate(dateString) {
   const date = new Date(dateString);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}/${month}/${day}`;
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = date.getUTCFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 // Update game time display
@@ -98,47 +98,18 @@ function updateCreditWarningBanner(credits) {
     banner.classList.remove('critical');
     title.textContent = 'CRITICAL CREDIT WARNING';
     message.textContent = `Your credit balance is negative (${credits} credits). You have ${weeksRemaining} game week${weeksRemaining !== 1 ? 's' : ''} remaining before your company enters administration and assets are sold.`;
-  } else if (credits < 10) {
-    // Low credits warning
+  } else if (credits < 4) {
+    // Low credits warning (less than 1 month)
     banner.style.display = 'block';
     banner.classList.remove('critical');
     title.textContent = 'LOW CREDITS WARNING';
-    message.textContent = `Your credit balance is running low (${credits} credits). Credits are consumed at 1 credit per game week. Consider purchasing more credits soon.`;
+    message.textContent = `Your credit balance is running low (${credits} credits, less than 1 game month). Credits are consumed at 1 credit per game week. Consider purchasing more credits soon.`;
   } else {
     // Sufficient credits
     banner.style.display = 'none';
   }
 }
 
-// Load user information
-async function loadUserInfo() {
-  try {
-    const response = await fetch('/auth/status');
-    const data = await response.json();
-
-    if (data.authenticated) {
-      document.getElementById('userName').textContent = data.user.name;
-      const creditsEl = document.getElementById('userCredits');
-      creditsEl.textContent = data.user.credits;
-      // Color code credits based on value
-      if (data.user.credits < 0) {
-        creditsEl.style.color = 'var(--warning-color)';
-      } else if (data.user.credits < 10) {
-        creditsEl.style.color = 'var(--text-secondary)';
-      } else {
-        creditsEl.style.color = 'var(--success-color)';
-      }
-
-      // Show warning banner if credits are low
-      updateCreditWarningBanner(data.user.credits);
-    } else {
-      // Redirect to login if not authenticated
-      window.location.href = '/';
-    }
-  } catch (error) {
-    console.error('Error loading user info:', error);
-  }
-}
 
 // Load VATSIM status
 async function loadVatsimStatus() {
@@ -180,7 +151,6 @@ socket.on('disconnect', () => {
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
-  loadUserInfo();
   loadWorldInfo();
   loadVatsimStatus();
 

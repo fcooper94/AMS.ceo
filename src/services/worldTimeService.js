@@ -27,7 +27,9 @@ class WorldTimeService {
       }
 
       if (!this.activeWorld) {
+        if (process.env.NODE_ENV === 'development') {
         console.log('⚠ No active world found. Create a world first.');
+      }
         return false;
       }
 
@@ -35,9 +37,11 @@ class WorldTimeService {
       this.activeWorld.lastTickAt = new Date();
       await this.activeWorld.save();
 
-      console.log(`✓ World Time Service started for: ${this.activeWorld.name}`);
-      console.log(`  Current game time: ${this.activeWorld.currentTime.toISOString()}`);
-      console.log(`  Time acceleration: ${this.activeWorld.timeAcceleration}x`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✓ World Time Service started for: ${this.activeWorld.name}`);
+        console.log(`  Current game time: ${this.activeWorld.currentTime.toISOString()}`);
+        console.log(`  Time acceleration: ${this.activeWorld.timeAcceleration}x`);
+      }
 
       // Start the tick loop
       this.tickInterval = setInterval(() => this.tick(), this.tickRate);
@@ -56,7 +60,9 @@ class WorldTimeService {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
-      console.log('✓ World Time Service stopped');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✓ World Time Service stopped');
+      }
     }
   }
 
@@ -163,11 +169,15 @@ class WorldTimeService {
             membership.lastCreditDeduction = newDeductionTime;
             await membership.save();
 
-            console.log(`Deducted ${weeksPassed} credits from user ${membership.user.id} for world ${this.activeWorld.name}. New balance: ${membership.user.credits}`);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Deducted ${weeksPassed} credits from user ${membership.user.id} for world ${this.activeWorld.name}. New balance: ${membership.user.credits}`);
+            }
 
             // Check if user has fallen below -4 (enter administration)
             if (membership.user.credits < -4) {
-              console.log(`User ${membership.user.id} has entered administration (credits: ${membership.user.credits})`);
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`User ${membership.user.id} has entered administration (credits: ${membership.user.credits})`);
+              }
               // TODO: Implement administration logic (sell assets, etc.)
             }
           }
@@ -222,7 +232,9 @@ class WorldTimeService {
     if (this.activeWorld) {
       this.activeWorld.isPaused = true;
       await this.activeWorld.save();
-      console.log('⏸ World paused');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏸ World paused');
+      }
     }
   }
 
@@ -234,7 +246,9 @@ class WorldTimeService {
       this.activeWorld.isPaused = false;
       this.activeWorld.lastTickAt = new Date();
       await this.activeWorld.save();
-      console.log('▶ World resumed');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('▶ World resumed');
+      }
     }
   }
 
@@ -245,7 +259,9 @@ class WorldTimeService {
     if (this.activeWorld) {
       this.activeWorld.timeAcceleration = factor;
       await this.activeWorld.save();
-      console.log(`⏱ Time acceleration set to ${factor}x`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⏱ Time acceleration set to ${factor}x`);
+      }
     }
   }
 }

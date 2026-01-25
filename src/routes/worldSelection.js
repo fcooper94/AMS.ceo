@@ -48,7 +48,9 @@ router.get('/available', async (req, res) => {
 
     res.json(worldsWithStatus);
   } catch (error) {
-    console.error('Error fetching worlds:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching worlds:', error);
+    }
     res.status(500).json({ error: 'Failed to fetch worlds' });
   }
 });
@@ -145,7 +147,9 @@ router.post('/join', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error joining world:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error joining world:', error);
+    }
 
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ error: 'Airline code already taken' });
@@ -190,7 +194,9 @@ router.post('/leave', async (req, res) => {
 
     res.json({ message: 'Successfully left world' });
   } catch (error) {
-    console.error('Error leaving world:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error leaving world:', error);
+    }
     res.status(500).json({ error: 'Failed to leave world' });
   }
 });
@@ -234,7 +240,9 @@ router.get('/my-worlds', async (req, res) => {
 
     res.json(myWorlds);
   } catch (error) {
-    console.error('Error fetching user worlds:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching user worlds:', error);
+    }
     res.status(500).json({ error: 'Failed to fetch your worlds' });
   }
 });

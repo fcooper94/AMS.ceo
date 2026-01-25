@@ -1,209 +1,179 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Airline Control</title>
-  <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/dashboard.css">
-</head>
-<body class="dashboard-body">
-  <nav class="navbar">
-    <div class="nav-container">
-      <div class="nav-brand">
-        <div class="brand-mark">AC</div>
-        <div class="brand-info">
-          <span class="brand-text">AIRLINE CONTROL</span>
-          <span class="brand-subtitle">Operations Center</span>
+<!-- TITLE: Dashboard - Airline Manager -->
+<!-- SUBTITLE: Operations Center -->
+<!-- SCRIPTS: /socket.io/socket.io.js, /js/dashboard.js -->
+
+<div class="dashboard-container">
+  <aside class="sidebar">
+    <div class="sidebar-header">OPERATIONS</div>
+    <ul class="nav-menu">
+      <li class="nav-item active">
+        <a href="#overview">
+          <span class="nav-text">Dashboard</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#flights">
+          <span class="nav-text">Flight Operations</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#fleet">
+          <span class="nav-text">Fleet Management</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#schedule">
+          <span class="nav-text">Schedule Control</span>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#finances">
+          <span class="nav-text">Financial Reports</span>
+        </a>
+      </li>
+    </ul>
+  </aside>
+
+  <main class="main-content">
+    <!-- Low Credit Warning Banner -->
+    <div id="creditWarningBanner" class="credit-warning-banner" style="display: none;">
+      <div class="warning-content">
+        <span class="warning-icon">⚠</span>
+        <div class="warning-text">
+          <strong id="warningTitle">LOW CREDITS WARNING</strong>
+          <p id="warningMessage">Your credit balance is running low. Your company will enter administration if credits fall below -4.</p>
         </div>
-      </div>
-      <div class="nav-user">
-        <span class="user-label">CREDITS</span>
-        <span class="user-name" id="userCredits" style="margin-right: 2rem;">--</span>
-        <span class="user-label">OPERATOR</span>
-        <span class="user-name" id="userName">Loading...</span>
-        <a href="/auth/logout" class="btn btn-logout">Sign Out</a>
+        <button class="btn btn-primary" onclick="window.location.href='/admin'" id="buyCreditsBtn" style="display: none;">Manage Credits</button>
       </div>
     </div>
-  </nav>
 
-  <div class="dashboard-container">
-    <aside class="sidebar">
-      <div class="sidebar-header">OPERATIONS</div>
-      <ul class="nav-menu">
-        <li class="nav-item active">
-          <a href="#overview">
-            <span class="nav-text">Dashboard</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="#flights">
-            <span class="nav-text">Flight Operations</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="#fleet">
-            <span class="nav-text">Fleet Management</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="#schedule">
-            <span class="nav-text">Schedule Control</span>
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="#finances">
-            <span class="nav-text">Financial Reports</span>
-          </a>
-        </li>
-      </ul>
-    </aside>
+    <!-- System Status Bar -->
+    <div class="system-status">
+      <div class="status-item">
+        <div class="status-label">WORLD TIME</div>
+        <div class="status-value" id="gameTime">--:--</div>
+        <div class="status-meta" id="gameDate">----/--/--</div>
+      </div>
+      <div class="status-divider"></div>
+      <div class="status-item">
+        <div class="status-label">WORLD</div>
+        <div class="status-value" id="worldName">Loading...</div>
+      </div>
+      <div class="status-divider"></div>
+      <div class="status-item">
+        <div class="status-label">SYNC RATE</div>
+        <div class="status-value" id="timeAcceleration">--x</div>
+      </div>
+      <div class="status-divider"></div>
+      <div class="status-item">
+        <div class="status-label">ELAPSED</div>
+        <div class="status-value"><span id="elapsedDays">--</span> DAYS</div>
+      </div>
+      <div class="status-divider"></div>
+      <div class="status-item">
+        <div class="status-label">ERA</div>
+        <div class="status-value" id="worldEra">----</div>
+      </div>
+    </div>
 
-    <main class="main-content">
-      <!-- Low Credit Warning Banner -->
-      <div id="creditWarningBanner" class="credit-warning-banner" style="display: none;">
-        <div class="warning-content">
-          <span class="warning-icon">⚠</span>
-          <div class="warning-text">
-            <strong id="warningTitle">LOW CREDITS WARNING</strong>
-            <p id="warningMessage">Your credit balance is running low. Your company will enter administration if credits fall below -4.</p>
-          </div>
-          <button class="btn btn-primary" onclick="window.location.href='/admin'" id="buyCreditsBtn" style="display: none;">Manage Credits</button>
+    <div class="page-header">
+      <h1>OPERATIONAL OVERVIEW</h1>
+      <p class="subtitle">REAL-TIME OPERATIONS DASHBOARD</p>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">ACTIVE FLIGHTS</span>
+          <span class="metric-status status-ok">OPERATIONAL</span>
+        </div>
+        <div class="metric-value">0</div>
+        <div class="metric-footer">
+          <span class="metric-change">—</span>
+          <span class="metric-label">vs. yesterday</span>
         </div>
       </div>
-
-      <!-- System Status Bar -->
-      <div class="system-status">
-        <div class="status-item">
-          <div class="status-label">WORLD TIME</div>
-          <div class="status-value" id="gameTime">--:--</div>
-          <div class="status-meta" id="gameDate">----/--/--</div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">FLEET SIZE</span>
+          <span class="metric-status status-ok">READY</span>
         </div>
-        <div class="status-divider"></div>
-        <div class="status-item">
-          <div class="status-label">WORLD</div>
-          <div class="status-value" id="worldName">Loading...</div>
-        </div>
-        <div class="status-divider"></div>
-        <div class="status-item">
-          <div class="status-label">SYNC RATE</div>
-          <div class="status-value" id="timeAcceleration">--x</div>
-        </div>
-        <div class="status-divider"></div>
-        <div class="status-item">
-          <div class="status-label">ELAPSED</div>
-          <div class="status-value"><span id="elapsedDays">--</span> DAYS</div>
-        </div>
-        <div class="status-divider"></div>
-        <div class="status-item">
-          <div class="status-label">ERA</div>
-          <div class="status-value" id="worldEra">----</div>
+        <div class="metric-value">0</div>
+        <div class="metric-footer">
+          <span class="metric-change">—</span>
+          <span class="metric-label">available aircraft</span>
         </div>
       </div>
-
-      <div class="page-header">
-        <h1>OPERATIONAL OVERVIEW</h1>
-        <p class="subtitle">REAL-TIME OPERATIONS DASHBOARD</p>
-      </div>
-
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">ACTIVE FLIGHTS</span>
-            <span class="metric-status status-ok">OPERATIONAL</span>
-          </div>
-          <div class="metric-value">0</div>
-          <div class="metric-footer">
-            <span class="metric-change">—</span>
-            <span class="metric-label">vs. yesterday</span>
-          </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">REVENUE (24H)</span>
+          <span class="metric-status status-ok">TRACKING</span>
         </div>
-        <div class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">FLEET SIZE</span>
-            <span class="metric-status status-ok">READY</span>
-          </div>
-          <div class="metric-value">0</div>
-          <div class="metric-footer">
-            <span class="metric-change">—</span>
-            <span class="metric-label">available aircraft</span>
-          </div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">REVENUE (24H)</span>
-            <span class="metric-status status-ok">TRACKING</span>
-          </div>
-          <div class="metric-value">$0</div>
-          <div class="metric-footer">
-            <span class="metric-change">—</span>
-            <span class="metric-label">vs. projection</span>
-          </div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">PERFORMANCE</span>
-            <span class="metric-status status-ok">NOMINAL</span>
-          </div>
-          <div class="metric-value">100</div>
-          <div class="metric-footer">
-            <span class="metric-change">—</span>
-            <span class="metric-label">operations score</span>
-          </div>
+        <div class="metric-value">$0</div>
+        <div class="metric-footer">
+          <span class="metric-change">—</span>
+          <span class="metric-label">vs. projection</span>
         </div>
       </div>
-
-      <div class="operations-grid">
-        <div class="ops-panel">
-          <div class="panel-header">
-            <h2>FLIGHT OPERATIONS</h2>
-            <span class="panel-badge">ACTIVE</span>
-          </div>
-          <div class="panel-body">
-            <div class="data-table">
-              <div class="table-empty">
-                <div class="empty-message">NO SCHEDULED FLIGHTS</div>
-                <div class="empty-action">
-                  <button class="btn btn-action">SCHEDULE OPERATION</button>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">PERFORMANCE</span>
+          <span class="metric-status status-ok">NOMINAL</span>
         </div>
-
-        <div class="ops-panel">
-          <div class="panel-header">
-            <h2>FLEET STATUS</h2>
-            <span class="panel-badge">STANDBY</span>
-          </div>
-          <div class="panel-body">
-            <div class="data-table">
-              <div class="table-empty">
-                <div class="empty-message">NO AIRCRAFT REGISTERED</div>
-                <div class="empty-action">
-                  <button class="btn btn-action">ADD TO FLEET</button>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="metric-value">100</div>
+        <div class="metric-footer">
+          <span class="metric-change">—</span>
+          <span class="metric-label">operations score</span>
         </div>
       </div>
+    </div>
 
-      <div class="ops-panel full-width">
+    <div class="operations-grid">
+      <div class="ops-panel">
         <div class="panel-header">
-          <h2>VATSIM NETWORK STATUS</h2>
-          <span class="panel-badge" id="vatsimBadge">CONNECTING</span>
+          <h2>FLIGHT OPERATIONS</h2>
+          <span class="panel-badge">ACTIVE</span>
         </div>
         <div class="panel-body">
-          <div id="vatsimStatus" class="network-status">
-            Establishing connection to VATSIM data feed...
+          <div class="data-table">
+            <div class="table-empty">
+              <div class="empty-message">NO SCHEDULED FLIGHTS</div>
+              <div class="empty-action">
+                <button class="btn btn-action">SCHEDULE OPERATION</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </main>
-  </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/dashboard.js"></script>
-</body>
-</html>
+      <div class="ops-panel">
+        <div class="panel-header">
+          <h2>FLEET STATUS</h2>
+          <span class="panel-badge">STANDBY</span>
+        </div>
+        <div class="panel-body">
+          <div class="data-table">
+            <div class="table-empty">
+              <div class="empty-message">NO AIRCRAFT REGISTERED</div>
+              <div class="empty-action">
+                <button class="btn btn-action">ADD TO FLEET</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ops-panel full-width">
+      <div class="panel-header">
+        <h2>VATSIM NETWORK STATUS</h2>
+        <span class="panel-badge" id="vatsimBadge">CONNECTING</span>
+      </div>
+      <div class="panel-body">
+        <div id="vatsimStatus" class="network-status">
+          Establishing connection to VATSIM data feed...
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
