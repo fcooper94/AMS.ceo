@@ -1,5 +1,108 @@
 // Common layout functionality for the application
 
+// WebSocket connection for real-time updates
+let socket = null;
+
+// Try to connect to Socket.IO with error handling
+try {
+  if (typeof io !== 'undefined') {
+    socket = io({
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10,
+      timeout: 20000
+    });
+    console.log('[Layout] Socket.IO client initialized');
+  } else {
+    console.error('[Layout] Socket.IO client library not loaded!');
+  }
+} catch (error) {
+  console.error('[Layout] Failed to initialize Socket.IO:', error);
+}
+
+// Global variables for world time tracking
+let serverReferenceTime = null; // Server's game time at a specific moment
+let serverReferenceTimestamp = null; // Real-world timestamp when serverReferenceTime was valid
+let worldTimeAcceleration = 60;
+let worldClockInterval = null;
+let worldInfoFetchInProgress = false; // Prevent concurrent fetches
+let worldInfoFetchSequence = 0; // Track request order to ignore stale responses
+let lastTimeUpdateSource = 'none'; // Track last update source for debugging
+
+// Helper function to update time reference with validation
+function updateTimeReference(newGameTime, source) {
+  const now = Date.now();
+  const newServerTime = new Date(newGameTime);
+
+  // Validate time is moving forward ONLY if Socket.IO is available
+  // If no Socket.IO, always accept API updates (they're the only source)
+  const isSocketIO = source === 'socket';
+  const hasSocketIO = socket && socket.connected;
+
+  if (serverReferenceTime && !isSocketIO && hasSocketIO) {
+    // Only validate if Socket.IO is connected (it's the authority)
+    const currentCalculatedTime = calculateCurrentWorldTime();
+    if (currentCalculatedTime && newServerTime < currentCalculatedTime) {
+      const diff = (currentCalculatedTime - newServerTime) / 1000;
+      console.warn(`[Layout] Rejecting ${source} time update - Socket.IO is active and this would go backwards by ${diff.toFixed(1)}s`);
+      return false;
+    }
+  }
+
+  serverReferenceTime = newServerTime;
+  serverReferenceTimestamp = now;
+  lastTimeUpdateSource = source;
+
+  console.log(`[Layout] Time updated from ${source}:`, {
+    gameTime: newServerTime.toLocaleString(),
+    acceleration: worldTimeAcceleration
+  });
+
+  // Broadcast to other scripts
+  window.dispatchEvent(new CustomEvent('worldTimeUpdated', {
+    detail: {
+      referenceTime: serverReferenceTime,
+      referenceTimestamp: serverReferenceTimestamp,
+      acceleration: worldTimeAcceleration,
+      source: source
+    }
+  }));
+
+  // Update display immediately
+  updateWorldClock();
+
+  return true;
+}
+
+// Socket.IO event listeners for server time sync
+if (socket) {
+  socket.on('world:tick', (data) => {
+    console.log('[Layout] Socket.IO world:tick received:', data);
+
+    // Update acceleration
+    if (data.timeAcceleration) {
+      worldTimeAcceleration = data.timeAcceleration;
+    }
+
+    // Socket.IO is authoritative - always accept
+    updateTimeReference(data.gameTime, 'socket');
+  });
+
+  socket.on('connect', () => {
+    console.log('[Layout] ✓ Connected to Socket.IO - time sync enabled');
+  });
+
+  socket.on('disconnect', () => {
+    console.warn('[Layout] ✗ Disconnected from Socket.IO');
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('[Layout] Socket.IO connection error:', error);
+  });
+} else {
+  console.warn('[Layout] Socket.IO not available - falling back to API-only time sync');
+}
+
 // Load user information for navigation bar
 async function loadUserInfo() {
   try {
@@ -54,14 +157,6 @@ async function loadUserInfo() {
   }
 }
 
-// Global variables for world time tracking
-let serverReferenceTime = null; // Server's game time at a specific moment
-let serverReferenceTimestamp = null; // Real-world timestamp when serverReferenceTime was valid
-let worldTimeAcceleration = 60;
-let worldClockInterval = null;
-let worldInfoFetchInProgress = false; // Prevent concurrent fetches
-let worldInfoFetchSequence = 0; // Track request order to ignore stale responses
-
 // Load world information for navigation bar
 async function loadWorldInfo() {
   // Prevent concurrent fetches to avoid race conditions
@@ -82,64 +177,37 @@ async function loadWorldInfo() {
     worldInfoFetchInProgress = true;
     const currentSequence = ++worldInfoFetchSequence;
 
+    console.log('[Layout] Fetching world info from API...');
+
     // Get world info from the dedicated API endpoint
     const response = await fetch('/api/world/info');
     const worldInfo = await response.json();
 
     // Ignore this response if a newer request has been made
     if (currentSequence !== worldInfoFetchSequence) {
+      console.log('[Layout] Ignoring stale world info response');
       return;
     }
 
     if (response.ok && worldInfo && !worldInfo.error) {
+      console.log('[Layout] World info received:', {
+        name: worldInfo.name,
+        currentTime: worldInfo.currentTime,
+        acceleration: worldInfo.timeAcceleration,
+        balance: worldInfo.balance
+      });
+
       // Update world information
       const worldNameEl = document.getElementById('worldName');
       if (worldNameEl) {
         worldNameEl.textContent = worldInfo.name || '--';
       }
 
-      // Store server reference time and acceleration
-      // Always use client-side time to avoid clock skew issues
-      const clientReceiveTime = Date.now();
-      serverReferenceTime = new Date(worldInfo.currentTime);
-      serverReferenceTimestamp = clientReceiveTime;
+      // Update time acceleration (always accept this)
       worldTimeAcceleration = worldInfo.timeAcceleration || 60;
 
-      // console.log('[Layout] Time reference updated:', {
-      //   serverTime: serverReferenceTime.toLocaleTimeString(),
-      //   clientTimestamp: new Date(serverReferenceTimestamp).toLocaleTimeString(),
-      //   acceleration: worldTimeAcceleration,
-      //   source: worldInfo.timeSource || 'unknown'
-      // });
-
-      // Broadcast time update event for other scripts to sync
-      window.dispatchEvent(new CustomEvent('worldTimeUpdated', {
-        detail: {
-          referenceTime: serverReferenceTime,
-          referenceTimestamp: serverReferenceTimestamp,
-          acceleration: worldTimeAcceleration,
-          source: worldInfo.timeSource
-        }
-      }));
-
-      // console.log('[Layout] worldTimeUpdated event broadcast');
-
-      // Calculate and display current world time
-      const currentWorldTime = calculateCurrentWorldTime();
-      const worldDateEl = document.getElementById('worldDate');
-      const worldTimeEl = document.getElementById('worldTime');
-      const worldDayEl = document.getElementById('worldDay');
-
-      if (worldDateEl && worldTimeEl && currentWorldTime) {
-        worldDateEl.textContent = currentWorldTime.toLocaleDateString('en-GB');
-        worldTimeEl.textContent = currentWorldTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
-
-        // Update day of week
-        if (worldDayEl) {
-          const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-          worldDayEl.textContent = dayNames[currentWorldTime.getDay()];
-        }
-      }
+      // Update time reference with validation (Socket.IO takes precedence)
+      updateTimeReference(worldInfo.currentTime, 'api');
 
       // Update balance
       const worldBalanceEl = document.getElementById('worldBalance');
@@ -157,20 +225,42 @@ async function loadWorldInfo() {
         }
       }
 
-      // Set up real-time clock
-      startRealTimeClock();
+      // Set up real-time clock if not already running
+      if (!worldClockInterval) {
+        startRealTimeClock();
+      }
+    } else {
+      console.warn('[Layout] No world data received or error:', worldInfo);
     }
-    // If no world data, just leave placeholder values visible - no need to hide container
   } catch (error) {
-    console.error('Error loading world info:', error);
-    // On error, just leave placeholder values visible - no need to hide container
+    console.error('[Layout] Error loading world info:', error);
   } finally {
     worldInfoFetchInProgress = false;
   }
 }
 
+// Update world clock display
+function updateWorldClock() {
+  const currentWorldTime = calculateCurrentWorldTime();
+  const worldDateEl = document.getElementById('worldDate');
+  const worldTimeEl = document.getElementById('worldTime');
+  const worldDayEl = document.getElementById('worldDay');
+
+  if (worldDateEl && worldTimeEl && currentWorldTime) {
+    worldDateEl.textContent = currentWorldTime.toLocaleDateString('en-GB');
+    worldTimeEl.textContent = currentWorldTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
+
+    // Update day of week
+    if (worldDayEl) {
+      const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+      worldDayEl.textContent = dayNames[currentWorldTime.getDay()];
+    }
+  }
+}
+
 // Update world time periodically (sync with server every 30 seconds)
 function updateWorldTime() {
+  console.log('[Layout] Periodic world info refresh');
   loadWorldInfo();
 }
 
@@ -208,35 +298,17 @@ function startRealTimeClock() {
     clearInterval(worldClockInterval);
   }
 
+  console.log('[Layout] Starting real-time clock');
+
   // Update the clock every 100ms for smooth progression
   worldClockInterval = setInterval(() => {
-    const currentWorldTime = calculateCurrentWorldTime();
-
-    if (currentWorldTime) {
-      const worldTimeEl = document.getElementById('worldTime');
-      const worldDateEl = document.getElementById('worldDate');
-      const worldDayEl = document.getElementById('worldDay');
-
-      if (worldTimeEl) {
-        worldTimeEl.textContent = currentWorldTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
-      }
-
-      if (worldDateEl) {
-        worldDateEl.textContent = currentWorldTime.toLocaleDateString('en-GB');
-      }
-
-      if (worldDayEl) {
-        const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-        worldDayEl.textContent = dayNames[currentWorldTime.getDay()];
-      }
-    }
+    updateWorldClock();
   }, 100); // Update every 100ms
 }
 
 // Universal page initialization
 function initializeLayout() {
-  // console.log('[Layout] Initializing layout.js...');
-  // console.log('[Layout] Starting loadUserInfo()...');
+  console.log('[Layout] Initializing layout.js...');
   loadUserInfo();
 
   // Sync world time with server every 30 seconds to avoid drift
@@ -265,7 +337,7 @@ function initializeLayout() {
   // Add common functionality that should be available on all pages
   initializeCommonComponents();
 
-  // console.log('[Layout] ✓ Layout initialization complete');
+  console.log('[Layout] ✓ Layout initialization complete');
 }
 
 // Initialize common components across all pages
@@ -372,6 +444,6 @@ function showAircraftMarketplaceOptions() {
 
 // Call initialize function when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  // console.log('[Layout] DOMContentLoaded event fired');
+  console.log('[Layout] DOMContentLoaded event fired');
   initializeLayout();
 });

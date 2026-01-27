@@ -547,6 +547,37 @@ function applyDestinationFilters() {
   displayAvailableAirports(filtered);
 }
 
+// Generate visual level scale (like world selection)
+function generateLevelScaleCompact(level) {
+  const dots = [];
+  for (let i = 1; i <= 20; i++) {
+    let color;
+    if (i <= 6) color = '#ef4444'; // Red for low
+    else if (i <= 12) color = '#f59e0b'; // Orange for medium
+    else if (i <= 16) color = '#eab308'; // Yellow for medium-high
+    else color = '#22c55e'; // Green for high
+
+    const isFilled = i <= level;
+    dots.push(`
+      <div style="
+        width: 10px;
+        height: 10px;
+        border-radius: 1px;
+        background: ${isFilled ? color : 'transparent'};
+        border: 1px solid ${color};
+        opacity: ${isFilled ? '1' : '0.25'};
+      "></div>
+    `);
+  }
+
+  return `
+    <div style="display: flex; gap: 1px; align-items: center;">
+      ${dots.join('')}
+      <span style="margin-left: 0.35rem; font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${level}/20</span>
+    </div>
+  `;
+}
+
 // Display available airports
 function displayAvailableAirports(airports) {
   const container = document.getElementById('availableAirportsList');
@@ -566,7 +597,7 @@ function displayAvailableAirports(airports) {
       <div
         onclick="selectDestinationAirport('${airport.id}')"
         style="
-          padding: 1.25rem;
+          padding: 0.75rem 1rem;
           border-bottom: 1px solid var(--border-color);
           cursor: pointer;
           background: ${isSelected ? 'var(--accent-color-dim)' : 'transparent'};
@@ -575,21 +606,37 @@ function displayAvailableAirports(airports) {
         onmouseover="if (!${isSelected}) this.style.background='var(--surface-elevated)'"
         onmouseout="if (!${isSelected}) this.style.background='transparent'"
       >
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div style="flex: 1;">
-            <div style="color: var(--text-primary); font-weight: 600; font-size: 1.05rem;">
-              ${airport.icaoCode} ${airport.iataCode ? `(${airport.iataCode})` : ''} - ${airport.name}
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <!-- Airport Info -->
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.25rem;">
+              <span style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">
+                ${airport.icaoCode}${airport.iataCode ? ` (${airport.iataCode})` : ''}
+              </span>
+              <span style="color: var(--text-secondary); font-size: 0.85rem;">
+                ${airport.name}
+              </span>
             </div>
-            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.25rem;">
+            <div style="color: var(--text-muted); font-size: 0.8rem;">
               ${airport.city}, ${airport.country} • ${airport.type}
             </div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
-              Infrastructure: ${airport.infrastructureLevel}/20 • Traffic: ${airport.trafficDemand}/20${airport.timezone ? ` • ${airport.timezone}` : ''}
+          </div>
+
+          <!-- Infrastructure & Traffic -->
+          <div style="display: flex; gap: 1.5rem; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Infra:</span>
+              ${generateLevelScaleCompact(airport.infrastructureLevel)}
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Traffic:</span>
+              ${generateLevelScaleCompact(airport.trafficDemand)}
             </div>
           </div>
-          <div style="text-align: right; margin-left: 2rem;">
-            <div style="color: var(--text-muted); font-size: 0.85rem;">Distance</div>
-            <div style="color: var(--accent-color); font-weight: 600; font-size: 1.2rem;">${Math.round(airport.distance)} NM</div>
+
+          <!-- Distance -->
+          <div style="text-align: right; min-width: 80px;">
+            <div style="color: var(--accent-color); font-weight: 600; font-size: 1rem; white-space: nowrap;">${Math.round(airport.distance)} NM</div>
           </div>
         </div>
       </div>

@@ -14,6 +14,54 @@ let timelineInterval = null; // Interval for updating the timeline
 let isFirstLoad = true; // Track if this is the first load
 let worldTimeFetchInProgress = false; // Prevent concurrent fetches
 let worldTimeFetchSequence = 0; // Track request order to ignore stale responses
+let confirmModalResolve = null; // Promise resolve for confirm modal
+
+// Listen for world time updates from layout.js (which manages the centralized socket connection)
+window.addEventListener('worldTimeUpdated', (event) => {
+  // Sync with the centralized time from layout.js
+  if (scheduleWorldReferenceTime) {
+    scheduleWorldReferenceTime = new Date(event.detail.referenceTime);
+    scheduleWorldReferenceTimestamp = event.detail.referenceTimestamp;
+    scheduleWorldTimeAcceleration = event.detail.acceleration;
+    console.log('[Scheduling] Time synced from socket:', scheduleWorldReferenceTime.toLocaleTimeString());
+  }
+});
+
+// Modal Helper Functions
+function showConfirmModal(title, message) {
+  return new Promise((resolve) => {
+    confirmModalResolve = resolve;
+    document.getElementById('confirmModalTitle').textContent = title;
+    document.getElementById('confirmModalMessage').textContent = message;
+    document.getElementById('confirmModal').style.display = 'flex';
+  });
+}
+
+function closeConfirmModal(result) {
+  document.getElementById('confirmModal').style.display = 'none';
+  if (confirmModalResolve) {
+    confirmModalResolve(result);
+    confirmModalResolve = null;
+  }
+}
+
+function showAlertModal(title, message) {
+  return new Promise((resolve) => {
+    document.getElementById('alertModalTitle').textContent = title;
+    document.getElementById('alertModalMessage').textContent = message;
+    document.getElementById('alertModal').style.display = 'flex';
+    // Store resolve for when modal closes
+    window.alertModalResolve = resolve;
+  });
+}
+
+function closeAlertModal() {
+  document.getElementById('alertModal').style.display = 'none';
+  if (window.alertModalResolve) {
+    window.alertModalResolve();
+    window.alertModalResolve = null;
+  }
+}
 
 // Fetch user's fleet
 async function fetchUserFleet() {
@@ -43,8 +91,14 @@ async function fetchRoutes() {
 // Fetch scheduled flights for the selected day of week
 async function fetchScheduledFlights() {
   try {
-    // Get the next occurrence of the selected day of week
-    const today = new Date();
+    // Get the next occurrence of the selected day of week using game world time
+    const worldTime = getCurrentWorldTime();
+    if (!worldTime) {
+      console.error('World time not available for fetching flights');
+      return;
+    }
+
+    const today = new Date(worldTime);
     const currentDay = today.getDay();
     const daysUntilTarget = (selectedDayOfWeek - currentDay + 7) % 7;
     const targetDate = new Date(today);
@@ -245,6 +299,90 @@ function renderFlightBlocks(flights) {
     const depAirport = route.departureAirport.iataCode || route.departureAirport.icaoCode;
     const arrAirport = route.arrivalAirport.iataCode || route.arrivalAirport.icaoCode;
 
+    // Use simplified layout for short flights (under 2 hours total)
+    const isShortFlight = durationHours < 2;
+    const isVeryShortFlight = durationHours < 1.5;
+
+    if (isVeryShortFlight) {
+      // Ultra-compact layout for very short flights - IATA codes only
+      return `
+        <div
+          class="flight-block"
+          style="
+            position: absolute;
+            top: 0;
+            left: ${leftPercent}%;
+            width: ${widthPercent}%;
+            height: 100%;
+            min-height: 50px;
+            background: var(--accent-color);
+            border-radius: 3px;
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 0.2rem 0.25rem;
+            cursor: pointer;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 0.05rem;
+            line-height: 1;
+            align-items: center;
+          "
+          onclick="viewFlightDetails('${flight.id}')"
+          title="${route.routeNumber}/${route.returnRouteNumber}: ${depAirport}→${arrAirport}→${depAirport} | Block-Off ${depTime} Block-On ${returnArrTime}"
+        >
+          <div style="grid-column: 1; grid-row: 1; text-align: left;">${depAirport}</div>
+          <div style="grid-column: 2; grid-row: 1; text-align: right;">${arrAirport}</div>
+          <div style="grid-column: 1; grid-row: 2; text-align: left;">${arrAirport}</div>
+          <div style="grid-column: 2; grid-row: 2; text-align: right;">${depAirport}</div>
+          <div style="grid-column: 1 / 3; grid-row: 3; text-align: center; font-size: 0.52rem; opacity: 0.85; margin-top: 0.05rem;">${depTime}</div>
+        </div>
+      `;
+    }
+
+    if (isShortFlight) {
+      // Compact layout for short flights - hide bottom row and return time
+      return `
+        <div
+          class="flight-block"
+          style="
+            position: absolute;
+            top: 0;
+            left: ${leftPercent}%;
+            width: ${widthPercent}%;
+            height: 100%;
+            min-height: 50px;
+            background: var(--accent-color);
+            border-radius: 3px;
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 0.2rem 0.25rem;
+            cursor: pointer;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            grid-template-rows: auto auto;
+            gap: 0.1rem 0.2rem;
+            line-height: 1;
+          "
+          onclick="viewFlightDetails('${flight.id}')"
+          title="${route.routeNumber}/${route.returnRouteNumber}: ${depAirport}→${arrAirport}→${depAirport} | Block-Off ${depTime} Block-On ${returnArrTime}"
+        >
+          <div style="grid-column: 1; grid-row: 1; text-align: left;">${depAirport}</div>
+          <div style="grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.62rem; gap: 0.05rem;">
+            <div>${route.routeNumber}</div>
+            <div>${route.returnRouteNumber}</div>
+          </div>
+          <div style="grid-column: 3; grid-row: 1; text-align: right;">${arrAirport}</div>
+          <div style="grid-column: 1; grid-row: 2; text-align: left; font-size: 0.52rem; opacity: 0.85;">${depTime}</div>
+        </div>
+      `;
+    }
+
+    // Full layout for longer flights
     return `
       <div
         class="flight-block"
@@ -352,14 +490,19 @@ function renderMaintenanceBlocks(maintenance) {
 }
 
 // View flight details
-function viewFlightDetails(flightId) {
+async function viewFlightDetails(flightId) {
   const flight = scheduledFlights.find(f => f.id === flightId);
   if (!flight) return;
 
   const route = flight.route;
   const aircraft = flight.aircraft;
 
-  if (confirm(`Flight Details:\n\nRoute: ${route.routeNumber} / ${route.returnRouteNumber}\nAircraft: ${aircraft.registration}\nDate: ${flight.scheduledDate}\nTime: ${flight.departureTime.substring(0, 5)}\nRoute: ${route.departureAirport.icaoCode} → ${route.arrivalAirport.icaoCode}\nStatus: ${flight.status}\n\nDelete this flight?`)) {
+  const confirmed = await showConfirmModal(
+    'Flight Details',
+    `Route: ${route.routeNumber} / ${route.returnRouteNumber}\nAircraft: ${aircraft.registration}\nDate: ${flight.scheduledDate}\nTime: ${flight.departureTime.substring(0, 5)}\nRoute: ${route.departureAirport.icaoCode} → ${route.arrivalAirport.icaoCode}\nStatus: ${flight.status}\n\nDelete this flight?`
+  );
+
+  if (confirmed) {
     deleteScheduledFlight(flightId);
   }
 }
@@ -381,17 +524,17 @@ async function deleteScheduledFlight(flightId) {
       scheduledFlights.splice(index, 1);
     }
 
-    alert('Flight deleted successfully');
+    await showAlertModal('Success', 'Flight deleted successfully');
     // Just re-render without fetching
     renderSchedule();
   } catch (error) {
     console.error('Error deleting flight:', error);
-    alert(`Error: ${error.message}`);
+    await showAlertModal('Error', error.message);
   }
 }
 
 // View maintenance check details
-function viewMaintenanceDetails(maintenanceId) {
+async function viewMaintenanceDetails(maintenanceId) {
   const maintenance = scheduledMaintenance.find(m => m.id === maintenanceId);
   if (!maintenance) return;
 
@@ -405,7 +548,12 @@ function viewMaintenanceDetails(maintenanceId) {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayName = dayNames[date.getUTCDay()];
 
-  if (confirm(`Maintenance Check Details:\n\nType: ${checkType}\nAircraft: ${aircraft.registration}\nDay: ${dayName}\nStart Time: ${maintenance.startTime.substring(0, 5)}\nDuration: ${duration}\n\nWARNING: This will delete ALL future ${checkType}s on ${dayName} for this aircraft.\n\nDelete this recurring maintenance check?`)) {
+  const confirmed = await showConfirmModal(
+    'Maintenance Check Details',
+    `Type: ${checkType}\nAircraft: ${aircraft.registration}\nDay: ${dayName}\nStart Time: ${maintenance.startTime.substring(0, 5)}\nDuration: ${duration}\n\nWARNING: This will delete ALL future ${checkType}s on ${dayName} for this aircraft.\n\nDelete this recurring maintenance check?`
+  );
+
+  if (confirmed) {
     deleteScheduledMaintenance(maintenanceId);
   }
 }
@@ -427,12 +575,12 @@ async function deleteScheduledMaintenance(maintenanceId) {
       scheduledMaintenance.splice(index, 1);
     }
 
-    alert('Maintenance check deleted successfully');
+    await showAlertModal('Success', 'Maintenance check deleted successfully');
     // Just re-render without fetching
     renderSchedule();
   } catch (error) {
     console.error('Error deleting maintenance check:', error);
-    alert(`Error: ${error.message}`);
+    await showAlertModal('Error', error.message);
   }
 }
 
@@ -956,14 +1104,14 @@ function updateDragPreview(event) {
 }
 
 // Action: Schedule maintenance
-function scheduleMaintenance(aircraftId) {
+async function scheduleMaintenance(aircraftId) {
   const aircraft = userFleet.find(a => a.id === aircraftId);
   if (!aircraft) return;
 
   // Get the target date for scheduling - use game world time!
   const worldTime = getCurrentWorldTime();
   if (!worldTime) {
-    alert('World time not available. Please try again.');
+    await showAlertModal('Error', 'World time not available. Please try again.');
     return;
   }
 
@@ -1051,7 +1199,7 @@ function scheduleMaintenance(aircraftId) {
     const repeatCheck = document.getElementById('repeatCheck').checked;
 
     if (!startTime) {
-      alert('Please select a start time');
+      await showAlertModal('Validation Error', 'Please select a start time');
       return;
     }
 
@@ -1088,12 +1236,12 @@ function scheduleMaintenance(aircraftId) {
       } else {
         hideLoadingOverlay();
         const error = await response.json();
-        alert(`Error scheduling maintenance: ${error.error}`);
+        await showAlertModal('Scheduling Error', `Error scheduling maintenance: ${error.error}`);
       }
     } catch (error) {
       hideLoadingOverlay();
       console.error('Error scheduling maintenance:', error);
-      alert('Error scheduling maintenance. Please try again.');
+      await showAlertModal('Error', 'Error scheduling maintenance. Please try again.');
     }
   });
 
@@ -1177,11 +1325,16 @@ async function clearSchedule(aircraftId) {
   const aircraftRoutes = getAircraftRoutes(aircraftId);
 
   if (aircraftRoutes.length === 0) {
-    alert(`${aircraft.registration} has no routes assigned.`);
+    await showAlertModal('No Routes', `${aircraft.registration} has no routes assigned.`);
     return;
   }
 
-  if (!confirm(`Clear schedule for ${aircraft.registration}?\n\nThis will unassign the aircraft from ${aircraftRoutes.length} route(s). The routes will remain but will no longer have an aircraft assigned.\n\nThis action cannot be undone.`)) {
+  const confirmed = await showConfirmModal(
+    'Clear Schedule',
+    `Clear schedule for ${aircraft.registration}?\n\nThis will unassign the aircraft from ${aircraftRoutes.length} route(s). The routes will remain but will no longer have an aircraft assigned.\n\nThis action cannot be undone.`
+  );
+
+  if (!confirmed) {
     return;
   }
 
@@ -1204,11 +1357,11 @@ async function clearSchedule(aircraftId) {
       }
     }
 
-    alert(`Schedule cleared for ${aircraft.registration}`);
+    await showAlertModal('Success', `Schedule cleared for ${aircraft.registration}`);
     await loadSchedule();
   } catch (error) {
     console.error('Error clearing schedule:', error);
-    alert(`Error: ${error.message}`);
+    await showAlertModal('Error', error.message);
   }
 }
 
@@ -1308,7 +1461,7 @@ async function handleDrop(event, aircraftId, timeValue) {
   // Find the aircraft in the fleet
   const aircraft = userFleet.find(a => a.id === aircraftId);
   if (!aircraft) {
-    alert('Aircraft not found');
+    await showAlertModal('Error', 'Aircraft not found');
     draggedRoute = null;
     return;
   }
@@ -1319,7 +1472,7 @@ async function handleDrop(event, aircraftId, timeValue) {
 
   // Only allow drop if aircraft types match or route has no assigned aircraft
   if (routeAircraftType && routeAircraftType !== targetAircraftType) {
-    alert(`This route requires a ${routeAircraftType} aircraft. ${aircraft.registration} is a ${targetAircraftType}.`);
+    await showAlertModal('Aircraft Type Mismatch', `This route requires a ${routeAircraftType} aircraft. ${aircraft.registration} is a ${targetAircraftType}.`);
     draggedRoute = null;
     return;
   }
@@ -1327,8 +1480,15 @@ async function handleDrop(event, aircraftId, timeValue) {
   // Use the route's scheduled departure time
   const departureTime = draggedRoute.scheduledDepartureTime || '00:00:00';
 
-  // Get the next occurrence of the selected day of week
-  const today = new Date();
+  // Get the next occurrence of the selected day of week using game world time
+  const worldTime = getCurrentWorldTime();
+  if (!worldTime) {
+    await showAlertModal('Error', 'World time not available. Please try again.');
+    draggedRoute = null;
+    return;
+  }
+
+  const today = new Date(worldTime);
   const currentDay = today.getDay();
   const daysUntilTarget = (selectedDayOfWeek - currentDay + 7) % 7;
   const targetDate = new Date(today);
@@ -1340,36 +1500,98 @@ async function handleDrop(event, aircraftId, timeValue) {
 
   // console.log('Confirming schedule:', { aircraft: aircraft?.registration, route: draggedRoute.routeNumber, time: timeStr });
 
-  if (!confirm(`Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} at ${timeStr}?`)) {
-    draggedRoute = null;
-    return;
+  // Check if route is daily (operates all 7 days)
+  const isDaily = draggedRoute.daysOfWeek && draggedRoute.daysOfWeek.length === 7;
+  let scheduleForWholeWeek = false;
+
+  if (isDaily) {
+    // Ask if they want to schedule for the whole week
+    const userChoice = await showConfirmModal(
+      'Schedule Daily Route',
+      `This is a daily route. Would you like to schedule it for all 7 days of the week?\n\nClick Confirm to schedule for all 7 days, or Cancel to schedule only for the selected day.`
+    );
+    scheduleForWholeWeek = userChoice;
+  }
+
+  // Final confirmation
+  if (scheduleForWholeWeek) {
+    const confirmed = await showConfirmModal(
+      'Confirm Weekly Schedule',
+      `Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} at ${timeStr} for ALL 7 DAYS?`
+    );
+    if (!confirmed) {
+      draggedRoute = null;
+      return;
+    }
+  } else {
+    const confirmed = await showConfirmModal(
+      'Confirm Schedule',
+      `Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} at ${timeStr}?`
+    );
+    if (!confirmed) {
+      draggedRoute = null;
+      return;
+    }
   }
 
   try {
-    // Call API to schedule the flight
-    const response = await fetch('/api/schedule/flight', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        routeId: draggedRoute.id,
-        aircraftId: aircraftId,
-        scheduledDate: scheduleDate,
-        departureTime: departureTime
-      })
-    });
+    if (scheduleForWholeWeek) {
+      // Schedule for all 7 days
+      const scheduledFlightsToAdd = [];
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to schedule flight');
+      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const targetDateForDay = new Date(today);
+        targetDateForDay.setDate(today.getDate() + dayOffset);
+        const scheduleDateForDay = targetDateForDay.toISOString().split('T')[0];
+
+        const response = await fetch('/api/schedule/flight', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            routeId: draggedRoute.id,
+            aircraftId: aircraftId,
+            scheduledDate: scheduleDateForDay,
+            departureTime: departureTime
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to schedule flight');
+        }
+
+        const scheduledFlight = await response.json();
+        scheduledFlightsToAdd.push(scheduledFlight);
+      }
+
+      // Add all the new flights to the array
+      scheduledFlights.push(...scheduledFlightsToAdd);
+    } else {
+      // Schedule for single day only
+      const response = await fetch('/api/schedule/flight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          routeId: draggedRoute.id,
+          aircraftId: aircraftId,
+          scheduledDate: scheduleDate,
+          departureTime: departureTime
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to schedule flight');
+      }
+
+      const scheduledFlight = await response.json();
+      // Add the new flight to the array immediately to avoid full reload
+      scheduledFlights.push(scheduledFlight);
     }
-
-    const scheduledFlight = await response.json();
-    // console.log('Flight scheduled:', scheduledFlight);
-
-    // Add the new flight to the array immediately to avoid full reload
-    scheduledFlights.push(scheduledFlight);
 
     closeAddRouteModal();
     draggedRoute = null;
@@ -1378,7 +1600,7 @@ async function handleDrop(event, aircraftId, timeValue) {
     renderSchedule();
   } catch (error) {
     console.error('Error scheduling route:', error);
-    alert(`Error: ${error.message}`);
+    await showAlertModal('Scheduling Error', error.message);
   }
 }
 

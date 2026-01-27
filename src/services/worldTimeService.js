@@ -57,22 +57,41 @@ class WorldTimeService {
         return false;
       }
 
-      // Update last tick time in database
       const now = new Date();
+
+      // Calculate catch-up time: time that passed while server was off
+      let catchUpTime = new Date(world.currentTime);
+      if (world.lastTickAt) {
+        const realTimeSinceLastTick = (now.getTime() - world.lastTickAt.getTime()) / 1000; // seconds
+        const gameTimeToAdd = realTimeSinceLastTick * world.timeAcceleration; // seconds
+        catchUpTime = new Date(world.currentTime.getTime() + (gameTimeToAdd * 1000));
+
+        if (process.env.NODE_ENV === 'development') {
+          const minutesOffline = Math.round(realTimeSinceLastTick / 60);
+          const gameHoursAdded = Math.round(gameTimeToAdd / 3600);
+          console.log(`  Catching up ${minutesOffline} min offline → +${gameHoursAdded} game hours`);
+        }
+      }
+
+      // Update database with caught-up time
       await world.sequelize.query(
-        'UPDATE worlds SET last_tick_at = :lastTickAt WHERE id = :worldId',
+        'UPDATE worlds SET current_time = :currentTime, last_tick_at = :lastTickAt WHERE id = :worldId',
         {
           replacements: {
+            currentTime: catchUpTime,
             lastTickAt: now,
             worldId: world.id
           }
         }
       );
 
-      // Store world state in memory
+      // Update the world object's currentTime to match
+      world.currentTime = catchUpTime;
+
+      // Store world state in memory with caught-up time
       const worldState = {
         world: world,
-        inMemoryTime: new Date(world.currentTime),
+        inMemoryTime: catchUpTime,
         lastTickAt: now,
         tickInterval: null
       };
@@ -110,15 +129,36 @@ class WorldTimeService {
   /**
    * Stop all worlds
    */
-  stopAll() {
+  async stopAll() {
+    // Save final state for all worlds before stopping
+    const savePromises = [];
     for (const [worldId, worldState] of this.worlds.entries()) {
       if (worldState.tickInterval) {
         clearInterval(worldState.tickInterval);
       }
+
+      // Save final time to database
+      const now = new Date();
+      savePromises.push(
+        worldState.world.sequelize.query(
+          'UPDATE worlds SET current_time = :currentTime, last_tick_at = :lastTickAt WHERE id = :worldId',
+          {
+            replacements: {
+              currentTime: worldState.inMemoryTime,
+              lastTickAt: now,
+              worldId: worldId
+            }
+          }
+        )
+      );
     }
+
+    // Wait for all saves to complete
+    await Promise.all(savePromises);
+
     this.worlds.clear();
     if (process.env.NODE_ENV === 'development') {
-      console.log('✓ World Time Service stopped all worlds');
+      console.log('✓ World Time Service stopped all worlds and saved final state');
     }
   }
 
@@ -179,10 +219,12 @@ class WorldTimeService {
   onTick(worldId, gameTime, advancementSeconds) {
     // Emit via Socket.IO if available
     if (global.io) {
+      const worldState = this.worlds.get(worldId);
       global.io.emit('world:tick', {
         worldId: worldId,
         gameTime: gameTime.toISOString(),
-        advancement: advancementSeconds
+        advancement: advancementSeconds,
+        timeAcceleration: worldState ? worldState.world.timeAcceleration : 60
       });
     }
 

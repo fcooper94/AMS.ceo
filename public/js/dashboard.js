@@ -1,7 +1,4 @@
-// WebSocket connection
-const socket = io();
-
-// All world data and time management is handled by layout.js
+// All world data and time management is handled by layout.js via Socket.IO
 
 // Update credit warning banner
 function updateCreditWarningBanner(credits) {
@@ -59,19 +56,7 @@ async function loadVatsimStatus() {
   }
 }
 
-// Socket.IO event listeners
-socket.on('world:tick', (data) => {
-  // Sync with server time periodically
-  currentGameTime = new Date(data.gameTime);
-});
-
-socket.on('connect', () => {
-  console.log('Connected to server');
-});
-
-socket.on('disconnect', () => {
-  console.log('Disconnected from server');
-});
+// Time sync is handled by layout.js which broadcasts worldTimeUpdated events
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {

@@ -154,6 +154,37 @@
 
   <!-- Drag Preview -->
   <div id="dragPreview" style="display: none; position: fixed; pointer-events: none; z-index: 2000; background: var(--accent-color); color: white; padding: 0.5rem 1rem; border-radius: 4px; font-weight: 600; font-size: 0.9rem; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);"></div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="confirmModalTitle">Confirm Action</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMessage" style="color: var(--text-primary); line-height: 1.6; margin: 0; white-space: pre-line;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeConfirmModal(false)">Cancel</button>
+        <button class="btn btn-primary" onclick="closeConfirmModal(true)">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert Modal -->
+  <div id="alertModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2 id="alertModalTitle">Notice</h2>
+      </div>
+      <div class="modal-body">
+        <p id="alertModalMessage" style="color: var(--text-primary); line-height: 1.6; margin: 0; white-space: pre-line;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeAlertModal()">OK</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -194,5 +225,91 @@
   }
   .flight-block:hover {
     opacity: 0.9;
+  }
+
+  /* Modal Styles */
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(10, 15, 26, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .modal-content {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    width: 90%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .modal-header h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin: 0;
+  }
+
+  .modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+  }
+
+  .btn-primary, .btn-secondary {
+    padding: 0.65rem 1.5rem;
+    border: 1px solid;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    transition: all 0.2s;
+    border-radius: 3px;
+  }
+
+  .btn-primary {
+    background: var(--primary-color);
+    border-color: var(--accent-color);
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-color);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--primary-color);
+    color: var(--text-primary);
   }
 </style>
