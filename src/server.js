@@ -13,8 +13,14 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
-  }
+    methods: ['GET', 'POST'],
+    credentials: false
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true, // Allow Socket.IO v3 clients (backwards compatibility)
+  path: '/socket.io/',
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 const PORT = process.env.PORT || 3000;
@@ -60,17 +66,32 @@ app.use(express.static(path.join(__dirname, '../public'), {
   }
 }));
 
-// Socket.IO connection handling
+// Socket.IO connection handling with verbose logging
 io.on('connection', (socket) => {
   // Only log in development mode
   if (process.env.NODE_ENV === 'development') {
-    console.log('Client connected:', socket.id);
+    console.log('\n[Socket.IO] ✓ Client connected:', socket.id);
+    console.log('[Socket.IO] Transport:', socket.conn.transport.name);
+    console.log('[Socket.IO] Client IP:', socket.handshake.address);
   }
 
-  socket.on('disconnect', () => {
+  // Log transport upgrades
+  socket.conn.on('upgrade', (transport) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Socket.IO] Transport upgraded to:', transport.name);
+    }
+  });
+
+  socket.on('disconnect', (reason) => {
     // Only log in development mode
     if (process.env.NODE_ENV === 'development') {
-      console.log('Client disconnected:', socket.id);
+      console.log('[Socket.IO] ✗ Client disconnected:', socket.id, '- Reason:', reason);
+    }
+  });
+
+  socket.on('error', (error) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[Socket.IO] Socket error:', error);
     }
   });
 });

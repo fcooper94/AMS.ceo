@@ -75,7 +75,7 @@ class WorldTimeService {
 
       // Update database with caught-up time
       await world.sequelize.query(
-        'UPDATE worlds SET current_time = :currentTime, last_tick_at = :lastTickAt WHERE id = :worldId',
+        'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt WHERE id = :worldId',
         {
           replacements: {
             currentTime: catchUpTime,
@@ -141,7 +141,7 @@ class WorldTimeService {
       const now = new Date();
       savePromises.push(
         worldState.world.sequelize.query(
-          'UPDATE worlds SET current_time = :currentTime, last_tick_at = :lastTickAt WHERE id = :worldId',
+          'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt WHERE id = :worldId',
           {
             replacements: {
               currentTime: worldState.inMemoryTime,
@@ -193,7 +193,7 @@ class WorldTimeService {
 
       if (shouldSave) {
         await world.sequelize.query(
-          'UPDATE worlds SET current_time = :currentTime, last_tick_at = :lastTickAt, updated_at = :updatedAt WHERE id = :worldId',
+          'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "updated_at" = :updatedAt WHERE id = :worldId',
           {
             replacements: {
               currentTime: newGameTime,
@@ -364,7 +364,7 @@ class WorldTimeService {
     if (worldState) {
       worldState.world.isPaused = true;
       await worldState.world.sequelize.query(
-        'UPDATE worlds SET is_paused = true WHERE id = :worldId',
+        'UPDATE worlds SET "is_paused" = true WHERE id = :worldId',
         { replacements: { worldId } }
       );
       if (process.env.NODE_ENV === 'development') {
@@ -382,7 +382,7 @@ class WorldTimeService {
       worldState.world.isPaused = false;
       worldState.lastTickAt = new Date();
       await worldState.world.sequelize.query(
-        'UPDATE worlds SET is_paused = false, last_tick_at = :lastTickAt WHERE id = :worldId',
+        'UPDATE worlds SET "is_paused" = false, "last_tick_at" = :lastTickAt WHERE id = :worldId',
         { replacements: { worldId, lastTickAt: worldState.lastTickAt } }
       );
       if (process.env.NODE_ENV === 'development') {
@@ -399,7 +399,7 @@ class WorldTimeService {
     if (worldState) {
       worldState.world.timeAcceleration = factor;
       await worldState.world.sequelize.query(
-        'UPDATE worlds SET time_acceleration = :factor WHERE id = :worldId',
+        'UPDATE worlds SET "time_acceleration" = :factor WHERE id = :worldId',
         { replacements: { worldId, factor } }
       );
       if (process.env.NODE_ENV === 'development') {

@@ -6,13 +6,19 @@ let socket = null;
 // Try to connect to Socket.IO with error handling
 try {
   if (typeof io !== 'undefined') {
+    console.log('[Layout] Initializing Socket.IO client...');
     socket = io({
+      path: '/socket.io/',
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
-      timeout: 20000
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      autoConnect: true,
+      withCredentials: false
     });
-    console.log('[Layout] Socket.IO client initialized');
+    console.log('[Layout] Socket.IO client instance created');
   } else {
     console.error('[Layout] Socket.IO client library not loaded!');
   }
@@ -28,6 +34,7 @@ let worldClockInterval = null;
 let worldInfoFetchInProgress = false; // Prevent concurrent fetches
 let worldInfoFetchSequence = 0; // Track request order to ignore stale responses
 let lastTimeUpdateSource = 'none'; // Track last update source for debugging
+let currentWorldId = null; // Current world ID to filter Socket.IO events
 
 // Helper function to update time reference with validation
 function updateTimeReference(newGameTime, source) {
@@ -76,7 +83,56 @@ function updateTimeReference(newGameTime, source) {
 
 // Socket.IO event listeners for server time sync
 if (socket) {
+  // Connection lifecycle events with verbose logging
+  socket.on('connect', () => {
+    console.log('[Layout] ✓ Connected to Socket.IO - time sync enabled');
+    console.log('[Layout] Socket ID:', socket.id);
+    console.log('[Layout] Transport:', socket.io.engine.transport.name);
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.warn('[Layout] ✗ Disconnected from Socket.IO. Reason:', reason);
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('[Layout] Socket.IO connection error:', error.message);
+    console.error('[Layout] Error type:', error.type);
+    console.error('[Layout] Error description:', error.description);
+  });
+
+  socket.on('reconnect', (attemptNumber) => {
+    console.log('[Layout] ✓ Reconnected to Socket.IO after', attemptNumber, 'attempts');
+  });
+
+  socket.on('reconnect_attempt', (attemptNumber) => {
+    console.log('[Layout] Reconnection attempt', attemptNumber);
+  });
+
+  socket.on('reconnect_error', (error) => {
+    console.error('[Layout] Reconnection error:', error.message);
+  });
+
+  socket.on('reconnect_failed', () => {
+    console.error('[Layout] Failed to reconnect to Socket.IO after all attempts');
+  });
+
+  // Transport events for debugging
+  socket.io.engine.on('upgrade', (transport) => {
+    console.log('[Layout] Transport upgraded to:', transport.name);
+  });
+
+  socket.io.engine.on('upgradeError', (error) => {
+    console.error('[Layout] Transport upgrade error:', error);
+  });
+
+  // World tick event for time sync
   socket.on('world:tick', (data) => {
+    // Filter: only accept tick events for the current world
+    if (!currentWorldId || data.worldId !== currentWorldId) {
+      // Silently ignore ticks from other worlds
+      return;
+    }
+
     console.log('[Layout] Socket.IO world:tick received:', data);
 
     // Update acceleration
@@ -88,17 +144,7 @@ if (socket) {
     updateTimeReference(data.gameTime, 'socket');
   });
 
-  socket.on('connect', () => {
-    console.log('[Layout] ✓ Connected to Socket.IO - time sync enabled');
-  });
-
-  socket.on('disconnect', () => {
-    console.warn('[Layout] ✗ Disconnected from Socket.IO');
-  });
-
-  socket.on('connect_error', (error) => {
-    console.error('[Layout] Socket.IO connection error:', error);
-  });
+  console.log('[Layout] Socket.IO event listeners registered');
 } else {
   console.warn('[Layout] Socket.IO not available - falling back to API-only time sync');
 }
@@ -191,11 +237,16 @@ async function loadWorldInfo() {
 
     if (response.ok && worldInfo && !worldInfo.error) {
       console.log('[Layout] World info received:', {
+        id: worldInfo.id,
         name: worldInfo.name,
         currentTime: worldInfo.currentTime,
         acceleration: worldInfo.timeAcceleration,
         balance: worldInfo.balance
       });
+
+      // Store current world ID for filtering Socket.IO events
+      currentWorldId = worldInfo.id;
+      console.log('[Layout] Current world ID set to:', currentWorldId);
 
       // Update world information
       const worldNameEl = document.getElementById('worldName');
