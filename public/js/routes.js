@@ -28,137 +28,6 @@ function displayDaysOfWeek(daysArray) {
   }).join('');
 }
 
-// Load route performance summary
-async function loadRouteSummary() {
-  try {
-    const response = await fetch('/api/routes/summary');
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch route summary');
-    }
-
-    // Update total routes badge
-    const totalRoutesBadge = document.getElementById('totalRoutesBadge');
-    if (totalRoutesBadge) {
-      const activeText = data.totalActiveRoutes !== data.totalRoutes
-        ? `${data.totalActiveRoutes} ACTIVE / ${data.totalRoutes} TOTAL`
-        : `${data.totalRoutes} ROUTES`;
-      totalRoutesBadge.textContent = activeText;
-    }
-
-    // Display best performing routes
-    displayBestRoutes(data.bestRoutes);
-
-    // Display worst performing routes
-    displayWorstRoutes(data.worstRoutes);
-  } catch (error) {
-    console.error('Error loading route summary:', error);
-    document.getElementById('bestRoutesContainer').innerHTML = `
-      <div class="empty-message">Error loading performance data</div>
-    `;
-    document.getElementById('worstRoutesContainer').innerHTML = `
-      <div class="empty-message">Error loading performance data</div>
-    `;
-  }
-}
-
-// Display best performing routes
-function displayBestRoutes(routes) {
-  const container = document.getElementById('bestRoutesContainer');
-
-  if (!routes || routes.length === 0) {
-    container.innerHTML = `
-      <div class="empty-message">No routes with flight history yet</div>
-    `;
-    return;
-  }
-
-  const html = routes.map((route, index) => `
-    <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <div>
-          <span style="color: var(--accent-color); font-weight: 600; font-size: 1.1rem;">#${index + 1}</span>
-          <span style="color: var(--text-primary); font-weight: 600; margin-left: 0.5rem;">${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}</span>
-        </div>
-        <div style="color: var(--success-color); font-weight: 600; font-size: 1.1rem;">
-          +$${Math.round(route.profit).toLocaleString('en-US')}
-        </div>
-      </div>
-      <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">
-        ${route.techStopAirport
-          ? `${route.departureAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.arrivalAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.departureAirport.icaoCode}`
-          : `${route.departureAirport.icaoCode} → ${route.arrivalAirport.icaoCode} → ${route.departureAirport.icaoCode}`
-        }
-      </div>
-      <div style="display: flex; gap: 1.5rem; font-size: 0.85rem;">
-        <div>
-          <span style="color: var(--text-muted);">Flights:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.totalFlights}</span>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Margin:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.profitMargin.toFixed(1)}%</span>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Load:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.averageLoadFactor.toFixed(1)}%</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
-  container.innerHTML = html;
-}
-
-// Display worst performing routes
-function displayWorstRoutes(routes) {
-  const container = document.getElementById('worstRoutesContainer');
-
-  if (!routes || routes.length === 0) {
-    container.innerHTML = `
-      <div class="empty-message">No routes with flight history yet</div>
-    `;
-    return;
-  }
-
-  const html = routes.map((route, index) => `
-    <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <div>
-          <span style="color: var(--text-muted); font-weight: 600; font-size: 1.1rem;">#${index + 1}</span>
-          <span style="color: var(--text-primary); font-weight: 600; margin-left: 0.5rem;">${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}</span>
-        </div>
-        <div style="color: var(--warning-color); font-weight: 600; font-size: 1.1rem;">
-          ${route.profit >= 0 ? '+' : ''}$${Math.round(route.profit).toLocaleString('en-US')}
-        </div>
-      </div>
-      <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">
-        ${route.techStopAirport
-          ? `${route.departureAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.arrivalAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.departureAirport.icaoCode}`
-          : `${route.departureAirport.icaoCode} → ${route.arrivalAirport.icaoCode} → ${route.departureAirport.icaoCode}`
-        }
-      </div>
-      <div style="display: flex; gap: 1.5rem; font-size: 0.85rem;">
-        <div>
-          <span style="color: var(--text-muted);">Flights:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.totalFlights}</span>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Margin:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.profitMargin.toFixed(1)}%</span>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Load:</span>
-          <span style="color: var(--text-primary); font-weight: 600;">${route.averageLoadFactor.toFixed(1)}%</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
-  container.innerHTML = html;
-}
-
 // Load all routes
 async function loadAllRoutes() {
   try {
@@ -262,11 +131,11 @@ function displayAllRoutes(routes) {
               </td>
               <td style="padding: 1rem; text-align: center;">
                 <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                  <button class="btn btn-sm btn-secondary" onclick="editRoute('${route.id}')" title="Edit Route">
-                    EDIT
+                  <button onclick="editRoute('${route.id}')" title="Edit Route" style="background: transparent; border: none; color: var(--accent-color); cursor: pointer; padding: 0.4rem 0.8rem; font-size: 1.2rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+                    ✎
                   </button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteRoute('${route.id}')" title="Delete Route">
-                    DELETE
+                  <button onclick="deleteRoute('${route.id}')" title="Delete Route" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.4rem 0.8rem; font-size: 1.5rem; line-height: 1; font-weight: 400; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+                    ×
                   </button>
                 </div>
               </td>
@@ -278,6 +147,51 @@ function displayAllRoutes(routes) {
   `;
 
   container.innerHTML = tableHtml;
+}
+
+// Filter routes based on search input
+function filterRoutes() {
+  const searchInput = document.getElementById('routeSearchInput');
+  if (!searchInput) return;
+
+  const searchTerm = searchInput.value.toLowerCase().trim();
+
+  // If search is empty, show all routes
+  if (searchTerm === '') {
+    displayAllRoutes(allRoutes);
+    return;
+  }
+
+  // Filter routes based on search term
+  const filtered = allRoutes.filter(route => {
+    // Search in flight numbers
+    if (route.routeNumber?.toLowerCase().includes(searchTerm)) return true;
+    if (route.returnRouteNumber?.toLowerCase().includes(searchTerm)) return true;
+
+    // Search in departure airport
+    if (route.departureAirport?.icaoCode?.toLowerCase().includes(searchTerm)) return true;
+    if (route.departureAirport?.iataCode?.toLowerCase().includes(searchTerm)) return true;
+    if (route.departureAirport?.name?.toLowerCase().includes(searchTerm)) return true;
+    if (route.departureAirport?.city?.toLowerCase().includes(searchTerm)) return true;
+
+    // Search in arrival airport
+    if (route.arrivalAirport?.icaoCode?.toLowerCase().includes(searchTerm)) return true;
+    if (route.arrivalAirport?.iataCode?.toLowerCase().includes(searchTerm)) return true;
+    if (route.arrivalAirport?.name?.toLowerCase().includes(searchTerm)) return true;
+    if (route.arrivalAirport?.city?.toLowerCase().includes(searchTerm)) return true;
+
+    // Search in tech stop airport (if present)
+    if (route.techStopAirport) {
+      if (route.techStopAirport?.icaoCode?.toLowerCase().includes(searchTerm)) return true;
+      if (route.techStopAirport?.iataCode?.toLowerCase().includes(searchTerm)) return true;
+      if (route.techStopAirport?.name?.toLowerCase().includes(searchTerm)) return true;
+      if (route.techStopAirport?.city?.toLowerCase().includes(searchTerm)) return true;
+    }
+
+    return false;
+  });
+
+  displayAllRoutes(filtered);
 }
 
 // Create new route - navigate to creation page
@@ -335,7 +249,6 @@ async function confirmDeleteRoute() {
 
     // Reload routes after deletion
     await loadAllRoutes();
-    await loadRouteSummary();
 
     // Show success banner
     showSuccessBanner('deleted', routeNumber);
@@ -411,6 +324,5 @@ function showSuccessBanner(type = null, route = null) {
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
   showSuccessBanner();
-  loadRouteSummary();
   loadAllRoutes();
 });
