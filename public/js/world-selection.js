@@ -5,6 +5,45 @@ let airportSearchTimeout = null;
 let allAirports = [];
 let filteredAirports = [];
 
+// World time tracking for live clocks
+let worldTimeReferences = {}; // { worldId: { referenceTime, referenceTimestamp, acceleration } }
+let worldCardsClockInterval = null;
+
+// Calculate current time for a specific world
+function calculateWorldTime(worldId) {
+  const ref = worldTimeReferences[worldId];
+  if (!ref) return null;
+
+  const realElapsedMs = Date.now() - ref.referenceTimestamp;
+  const gameElapsedMs = realElapsedMs * ref.acceleration;
+  return new Date(ref.referenceTime.getTime() + gameElapsedMs);
+}
+
+// Update all world clocks on the page
+function updateAllWorldClocks() {
+  Object.keys(worldTimeReferences).forEach(worldId => {
+    const currentTime = calculateWorldTime(worldId);
+    if (!currentTime) return;
+
+    // Find all time elements for this world
+    const timeElements = document.querySelectorAll(`[data-world-id="${worldId}"] .world-current-time`);
+    timeElements.forEach(el => {
+      el.textContent = currentTime.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    });
+  });
+}
+
+// Start the real-time clock updates
+function startWorldClocks() {
+  if (worldCardsClockInterval) {
+    clearInterval(worldCardsClockInterval);
+  }
+  worldCardsClockInterval = setInterval(updateAllWorldClocks, 100); // Update every 100ms
+}
+
 // Load available worlds
 async function loadWorlds() {
   try {
@@ -34,6 +73,15 @@ async function loadWorlds() {
     const myWorlds = worlds.filter(w => w.isMember);
     const availableWorlds = worlds.filter(w => !w.isMember);
 
+    // Store time references for all worlds
+    worlds.forEach(world => {
+      worldTimeReferences[world.id] = {
+        referenceTime: new Date(world.currentTime),
+        referenceTimestamp: Date.now(),
+        acceleration: world.timeAcceleration || 60
+      };
+    });
+
     // Show my worlds section if user has any
     if (myWorlds.length > 0) {
       myWorldsSection.style.display = 'block';
@@ -59,6 +107,9 @@ async function loadWorlds() {
       worldsList.innerHTML = '<div class="empty-message">No other worlds available.</div>';
     }
 
+    // Start real-time clock updates
+    startWorldClocks();
+
   } catch (error) {
     console.error('Error loading worlds:', error);
     const worldsList = document.getElementById('worldsList');
@@ -80,6 +131,7 @@ function createWorldCard(world, isMember) {
   const card = document.createElement('div');
   card.className = `world-card ${isMember ? 'member' : ''}`;
   card.style.position = 'relative';
+  card.setAttribute('data-world-id', world.id);
   card.innerHTML = `
     <div class="world-badge ${isMember ? 'joined' : ''}">
       ${isMember ? 'JOINED' : 'AVAILABLE'}
@@ -487,39 +539,6 @@ async function enterWorld(worldId) {
   }
 }
 
-// Update world times for each world card
-async function updateWorldTimes() {
-  try {
-    const response = await fetch('/api/worlds/available');
-
-    if (!response.ok) {
-      return;
-    }
-
-    const worlds = await response.json();
-
-    // Update each world card with current time
-    worlds.forEach(world => {
-      const worldCards = document.querySelectorAll('.world-card');
-      worldCards.forEach(card => {
-        const cardWorldName = card.querySelector('.world-name')?.textContent;
-        if (cardWorldName === world.name) {
-          const timeElement = card.querySelector('.world-current-time');
-          if (timeElement && world.currentTime) {
-            const currentTime = new Date(world.currentTime);
-            const timeStr = currentTime.toLocaleTimeString('en-GB', {
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-            timeElement.textContent = timeStr;
-          }
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error updating world times:', error);
-  }
-}
 
 // Show error message
 function showErrorMessage(message) {
@@ -890,9 +909,6 @@ function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadWorlds();
-
-  // Update world times every 10 seconds
-  setInterval(updateWorldTimes, 10000);
 
   // Add airport search listener
   const airportSearchInput = document.getElementById('airportSearch');
