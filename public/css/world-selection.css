@@ -56,17 +56,22 @@
 }
 
 .worlds-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .world-card {
   background: var(--surface);
   border: 1px solid var(--border-color);
-  padding: 2rem;
+  padding: 1rem 1.5rem;
   transition: all 0.2s;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 70px;
+  position: relative;
 }
 
 .world-card:hover {
@@ -81,52 +86,59 @@
 
 .world-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 250px;
+  flex-shrink: 0;
 }
 
 .world-name {
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 0.5rem;
+  margin: 0;
 }
 
 .world-era {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .world-badge {
-  font-size: 0.7rem;
-  padding: 0.25rem 0.75rem;
-  background: rgba(37, 99, 235, 0.15);
-  color: var(--accent-color);
+  font-size: 0.65rem;
+  padding: 0.2rem 0.6rem;
+  background: rgba(37, 99, 235, 0.9);
+  color: white;
   border: 1px solid var(--accent-color);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
+  position: absolute;
+  top: -0.5rem;
+  left: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .world-badge.joined {
-  background: rgba(5, 150, 105, 0.15);
-  color: var(--success-color);
+  background: rgba(5, 150, 105, 0.9);
+  color: white;
   border-color: var(--success-color);
 }
 
 .world-info {
-  margin-bottom: 1.5rem;
+  display: flex;
+  margin-left: auto;
+  gap: 2rem;
+  align-items: center;
 }
 
 .info-row {
   display: flex;
-  justify-content: space-between;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 0.9rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
 }
 
 .info-row:last-child {
@@ -136,40 +148,39 @@
 .info-label {
   color: var(--text-muted);
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   letter-spacing: 0.5px;
+  font-weight: 600;
 }
 
 .info-value {
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .world-description {
   color: var(--text-secondary);
-  margin-bottom: 1.5rem;
-  font-size: 0.9rem;
-  line-height: 1.6;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  width: 300px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.airline-info {
-  background: var(--background);
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border-left: 3px solid var(--accent-color);
+.world-actions {
+  flex-shrink: 0;
+  margin-left: 1rem;
 }
 
-.airline-name {
-  font-size: 1.1rem;
+.world-actions .btn {
+  white-space: nowrap;
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.25rem;
-}
-
-.airline-code {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
 }
 
 /* Modal */
@@ -331,9 +342,57 @@
   color: var(--text-primary);
 }
 
+@media (max-width: 1200px) {
+  .world-card {
+    flex-wrap: wrap;
+  }
+
+  .world-info {
+    gap: 1.5rem;
+  }
+
+  .world-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+}
+
 @media (max-width: 768px) {
-  .worlds-grid {
-    grid-template-columns: 1fr;
+  .world-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  .world-header {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .world-description {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .world-info {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .info-row {
+    min-width: 100px;
+  }
+
+  .world-actions {
+    width: 100%;
+    margin-top: 1rem;
+  }
+
+  .world-actions .btn {
+    flex: 1;
   }
 
   .world-selection-container {

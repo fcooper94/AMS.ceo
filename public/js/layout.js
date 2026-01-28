@@ -175,17 +175,12 @@ async function loadUserInfo() {
         }
       }
 
-      // Show admin link if user is admin
-      const adminLink = document.getElementById('adminLink');
-      if (adminLink && data.user.isAdmin) {
-        adminLink.style.display = 'inline-block';
-        // Ensure proper CSS classes are applied
-        if (!adminLink.classList.contains('btn')) {
-          adminLink.classList.add('btn');
-        }
-        if (!adminLink.classList.contains('btn-secondary')) {
-          adminLink.classList.add('btn-secondary');
-        }
+      // Show admin link in sidebar if user is admin
+      const sidebarAdminLink = document.getElementById('sidebarAdminLink');
+      if (sidebarAdminLink && data.user.isAdmin) {
+        sidebarAdminLink.style.display = 'flex';
+        sidebarAdminLink.style.alignItems = 'center';
+        sidebarAdminLink.style.justifyContent = 'space-between';
       }
 
       // Load world information if user is in an active world
@@ -216,6 +211,11 @@ async function loadWorldInfo() {
       const worldInfoContainer = document.getElementById('worldInfoContainer');
       if (worldInfoContainer) {
         worldInfoContainer.style.display = 'none';
+      }
+      // Hide navigation menu on world selection page
+      const navMenu = document.querySelector('.nav-menu');
+      if (navMenu) {
+        navMenu.style.display = 'none';
       }
       return;
     }
@@ -280,8 +280,20 @@ async function loadWorldInfo() {
       if (!worldClockInterval) {
         startRealTimeClock();
       }
+
+      // Show navigation menu when world is active
+      const navMenu = document.querySelector('.nav-menu');
+      if (navMenu) {
+        navMenu.style.display = 'block';
+      }
     } else {
       console.warn('[Layout] No world data received or error:', worldInfo);
+
+      // Hide navigation menu when no world is selected
+      const navMenu = document.querySelector('.nav-menu');
+      if (navMenu) {
+        navMenu.style.display = 'none';
+      }
     }
   } catch (error) {
     console.error('[Layout] Error loading world info:', error);
@@ -409,18 +421,11 @@ function ensureAdminLinkVisibility() {
     .then(response => response.json())
     .then(data => {
       if (data.authenticated && data.user.isAdmin) {
-        const adminLink = document.getElementById('adminLink');
-        if (adminLink) {
-          adminLink.style.display = 'inline-block';
-          // Ensure proper CSS classes are applied
-          if (!adminLink.classList.contains('btn')) {
-            adminLink.classList.add('btn');
-          }
-          if (!adminLink.classList.contains('btn-secondary')) {
-            adminLink.classList.add('btn-secondary');
-          }
-          // Ensure no conflicting styles are applied
-          adminLink.style.marginRight = '1rem';
+        const sidebarAdminLink = document.getElementById('sidebarAdminLink');
+        if (sidebarAdminLink) {
+          sidebarAdminLink.style.display = 'flex';
+          sidebarAdminLink.style.alignItems = 'center';
+          sidebarAdminLink.style.justifyContent = 'space-between';
         }
       }
     })
@@ -493,8 +498,29 @@ function showAircraftMarketplaceOptions() {
   });
 }
 
+// Sidebar toggle functionality
+function initSidebarToggle() {
+  const toggleBtn = document.getElementById('sidebarToggle');
+  const dashboardContainer = document.querySelector('.dashboard-container');
+
+  if (toggleBtn && dashboardContainer) {
+    // Check localStorage for saved state
+    const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    if (sidebarCollapsed) {
+      dashboardContainer.classList.add('sidebar-collapsed');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      dashboardContainer.classList.toggle('sidebar-collapsed');
+      const isCollapsed = dashboardContainer.classList.contains('sidebar-collapsed');
+      localStorage.setItem('sidebarCollapsed', isCollapsed);
+    });
+  }
+}
+
 // Call initialize function when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[Layout] DOMContentLoaded event fired');
   initializeLayout();
+  initSidebarToggle();
 });

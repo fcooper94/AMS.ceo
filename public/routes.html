@@ -11,7 +11,7 @@
           <span class="nav-text">Dashboard</span>
         </a>
       </li>
-      <li class="nav-item parent active">
+      <li class="nav-item parent">
         <a href="#" onclick="return false;">
           <span class="nav-text">Flight Operations</span>
         </a>
@@ -51,8 +51,34 @@
     </ul>
 
     <div class="sidebar-footer">
-      <a href="/world-selection" class="btn btn-secondary btn-full-width">
+      <a href="/world-selection" class="btn btn-secondary btn-full-width" style="display: flex; align-items: center; justify-content: space-between;">
         <span class="nav-text">SELECT WORLD</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+      </a>
+      <a href="/admin" class="btn btn-secondary btn-full-width" id="sidebarAdminLink" style="display: none; margin-top: 0.5rem;">
+        <span class="nav-text">ADMIN PANEL</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+        </svg>
+      </a>
+      <a href="/faqs" class="btn btn-secondary btn-full-width" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem;">
+        <span class="nav-text">FAQ's</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </a>
+      <a href="/contact" class="btn btn-secondary btn-full-width" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem;">
+        <span class="nav-text">CONTACT US</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+          <polyline points="22,6 12,13 2,6"></polyline>
+        </svg>
       </a>
     </div>
   </aside>

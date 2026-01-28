@@ -79,39 +79,32 @@ function createWorldCard(world, isMember) {
 
   const card = document.createElement('div');
   card.className = `world-card ${isMember ? 'member' : ''}`;
+  card.style.position = 'relative';
   card.innerHTML = `
+    <div class="world-badge ${isMember ? 'joined' : ''}">
+      ${isMember ? 'JOINED' : 'AVAILABLE'}
+    </div>
+
     <div class="world-header" style="cursor: pointer;">
       <div>
         <div class="world-name">${world.name || 'Unnamed World'}</div>
-        <div class="world-era">ERA ${world.era || 2010}</div>
-      </div>
-      <div class="world-badge ${isMember ? 'joined' : ''}">
-        ${isMember ? 'JOINED' : 'AVAILABLE'}
+        <div class="world-era">ERA ${world.era || 2010}${isMember && world.airlineName ? ` • ${world.airlineName} (${world.airlineCode})` : ''}</div>
       </div>
     </div>
 
-    ${isMember && world.airlineName ? `
-      <div class="airline-info" style="cursor: pointer;">
-        <div class="airline-name">${world.airlineName}</div>
-        <div class="airline-code">ICAO: ${world.airlineCode}</div>
-      </div>
-    ` : ''}
-
-    ${world.description ? `
-      <div class="world-description">${world.description}</div>
-    ` : ''}
+    <div class="world-description" style="cursor: pointer;">${world.description || ''}</div>
 
     <div class="world-info" style="cursor: pointer;">
       <div class="info-row">
-        <span class="info-label">Current Date</span>
+        <span class="info-label">Date</span>
         <span class="info-value">${formattedDate}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Current Time</span>
+        <span class="info-label">Time</span>
         <span class="info-value world-current-time">${formattedTime}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Time Sync</span>
+        <span class="info-label">Speed</span>
         <span class="info-value">${world.timeAcceleration || 60}x</span>
       </div>
       <div class="info-row">
@@ -120,26 +113,35 @@ function createWorldCard(world, isMember) {
       </div>
     </div>
 
-    <div class="world-actions" style="padding: 1rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 0.5rem;">
+    <div class="world-actions" style="display: flex; gap: 0.5rem; margin-left: auto;">
       ${isMember ? `
-        <button class="btn btn-primary continue-game-btn" style="width: 100%;">Continue Game</button>
-        <button class="btn btn-secondary bankruptcy-btn" style="width: 100%;">Declare Bankruptcy</button>
+        <button class="btn btn-primary continue-game-btn" style="padding: 0.5rem 1.5rem;">CONTINUE GAME</button>
       ` : `
-        <button class="btn btn-primary join-game-btn" style="width: 100%;">Join Game</button>
+        <button class="btn btn-primary join-game-btn" style="padding: 0.5rem 1.5rem;">JOIN GAME</button>
       `}
     </div>
   `;
 
   // Add event listeners programmatically to avoid injection issues
   const header = card.querySelector('.world-header');
+  const description = card.querySelector('.world-description');
   const worldInfo = card.querySelector('.world-info');
   const airlineInfo = card.querySelector('.airline-info');
   const continueGameBtn = card.querySelector('.continue-game-btn');
-  const bankruptcyBtn = card.querySelector('.bankruptcy-btn');
   const joinGameBtn = card.querySelector('.join-game-btn');
 
   if (header) {
     header.addEventListener('click', () => {
+      if (isMember) {
+        enterWorld(world.id);
+      } else {
+        openJoinModal(world.id, world.name);
+      }
+    });
+  }
+
+  if (description) {
+    description.addEventListener('click', () => {
       if (isMember) {
         enterWorld(world.id);
       } else {
@@ -168,13 +170,6 @@ function createWorldCard(world, isMember) {
     continueGameBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       enterWorld(world.id);
-    });
-  }
-
-  if (bankruptcyBtn) {
-    bankruptcyBtn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      leaveWorld(world.id, world.name);
     });
   }
 
