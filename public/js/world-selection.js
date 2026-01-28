@@ -927,4 +927,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // Measure and set navbar height for fixed sidebar positioning
+  const navbar = document.querySelector('.navbar');
+  if (navbar) {
+    const setNavbarHeight = () => {
+      const height = navbar.offsetHeight;
+      document.documentElement.style.setProperty('--navbar-height', `${height}px`);
+    };
+
+    // Set initially
+    setNavbarHeight();
+
+    // Update on window resize
+    window.addEventListener('resize', setNavbarHeight);
+  }
 });

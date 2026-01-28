@@ -80,19 +80,42 @@ async function fetchExistingRoutes() {
   }
 }
 
-// Populate fleet dropdown
+// Populate fleet dropdown with unique aircraft types
 function populateFleetDropdown() {
   const select = document.getElementById('assignedAircraft');
-  select.innerHTML = '<option value="">-- Not assigned --</option>' +
-    userFleet.map(aircraft => `
-      <option value="${aircraft.id}">
-        ${aircraft.registration} - ${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}
+
+  // Extract unique aircraft types
+  const uniqueTypes = new Map();
+  userFleet.forEach(aircraft => {
+    const typeName = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}`;
+    const typeKey = `${aircraft.aircraft.manufacturer}_${aircraft.aircraft.model}_${aircraft.aircraft.variant || ''}`;
+
+    if (!uniqueTypes.has(typeKey)) {
+      // Store first aircraft of this type (for reference, since backend expects aircraft ID)
+      uniqueTypes.set(typeKey, {
+        id: aircraft.id,
+        name: typeName,
+        aircraftTypeId: aircraft.aircraft.id
+      });
+    }
+  });
+
+  // Build options - show only aircraft type names without registrations
+  select.innerHTML = '<option value="">-- Select aircraft type --</option>' +
+    Array.from(uniqueTypes.values()).map(type => `
+      <option value="${type.id}">
+        ${type.name}
       </option>
     `).join('');
 
-  // Select current aircraft if assigned
+  // Select current aircraft type if assigned
   if (existingRoute && existingRoute.assignedAircraft) {
-    select.value = existingRoute.assignedAircraft.id;
+    // Find option that matches the current aircraft's type
+    const currentTypeKey = `${existingRoute.assignedAircraft.aircraft.manufacturer}_${existingRoute.assignedAircraft.aircraft.model}_${existingRoute.assignedAircraft.aircraft.variant || ''}`;
+    const matchingType = Array.from(uniqueTypes.entries()).find(([key]) => key === currentTypeKey);
+    if (matchingType) {
+      select.value = matchingType[1].id;
+    }
   }
 }
 

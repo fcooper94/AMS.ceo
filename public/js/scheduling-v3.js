@@ -971,7 +971,13 @@ async function loadUnassignedRoutes(aircraftId) {
 
     // Calculate block-on time (when aircraft returns to base)
     let blockOnTime = '--:--';
-    if (route.scheduledDepartureTime && estimatedFlightTime > 0 && route.turnaroundTime) {
+    let blockOnTimeColor = 'var(--success-color)';
+
+    if (!route.assignedAircraft || !route.assignedAircraft.aircraft || !route.assignedAircraft.aircraft.cruiseSpeed) {
+      // Aircraft type is required, so this indicates incomplete route data
+      blockOnTime = 'Missing aircraft type';
+      blockOnTimeColor = 'var(--warning-color)';
+    } else if (route.scheduledDepartureTime && estimatedFlightTime > 0 && route.turnaroundTime) {
       const depDate = new Date(`2000-01-01T${route.scheduledDepartureTime}`);
       const oneWayFlightMinutes = estimatedFlightTime;
       const turnaroundMinutes = route.turnaroundTime;
@@ -991,7 +997,7 @@ async function loadUnassignedRoutes(aircraftId) {
     }
 
     // Get aircraft type for display
-    let aircraftType = 'No aircraft type assigned';
+    let aircraftType = 'Missing aircraft type';
     if (route.assignedAircraft && route.assignedAircraft.aircraft) {
       const manufacturer = route.assignedAircraft.aircraft.manufacturer || '';
       const model = route.assignedAircraft.aircraft.model || '';
@@ -1021,7 +1027,7 @@ async function loadUnassignedRoutes(aircraftId) {
           <div style="color: var(--text-secondary); font-weight: 600;">Block Off:</div>
           <div style="color: var(--success-color); font-weight: 600;">${depTime}</div>
           <div style="color: var(--text-secondary); font-weight: 600;">Block On:</div>
-          <div style="color: var(--success-color); font-weight: 600;">${blockOnTime}</div>
+          <div style="color: ${blockOnTimeColor}; font-weight: 600; font-size: ${blockOnTime.includes('Assign') ? '0.7rem' : '0.75rem'};">${blockOnTime}</div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div style="color: var(--text-muted); font-size: 0.75rem;">

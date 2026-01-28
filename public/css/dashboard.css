@@ -1,6 +1,7 @@
 .dashboard-body {
   background: var(--background);
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --navbar-height: 65px; /* Default, will be updated by JS */
 }
 
 /* Navbar */
@@ -19,6 +20,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  min-height: 65px;
 }
 
 .nav-left {
@@ -351,22 +353,29 @@
 .dashboard-container {
   display: flex;
   max-width: 100%;
-  min-height: calc(100vh - 70px);
+  min-height: 100vh;
 }
 
 /* Sidebar */
 .sidebar {
+  position: fixed;
+  left: 0;
+  top: var(--navbar-height);
   width: 240px;
+  height: calc(100vh - var(--navbar-height));
   background: var(--surface);
   border-right: 1px solid var(--border-color);
   padding: 0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
 }
 
 .sidebar-collapsed .sidebar {
-  width: 0;
-  border-right: none;
+  left: -240px;
 }
 
 .sidebar-header {
@@ -381,6 +390,9 @@
 .nav-menu {
   list-style: none;
   padding: 0.5rem 0;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .nav-item {
@@ -483,9 +495,15 @@
 /* Main Content */
 .main-content {
   flex: 1;
+  margin-left: 240px;
   padding: 2rem;
   overflow-y: auto;
   background: var(--background);
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-collapsed .main-content {
+  margin-left: 0;
 }
 
 /* System Status Bar */
