@@ -206,16 +206,18 @@ async function loadWorldInfo() {
   }
 
   try {
-    // Don't show world info on world selection page
-    if (window.location.pathname === '/world-selection') {
+    // Don't show world info on world selection or admin pages
+    if (window.location.pathname === '/world-selection' || window.location.pathname === '/admin') {
       const worldInfoContainer = document.getElementById('worldInfoContainer');
       if (worldInfoContainer) {
         worldInfoContainer.style.display = 'none';
       }
       // Hide navigation menu on world selection page
-      const navMenu = document.querySelector('.nav-menu');
-      if (navMenu) {
-        navMenu.style.display = 'none';
+      if (window.location.pathname === '/world-selection') {
+        const navMenu = document.querySelector('.nav-menu');
+        if (navMenu) {
+          navMenu.style.display = 'none';
+        }
       }
       return;
     }
