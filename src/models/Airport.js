@@ -90,15 +90,15 @@ const Airport = sequelize.define('Airport', {
       max: 20
     }
   },
-  infrastructureLevel: {
+  spareCapacity: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    defaultValue: 10,
-    field: 'infrastructure_level',
-    comment: 'Airport infrastructure quality level (1-20)',
+    defaultValue: 0,
+    field: 'spare_capacity',
+    comment: 'Airport spare capacity percentage (0-100)',
     validate: {
-      min: 1,
-      max: 20
+      min: 0,
+      max: 100
     }
   }
 }, {

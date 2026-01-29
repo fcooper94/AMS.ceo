@@ -951,3 +951,75 @@
   color: var(--text-primary);
   font-size: 0.95rem;
 }
+
+/* Custom Tooltip Styles for Sidebar Footer Icons */
+.sidebar-footer a {
+  position: relative;
+}
+
+.sidebar-footer a::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  padding: 0.4rem 0.75rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Align first icon tooltip to the left to prevent overflow */
+.sidebar-footer a:first-child::before {
+  left: 0;
+  transform: translateX(0) translateY(-8px);
+}
+
+.sidebar-footer a:first-child:hover::before {
+  transform: translateX(0) translateY(-12px);
+}
+
+.sidebar-footer a::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  border: 5px solid transparent;
+  border-top-color: var(--border-color);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 1000;
+}
+
+/* Position arrow for first icon */
+.sidebar-footer a:first-child::after {
+  left: 1rem;
+  transform: translateX(0) translateY(2px);
+}
+
+.sidebar-footer a:first-child:hover::after {
+  transform: translateX(0) translateY(-2px);
+}
+
+.sidebar-footer a:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-12px);
+}
+
+.sidebar-footer a:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}

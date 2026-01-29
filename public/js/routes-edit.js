@@ -336,12 +336,12 @@ function applyDestinationFilters() {
       return false;
     }
 
-    // Infrastructure level filter
+    // Spare capacity filter
     if (infraLevel !== null) {
-      const airportInfra = airport.infrastructureLevel || 0;
-      if (infraOperator === '=' && airportInfra !== infraLevel) return false;
-      if (infraOperator === '>=' && airportInfra < infraLevel) return false;
-      if (infraOperator === '<=' && airportInfra > infraLevel) return false;
+      const airportCapacity = airport.spareCapacity || 0;
+      if (infraOperator === '=' && airportCapacity !== infraLevel) return false;
+      if (infraOperator === '>=' && airportCapacity < infraLevel) return false;
+      if (infraOperator === '<=' && airportCapacity > infraLevel) return false;
     }
 
     // Traffic level filter
@@ -421,7 +421,7 @@ function displayAvailableAirports(airports) {
               ${airport.city}, ${airport.country} • ${airport.type}
             </div>
             <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
-              Infrastructure: ${airport.infrastructureLevel}/20 • Traffic: ${airport.trafficDemand}/20${airport.timezone ? ` • ${airport.timezone}` : ''}
+              Capacity: ${airport.spareCapacity || 0}% • Traffic: ${airport.trafficDemand}/20${airport.timezone ? ` • ${airport.timezone}` : ''}
             </div>
           </div>
           <div style="text-align: right; margin-left: 2rem;">

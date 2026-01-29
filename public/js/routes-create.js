@@ -499,12 +499,12 @@ function applyDestinationFilters() {
       return false;
     }
 
-    // Infrastructure level filter
+    // Spare capacity filter
     if (infraLevel !== null) {
-      const airportInfra = airport.infrastructureLevel || 0;
-      if (infraOperator === '=' && airportInfra !== infraLevel) return false;
-      if (infraOperator === '>=' && airportInfra < infraLevel) return false;
-      if (infraOperator === '<=' && airportInfra > infraLevel) return false;
+      const airportCapacity = airport.spareCapacity || 0;
+      if (infraOperator === '=' && airportCapacity !== infraLevel) return false;
+      if (infraOperator === '>=' && airportCapacity < infraLevel) return false;
+      if (infraOperator === '<=' && airportCapacity > infraLevel) return false;
     }
 
     // Traffic level filter
@@ -578,6 +578,37 @@ function generateLevelScaleCompact(level) {
   `;
 }
 
+function generateCapacityScaleCompact(percentage) {
+  const dots = [];
+  for (let i = 1; i <= 20; i++) {
+    const threshold = (i / 20) * 100;
+    let color;
+    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
+    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
+    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
+    else color = '#ef4444'; // Red for very high (little spare capacity)
+
+    const isFilled = threshold <= percentage;
+    dots.push(`
+      <div style="
+        width: 10px;
+        height: 10px;
+        border-radius: 1px;
+        background: ${isFilled ? color : 'transparent'};
+        border: 1px solid ${color};
+        opacity: ${isFilled ? '1' : '0.25'};
+      "></div>
+    `);
+  }
+
+  return `
+    <div style="display: flex; gap: 1px; align-items: center;">
+      ${dots.join('')}
+      <span style="margin-left: 0.35rem; font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${percentage}%</span>
+    </div>
+  `;
+}
+
 // Display available airports
 function displayAvailableAirports(airports) {
   const container = document.getElementById('availableAirportsList');
@@ -622,11 +653,11 @@ function displayAvailableAirports(airports) {
             </div>
           </div>
 
-          <!-- Infrastructure & Traffic -->
+          <!-- Spare Capacity & Traffic -->
           <div style="display: flex; gap: 1.5rem; align-items: center;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Infra:</span>
-              ${generateLevelScaleCompact(airport.infrastructureLevel)}
+              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Capacity:</span>
+              ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Traffic:</span>

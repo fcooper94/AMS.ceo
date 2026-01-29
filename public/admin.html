@@ -44,17 +44,17 @@
     </div>
 
   <!-- Tab Navigation -->
-  <div style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid var(--border-color);">
-    <button class="admin-tab active" onclick="switchTab('users')" id="usersTab" style="padding: 1rem 2rem; background: none; border: none; border-bottom: 3px solid var(--primary-color); color: var(--primary-color); font-weight: 600; cursor: pointer;">
+  <div style="display: flex; gap: 1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border-color);">
+    <button class="admin-tab active" onclick="switchTab('users')" id="usersTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid var(--primary-color); color: var(--primary-color); font-weight: 600; cursor: pointer;">
       USERS
     </button>
-    <button class="admin-tab" onclick="switchTab('aircraft')" id="aircraftTab" style="padding: 1rem 2rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
+    <button class="admin-tab" onclick="switchTab('aircraft')" id="aircraftTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
       AIRCRAFT
     </button>
-    <button class="admin-tab" onclick="switchTab('airports')" id="airportsTab" style="padding: 1rem 2rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
+    <button class="admin-tab" onclick="switchTab('airports')" id="airportsTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
       AIRPORTS
     </button>
-    <button class="admin-tab" onclick="switchTab('worlds')" id="worldsTab" style="padding: 1rem 2rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
+    <button class="admin-tab" onclick="switchTab('worlds')" id="worldsTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
       WORLDS
     </button>
   </div>
@@ -72,18 +72,18 @@
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">VATSIM ID</th>
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">NAME</th>
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">EMAIL</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIVE WORLDS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CREDITS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">PERMISSIONS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">VATSIM ID</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">NAME</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">EMAIL</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIVE WORLDS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CREDITS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">PERMISSIONS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
             </tr>
           </thead>
           <tbody id="usersTableBody">
             <tr>
-              <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">Loading users...</td>
+              <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading users...</td>
             </tr>
           </tbody>
         </table>
@@ -94,7 +94,7 @@
   <!-- Aircraft Tab -->
   <div id="aircraftSection" class="admin-section" style="display: none;">
     <div class="worlds-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label for="searchAircraftInput">SEARCH AIRCRAFT</label>
           <input type="text" id="searchAircraftInput" placeholder="Search by manufacturer or model..." onkeyup="searchAircraft()">
@@ -107,18 +107,18 @@
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRCRAFT</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">TYPE</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">RANGE</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CAPACITY</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">PRICE (NEW)</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRCRAFT</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">TYPE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">RANGE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OPERATIONAL YEARS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">PRICE (NEW)</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
             </tr>
           </thead>
           <tbody id="aircraftTableBody">
             <tr>
-              <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">Loading aircraft...</td>
+              <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading aircraft...</td>
             </tr>
           </tbody>
         </table>
@@ -129,7 +129,7 @@
   <!-- Airports Tab -->
   <div id="airportsSection" class="admin-section" style="display: none;">
     <div class="worlds-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label for="searchAirportInput">SEARCH AIRPORT</label>
           <input type="text" id="searchAirportInput" placeholder="Search by name, city, or code..." onkeyup="searchAirports()">
@@ -145,18 +145,18 @@
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRPORT</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CODES</th>
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">LOCATION</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">TYPE</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OPERATIONAL</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AVAILABILITY</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRPORT</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CODES</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">LOCATION</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">TYPE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OPERATIONAL</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AVAILABILITY</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
             </tr>
           </thead>
           <tbody id="airportsTableBody">
             <tr>
-              <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">Loading airports...</td>
+              <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading airports...</td>
             </tr>
           </tbody>
         </table>
@@ -167,7 +167,7 @@
   <!-- Worlds Tab -->
   <div id="worldsSection" class="admin-section" style="display: none;">
     <div class="worlds-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label for="searchWorldInput">SEARCH WORLDS</label>
           <input type="text" id="searchWorldInput" placeholder="Search by name or era..." onkeyup="searchWorlds()">
@@ -180,18 +180,18 @@
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
-              <th style="padding: 1rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">WORLD NAME</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ERA</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CURRENT TIME</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">MEMBERS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">SYNC RATE</th>
-              <th style="padding: 1rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">WORLD NAME</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ERA</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CURRENT TIME</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">MEMBERS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">SYNC RATE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
             </tr>
           </thead>
           <tbody id="worldsTableBody">
             <tr>
-              <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">Loading worlds...</td>
+              <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading worlds...</td>
             </tr>
           </tbody>
         </table>

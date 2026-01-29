@@ -17,7 +17,7 @@ async function loadUsers() {
     if (users.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No users found</td>
+          <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
         </tr>
       `;
       return;
@@ -42,16 +42,16 @@ async function loadUsers() {
 
       return `
         <tr style="border-bottom: 1px solid var(--border-color);">
-          <td style="padding: 1rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
-          <td style="padding: 1rem;">${user.firstName} ${user.lastName}</td>
-          <td style="padding: 1rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
-          <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
-          <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${user.credits}</td>
-          <td style="padding: 1rem; text-align: center;">${permissionStatus}</td>
-          <td style="padding: 1rem; text-align: center;">
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
-              <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
+          <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
+          <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
+          <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
+          <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
+          <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${user.credits}</td>
+          <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
+          <td style="padding: 0.5rem; text-align: center;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
+              <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
             </div>
           </td>
         </tr>
@@ -63,7 +63,7 @@ async function loadUsers() {
     const tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--warning-color);">Error loading users</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading users</td>
       </tr>
     `;
   }
@@ -88,7 +88,7 @@ function searchUsers() {
   if (filteredUsers.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No users found</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
       </tr>
     `;
     return;
@@ -113,16 +113,16 @@ function searchUsers() {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 1rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
-        <td style="padding: 1rem;">${user.firstName} ${user.lastName}</td>
-        <td style="padding: 1rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
-        <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
-        <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${user.credits}</td>
-        <td style="padding: 1rem; text-align: center;">${permissionStatus}</td>
-        <td style="padding: 1rem; text-align: center;">
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
-            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
+        <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
+        <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
+        <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${user.credits}</td>
+        <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
           </div>
         </td>
       </tr>
@@ -317,7 +317,7 @@ async function loadAircraft() {
     const tbody = document.getElementById('aircraftTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--warning-color);">Error loading aircraft</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading aircraft</td>
       </tr>
     `;
   }
@@ -330,7 +330,7 @@ function renderAircraftTable(aircraft) {
   if (aircraft.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No aircraft found</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No aircraft found</td>
       </tr>
     `;
     return;
@@ -340,19 +340,20 @@ function renderAircraftTable(aircraft) {
     const fullName = ac.variant ? `${ac.manufacturer} ${ac.model}-${ac.variant}` : `${ac.manufacturer} ${ac.model}`;
     const statusColor = ac.isActive ? 'var(--success-color)' : 'var(--text-secondary)';
     const statusText = ac.isActive ? 'ACTIVE' : 'INACTIVE';
+    const operationalYears = (ac.availableFrom || 'Start') + ' - ' + (ac.availableUntil || 'Present');
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 1rem; font-weight: 600;">${fullName}</td>
-        <td style="padding: 1rem; text-align: center;">${ac.type}</td>
-        <td style="padding: 1rem; text-align: center;">${ac.rangeCategory}<br><span style="color: var(--text-secondary); font-size: 0.85rem;">${ac.rangeNm} NM</span></td>
-        <td style="padding: 1rem; text-align: center;">${ac.passengerCapacity} PAX</td>
-        <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace;">$${parseInt(ac.purchasePrice).toLocaleString()}</td>
-        <td style="padding: 1rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
-        <td style="padding: 1rem; text-align: center;">
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openEditAircraftModal(${JSON.stringify(ac).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem; background: var(--warning-color); border-color: var(--warning-color);" onclick='openDeleteAircraftModal("${ac.id}", "${fullName.replace(/'/g, "\\'")}")'>Delete</button>
+        <td style="padding: 0.5rem; font-weight: 600;">${fullName}</td>
+        <td style="padding: 0.5rem; text-align: center;">${ac.type}</td>
+        <td style="padding: 0.5rem; text-align: center;">${ac.rangeCategory}<br><span style="color: var(--text-secondary); font-size: 0.85rem;">${ac.rangeNm} NM</span></td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${operationalYears}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">$${parseInt(ac.purchasePrice).toLocaleString()}</td>
+        <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAircraftModal(${JSON.stringify(ac).replace(/'/g, "\\'")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAircraftModal("${ac.id}", "${fullName.replace(/'/g, "\\'")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -584,7 +585,7 @@ async function loadWorlds() {
     const tbody = document.getElementById('worldsTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--warning-color);">Error loading worlds</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading worlds</td>
       </tr>
     `;
   }
@@ -597,7 +598,7 @@ function renderWorldsTable(worlds) {
   if (worlds.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No worlds found</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No worlds found</td>
       </tr>
     `;
     return;
@@ -620,16 +621,16 @@ function renderWorldsTable(worlds) {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 1rem; font-weight: 600;">${world.name}</td>
-        <td style="padding: 1rem; text-align: center;">${world.era}</td>
-        <td style="padding: 1rem; text-align: center;">${formattedTime}</td>
-        <td style="padding: 1rem; text-align: center;">${world.memberCount || 0}/${world.maxPlayers || 100}</td>
-        <td style="padding: 1rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
-        <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace;">${world.timeAcceleration || 60}x</td>
-        <td style="padding: 1rem; text-align: center;">
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem; background: var(--warning-color); border-color: var(--warning-color);" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "\\'")}")'>Delete</button>
+        <td style="padding: 0.5rem; font-weight: 600;">${world.name}</td>
+        <td style="padding: 0.5rem; text-align: center;">${world.era}</td>
+        <td style="padding: 0.5rem; text-align: center;">${formattedTime}</td>
+        <td style="padding: 0.5rem; text-align: center;">${world.memberCount || 0}/${world.maxPlayers || 100}</td>
+        <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${world.timeAcceleration || 60}x</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "\\'")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "\\'")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -852,7 +853,7 @@ async function loadAirports() {
     const tbody = document.getElementById('airportsTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--warning-color);">Error loading airports</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading airports</td>
       </tr>
     `;
   }
@@ -865,7 +866,7 @@ function renderAirportsTable(airports) {
   if (airports.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No airports found</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No airports found</td>
       </tr>
     `;
     return;
@@ -890,16 +891,16 @@ function renderAirportsTable(airports) {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 1rem; font-weight: 600;">${airport.name}</td>
-        <td style="padding: 1rem; text-align: center; font-family: 'Courier New', monospace;">${codes}</td>
-        <td style="padding: 1rem; text-align: center;">${airport.city}<br><span style="color: var(--text-secondary); font-size: 0.85rem;">${airport.country}</span></td>
-        <td style="padding: 1rem; text-align: center;">${airport.type}</td>
-        <td style="padding: 1rem; text-align: center; font-size: 0.9rem;">${operationalDates}</td>
-        <td style="padding: 1rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
-        <td style="padding: 1rem; text-align: center;">
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;" onclick='openEditAirportModal(${JSON.stringify(airport).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem; background: var(--warning-color); border-color: var(--warning-color);" onclick='openDeleteAirportModal("${airport.id}", "${airport.name.replace(/'/g, "\\'")}")'>Delete</button>
+        <td style="padding: 0.5rem; font-weight: 600;">${airport.name}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${codes}</td>
+        <td style="padding: 0.5rem; text-align: center;">${airport.city}<br><span style="color: var(--text-secondary); font-size: 0.85rem;">${airport.country}</span></td>
+        <td style="padding: 0.5rem; text-align: center;">${airport.type}</td>
+        <td style="padding: 0.5rem; text-align: center; font-size: 0.9rem;">${operationalDates}</td>
+        <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirportModal(${JSON.stringify(airport).replace(/'/g, "\\'")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAirportModal("${airport.id}", "${airport.name.replace(/'/g, "\\'")}")'>Delete</button>
           </div>
         </td>
       </tr>

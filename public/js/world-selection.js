@@ -290,7 +290,7 @@ async function searchAirports(query) {
     }
 
     resultsDiv.innerHTML = airports.slice(0, 10).map(airport => `
-      <div class="airport-result-item" onclick="selectAirport('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.infrastructureLevel || 10}, ${airport.annualPassengers || 1}, ${airport.runways || 1}, ${airport.stands || 10})" style="
+      <div class="airport-result-item" onclick="selectAirport('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1})" style="
         padding: 0.75rem 1rem;
         cursor: pointer;
         border-bottom: 1px solid var(--border-color);
@@ -299,7 +299,7 @@ async function searchAirports(query) {
         <div style="font-size: 0.85rem; color: var(--text-secondary);">${airport.city}, ${airport.country} • ${airport.type}</div>
         <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; display: flex; gap: 1rem;">
           <span>Demand: ${airport.trafficDemand || 10}/20</span>
-          <span>Infrastructure: ${airport.infrastructureLevel || 10}/20</span>
+          <span>Spare Capacity: ${airport.spareCapacity || 0}%</span>
           <span>Airlines: ${airport.airlinesBasedHere || 0}</span>
         </div>
       </div>
@@ -343,8 +343,41 @@ function generateLevelScale(level) {
   `;
 }
 
+// Generate colored scale visualization for percentage (0-100%)
+function generateCapacityScale(percentage) {
+  const dots = [];
+  for (let i = 1; i <= 20; i++) {
+    const threshold = (i / 20) * 100; // Convert to percentage
+    let color;
+    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
+    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
+    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
+    else color = '#ef4444'; // Red for very high (little spare capacity)
+
+    const isFilled = threshold <= percentage;
+    dots.push(`
+      <div style="
+        width: 14px;
+        height: 14px;
+        border-radius: 2px;
+        background: ${isFilled ? color : 'transparent'};
+        border: 1.5px solid ${color};
+        opacity: ${isFilled ? '1' : '0.3'};
+        flex-shrink: 0;
+      "></div>
+    `);
+  }
+
+  return `
+    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap; max-width: 100%;">
+      ${dots.join('')}
+      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${percentage}%</span>
+    </div>
+  `;
+}
+
 // Select airport
-function selectAirport(id, name, city, country, icao, trafficDemand, infrastructureLevel, annualPassengers, runways, stands) {
+function selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers) {
   selectedAirportId = id;
   document.getElementById('baseAirport').value = id;
   document.getElementById('selectedAirportName').textContent = `${name} (${icao})`;
@@ -359,11 +392,8 @@ function selectAirport(id, name, city, country, icao, trafficDemand, infrastruct
     : `${(annualPassengers * 1000).toFixed(0)}K passengers/year`;
   document.getElementById('selectedAirportPassengers').textContent = paxText;
 
-  // Set infrastructure scale
-  document.getElementById('selectedAirportInfrastructure').innerHTML = generateLevelScale(infrastructureLevel || 5, 'Infrastructure');
-
-  // Display runways and stands
-  document.getElementById('selectedAirportFacilities').textContent = `${runways || 1} runway${runways > 1 ? 's' : ''} • ${stands || 10} stands`;
+  // Set spare capacity scale
+  document.getElementById('selectedAirportInfrastructure').innerHTML = generateCapacityScale(spareCapacity || 0);
 
   document.getElementById('selectedAirportDisplay').style.display = 'block';
   document.getElementById('airportSearch').style.display = 'none';
@@ -822,7 +852,7 @@ function renderAirportBrowser() {
   }
 
   listDiv.innerHTML = filteredAirports.map(airport => `
-    <div onclick="selectAirportFromBrowser('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.infrastructureLevel || 10}, ${airport.annualPassengers || 1}, ${airport.runways || 1}, ${airport.stands || 10})" style="
+    <div onclick="selectAirportFromBrowser('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1})" style="
       padding: 1rem;
       margin-bottom: 0.75rem;
       background: var(--surface-elevated);
@@ -857,11 +887,8 @@ function renderAirportBrowser() {
           </div>
         </div>
         <div>
-          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Infrastructure</div>
-          ${generateLevelScaleCompact(airport.infrastructureLevel || 5)}
-          <div style="margin-top: 0.25rem; font-size: 0.7rem; color: var(--text-secondary);">
-            ${airport.runways || 1} runway${airport.runways > 1 ? 's' : ''} • ${airport.stands || 10} stands
-          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Spare Capacity</div>
+          ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
         </div>
       </div>
     </div>
@@ -898,12 +925,43 @@ function generateLevelScaleCompact(level) {
   `;
 }
 
-function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, infrastructureLevel, annualPassengers, runways, stands) {
+function generateCapacityScaleCompact(percentage) {
+  const dots = [];
+  for (let i = 1; i <= 20; i++) {
+    const threshold = (i / 20) * 100;
+    let color;
+    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
+    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
+    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
+    else color = '#ef4444'; // Red for very high (little spare capacity)
+
+    const isFilled = threshold <= percentage;
+    dots.push(`
+      <div style="
+        width: 14px;
+        height: 14px;
+        border-radius: 2px;
+        background: ${isFilled ? color : 'transparent'};
+        border: 1px solid ${color};
+        opacity: ${isFilled ? '1' : '0.3'};
+      "></div>
+    `);
+  }
+
+  return `
+    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap;">
+      ${dots.join('')}
+      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600;">${percentage}%</span>
+    </div>
+  `;
+}
+
+function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers) {
   // Close the browser modal
   closeAirportBrowser();
 
   // Select the airport in the join modal
-  selectAirport(id, name, city, country, icao, trafficDemand, infrastructureLevel, annualPassengers, runways, stands);
+  selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers);
 }
 
 // Initialize

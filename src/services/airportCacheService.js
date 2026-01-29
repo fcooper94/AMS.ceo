@@ -174,7 +174,16 @@ class AirportCacheService {
     }
 
     const whereSQL = whereClauses.join(' AND ');
-    const limit = search ? 200 : 5000;
+    const limit = search ? 200 : 10000; // Increased to accommodate all airports
+
+    // Build the JOIN clause for world memberships (filter by world if specified)
+    const worldJoinClause = worldId
+      ? `LEFT JOIN world_memberships wm ON wm.base_airport_id = a.id AND wm.world_id = :joinWorldId`
+      : `LEFT JOIN world_memberships wm ON wm.base_airport_id = a.id AND 1=0`; // Never match if no world specified
+
+    if (worldId) {
+      replacements.joinWorldId = worldId;
+    }
 
     // Query database
     const airportsWithData = await sequelize.query(`
@@ -194,12 +203,12 @@ class AirportCacheService {
         a.operational_from as "operationalFrom",
         a.operational_until as "operationalUntil",
         a.traffic_demand as "trafficDemand",
-        a.infrastructure_level as "infrastructureLevel",
+        a.spare_capacity as "spareCapacity",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
         COALESCE(COUNT(wm.id), 0)::int as "airlinesBasedHere"
       FROM airports a
-      LEFT JOIN world_memberships wm ON wm.base_airport_id = a.id
+      ${worldJoinClause}
       WHERE ${whereSQL}
       GROUP BY a.id
       ORDER BY
@@ -235,10 +244,7 @@ class AirportCacheService {
         ...airport,
         country: historicalCountry,
         trafficDemand: metrics.trafficDemand,
-        infrastructureLevel: metrics.infrastructureLevel,
-        annualPassengers: metrics.annualPassengers,
-        runways: metrics.runways,
-        stands: metrics.stands
+        annualPassengers: metrics.annualPassengers
       };
     });
 
