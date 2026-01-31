@@ -27,7 +27,7 @@ router.get('/available', async (req, res) => {
     if (user) {
       userMemberships = await WorldMembership.findAll({
         where: { userId: user.id },
-        attributes: ['worldId', 'airlineName', 'airlineCode', 'iataCode']
+        attributes: ['worldId', 'airlineName', 'airlineCode', 'iataCode', 'lastVisited']
       });
     }
 
@@ -50,7 +50,8 @@ router.get('/available', async (req, res) => {
         isMember: !!membership,
         airlineName: membership?.airlineName,
         airlineCode: membership?.airlineCode,
-        iataCode: membership?.iataCode
+        iataCode: membership?.iataCode,
+        lastVisited: membership?.lastVisited || null
       };
     }));
 
@@ -341,6 +342,9 @@ router.post('/set-active', async (req, res) => {
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this world' });
     }
+
+    // Update last visited timestamp
+    await membership.update({ lastVisited: new Date() });
 
     // Verify world exists
     const world = await World.findByPk(worldId);

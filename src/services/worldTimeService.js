@@ -1,5 +1,7 @@
 const World = require('../models/World');
-const { WorldMembership, User } = require('../models');
+const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft } = require('../models');
+const { Op } = require('sequelize');
+const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 
 /**
  * World Time Service
@@ -232,6 +234,11 @@ class WorldTimeService {
     this.processCredits(worldId, gameTime).catch(err => {
       console.error('Error processing credits:', err.message);
     });
+
+    // Process flight statuses (asynchronously, don't block tick)
+    this.processFlights(worldId, gameTime).catch(err => {
+      console.error('Error processing flights:', err.message);
+    });
   }
 
   /**
@@ -292,6 +299,132 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error processing credits:', error);
+    }
+  }
+
+  /**
+   * Process flight status updates for a world
+   * - Scheduled flights that should have departed -> in_progress
+   * - In-progress flights that should have arrived -> completed
+   */
+  async processFlights(worldId, currentGameTime) {
+    const worldState = this.worlds.get(worldId);
+    if (!worldState) return;
+
+    try {
+      // Get all memberships for this world to find their routes
+      const memberships = await WorldMembership.findAll({
+        where: { worldId: worldId, isActive: true },
+        attributes: ['id']
+      });
+
+      const membershipIds = memberships.map(m => m.id);
+      if (membershipIds.length === 0) return;
+
+      // Get current game date and time
+      const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
+      const gameTimeStr = currentGameTime.toTimeString().split(' ')[0]; // HH:MM:SS
+
+      // 1a. Find scheduled flights from TODAY that should now be in_progress
+      const flightsToStart = await ScheduledFlight.findAll({
+        where: {
+          status: 'scheduled',
+          scheduledDate: gameDate,
+          departureTime: { [Op.lte]: gameTimeStr }
+        },
+        include: [{
+          model: Route,
+          as: 'route',
+          where: { worldMembershipId: { [Op.in]: membershipIds } }
+        }]
+      });
+
+      for (const flight of flightsToStart) {
+        await flight.update({ status: 'in_progress' });
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✈ Flight ${flight.route.routeNumber} started (${flight.route.departureAirportId} -> ${flight.route.arrivalAirportId})`);
+        }
+      }
+
+      // 1b. Find scheduled flights from PAST dates - mark as completed (missed flights)
+      const missedFlights = await ScheduledFlight.findAll({
+        where: {
+          status: 'scheduled',
+          scheduledDate: { [Op.lt]: gameDate }
+        },
+        include: [{
+          model: Route,
+          as: 'route',
+          where: { worldMembershipId: { [Op.in]: membershipIds } }
+        }]
+      });
+
+      for (const flight of missedFlights) {
+        await flight.update({ status: 'completed' });
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⚠ Missed flight ${flight.route.routeNumber} from ${flight.scheduledDate} marked as completed`);
+        }
+      }
+
+      // 2. Find in_progress flights that should now be completed
+      // Calculate arrival time based on departure + flight duration
+      const inProgressFlights = await ScheduledFlight.findAll({
+        where: { status: 'in_progress' },
+        include: [{
+          model: Route,
+          as: 'route',
+          where: { worldMembershipId: { [Op.in]: membershipIds } },
+          include: [
+            { model: require('../models/Airport'), as: 'departureAirport' },
+            { model: require('../models/Airport'), as: 'arrivalAirport' }
+          ]
+        }, {
+          model: UserAircraft,
+          as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
+        }]
+      });
+
+      for (const flight of inProgressFlights) {
+        // Get airport coordinates for wind calculation
+        const depLat = parseFloat(flight.route.departureAirport?.latitude) || 0;
+        const depLng = parseFloat(flight.route.departureAirport?.longitude) || 0;
+        const arrLat = parseFloat(flight.route.arrivalAirport?.latitude) || 0;
+        const arrLng = parseFloat(flight.route.arrivalAirport?.longitude) || 0;
+
+        // Calculate flight duration with wind adjustment
+        const distanceNm = parseFloat(flight.route.distance) || 500;
+        const cruiseSpeed = flight.aircraft?.aircraft?.cruiseSpeed || 450; // knots
+
+        // Outbound: departure -> arrival (with wind effect)
+        const outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
+
+        // Return: arrival -> departure (opposite wind effect)
+        const returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, cruiseSpeed);
+
+        // Get turnaround time (default 45 minutes)
+        const turnaroundMinutes = flight.route.turnaroundTime || 45;
+        const turnaroundMs = turnaroundMinutes * 60 * 1000;
+
+        // Calculate total round-trip duration: outbound + turnaround + return
+        const totalFlightMs = outboundFlightMs + turnaroundMs + returnFlightMs;
+
+        // Calculate expected completion time (after return leg)
+        const departureDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
+        const expectedCompletion = new Date(departureDateTime.getTime() + totalFlightMs);
+
+        // Check if flight should have completed the full round-trip
+        if (currentGameTime >= expectedCompletion) {
+          await flight.update({ status: 'completed' });
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✓ Flight ${flight.route.routeNumber} completed (full round-trip)`);
+          }
+
+          // TODO: Process revenue, update route statistics, etc.
+        }
+      }
+    } catch (error) {
+      console.error('Error processing flights:', error);
     }
   }
 

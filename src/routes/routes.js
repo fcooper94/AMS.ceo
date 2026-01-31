@@ -40,18 +40,18 @@ router.get('/', async (req, res) => {
         {
           model: Airport,
           as: 'departureAirport',
-          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country']
+          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
         },
         {
           model: Airport,
           as: 'arrivalAirport',
-          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country']
+          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
         },
         {
           model: Airport,
           as: 'techStopAirport',
           required: false,
-          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country']
+          attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
         },
         {
           model: UserAircraft,

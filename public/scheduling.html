@@ -34,6 +34,11 @@
         </ul>
       </li>
       <li class="nav-item">
+        <a href="/world-map">
+          <span class="nav-text">World Map</span>
+        </a>
+      </li>
+      <li class="nav-item">
         <a href="/fleet">
           <span class="nav-text">Fleet Management</span>
         </a>
@@ -135,14 +140,14 @@
           </div>
 
           <div>
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Group By</label>
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Show</label>
             <select
-              id="groupBy"
-              onchange="loadSchedule()"
+              id="aircraftFilter"
+              onchange="renderSchedule()"
               style="padding: 0.5rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 0.9rem; cursor: pointer;"
             >
-              <option value="type">Aircraft Type</option>
-              <option value="none">No Grouping</option>
+              <option value="all">All Aircraft</option>
+              <!-- Aircraft types will be populated dynamically -->
             </select>
           </div>
 
@@ -155,7 +160,9 @@
     <div class="ops-panel full-width">
       <div class="panel-header">
         <h2>FLEET SCHEDULE</h2>
-        <span class="panel-badge" id="fleetCountBadge">0 AIRCRAFT</span>
+        <button id="clearAllSchedulesBtn" onclick="showClearAllSchedulesModal()" class="btn-danger-outline" title="Clear all flights and maintenance from visible aircraft">
+          Clear All Schedules
+        </button>
       </div>
       <div class="panel-body" style="padding: 0; overflow-x: auto;">
         <div id="scheduleGrid" style="min-width: 100%;">
@@ -215,6 +222,27 @@
       </div>
     </div>
   </div>
+
+  <!-- Clear All Schedules Confirmation Modal -->
+  <div id="clearAllModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header" style="border-bottom-color: #f85149;">
+        <h2 style="color: #f85149;">⚠ Clear All Schedules</h2>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-primary); line-height: 1.6; margin: 0 0 1rem 0;">
+          This will permanently delete <strong>all scheduled flights and maintenance</strong> from the <span id="clearAllAircraftCount">0</span> aircraft currently visible.
+        </p>
+        <p style="color: #f85149; font-weight: 600; margin: 0;">
+          This action cannot be undone!
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeClearAllModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmClearAllSchedules()">Clear All Schedules</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -255,6 +283,15 @@
   }
   .flight-block:hover {
     opacity: 0.9;
+  }
+
+  /* Route number styling - prefix (letters) vs number differentiation */
+  .route-prefix {
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .route-num {
+    color: #ffd700;
+    font-weight: 700;
   }
 
   /* Modal Styles */
@@ -341,5 +378,44 @@
   .btn-secondary:hover {
     border-color: var(--primary-color);
     color: var(--text-primary);
+  }
+
+  .btn-danger-outline {
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid #f85149;
+    border-radius: 3px;
+    color: #f85149;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-danger-outline:hover {
+    background: rgba(248, 81, 73, 0.1);
+    border-color: #ff6b63;
+    color: #ff6b63;
+  }
+
+  .btn-danger {
+    padding: 0.65rem 1.5rem;
+    background: #f85149;
+    border: 1px solid #f85149;
+    border-radius: 3px;
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-danger:hover {
+    background: #ff6b63;
+    border-color: #ff6b63;
   }
 </style>

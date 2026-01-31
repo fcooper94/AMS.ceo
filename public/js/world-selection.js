@@ -139,6 +139,13 @@ async function loadWorlds() {
     }
 
     const myWorlds = worlds.filter(w => w.isMember);
+    // Sort my worlds by most recently visited (newest first), then by name
+    myWorlds.sort((a, b) => {
+      const aTime = a.lastVisited ? new Date(a.lastVisited).getTime() : 0;
+      const bTime = b.lastVisited ? new Date(b.lastVisited).getTime() : 0;
+      if (bTime !== aTime) return bTime - aTime;
+      return (a.name || '').localeCompare(b.name || '');
+    });
     const availableWorlds = worlds.filter(w => !w.isMember);
 
     // Store time references for all worlds

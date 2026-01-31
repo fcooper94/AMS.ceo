@@ -90,6 +90,12 @@ const WorldMembership = sequelize.define('WorldMembership', {
     defaultValue: DataTypes.NOW,
     comment: 'Last time credits were deducted for this membership',
     field: 'last_credit_deduction'
+  },
+  lastVisited: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last time user entered this world',
+    field: 'last_visited'
   }
 }, {
   tableName: 'world_memberships',

@@ -1,6 +1,7 @@
-<!-- TITLE: Route Management - Airline Manager -->
-<!-- SUBTITLE: Manage Routes -->
-<!-- SCRIPTS: /js/routes.js -->
+<!-- TITLE: World Map - Airline Manager -->
+<!-- SUBTITLE: Live Flight Tracking -->
+<!-- SCRIPTS: /js/world-map.js -->
+<!-- STYLES: /css/world-map.css -->
 
 <div class="dashboard-container">
   <aside class="sidebar">
@@ -16,7 +17,7 @@
           <span class="nav-text">Flight Operations</span>
         </a>
         <ul class="nav-submenu">
-          <li class="nav-item active">
+          <li class="nav-item">
             <a href="/routes">
               <span class="nav-text">Manage Routes</span>
             </a>
@@ -33,7 +34,7 @@
           </li>
         </ul>
       </li>
-      <li class="nav-item">
+      <li class="nav-item active">
         <a href="/world-map">
           <span class="nav-text">World Map</span>
         </a>
@@ -83,65 +84,40 @@
         </svg>
       </a>
       <a href="/contact" data-tooltip="Contact Us" style="display: flex; align-items: center; justify-content: center; padding: 0.5rem; color: var(--text-secondary); transition: color 0.2s; text-decoration: none;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-          <polyline points="22,6 12,13 2,6"></polyline>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
         </svg>
       </a>
     </div>
   </aside>
 
-  <main class="main-content">
-    <div class="page-header">
-      <h1 id="routesTitle">ROUTE MANAGEMENT</h1>
-      <p class="subtitle">MANAGE YOUR AIRLINE ROUTES</p>
+  <main class="main-content world-map-content">
+    <!-- Flight Info Panel (hidden by default, shown on flight click) -->
+    <div class="flight-info-panel" id="flightInfoPanel" style="display: none;">
+      <div class="panel-header">
+        <h3>FLIGHT DETAILS</h3>
+        <button class="panel-close-btn" id="closePanelBtn" title="Close">&times;</button>
+      </div>
+      <div class="flight-list" id="flightList"></div>
     </div>
 
-    <!-- Success Banner Container -->
-    <div id="successBannerContainer"></div>
+    <!-- Map Container -->
+    <div id="map"></div>
 
-    <!-- All Routes Section -->
-    <div class="ops-panel full-width">
-      <div class="panel-header">
-        <h2>ALL ROUTES</h2>
-        <button class="btn btn-primary" onclick="createNewRoute()">CREATE NEW ROUTE</button>
+    <!-- Map Legend -->
+    <div class="map-legend">
+      <div class="legend-item">
+        <span class="legend-icon aircraft-icon"></span>
+        <span>Aircraft in Flight</span>
       </div>
-      <div class="panel-body">
-        <!-- Search and Filter Bar -->
-        <div style="margin-bottom: 1.5rem; display: flex; gap: 1rem;">
-          <input
-            type="text"
-            id="routeSearchInput"
-            placeholder="Search routes by flight number, destination, city..."
-            oninput="filterRoutes()"
-            style="flex: 1; padding: 0.75rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.95rem;"
-          />
-          <select
-            id="aircraftTypeFilter"
-            onchange="filterRoutes()"
-            style="padding: 0.75rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.95rem; min-width: 200px;"
-          >
-            <option value="">All Aircraft Types</option>
-          </select>
-        </div>
-        <div id="routesTable">
-          <div class="table-empty">
-            <div class="empty-message">LOADING ROUTES...</div>
-          </div>
-        </div>
+      <div class="legend-item">
+        <span class="legend-icon route-icon"></span>
+        <span>Flight Route</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-icon airport-icon"></span>
+        <span>Airport</span>
       </div>
     </div>
   </main>
-
-  <!-- Delete Confirmation Modal -->
-  <div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 10000; align-items: center; justify-content: center;">
-    <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; max-width: 500px; width: 90%;">
-      <h3 style="margin: 0 0 1rem 0; color: var(--text-primary); font-weight: 600;">Delete Route</h3>
-      <p id="deleteModalMessage" style="color: var(--text-secondary); margin-bottom: 1.5rem;"></p>
-      <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-        <button class="btn btn-secondary" onclick="closeDeleteModal()">CANCEL</button>
-        <button class="btn btn-danger" onclick="confirmDeleteRoute()">DELETE ROUTE</button>
-      </div>
-    </div>
-  </div>
 </div>

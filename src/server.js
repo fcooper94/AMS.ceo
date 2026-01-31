@@ -132,12 +132,20 @@ async function renderPage(pagePath) {
     const titleMatch = pageHtml.match(/<!--\s*TITLE:\s*(.+?)\s*-->/);
     const subtitleMatch = pageHtml.match(/<!--\s*SUBTITLE:\s*(.+?)\s*-->/);
     const scriptsMatch = pageHtml.match(/<!--\s*SCRIPTS:\s*(.+?)\s*-->/);
+    const stylesMatch = pageHtml.match(/<!--\s*STYLES:\s*(.+?)\s*-->/);
 
     let result = layoutHtml;
 
     // Replace title if specified
     if (titleMatch) {
       result = result.replace(/<title[^>]*>.*?<\/title>/, `<title>${titleMatch[1]}</title>`);
+    }
+
+    // Add additional stylesheets in head if specified
+    if (stylesMatch) {
+      const styles = stylesMatch[1].split(',').map(s => s.trim());
+      const styleTags = styles.map(href => `  <link rel="stylesheet" href="${href}">`).join('\n');
+      result = result.replace('</head>', `${styleTags}\n</head>`);
     }
 
     // Replace subtitle if specified
@@ -240,6 +248,15 @@ app.get('/fleet', requireWorld, async (req, res) => {
 app.get('/finances', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/finances.html'));
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/world-map', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/world-map.html'));
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');

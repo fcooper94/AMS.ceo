@@ -1,6 +1,64 @@
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
 const { ScheduledFlight, RecurringMaintenance, Route, UserAircraft, Airport, Aircraft, WorldMembership, User } = require('../models');
+
+/**
+ * Calculate arrival date and time based on departure and full round-trip duration
+ * Accounts for outbound + turnaround + return, and tech stops if present
+ * @param {string} departureDate - YYYY-MM-DD format
+ * @param {string} departureTime - HH:MM:SS format
+ * @param {object} route - Route object with distance, turnaroundTime, and optional techStopAirport
+ * @param {number} cruiseSpeed - Aircraft cruise speed in knots (defaults to 450)
+ * @returns {{ arrivalDate: string, arrivalTime: string }}
+ */
+function calculateArrivalDateTime(departureDate, departureTime, route, cruiseSpeed = 450) {
+  // Parse departure datetime
+  const depDateTime = new Date(`${departureDate}T${departureTime}`);
+
+  // Handle both old API (distanceNm as number) and new API (route object)
+  const distance = typeof route === 'object' ? (parseFloat(route.distance) || 500) : (parseFloat(route) || 500);
+  const speed = cruiseSpeed || 450;
+  const turnaroundMinutes = typeof route === 'object' ? (route.turnaroundTime || 45) : 45;
+  const hasTechStop = typeof route === 'object' && route.techStopAirport;
+
+  let totalFlightMs;
+
+  if (hasTechStop) {
+    // Tech stop route: leg1 + techStop + leg2 + turnaround + leg3 + techStop + leg4
+    const techStopMinutes = 30; // 30 min tech stop time
+    const leg1Distance = route.legOneDistance || Math.round(distance * 0.4);
+    const leg2Distance = route.legTwoDistance || Math.round(distance * 0.6);
+
+    // Calculate each leg (simplified - no wind adjustment here for consistency)
+    const leg1Hours = leg1Distance / speed;
+    const leg2Hours = leg2Distance / speed;
+    const leg3Hours = leg2Distance / speed; // Return leg (ARR→TECH)
+    const leg4Hours = leg1Distance / speed; // Return leg (TECH→DEP)
+
+    const totalHours = leg1Hours + (techStopMinutes / 60) + leg2Hours +
+                       (turnaroundMinutes / 60) +
+                       leg3Hours + (techStopMinutes / 60) + leg4Hours;
+    totalFlightMs = totalHours * 60 * 60 * 1000;
+  } else {
+    // Standard round-trip: outbound + turnaround + return
+    const oneWayHours = distance / speed;
+    const totalHours = oneWayHours + (turnaroundMinutes / 60) + oneWayHours;
+    totalFlightMs = totalHours * 60 * 60 * 1000;
+  }
+
+  // Calculate arrival datetime (when the round-trip completes)
+  const arrDateTime = new Date(depDateTime.getTime() + totalFlightMs);
+
+  // Format arrival date and time using local time (avoids UTC timezone shift)
+  const year = arrDateTime.getFullYear();
+  const month = String(arrDateTime.getMonth() + 1).padStart(2, '0');
+  const day = String(arrDateTime.getDate()).padStart(2, '0');
+  const arrivalDate = `${year}-${month}-${day}`;
+  const arrivalTime = arrDateTime.toTimeString().split(' ')[0]; // HH:MM:SS
+
+  return { arrivalDate, arrivalTime };
+}
 
 /**
  * GET /api/schedule/flights
@@ -35,17 +93,41 @@ router.get('/flights', async (req, res) => {
     }
 
     const worldMembershipId = membership.id;
+    const { Op } = require('sequelize');
 
-    // Build query
-    const whereClause = {};
+    // Build query - include flights that depart OR arrive within the date range
+    let whereClause = {};
 
     if (startDate && endDate) {
-      whereClause.scheduledDate = {
-        [require('sequelize').Op.between]: [startDate, endDate]
+      // Include flights that depart, arrive, or are in-transit within the date range
+      whereClause = {
+        [Op.or]: [
+          // Flights departing in the range
+          { scheduledDate: { [Op.between]: [startDate, endDate] } },
+          // Flights arriving in the range (overnight flights)
+          { arrivalDate: { [Op.between]: [startDate, endDate] } },
+          // Flights in-transit (departed before range, arriving after range)
+          {
+            [Op.and]: [
+              { scheduledDate: { [Op.lt]: startDate } },
+              { arrivalDate: { [Op.gt]: endDate } }
+            ]
+          }
+        ]
       };
     } else if (startDate) {
-      whereClause.scheduledDate = {
-        [require('sequelize').Op.gte]: startDate
+      whereClause = {
+        [Op.or]: [
+          { scheduledDate: { [Op.gte]: startDate } },
+          { arrivalDate: { [Op.gte]: startDate } },
+          // Flights in-transit on startDate
+          {
+            [Op.and]: [
+              { scheduledDate: { [Op.lt]: startDate } },
+              { arrivalDate: { [Op.gt]: startDate } }
+            ]
+          }
+        ]
       };
     }
 
@@ -133,12 +215,13 @@ router.post('/flight', async (req, res) => {
       return res.status(404).json({ error: 'Route not found' });
     }
 
-    // Validate aircraft belongs to user's world
+    // Validate aircraft belongs to user's world and get aircraft details
     const aircraft = await UserAircraft.findOne({
       where: {
         id: aircraftId,
         worldMembershipId: worldMembershipId
-      }
+      },
+      include: [{ model: Aircraft, as: 'aircraft' }]
     });
 
     if (!aircraft) {
@@ -158,12 +241,22 @@ router.post('/flight', async (req, res) => {
       return res.status(409).json({ error: 'Aircraft is already scheduled at this time' });
     }
 
+    // Calculate arrival date and time (for full round-trip including tech stops)
+    const { arrivalDate, arrivalTime } = calculateArrivalDateTime(
+      scheduledDate,
+      departureTime,
+      route,
+      aircraft.aircraft?.cruiseSpeed
+    );
+
     // Create scheduled flight
     const scheduledFlight = await ScheduledFlight.create({
       routeId,
       aircraftId,
       scheduledDate,
       departureTime,
+      arrivalDate,
+      arrivalTime,
       status: 'scheduled'
     });
 
@@ -192,6 +285,165 @@ router.post('/flight', async (req, res) => {
     res.status(201).json(completeFlightData);
   } catch (error) {
     console.error('Error creating scheduled flight:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/schedule/flights/batch
+ * Create multiple scheduled flights at once (for weekly scheduling)
+ * Much faster than making individual requests
+ */
+router.post('/flights/batch', async (req, res) => {
+  try {
+    const { routeId, aircraftId, flights } = req.body;
+    // flights is an array of { scheduledDate, departureTime }
+
+    if (!flights || !Array.isArray(flights) || flights.length === 0) {
+      return res.status(400).json({ error: 'No flights provided' });
+    }
+
+    if (flights.length > 14) {
+      return res.status(400).json({ error: 'Maximum 14 flights per batch' });
+    }
+
+    // Get active world from session
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership (validate once)
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const worldMembershipId = membership.id;
+
+    // Validate route belongs to user's world (validate once)
+    const route = await Route.findOne({
+      where: {
+        id: routeId,
+        worldMembershipId: worldMembershipId
+      }
+    });
+
+    if (!route) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+
+    // Validate aircraft belongs to user's world (validate once)
+    const aircraft = await UserAircraft.findOne({
+      where: {
+        id: aircraftId,
+        worldMembershipId: worldMembershipId
+      },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    const cruiseSpeed = aircraft.aircraft?.cruiseSpeed;
+
+    // Check for conflicts for all flights at once
+    const scheduleDates = flights.map(f => f.scheduledDate);
+    const existingFlights = await ScheduledFlight.findAll({
+      where: {
+        aircraftId,
+        scheduledDate: { [Op.in]: scheduleDates }
+      }
+    });
+
+    // Build a set of existing date+time combinations
+    const existingSlots = new Set(
+      existingFlights.map(f => `${f.scheduledDate}_${f.departureTime}`)
+    );
+
+    // Filter out conflicting flights and prepare batch data
+    const flightsToCreate = [];
+    const conflicts = [];
+
+    for (const flight of flights) {
+      const slotKey = `${flight.scheduledDate}_${flight.departureTime}`;
+      if (existingSlots.has(slotKey)) {
+        conflicts.push(flight.scheduledDate);
+      } else {
+        // Calculate arrival date and time
+        const { arrivalDate, arrivalTime } = calculateArrivalDateTime(
+          flight.scheduledDate,
+          flight.departureTime,
+          route,
+          cruiseSpeed
+        );
+
+        flightsToCreate.push({
+          routeId,
+          aircraftId,
+          scheduledDate: flight.scheduledDate,
+          departureTime: flight.departureTime,
+          arrivalDate,
+          arrivalTime,
+          status: 'scheduled'
+        });
+      }
+    }
+
+    if (flightsToCreate.length === 0) {
+      return res.status(409).json({
+        error: 'All flights conflict with existing schedule',
+        conflicts
+      });
+    }
+
+    // Bulk create all flights at once
+    const createdFlights = await ScheduledFlight.bulkCreate(flightsToCreate);
+
+    // Fetch complete flight data for all created flights
+    const completeFlightData = await ScheduledFlight.findAll({
+      where: {
+        id: { [Op.in]: createdFlights.map(f => f.id) }
+      },
+      include: [
+        {
+          model: Route,
+          as: 'route',
+          include: [
+            { model: Airport, as: 'departureAirport' },
+            { model: Airport, as: 'arrivalAirport' },
+            { model: Airport, as: 'techStopAirport' }
+          ]
+        },
+        {
+          model: UserAircraft,
+          as: 'aircraft',
+          include: [
+            { model: Aircraft, as: 'aircraft' }
+          ]
+        }
+      ]
+    });
+
+    res.status(201).json({
+      created: completeFlightData,
+      conflicts: conflicts.length > 0 ? conflicts : undefined
+    });
+  } catch (error) {
+    console.error('Error batch creating scheduled flights:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -692,6 +944,203 @@ router.delete('/maintenance/:id', async (req, res) => {
     res.json({ message: 'Recurring maintenance pattern deleted successfully' });
   } catch (error) {
     console.error('Error deleting recurring maintenance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/schedule/active
+ * Fetch all currently active (in_progress) flights for the world map
+ */
+router.get('/active', async (req, res) => {
+  try {
+    // Get active world from session
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const worldMembershipId = membership.id;
+
+    // Fetch flights with status 'in_progress'
+    const activeFlights = await ScheduledFlight.findAll({
+      where: {
+        status: 'in_progress'
+      },
+      include: [
+        {
+          model: Route,
+          as: 'route',
+          required: true,
+          where: {
+            worldMembershipId: worldMembershipId
+          },
+          include: [
+            {
+              model: Airport,
+              as: 'departureAirport',
+              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+            },
+            {
+              model: Airport,
+              as: 'arrivalAirport',
+              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+            },
+            {
+              model: Airport,
+              as: 'techStopAirport',
+              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+            }
+          ]
+        },
+        {
+          model: UserAircraft,
+          as: 'aircraft',
+          include: [
+            {
+              model: Aircraft,
+              as: 'aircraft'
+            }
+          ]
+        }
+      ],
+      order: [
+        ['scheduledDate', 'ASC'],
+        ['departureTime', 'ASC']
+      ]
+    });
+
+    // Transform data for the map
+    const flights = activeFlights.map(flight => ({
+      id: flight.id,
+      scheduledDate: flight.scheduledDate,
+      departureTime: flight.departureTime,
+      arrivalTime: flight.arrivalTime,
+      arrivalDate: flight.arrivalDate,
+      status: flight.status,
+      route: {
+        id: flight.route.id,
+        routeNumber: flight.route.routeNumber,
+        returnRouteNumber: flight.route.returnRouteNumber,
+        distance: flight.route.distance,
+        turnaroundTime: flight.route.turnaroundTime || 45,
+        techStopAirport: flight.route.techStopAirport || null,
+        demand: flight.route.demand || 0,
+        averageLoadFactor: parseFloat(flight.route.averageLoadFactor) || 0
+      },
+      departureAirport: flight.route.departureAirport,
+      arrivalAirport: flight.route.arrivalAirport,
+      aircraft: flight.aircraft ? {
+        id: flight.aircraft.id,
+        registration: flight.aircraft.registration,
+        aircraftType: flight.aircraft.aircraft,
+        passengerCapacity: flight.aircraft.aircraft?.passengerCapacity || 0
+      } : null
+    }));
+
+    res.json({ flights });
+  } catch (error) {
+    console.error('Error fetching active flights:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/schedule/clear-all
+ * Clear all scheduled flights and maintenance for the specified aircraft
+ * Only clears schedules for aircraft owned by the user in the current world
+ */
+router.post('/clear-all', async (req, res) => {
+  try {
+    const { aircraftIds } = req.body;
+
+    if (!aircraftIds || !Array.isArray(aircraftIds) || aircraftIds.length === 0) {
+      return res.status(400).json({ error: 'Aircraft IDs are required' });
+    }
+
+    // Get active world from session
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const worldMembershipId = membership.id;
+
+    // Verify all aircraft belong to this user's membership
+    const ownedAircraft = await UserAircraft.findAll({
+      where: {
+        id: { [Op.in]: aircraftIds },
+        worldMembershipId: worldMembershipId
+      },
+      attributes: ['id']
+    });
+
+    const ownedAircraftIds = ownedAircraft.map(a => a.id);
+
+    if (ownedAircraftIds.length === 0) {
+      return res.status(400).json({ error: 'No valid aircraft found to clear' });
+    }
+
+    // Delete all scheduled flights for these aircraft
+    const flightsDeleted = await ScheduledFlight.destroy({
+      where: {
+        aircraftId: { [Op.in]: ownedAircraftIds }
+      }
+    });
+
+    // Delete all recurring maintenance for these aircraft
+    const maintenanceDeleted = await RecurringMaintenance.destroy({
+      where: {
+        aircraftId: { [Op.in]: ownedAircraftIds }
+      }
+    });
+
+    console.log(`Cleared schedules: ${flightsDeleted} flights, ${maintenanceDeleted} maintenance for ${ownedAircraftIds.length} aircraft`);
+
+    res.json({
+      message: 'Schedules cleared successfully',
+      flightsDeleted,
+      maintenanceDeleted,
+      aircraftCount: ownedAircraftIds.length
+    });
+  } catch (error) {
+    console.error('Error clearing schedules:', error);
     res.status(500).json({ error: error.message });
   }
 });

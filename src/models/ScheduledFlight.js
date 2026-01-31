@@ -41,6 +41,18 @@ const ScheduledFlight = sequelize.define('ScheduledFlight', {
     field: 'departure_time',
     comment: 'Scheduled departure time'
   },
+  arrivalDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    field: 'arrival_date',
+    comment: 'Date of arrival (may be different from departure date for overnight flights)'
+  },
+  arrivalTime: {
+    type: DataTypes.TIME,
+    allowNull: true,
+    field: 'arrival_time',
+    comment: 'Scheduled arrival time'
+  },
   status: {
     type: DataTypes.ENUM('scheduled', 'in_progress', 'completed', 'cancelled'),
     defaultValue: 'scheduled',
@@ -60,6 +72,9 @@ const ScheduledFlight = sequelize.define('ScheduledFlight', {
     },
     {
       fields: ['scheduled_date']
+    },
+    {
+      fields: ['arrival_date']
     },
     {
       unique: true,
