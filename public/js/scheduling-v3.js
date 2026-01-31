@@ -2087,25 +2087,30 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
 
   // Actions column (sticky right)
   html += `
-    <td style="padding: 0.5rem 0.5rem 0.5rem 0.75rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle;">
+    <td style="padding: 0.5rem 0.6rem 0.5rem 0.75rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle;">
       <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
         <button
           onclick="event.stopPropagation(); addRouteToAircraft('${aircraft.id}')"
           title="Add Route"
           style="
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             padding: 0;
-            background: transparent;
-            border: none;
-            color: #22c55e;
-            font-size: 1.2rem;
+            background: var(--primary-color);
+            border: 1px solid var(--accent-color);
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
             cursor: pointer;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: all 0.2s;
           "
-        >➜</button>
+          onmouseover="this.style.background='var(--accent-color)'"
+          onmouseout="this.style.background='var(--primary-color)'"
+        >+</button>
         <button
           onclick="event.stopPropagation(); scheduleMaintenance('${aircraft.id}')"
           title="Schedule Maintenance"
@@ -2127,6 +2132,28 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           onmouseover="this.style.borderColor='var(--primary-color)'; this.style.color='var(--text-primary)'"
           onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
         >⚙</button>
+        <button
+          onclick="event.stopPropagation(); clearWeekSchedule('${aircraft.id}')"
+          title="Clear Week Schedule"
+          style="
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+          "
+          onmouseover="this.style.borderColor='#dc3545'; this.style.color='#dc3545'"
+          onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
+        >✖</button>
       </div>
     </td>
   `;
@@ -2339,8 +2366,8 @@ function generateAircraftRow(aircraft, timeColumns) {
           onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
         >⚙</button>
         <button
-          onclick="clearSchedule('${aircraft.id}')"
-          title="Clear Schedule"
+          onclick="clearDaySchedule('${aircraft.id}')"
+          title="Clear Day Schedule"
           style="
             width: 28px;
             height: 28px;
@@ -3142,6 +3169,112 @@ async function clearSchedule(aircraftId) {
   } catch (error) {
     console.error('Error clearing schedule:', error);
     await showAlertModal('Error', error.message);
+  }
+}
+
+// Clear all scheduled flights for an aircraft on the selected day
+async function clearDaySchedule(aircraftId) {
+  const aircraft = userFleet.find(a => a.id === aircraftId);
+  if (!aircraft) return;
+
+  // Get flights for this aircraft on the selected day
+  const dayFlights = scheduledFlights.filter(f => {
+    if (f.aircraft?.id !== aircraftId) return false;
+    if (!f.scheduledDate) return false;
+    const flightDate = new Date(f.scheduledDate + 'T00:00:00');
+    return flightDate.getDay() === selectedDayOfWeek;
+  });
+
+  // Get maintenance for this aircraft on the selected day
+  const dayMaint = scheduledMaintenance.filter(m => {
+    if (m.aircraft?.id !== aircraftId) return false;
+    if (!m.scheduledDate) return false;
+    const maintDate = new Date(m.scheduledDate + 'T00:00:00');
+    return maintDate.getDay() === selectedDayOfWeek;
+  });
+
+  const totalItems = dayFlights.length + dayMaint.length;
+
+  if (totalItems === 0) {
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    await showAlertModal('No Schedule', `${aircraft.registration} has no flights or maintenance scheduled for ${dayNames[selectedDayOfWeek]}.`);
+    return;
+  }
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const confirmed = await showConfirmModal(
+    'Clear Day Schedule',
+    `Clear all scheduled items for ${aircraft.registration} on ${dayNames[selectedDayOfWeek]}?\n\nThis will delete:\n• ${dayFlights.length} flight(s)\n• ${dayMaint.length} maintenance check(s)\n\nThis action cannot be undone.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    showLoadingModal('Clearing Schedule', `Removing ${totalItems} item(s)...`);
+
+    // Delete flights
+    for (const flight of dayFlights) {
+      await fetch(`/api/schedule/flight/${flight.id}`, { method: 'DELETE' });
+    }
+
+    // Delete maintenance
+    for (const maint of dayMaint) {
+      await fetch(`/api/schedule/maintenance/${maint.id}`, { method: 'DELETE' });
+    }
+
+    await loadSchedule();
+    closeLoadingModal();
+  } catch (error) {
+    closeLoadingModal();
+    console.error('Error clearing day schedule:', error);
+    await showAlertModal('Error', 'Failed to clear schedule. Please try again.');
+  }
+}
+
+// Clear all scheduled flights for an aircraft for the entire week
+async function clearWeekSchedule(aircraftId) {
+  const aircraft = userFleet.find(a => a.id === aircraftId);
+  if (!aircraft) return;
+
+  // Get all flights for this aircraft in the current week data
+  const weekFlights = scheduledFlights.filter(f => f.aircraft?.id === aircraftId);
+
+  // Get all maintenance for this aircraft in the current week data
+  const weekMaint = scheduledMaintenance.filter(m => m.aircraft?.id === aircraftId);
+
+  const totalItems = weekFlights.length + weekMaint.length;
+
+  if (totalItems === 0) {
+    await showAlertModal('No Schedule', `${aircraft.registration} has no flights or maintenance scheduled this week.`);
+    return;
+  }
+
+  const confirmed = await showConfirmModal(
+    'Clear Week Schedule',
+    `Clear ALL scheduled items for ${aircraft.registration} this week?\n\nThis will delete:\n• ${weekFlights.length} flight(s)\n• ${weekMaint.length} maintenance check(s)\n\nThis action cannot be undone.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    showLoadingModal('Clearing Week Schedule', `Removing ${totalItems} item(s)...`);
+
+    // Delete flights
+    for (const flight of weekFlights) {
+      await fetch(`/api/schedule/flight/${flight.id}`, { method: 'DELETE' });
+    }
+
+    // Delete maintenance
+    for (const maint of weekMaint) {
+      await fetch(`/api/schedule/maintenance/${maint.id}`, { method: 'DELETE' });
+    }
+
+    await loadSchedule();
+    closeLoadingModal();
+  } catch (error) {
+    closeLoadingModal();
+    console.error('Error clearing week schedule:', error);
+    await showAlertModal('Error', 'Failed to clear schedule. Please try again.');
   }
 }
 
