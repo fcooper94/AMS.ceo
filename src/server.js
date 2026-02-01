@@ -290,6 +290,15 @@ app.get('/fleet', requireWorld, async (req, res) => {
   }
 });
 
+app.get('/maintenance', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/maintenance.html'), '/maintenance');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
 app.get('/finances', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/finances.html'), '/finances');

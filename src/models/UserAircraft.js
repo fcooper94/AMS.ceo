@@ -113,6 +113,31 @@ const UserAircraft = sequelize.define('UserAircraft', {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
     field: 'acquired_at'
+  },
+  // Maintenance check dates (timestamps to track exact time)
+  lastACheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_a_check_date',
+    comment: 'Daily check - valid until midnight of next day (UTC)'
+  },
+  lastBCheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_b_check_date',
+    comment: 'Weekly check - valid for 7 days'
+  },
+  lastCCheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_c_check_date',
+    comment: 'C Check - reserved for future use'
+  },
+  lastDCheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_d_check_date',
+    comment: 'D Check - reserved for future use'
   }
 }, {
   tableName: 'user_aircraft',

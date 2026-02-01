@@ -1,4 +1,6 @@
 let allRoutes = [];
+let filteredRoutes = [];
+let selectedRouteIds = new Set();
 
 // Format days of week for display
 function formatDaysOfWeek(daysArray) {
@@ -75,6 +77,12 @@ function populateAircraftTypeFilter(routes) {
 // Display all routes in a table
 function displayAllRoutes(routes) {
   const container = document.getElementById('routesTable');
+  filteredRoutes = routes;
+
+  // Clear selections that are no longer in the filtered list
+  const filteredIds = new Set(routes.map(r => r.id));
+  selectedRouteIds = new Set([...selectedRouteIds].filter(id => filteredIds.has(id)));
+  updateBulkActionBar();
 
   if (routes.length === 0) {
     container.innerHTML = `
@@ -88,10 +96,15 @@ function displayAllRoutes(routes) {
     return;
   }
 
+  const allSelected = routes.length > 0 && routes.every(r => selectedRouteIds.has(r.id));
+
   const tableHtml = `
     <table style="width: 100%; border-collapse: collapse;">
       <thead>
         <tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color);">
+          <th style="padding: 1rem; text-align: center; width: 50px;">
+            <input type="checkbox" id="selectAllRoutes" onchange="toggleSelectAll(this.checked)" ${allSelected ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-color);" title="Select all routes" />
+          </th>
           <th style="padding: 1rem; text-align: left; color: var(--text-secondary); font-weight: 600;">ROUTE</th>
           <th style="padding: 1rem; text-align: left; color: var(--text-secondary); font-weight: 600; white-space: nowrap;">FROM → TO</th>
           <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">OPERATING DAYS</th>
@@ -107,9 +120,13 @@ function displayAllRoutes(routes) {
           const profitColor = profit >= 0 ? 'var(--success-color)' : 'var(--warning-color)';
           const statusColor = route.isActive ? 'var(--success-color)' : 'var(--text-muted)';
           const statusText = route.isActive ? 'ACTIVE' : 'INACTIVE';
+          const isSelected = selectedRouteIds.has(route.id);
 
           return `
-            <tr style="border-bottom: 1px solid var(--border-color);">
+            <tr style="border-bottom: 1px solid var(--border-color); ${isSelected ? 'background: rgba(var(--accent-color-rgb, 59, 130, 246), 0.1);' : ''}">
+              <td style="padding: 1rem; text-align: center;">
+                <input type="checkbox" class="route-checkbox" data-route-id="${route.id}" onchange="toggleRouteSelection('${route.id}', this.checked)" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-color);" />
+              </td>
               <td style="padding: 1rem; color: var(--accent-color); font-weight: 600; white-space: nowrap;">
                 ${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}
               </td>
@@ -153,6 +170,110 @@ function displayAllRoutes(routes) {
   `;
 
   container.innerHTML = tableHtml;
+}
+
+// Toggle select all routes
+function toggleSelectAll(checked) {
+  if (checked) {
+    filteredRoutes.forEach(route => selectedRouteIds.add(route.id));
+  } else {
+    filteredRoutes.forEach(route => selectedRouteIds.delete(route.id));
+  }
+  displayAllRoutes(filteredRoutes);
+}
+
+// Toggle individual route selection
+function toggleRouteSelection(routeId, checked) {
+  if (checked) {
+    selectedRouteIds.add(routeId);
+  } else {
+    selectedRouteIds.delete(routeId);
+  }
+  updateSelectAllCheckbox();
+  updateBulkActionBar();
+}
+
+// Update select all checkbox state
+function updateSelectAllCheckbox() {
+  const selectAllCheckbox = document.getElementById('selectAllRoutes');
+  if (selectAllCheckbox && filteredRoutes.length > 0) {
+    const allSelected = filteredRoutes.every(r => selectedRouteIds.has(r.id));
+    selectAllCheckbox.checked = allSelected;
+  }
+}
+
+// Update bulk action bar visibility and count
+function updateBulkActionBar() {
+  const bulkActionBar = document.getElementById('bulkActionBar');
+  const selectedCount = document.getElementById('selectedCount');
+
+  if (!bulkActionBar) return;
+
+  if (selectedRouteIds.size > 0) {
+    bulkActionBar.style.display = 'flex';
+    selectedCount.textContent = selectedRouteIds.size;
+  } else {
+    bulkActionBar.style.display = 'none';
+  }
+}
+
+// Clear all selections
+function clearSelection() {
+  selectedRouteIds.clear();
+  displayAllRoutes(filteredRoutes);
+}
+
+// Show bulk delete modal
+function showBulkDeleteModal() {
+  if (selectedRouteIds.size === 0) return;
+
+  const modal = document.getElementById('bulkDeleteModal');
+  const message = document.getElementById('bulkDeleteModalMessage');
+  const count = selectedRouteIds.size;
+
+  message.textContent = `Are you sure you want to delete ${count} route${count > 1 ? 's' : ''}?`;
+  modal.style.display = 'flex';
+}
+
+// Close bulk delete modal
+function closeBulkDeleteModal() {
+  document.getElementById('bulkDeleteModal').style.display = 'none';
+}
+
+// Confirm and execute bulk delete
+async function confirmBulkDelete() {
+  if (selectedRouteIds.size === 0) return;
+
+  const routeIds = Array.from(selectedRouteIds);
+  const count = routeIds.length;
+
+  closeBulkDeleteModal();
+
+  try {
+    const response = await fetch('/api/routes/bulk', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ routeIds })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to delete routes');
+    }
+
+    // Clear selections and reload routes
+    selectedRouteIds.clear();
+    await loadAllRoutes();
+
+    // Show success banner
+    showSuccessBanner('bulk_deleted', `${data.deletedCount} route${data.deletedCount > 1 ? 's' : ''}`);
+  } catch (error) {
+    console.error('Error bulk deleting routes:', error);
+    alert(`Error: ${error.message}`);
+  }
 }
 
 // Filter routes based on search input and aircraft type
@@ -237,7 +358,7 @@ function deleteRoute(routeId) {
   // Show modal
   const modal = document.getElementById('deleteModal');
   const message = document.getElementById('deleteModalMessage');
-  message.textContent = `Are you sure you want to delete route ${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}? This action cannot be undone.`;
+  message.textContent = `Are you sure you want to delete route ${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}?`;
   modal.style.display = 'flex';
 }
 
@@ -304,6 +425,9 @@ function showSuccessBanner(type = null, route = null) {
     link = `<a href="/scheduling" style="color: var(--success-color); text-decoration: underline; margin-left: 1rem;">Assign it on the scheduling page</a>`;
   } else if (type === 'deleted') {
     message = `✓ Route ${routeNumber} deleted successfully!`;
+    link = '';
+  } else if (type === 'bulk_deleted') {
+    message = `✓ ${routeNumber} deleted successfully!`;
     link = '';
   }
 

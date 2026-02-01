@@ -33,10 +33,22 @@
         <span class="nav-text">World Map</span>
       </a>
     </li>
-    <li class="nav-item" data-path="/fleet">
-      <a href="/fleet">
+    <li class="nav-item parent" data-path="/fleet,/maintenance">
+      <a href="#" onclick="return false;">
         <span class="nav-text">Fleet Management</span>
       </a>
+      <ul class="nav-submenu">
+        <li class="nav-item" data-path="/fleet">
+          <a href="/fleet">
+            <span class="nav-text">My Fleet</span>
+          </a>
+        </li>
+        <li class="nav-item" data-path="/maintenance">
+          <a href="/maintenance">
+            <span class="nav-text">Aircraft Maintenance</span>
+          </a>
+        </li>
+      </ul>
     </li>
     <li class="nav-item" data-path="/finances">
       <a href="/finances">

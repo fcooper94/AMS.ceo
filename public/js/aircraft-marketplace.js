@@ -453,9 +453,62 @@ function processPurchase() {
   );
 }
 
+// Show processing/ordering overlay
+function showProcessingOverlay(actionType = 'order') {
+  // Remove any existing processing overlay
+  hideProcessingOverlay();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'processingOverlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 3000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  `;
+
+  const actionText = actionType === 'lease' ? 'Leasing' : 'Purchasing';
+  const icon = actionType === 'lease' ? '📋' : '🛒';
+
+  overlay.innerHTML = `
+    <div style="background: var(--surface); border: 1px solid var(--accent-color); border-radius: 8px; padding: 3rem; width: 90%; max-width: 400px; text-align: center;">
+      <div style="margin-bottom: 1.5rem;">
+        <div class="processing-spinner" style="width: 60px; height: 60px; border: 4px solid var(--border-color); border-top-color: var(--accent-color); border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
+      </div>
+      <h2 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1.3rem;">${actionText} Aircraft</h2>
+      <p style="margin: 0; color: var(--text-secondary); font-size: 0.95rem;">Processing your order, please wait...</p>
+      <p style="margin: 1rem 0 0 0; color: var(--text-muted); font-size: 0.8rem;">This may take a few seconds</p>
+    </div>
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+// Hide processing overlay
+function hideProcessingOverlay() {
+  const existing = document.getElementById('processingOverlay');
+  if (existing) {
+    existing.remove();
+  }
+}
+
 // Actually process the purchase after confirmation
 async function confirmPurchase(registration) {
   if (!selectedAircraft) return;
+
+  // Show processing overlay
+  showProcessingOverlay('purchase');
 
   try {
     const conditionPercent = selectedAircraft.conditionPercentage || (selectedAircraft.condition === 'New' ? 100 : 70);
@@ -484,6 +537,9 @@ async function confirmPurchase(registration) {
 
     const data = await response.json();
 
+    // Hide processing overlay
+    hideProcessingOverlay();
+
     if (response.ok) {
       // Show success message
       showSuccessMessage(`Aircraft purchased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
@@ -497,6 +553,7 @@ async function confirmPurchase(registration) {
     }
   } catch (error) {
     console.error('Error purchasing aircraft:', error);
+    hideProcessingOverlay();
     showErrorMessage('Failed to purchase aircraft. Please try again.');
   }
 }
@@ -541,12 +598,12 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
           <input
             type="text"
             id="registrationSuffix"
-            placeholder="${registrationPrefix === 'N-' ? '12345' : 'ABCD'}"
-            maxlength="6"
-            style="flex: 1; padding: 0.75rem; background: transparent; border: none; color: var(--text-primary); font-size: 1rem; outline: none;"
+            placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
+            maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
+            style="flex: 1; padding: 0.75rem; background: transparent; border: none; color: var(--text-primary); font-size: 1rem; outline: none; text-transform: uppercase;"
           />
         </div>
-        <div style="margin-top: 0.25rem; color: var(--text-muted); font-size: 0.8rem;">Based on ${baseCountry || 'your base location'}</div>
+        <div id="registrationHint" style="margin-top: 0.25rem; color: var(--text-muted); font-size: 0.8rem;">${typeof getRegistrationHint === 'function' ? getRegistrationHint(registrationPrefix, baseCountry) : `Based on ${baseCountry || 'your base location'}`}</div>
         <div id="registrationError" style="margin-top: 0.5rem; color: var(--warning-color); font-size: 0.85rem; display: none;"></div>
       </div>
 
@@ -568,6 +625,17 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
   function validateRegistration(suffix) {
     const trimmedSuffix = suffix.trim().toUpperCase();
 
+    // Use country-specific validation if available
+    if (typeof validateRegistrationSuffix === 'function') {
+      const validation = validateRegistrationSuffix(trimmedSuffix, registrationPrefix);
+      if (!validation.valid) {
+        return validation;
+      }
+      // Combine prefix and suffix
+      return { valid: true, value: registrationPrefix + validation.value };
+    }
+
+    // Fallback validation if country-specific rules not available
     if (trimmedSuffix.length < 1) {
       return { valid: false, message: 'Please enter a registration suffix' };
     }
@@ -651,6 +719,9 @@ function processLease() {
 async function confirmLease(registration) {
   if (!selectedAircraft) return;
 
+  // Show processing overlay
+  showProcessingOverlay('lease');
+
   try {
     const conditionPercent = selectedAircraft.conditionPercentage || (selectedAircraft.condition === 'New' ? 100 : 70);
     const ageYears = selectedAircraft.age || 0;
@@ -680,6 +751,9 @@ async function confirmLease(registration) {
 
     const data = await response.json();
 
+    // Hide processing overlay
+    hideProcessingOverlay();
+
     if (response.ok) {
       // Show success message
       showSuccessMessage(`Aircraft leased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
@@ -693,6 +767,7 @@ async function confirmLease(registration) {
     }
   } catch (error) {
     console.error('Error leasing aircraft:', error);
+    hideProcessingOverlay();
     showErrorMessage('Failed to lease aircraft. Please try again.');
   }
 }

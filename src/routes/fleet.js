@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance } = require('../models');
+const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
 
 /**
  * Get user's fleet for current world
@@ -30,19 +32,13 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
 
-    // Get fleet with recurring maintenance patterns
+    // Get fleet
     const fleet = await UserAircraft.findAll({
       where: { worldMembershipId: membership.id },
       include: [
         {
           model: Aircraft,
           as: 'aircraft'
-        },
-        {
-          model: RecurringMaintenance,
-          as: 'recurringMaintenance',
-          where: { status: 'active' },
-          required: false
         }
       ],
       order: [['acquiredAt', 'DESC']]
@@ -117,31 +113,48 @@ router.post('/purchase', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Validate registration format (alphanumeric, starts with letter, 3-10 chars)
+    // Get base airport to determine country for registration validation
+    let baseAirportCode = null;
+    let baseCountry = null;
+    if (membership.baseAirportId) {
+      const baseAirport = await Airport.findByPk(membership.baseAirportId);
+      if (baseAirport) {
+        baseAirportCode = baseAirport.icaoCode;
+        baseCountry = baseAirport.country;
+      }
+    }
+
+    // Validate registration format
     const registrationUpper = registration.trim().toUpperCase();
+
+    // Basic validation
     if (registrationUpper.length < 3 || registrationUpper.length > 10) {
       return res.status(400).json({ error: 'Registration must be between 3 and 10 characters' });
     }
-    if (!/^[A-Z]/.test(registrationUpper)) {
-      return res.status(400).json({ error: 'Registration must start with a letter' });
+    if (!/^[A-Z0-9]/.test(registrationUpper)) {
+      return res.status(400).json({ error: 'Registration must start with a letter or number' });
     }
     if (!/^[A-Z0-9-]+$/.test(registrationUpper)) {
       return res.status(400).json({ error: 'Registration can only contain letters, numbers, and hyphens' });
+    }
+
+    // Country-specific validation if we know the base country
+    if (baseCountry) {
+      const prefix = getRegistrationPrefix(baseCountry);
+      if (registrationUpper.startsWith(prefix.replace('-', ''))) {
+        // Extract suffix (part after prefix)
+        const suffix = registrationUpper.substring(prefix.length);
+        const validation = validateRegistrationSuffix(suffix, prefix);
+        if (!validation.valid) {
+          return res.status(400).json({ error: validation.message });
+        }
+      }
     }
 
     // Check if registration is already in use
     const existingAircraft = await UserAircraft.findOne({ where: { registration: registrationUpper } });
     if (existingAircraft) {
       return res.status(400).json({ error: 'Registration already in use' });
-    }
-
-    // Get base airport ICAO code
-    let baseAirportCode = null;
-    if (membership.baseAirportId) {
-      const baseAirport = await Airport.findByPk(membership.baseAirportId);
-      if (baseAirport) {
-        baseAirportCode = baseAirport.icaoCode;
-      }
     }
 
     // Create user aircraft
@@ -248,31 +261,48 @@ router.post('/lease', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Validate registration format (alphanumeric, starts with letter, 3-10 chars)
+    // Get base airport to determine country for registration validation
+    let baseAirportCode = null;
+    let baseCountry = null;
+    if (membership.baseAirportId) {
+      const baseAirport = await Airport.findByPk(membership.baseAirportId);
+      if (baseAirport) {
+        baseAirportCode = baseAirport.icaoCode;
+        baseCountry = baseAirport.country;
+      }
+    }
+
+    // Validate registration format
     const registrationUpper = registration.trim().toUpperCase();
+
+    // Basic validation
     if (registrationUpper.length < 3 || registrationUpper.length > 10) {
       return res.status(400).json({ error: 'Registration must be between 3 and 10 characters' });
     }
-    if (!/^[A-Z]/.test(registrationUpper)) {
-      return res.status(400).json({ error: 'Registration must start with a letter' });
+    if (!/^[A-Z0-9]/.test(registrationUpper)) {
+      return res.status(400).json({ error: 'Registration must start with a letter or number' });
     }
     if (!/^[A-Z0-9-]+$/.test(registrationUpper)) {
       return res.status(400).json({ error: 'Registration can only contain letters, numbers, and hyphens' });
+    }
+
+    // Country-specific validation if we know the base country
+    if (baseCountry) {
+      const prefix = getRegistrationPrefix(baseCountry);
+      if (registrationUpper.startsWith(prefix.replace('-', ''))) {
+        // Extract suffix (part after prefix)
+        const suffix = registrationUpper.substring(prefix.length);
+        const validation = validateRegistrationSuffix(suffix, prefix);
+        if (!validation.valid) {
+          return res.status(400).json({ error: validation.message });
+        }
+      }
     }
 
     // Check if registration is already in use
     const existingAircraft = await UserAircraft.findOne({ where: { registration: registrationUpper } });
     if (existingAircraft) {
       return res.status(400).json({ error: 'Registration already in use' });
-    }
-
-    // Get base airport ICAO code
-    let baseAirportCode = null;
-    if (membership.baseAirportId) {
-      const baseAirport = await Airport.findByPk(membership.baseAirportId);
-      if (baseAirport) {
-        baseAirportCode = baseAirport.icaoCode;
-      }
     }
 
     const now = new Date();
@@ -322,6 +352,120 @@ router.post('/lease', async (req, res) => {
       error: 'Failed to lease aircraft',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+/**
+ * Get maintenance status for all aircraft
+ */
+router.get('/maintenance', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Get fleet with maintenance check dates
+    const fleet = await UserAircraft.findAll({
+      where: { worldMembershipId: membership.id },
+      include: [
+        {
+          model: Aircraft,
+          as: 'aircraft'
+        }
+      ],
+      order: [['registration', 'ASC']]
+    });
+
+    res.json(fleet);
+  } catch (error) {
+    console.error('Error fetching maintenance data:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance data' });
+  }
+});
+
+/**
+ * Record a maintenance check
+ */
+router.post('/maintenance/:aircraftId/check', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { aircraftId } = req.params;
+    const { checkType } = req.body;
+
+    if (!['A', 'B', 'C', 'D'].includes(checkType)) {
+      return res.status(400).json({ error: 'Invalid check type' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Find the aircraft and verify ownership
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id }
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Update the appropriate check date
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    const updateField = {
+      'A': 'lastACheckDate',
+      'B': 'lastBCheckDate',
+      'C': 'lastCCheckDate',
+      'D': 'lastDCheckDate'
+    }[checkType];
+
+    await aircraft.update({ [updateField]: today });
+
+    res.json({
+      message: `${checkType} Check recorded successfully`,
+      checkDate: today,
+      aircraft: aircraft
+    });
+  } catch (error) {
+    console.error('Error recording maintenance check:', error);
+    res.status(500).json({ error: 'Failed to record maintenance check' });
   }
 });
 

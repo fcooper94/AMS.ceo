@@ -1,5 +1,5 @@
 const World = require('../models/World');
-const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft } = require('../models');
+const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, RecurringMaintenance } = require('../models');
 const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 
@@ -14,10 +14,13 @@ class WorldTimeService {
     // Throttle heavy DB queries to reduce load on remote databases
     this.lastCreditCheck = 0; // Timestamp of last credit check
     this.lastFlightCheck = 0; // Timestamp of last flight check
+    this.lastMaintenanceCheck = 0; // Timestamp of last maintenance check
     this.creditCheckInterval = 30000; // Check credits every 30 seconds (real time)
     this.flightCheckInterval = 5000; // Check flights every 5 seconds (real time)
+    this.maintenanceCheckInterval = 10000; // Check maintenance every 10 seconds (real time)
     this.isProcessingCredits = false; // Prevent overlapping credit queries
     this.isProcessingFlights = false; // Prevent overlapping flight queries
+    this.isProcessingMaintenance = false; // Prevent overlapping maintenance queries
   }
 
   /**
@@ -256,6 +259,15 @@ class WorldTimeService {
         .catch(err => console.error('Error processing flights:', err.message))
         .finally(() => { this.isProcessingFlights = false; });
     }
+
+    // Process maintenance checks (throttled to reduce DB load)
+    if (!this.isProcessingMaintenance && now - this.lastMaintenanceCheck >= this.maintenanceCheckInterval) {
+      this.lastMaintenanceCheck = now;
+      this.isProcessingMaintenance = true;
+      this.processMaintenance(worldId, gameTime)
+        .catch(err => console.error('Error processing maintenance:', err.message))
+        .finally(() => { this.isProcessingMaintenance = false; });
+    }
   }
 
   /**
@@ -393,7 +405,8 @@ class WorldTimeService {
           where: { worldMembershipId: { [Op.in]: membershipIds } },
           include: [
             { model: require('../models/Airport'), as: 'departureAirport' },
-            { model: require('../models/Airport'), as: 'arrivalAirport' }
+            { model: require('../models/Airport'), as: 'arrivalAirport' },
+            { model: require('../models/Airport'), as: 'techStopAirport' }
           ]
         }, {
           model: UserAircraft,
@@ -413,18 +426,45 @@ class WorldTimeService {
         const distanceNm = parseFloat(flight.route.distance) || 500;
         const cruiseSpeed = flight.aircraft?.aircraft?.cruiseSpeed || 450; // knots
 
-        // Outbound: departure -> arrival (with wind effect)
-        const outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
-
-        // Return: arrival -> departure (opposite wind effect)
-        const returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, cruiseSpeed);
-
         // Get turnaround time (default 45 minutes)
         const turnaroundMinutes = flight.route.turnaroundTime || 45;
         const turnaroundMs = turnaroundMinutes * 60 * 1000;
 
-        // Calculate total round-trip duration: outbound + turnaround + return
-        const totalFlightMs = outboundFlightMs + turnaroundMs + returnFlightMs;
+        let totalFlightMs;
+
+        // Check if route has a tech stop
+        if (flight.route.techStopAirport) {
+          const techLat = parseFloat(flight.route.techStopAirport.latitude) || 0;
+          const techLng = parseFloat(flight.route.techStopAirport.longitude) || 0;
+
+          // Calculate leg distances (approximate split)
+          const leg1Distance = flight.route.legOneDistance || Math.round(distanceNm * 0.4);
+          const leg2Distance = flight.route.legTwoDistance || Math.round(distanceNm * 0.6);
+
+          const techStopMs = 30 * 60 * 1000; // 30 min tech stop
+
+          // Leg 1: DEP → TECH
+          const leg1Ms = calculateFlightDurationMs(leg1Distance, depLng, techLng, depLat, techLat, cruiseSpeed);
+          // Leg 2: TECH → ARR
+          const leg2Ms = calculateFlightDurationMs(leg2Distance, techLng, arrLng, techLat, arrLat, cruiseSpeed);
+          // Leg 3: ARR → TECH (return)
+          const leg3Ms = calculateFlightDurationMs(leg2Distance, arrLng, techLng, arrLat, techLat, cruiseSpeed);
+          // Leg 4: TECH → DEP (return)
+          const leg4Ms = calculateFlightDurationMs(leg1Distance, techLng, depLng, techLat, depLat, cruiseSpeed);
+
+          // Total: leg1 + techStop + leg2 + turnaround + leg3 + techStop + leg4
+          totalFlightMs = leg1Ms + techStopMs + leg2Ms + turnaroundMs + leg3Ms + techStopMs + leg4Ms;
+        } else {
+          // Standard direct route
+          // Outbound: departure -> arrival (with wind effect)
+          const outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
+
+          // Return: arrival -> departure (opposite wind effect)
+          const returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, cruiseSpeed);
+
+          // Calculate total round-trip duration: outbound + turnaround + return
+          totalFlightMs = outboundFlightMs + turnaroundMs + returnFlightMs;
+        }
 
         // Calculate expected completion time (after return leg)
         const departureDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
@@ -442,6 +482,101 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error processing flights:', error);
+    }
+  }
+
+  /**
+   * Process maintenance check completions for a world
+   * When a scheduled maintenance slot completes, record the check date on the aircraft
+   */
+  async processMaintenance(worldId, currentGameTime) {
+    const worldState = this.worlds.get(worldId);
+    if (!worldState) return;
+
+    try {
+      // Get all memberships for this world
+      const memberships = await WorldMembership.findAll({
+        where: { worldId: worldId, isActive: true },
+        attributes: ['id']
+      });
+
+      const membershipIds = memberships.map(m => m.id);
+      if (membershipIds.length === 0) return;
+
+      // Get current game day of week (0 = Sunday, 6 = Saturday)
+      const gameDayOfWeek = currentGameTime.getDay();
+      const gameTimeStr = currentGameTime.toTimeString().split(' ')[0]; // HH:MM:SS
+      const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // Find all active recurring maintenance for today's day of week
+      const maintenancePatterns = await RecurringMaintenance.findAll({
+        where: {
+          dayOfWeek: gameDayOfWeek,
+          status: 'active'
+        },
+        include: [{
+          model: UserAircraft,
+          as: 'aircraft',
+          where: { worldMembershipId: { [Op.in]: membershipIds } }
+        }]
+      });
+
+      if (process.env.NODE_ENV === 'development' && maintenancePatterns.length > 0) {
+        console.log(`🔧 Processing ${maintenancePatterns.length} maintenance patterns for day ${gameDayOfWeek}, time ${gameTimeStr}`);
+      }
+
+      for (const pattern of maintenancePatterns) {
+        // Calculate when maintenance ends (startTime + duration)
+        // startTime can be a string "15:00:00" or a Date object depending on DB driver
+        let startTimeStr = pattern.startTime;
+        if (pattern.startTime instanceof Date) {
+          startTimeStr = pattern.startTime.toTimeString().split(' ')[0];
+        }
+        const startTimeParts = String(startTimeStr).split(':');
+        const startHour = parseInt(startTimeParts[0], 10);
+        const startMinute = parseInt(startTimeParts[1], 10);
+
+        // Calculate end time in minutes from midnight
+        const startMinutes = startHour * 60 + startMinute;
+        const endMinutes = startMinutes + pattern.duration;
+        const endHour = Math.floor(endMinutes / 60) % 24;
+        const endMinute = endMinutes % 60;
+        const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
+
+        // Check if current game time is past the maintenance end time
+        if (gameTimeStr >= endTimeStr) {
+          const aircraft = pattern.aircraft;
+          const checkType = pattern.checkType;
+
+          // Check if we've already recorded this check today
+          const lastCheckField = checkType === 'A' ? 'lastACheckDate' : 'lastBCheckDate';
+          const lastCheckDate = aircraft[lastCheckField];
+          // Convert Date to ISO string for comparison
+          let lastCheckDateStr = null;
+          if (lastCheckDate) {
+            if (lastCheckDate instanceof Date) {
+              lastCheckDateStr = lastCheckDate.toISOString().split('T')[0];
+            } else {
+              // If it's already a string (shouldn't happen with TIMESTAMP), parse it
+              lastCheckDateStr = new Date(lastCheckDate).toISOString().split('T')[0];
+            }
+          }
+
+          if (!lastCheckDateStr || lastCheckDateStr !== gameDate) {
+            // Update the last check date with full datetime
+            const updateData = {};
+            updateData[lastCheckField] = currentGameTime; // Store full datetime
+
+            await aircraft.update(updateData);
+
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`🔧 ${checkType} Check recorded for ${aircraft.registration} at ${endTimeStr} (date: ${gameDate})`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing maintenance:', error);
     }
   }
 

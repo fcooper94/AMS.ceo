@@ -490,6 +490,67 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
+ * Bulk delete routes
+ */
+router.delete('/bulk', async (req, res) => {
+  try {
+    const { routeIds } = req.body;
+
+    if (!Array.isArray(routeIds) || routeIds.length === 0) {
+      return res.status(400).json({ error: 'No route IDs provided' });
+    }
+
+    // Get user's membership to verify ownership
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Find all routes that belong to the user and match the provided IDs
+    const routes = await Route.findAll({
+      where: {
+        id: routeIds,
+        worldMembershipId: membership.id
+      }
+    });
+
+    if (routes.length === 0) {
+      return res.status(404).json({ error: 'No routes found to delete' });
+    }
+
+    // Delete all matching routes
+    const deletedCount = await Route.destroy({
+      where: {
+        id: routes.map(r => r.id),
+        worldMembershipId: membership.id
+      }
+    });
+
+    res.json({ message: `${deletedCount} route(s) deleted successfully`, deletedCount });
+  } catch (error) {
+    console.error('Error bulk deleting routes:', error);
+    res.status(500).json({ error: 'Failed to delete routes' });
+  }
+});
+
+/**
  * Delete a route
  */
 router.delete('/:id', async (req, res) => {

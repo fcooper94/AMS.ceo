@@ -1,0 +1,107 @@
+<!-- TITLE: Aircraft Maintenance - Airline Manager -->
+<!-- SUBTITLE: Maintenance Status -->
+<!-- SCRIPTS: /js/maintenance.js -->
+
+<style>
+  .check-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .check-valid {
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+  }
+
+  .check-expired {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid #ef4444;
+  }
+
+  .check-warning {
+    background: rgba(217, 119, 6, 0.15);
+    color: var(--warning-color);
+    border: 1px solid var(--warning-color);
+  }
+
+  .check-none {
+    background: var(--surface-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+  }
+
+  .aircraft-type-header {
+    background: var(--surface-elevated);
+    padding: 1rem 1.5rem;
+    border-bottom: 2px solid var(--accent-color);
+    margin-top: 1.5rem;
+  }
+
+  .aircraft-type-header:first-child {
+    margin-top: 0;
+  }
+
+  .aircraft-type-header h3 {
+    margin: 0;
+    color: var(--accent-color);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .aircraft-type-header span {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 400;
+  }
+
+</style>
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1 id="maintenanceTitle">AIRCRAFT MAINTENANCE</h1>
+      <p class="subtitle">MAINTENANCE CHECK STATUS</p>
+    </div>
+
+    <!-- Legend -->
+    <div style="margin-bottom: 1.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span class="check-status check-valid" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">VALID</span>
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Check is current</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span class="check-status check-warning" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">EXPIRING</span>
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Expires within 24 hours</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span class="check-status check-expired" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">EXPIRED</span>
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Check has expired</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span class="check-status check-none" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">NEVER</span>
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Never performed</span>
+      </div>
+    </div>
+
+    <div class="ops-panel full-width">
+      <div class="panel-header">
+        <h2>MAINTENANCE STATUS BY AIRCRAFT TYPE</h2>
+      </div>
+      <div class="panel-body" style="padding: 0;">
+        <div id="maintenanceGrid">
+          <div class="table-empty">
+            <div class="empty-message">LOADING MAINTENANCE DATA...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
