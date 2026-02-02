@@ -17,23 +17,23 @@
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">View</label>
             <div style="display: flex; align-items: center; gap: 0;">
               <button
-                id="viewDaily"
-                onclick="setViewMode('daily')"
-                style="padding: 0.5rem 1rem; background: var(--accent-color); border: 1px solid var(--accent-color); border-radius: 3px 0 0 3px; color: white; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
-              >
-                DAILY
-              </button>
-              <button
                 id="viewWeekly"
                 onclick="setViewMode('weekly')"
-                style="padding: 0.5rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-left: none; border-radius: 0 3px 3px 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+                style="padding: 0.5rem 1rem; background: var(--accent-color); border: 1px solid var(--accent-color); border-radius: 3px 0 0 3px; color: white; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
               >
                 WEEKLY
+              </button>
+              <button
+                id="viewDaily"
+                onclick="setViewMode('daily')"
+                style="padding: 0.5rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-left: none; border-radius: 0 3px 3px 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+              >
+                DAILY
               </button>
             </div>
           </div>
 
-          <div id="daySelector">
+          <div id="daySelector" style="display: none;">
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Viewing Day</label>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <button
@@ -98,9 +98,24 @@
       </div>
       <div class="panel-body" style="padding: 0; overflow-x: auto;">
         <div id="scheduleGrid" style="min-width: 100%;">
-          <div style="padding: 3rem; text-align: center; color: var(--text-muted);">
-            Loading schedule...
+          <div style="padding: 3rem; text-align: center; color: var(--text-secondary);">
+            <div style="
+              border: 3px solid var(--border-color);
+              border-top: 3px solid var(--accent-color);
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: scheduleSpin 1s linear infinite;
+              margin: 0 auto 1rem auto;
+            "></div>
+            <div style="font-size: 1rem;">Loading schedule...</div>
           </div>
+          <style>
+            @keyframes scheduleSpin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
         </div>
       </div>
     </div>

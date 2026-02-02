@@ -112,8 +112,91 @@ function startWorldClocks() {
   worldCardsClockInterval = setInterval(updateAllWorldClocks, 100); // Update every 100ms
 }
 
+// Show a general loading overlay
+function showLoadingOverlay(message = 'Loading...') {
+  let overlay = document.getElementById('generalLoadingOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'generalLoadingOverlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 15, 26, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      color: var(--text-primary);
+    `;
+    overlay.innerHTML = `
+      <div style="text-align: center;">
+        <div style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--accent-color);">
+          <div class="general-spinner" style="
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: generalSpin 1s linear infinite;
+            margin: 0 auto 1.5rem auto;
+          "></div>
+        </div>
+        <div id="generalLoadingMessage" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);"></div>
+      </div>
+      <style>
+        @keyframes generalSpin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+    document.body.appendChild(overlay);
+  }
+  const messageEl = overlay.querySelector('#generalLoadingMessage');
+  if (messageEl) {
+    messageEl.innerHTML = message;
+  }
+  overlay.style.display = 'flex';
+}
+
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('generalLoadingOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
+
 // Load available worlds
 async function loadWorlds() {
+  // Show loading message in the worlds list
+  const worldsList = document.getElementById('worldsList');
+  if (worldsList) {
+    worldsList.innerHTML = `
+      <div style="text-align: center; padding: 3rem; color: var(--text-secondary); grid-column: 1 / -1;">
+        <div style="
+          border: 3px solid var(--border-color);
+          border-top: 3px solid var(--accent-color);
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: worldsLoadSpin 1s linear infinite;
+          margin: 0 auto 1rem auto;
+        "></div>
+        <div style="font-size: 1rem;">Loading worlds...</div>
+      </div>
+      <style>
+        @keyframes worldsLoadSpin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+  }
+
   try {
     const response = await fetch('/api/worlds/available');
 
@@ -622,6 +705,9 @@ async function confirmBankruptcy() {
 
 // Enter world (navigate to dashboard with world context)
 async function enterWorld(worldId) {
+  // Show loading overlay
+  showLoadingOverlay('Joining world...');
+
   try {
     // Set the active world in the session
     const response = await fetch('/api/worlds/set-active', {
@@ -636,10 +722,12 @@ async function enterWorld(worldId) {
       // Navigate to dashboard
       window.location.href = '/dashboard';
     } else {
+      hideLoadingOverlay();
       const data = await response.json();
       showErrorMessage(data.error || 'Failed to enter world');
     }
   } catch (error) {
+    hideLoadingOverlay();
     console.error('Error entering world:', error);
     showErrorMessage('Network error. Please try again.');
   }

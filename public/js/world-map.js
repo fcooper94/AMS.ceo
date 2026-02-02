@@ -8,6 +8,7 @@ let selectedFlightId = null;
 let updateInterval = null;
 let activeFlights = []; // Store flight data for selection
 let airlineFilterMode = 'mine'; // 'mine' or 'all'
+let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
 
 // Aircraft icon SVG
 const aircraftSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`;
@@ -103,6 +104,13 @@ function loadLeaflet() {
 function initMap() {
   console.log('[WorldMap] Initializing map...');
 
+  // Check URL parameters for aircraft to auto-select
+  const urlParams = new URLSearchParams(window.location.search);
+  pendingAircraftSelect = urlParams.get('aircraft'); // Registration number
+  if (pendingAircraftSelect) {
+    console.log('[WorldMap] Will auto-select aircraft:', pendingAircraftSelect);
+  }
+
   // Create map centered on world view with world wrapping enabled
   map = L.map('map', {
     center: [30, 0],
@@ -194,6 +202,20 @@ async function loadActiveFlights() {
         if (selectedFlight) {
           showFlightInfo(selectedFlight);
         }
+      }
+      // Auto-select aircraft from URL parameter (only once)
+      if (pendingAircraftSelect) {
+        const flightToSelect = activeFlights.find(f =>
+          f.aircraft?.registration === pendingAircraftSelect ||
+          f.aircraft?.registration?.toUpperCase() === pendingAircraftSelect.toUpperCase()
+        );
+        if (flightToSelect) {
+          console.log('[WorldMap] Auto-selecting flight for aircraft:', pendingAircraftSelect);
+          selectFlight(flightToSelect.id);
+        } else {
+          console.log('[WorldMap] Aircraft not currently in flight:', pendingAircraftSelect);
+        }
+        pendingAircraftSelect = null; // Clear so we don't try again on refresh
       }
     } else {
       activeFlights = [];

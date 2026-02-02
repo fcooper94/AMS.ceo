@@ -300,18 +300,49 @@ router.post('/flight', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Check for conflicts (same aircraft, date, and time)
-    const conflict = await ScheduledFlight.findOne({
-      where: {
-        aircraftId,
-        scheduledDate,
-        departureTime
-      }
-    });
+    // Calculate pre-flight and post-flight durations based on aircraft type
+    const acType = aircraft.aircraft?.type || 'Narrowbody';
+    const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+    const routeDistance = route.distance || 0;
 
-    if (conflict) {
-      return res.status(409).json({ error: 'Aircraft is already scheduled at this time' });
+    // Pre-flight: max(catering + boarding, fuelling)
+    let cateringDuration = 0;
+    if (paxCapacity >= 50 && acType !== 'Cargo') {
+      if (paxCapacity < 100) cateringDuration = 5;
+      else if (paxCapacity < 200) cateringDuration = 10;
+      else cateringDuration = 15;
     }
+    let boardingDuration = 0;
+    if (acType !== 'Cargo') {
+      if (paxCapacity < 50) boardingDuration = 10;
+      else if (paxCapacity < 100) boardingDuration = 15;
+      else if (paxCapacity < 200) boardingDuration = 20;
+      else if (paxCapacity < 300) boardingDuration = 25;
+      else boardingDuration = 35;
+    }
+    let fuellingDuration = 0;
+    if (routeDistance < 500) fuellingDuration = 10;
+    else if (routeDistance < 1500) fuellingDuration = 15;
+    else if (routeDistance < 3000) fuellingDuration = 20;
+    else fuellingDuration = 25;
+    const preFlightDuration = Math.max(cateringDuration + boardingDuration, fuellingDuration);
+
+    // Post-flight: deboarding + cleaning
+    let deboardingDuration = 0;
+    if (acType !== 'Cargo') {
+      if (paxCapacity < 50) deboardingDuration = 5;
+      else if (paxCapacity < 100) deboardingDuration = 8;
+      else if (paxCapacity < 200) deboardingDuration = 12;
+      else if (paxCapacity < 300) deboardingDuration = 15;
+      else deboardingDuration = 20;
+    }
+    let cleaningDuration;
+    if (paxCapacity < 50) cleaningDuration = 5;
+    else if (paxCapacity < 100) cleaningDuration = 10;
+    else if (paxCapacity < 200) cleaningDuration = 15;
+    else if (paxCapacity < 300) cleaningDuration = 20;
+    else cleaningDuration = 25;
+    const postFlightDuration = deboardingDuration + cleaningDuration;
 
     // Calculate arrival date and time (for full round-trip including tech stops)
     const { arrivalDate, arrivalTime } = calculateArrivalDateTime(
@@ -320,6 +351,188 @@ router.post('/flight', async (req, res) => {
       route,
       aircraft.aircraft?.cruiseSpeed
     );
+
+    // Calculate full operation window (pre-flight start to post-flight end)
+    const [depH, depM] = departureTime.split(':').map(Number);
+    const depMinutes = depH * 60 + depM;
+    const preFlightStartMinutes = depMinutes - preFlightDuration;
+
+    const [arrH, arrM] = arrivalTime.split(':').map(Number);
+    const arrMinutes = arrH * 60 + arrM;
+    const postFlightEndMinutes = arrMinutes + postFlightDuration;
+
+    // Create datetime objects for the operation window
+    const opStartDateTime = new Date(`${scheduledDate}T00:00:00`);
+    opStartDateTime.setMinutes(opStartDateTime.getMinutes() + preFlightStartMinutes);
+
+    const opEndDateTime = new Date(`${arrivalDate}T00:00:00`);
+    opEndDateTime.setMinutes(opEndDateTime.getMinutes() + postFlightEndMinutes);
+
+    // Check for overlapping flights
+    const existingFlights = await ScheduledFlight.findAll({
+      where: {
+        aircraftId,
+        [Op.or]: [
+          // Flight departs or arrives on the same days as our operation
+          { scheduledDate: { [Op.between]: [scheduledDate, arrivalDate] } },
+          { arrivalDate: { [Op.between]: [scheduledDate, arrivalDate] } },
+          // Flight spans our operation dates
+          {
+            [Op.and]: [
+              { scheduledDate: { [Op.lte]: scheduledDate } },
+              { arrivalDate: { [Op.gte]: arrivalDate } }
+            ]
+          }
+        ]
+      },
+      include: [
+        {
+          model: Route,
+          as: 'route',
+          include: [
+            { model: Airport, as: 'departureAirport' },
+            { model: Airport, as: 'arrivalAirport' }
+          ]
+        },
+        {
+          model: UserAircraft,
+          as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
+        }
+      ]
+    });
+
+    // Check each existing flight for time overlap
+    for (const existingFlight of existingFlights) {
+      // Calculate existing flight's operation window
+      const existingAcType = existingFlight.aircraft?.aircraft?.type || 'Narrowbody';
+      const existingPax = existingFlight.aircraft?.aircraft?.passengerCapacity || 150;
+      const existingDist = existingFlight.route?.distance || 0;
+
+      // Calculate existing pre-flight duration
+      let exCatering = 0;
+      if (existingPax >= 50 && existingAcType !== 'Cargo') {
+        if (existingPax < 100) exCatering = 5;
+        else if (existingPax < 200) exCatering = 10;
+        else exCatering = 15;
+      }
+      let exBoarding = 0;
+      if (existingAcType !== 'Cargo') {
+        if (existingPax < 50) exBoarding = 10;
+        else if (existingPax < 100) exBoarding = 15;
+        else if (existingPax < 200) exBoarding = 20;
+        else if (existingPax < 300) exBoarding = 25;
+        else exBoarding = 35;
+      }
+      let exFuelling = 0;
+      if (existingDist < 500) exFuelling = 10;
+      else if (existingDist < 1500) exFuelling = 15;
+      else if (existingDist < 3000) exFuelling = 20;
+      else exFuelling = 25;
+      const exPreFlight = Math.max(exCatering + exBoarding, exFuelling);
+
+      // Calculate existing post-flight duration
+      let exDeboard = 0;
+      if (existingAcType !== 'Cargo') {
+        if (existingPax < 50) exDeboard = 5;
+        else if (existingPax < 100) exDeboard = 8;
+        else if (existingPax < 200) exDeboard = 12;
+        else if (existingPax < 300) exDeboard = 15;
+        else exDeboard = 20;
+      }
+      let exClean;
+      if (existingPax < 50) exClean = 5;
+      else if (existingPax < 100) exClean = 10;
+      else if (existingPax < 200) exClean = 15;
+      else if (existingPax < 300) exClean = 20;
+      else exClean = 25;
+      const exPostFlight = exDeboard + exClean;
+
+      // Calculate existing flight's operation window
+      const [exDepH, exDepM] = existingFlight.departureTime.split(':').map(Number);
+      const exDepMinutes = exDepH * 60 + exDepM;
+      const exPreStartMinutes = exDepMinutes - exPreFlight;
+
+      const [exArrH, exArrM] = existingFlight.arrivalTime.split(':').map(Number);
+      const exArrMinutes = exArrH * 60 + exArrM;
+      const exPostEndMinutes = exArrMinutes + exPostFlight;
+
+      const exOpStart = new Date(`${existingFlight.scheduledDate}T00:00:00`);
+      exOpStart.setMinutes(exOpStart.getMinutes() + exPreStartMinutes);
+
+      const exOpEnd = new Date(`${existingFlight.arrivalDate}T00:00:00`);
+      exOpEnd.setMinutes(exOpEnd.getMinutes() + exPostEndMinutes);
+
+      // Check for overlap: operations overlap if one starts before the other ends
+      const overlaps = opStartDateTime < exOpEnd && opEndDateTime > exOpStart;
+
+      if (overlaps) {
+        const depAirport = existingFlight.route?.departureAirport?.iataCode || existingFlight.route?.departureAirport?.icaoCode || '???';
+        const arrAirport = existingFlight.route?.arrivalAirport?.iataCode || existingFlight.route?.arrivalAirport?.icaoCode || '???';
+        const routeNum = existingFlight.route?.routeNumber || 'Unknown';
+        const returnNum = existingFlight.route?.returnRouteNumber || '';
+
+        // Format dates as DD/MM/YYYY
+        const exDateParts = existingFlight.scheduledDate.split('-');
+        const formattedExDate = `${exDateParts[2]}/${exDateParts[1]}/${exDateParts[0]}`;
+
+        return res.status(409).json({
+          error: 'Schedule conflict detected',
+          conflict: {
+            type: 'flight',
+            routeNumber: routeNum,
+            returnRouteNumber: returnNum,
+            departure: depAirport,
+            arrival: arrAirport,
+            date: formattedExDate,
+            departureTime: existingFlight.departureTime.substring(0, 5),
+            arrivalTime: existingFlight.arrivalTime.substring(0, 5),
+            message: `Conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${formattedExDate} departing ${existingFlight.departureTime.substring(0, 5)}`
+          }
+        });
+      }
+    }
+
+    // Check for overlapping maintenance
+    const dayOfWeek = new Date(`${scheduledDate}T00:00:00`).getDay();
+    const maintenancePatterns = await RecurringMaintenance.findAll({
+      where: {
+        aircraftId,
+        status: 'active',
+        dayOfWeek: dayOfWeek
+      }
+    });
+
+    for (const maint of maintenancePatterns) {
+      const [maintH, maintM] = maint.startTime.split(':').map(Number);
+      const maintStartMinutes = maintH * 60 + maintM;
+      const maintEndMinutes = maintStartMinutes + maint.duration;
+
+      // Check if maintenance overlaps with our operation on the scheduled date
+      // Convert operation window to minutes from midnight of scheduled date
+      let newOpStartMins = preFlightStartMinutes;
+      let newOpEndMins = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440 + postFlightEndMinutes;
+
+      // For same-day operations, check direct overlap
+      const maintOverlaps = newOpStartMins < maintEndMinutes && newOpEndMins > maintStartMinutes;
+
+      if (maintOverlaps) {
+        const checkNames = { 'daily': 'Daily Check', 'A': 'A Check', 'B': 'B Check', 'C': 'C Check', 'D': 'D Check' };
+        const checkName = checkNames[maint.checkType] || `${maint.checkType} Check`;
+
+        return res.status(409).json({
+          error: 'Schedule conflict detected',
+          conflict: {
+            type: 'maintenance',
+            checkType: maint.checkType,
+            checkName: checkName,
+            startTime: maint.startTime.substring(0, 5),
+            duration: maint.duration,
+            message: `Conflicts with ${checkName} scheduled at ${maint.startTime.substring(0, 5)} (${maint.duration} minutes)`
+          }
+        });
+      }
+    }
 
     // Create scheduled flight
     const scheduledFlight = await ScheduledFlight.create({
@@ -866,20 +1079,153 @@ router.post('/maintenance', async (req, res) => {
 
     console.log(`Creating recurring ${checkType} check patterns for days: ${daysToSchedule}`);
 
+    // Calculate maintenance window in minutes
+    const [maintH, maintM] = startTime.split(':').map(Number);
+    const maintStartMinutes = maintH * 60 + maintM;
+    const maintEndMinutes = maintStartMinutes + duration;
+
+    // Check for conflicting flights on the scheduled date for each day
+    // We need to check the specific scheduledDate first
+    const existingFlights = await ScheduledFlight.findAll({
+      where: {
+        aircraftId,
+        scheduledDate: scheduledDate
+      },
+      include: [
+        {
+          model: Route,
+          as: 'route',
+          include: [
+            { model: Airport, as: 'departureAirport' },
+            { model: Airport, as: 'arrivalAirport' }
+          ]
+        },
+        {
+          model: UserAircraft,
+          as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
+        }
+      ]
+    });
+
+    // Check each existing flight for overlap with the maintenance window
+    for (const existingFlight of existingFlights) {
+      // Calculate existing flight's operation window
+      const existingAcType = existingFlight.aircraft?.aircraft?.type || 'Narrowbody';
+      const existingPax = existingFlight.aircraft?.aircraft?.passengerCapacity || 150;
+      const existingDist = existingFlight.route?.distance || 0;
+
+      // Calculate existing pre-flight duration
+      let exCatering = 0;
+      if (existingPax >= 50 && existingAcType !== 'Cargo') {
+        if (existingPax < 100) exCatering = 5;
+        else if (existingPax < 200) exCatering = 10;
+        else exCatering = 15;
+      }
+      let exBoarding = 0;
+      if (existingAcType !== 'Cargo') {
+        if (existingPax < 50) exBoarding = 10;
+        else if (existingPax < 100) exBoarding = 15;
+        else if (existingPax < 200) exBoarding = 20;
+        else if (existingPax < 300) exBoarding = 25;
+        else exBoarding = 35;
+      }
+      let exFuelling = 0;
+      if (existingDist < 500) exFuelling = 10;
+      else if (existingDist < 1500) exFuelling = 15;
+      else if (existingDist < 3000) exFuelling = 20;
+      else exFuelling = 25;
+      const exPreFlight = Math.max(exCatering + exBoarding, exFuelling);
+
+      // Calculate existing post-flight duration
+      let exDeboard = 0;
+      if (existingAcType !== 'Cargo') {
+        if (existingPax < 50) exDeboard = 5;
+        else if (existingPax < 100) exDeboard = 8;
+        else if (existingPax < 200) exDeboard = 12;
+        else if (existingPax < 300) exDeboard = 15;
+        else exDeboard = 20;
+      }
+      let exClean;
+      if (existingPax < 50) exClean = 5;
+      else if (existingPax < 100) exClean = 10;
+      else if (existingPax < 200) exClean = 15;
+      else if (existingPax < 300) exClean = 20;
+      else exClean = 25;
+      const exPostFlight = exDeboard + exClean;
+
+      // Calculate flight operation window in minutes from midnight
+      const [exDepH, exDepM] = existingFlight.departureTime.split(':').map(Number);
+      const exDepMinutes = exDepH * 60 + exDepM;
+      const flightOpStart = exDepMinutes - exPreFlight;
+
+      const [exArrH, exArrM] = existingFlight.arrivalTime.split(':').map(Number);
+      const exArrMinutes = exArrH * 60 + exArrM;
+      // If flight spans overnight, add 24 hours to arrival
+      let flightOpEnd = exArrMinutes + exPostFlight;
+      if (existingFlight.arrivalDate !== existingFlight.scheduledDate) {
+        flightOpEnd += 1440; // Add 24 hours for overnight flights
+      }
+
+      // Check for overlap
+      const overlaps = maintStartMinutes < flightOpEnd && maintEndMinutes > flightOpStart;
+
+      if (overlaps) {
+        const depAirport = existingFlight.route?.departureAirport?.iataCode || existingFlight.route?.departureAirport?.icaoCode || '???';
+        const arrAirport = existingFlight.route?.arrivalAirport?.iataCode || existingFlight.route?.arrivalAirport?.icaoCode || '???';
+        const routeNum = existingFlight.route?.routeNumber || 'Unknown';
+        const returnNum = existingFlight.route?.returnRouteNumber || '';
+
+        // Format date as DD/MM/YYYY
+        const exDateParts = existingFlight.scheduledDate.split('-');
+        const formattedExDate = `${exDateParts[2]}/${exDateParts[1]}/${exDateParts[0]}`;
+
+        const checkNames = { 'daily': 'Daily Check', 'A': 'A Check', 'B': 'B Check' };
+        const checkName = checkNames[checkType] || `${checkType} Check`;
+
+        return res.status(409).json({
+          error: 'Schedule conflict detected',
+          conflict: {
+            type: 'flight',
+            routeNumber: routeNum,
+            returnRouteNumber: returnNum,
+            departure: depAirport,
+            arrival: arrAirport,
+            date: formattedExDate,
+            departureTime: existingFlight.departureTime.substring(0, 5),
+            arrivalTime: existingFlight.arrivalTime.substring(0, 5),
+            message: `${checkName} conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${formattedExDate} departing ${existingFlight.departureTime.substring(0, 5)}`
+          }
+        });
+      }
+    }
+
     // Create recurring maintenance patterns
     const createdPatterns = [];
     for (const day of daysToSchedule) {
-      // Check for conflicts (same aircraft, day of week, and time)
-      const conflict = await RecurringMaintenance.findOne({
+      // Check for conflicts with other maintenance (same aircraft, day of week, overlapping time)
+      const existingMaintenance = await RecurringMaintenance.findAll({
         where: {
           aircraftId,
           dayOfWeek: day,
-          startTime,
           status: 'active'
         }
       });
 
-      if (conflict) {
+      let maintConflict = null;
+      for (const existing of existingMaintenance) {
+        const [exMaintH, exMaintM] = existing.startTime.split(':').map(Number);
+        const exMaintStart = exMaintH * 60 + exMaintM;
+        const exMaintEnd = exMaintStart + existing.duration;
+
+        const overlaps = maintStartMinutes < exMaintEnd && maintEndMinutes > exMaintStart;
+        if (overlaps) {
+          maintConflict = existing;
+          break;
+        }
+      }
+
+      if (maintConflict) {
         console.log(`Conflict found for day ${day} at ${startTime}, skipping`);
         continue;
       }
