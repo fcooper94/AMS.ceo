@@ -46,10 +46,8 @@ router.get('/', async (req, res) => {
 
     res.json(fleet);
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error fetching fleet:', error);
-    }
-    res.status(500).json({ error: 'Failed to fetch fleet' });
+    console.error('Error fetching fleet:', error);
+    res.status(500).json({ error: 'Failed to fetch fleet', details: error.message });
   }
 });
 

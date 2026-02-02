@@ -473,6 +473,15 @@ class WorldTimeService {
         // Check if flight should have completed the full round-trip
         if (currentGameTime >= expectedCompletion) {
           await flight.update({ status: 'completed' });
+
+          // Record transit check completion (automatic between flights)
+          if (flight.aircraft) {
+            await flight.aircraft.update({ lastTransitCheckDate: currentGameTime });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`🔧 Transit check recorded for ${flight.aircraft.registration}`);
+            }
+          }
+
           if (process.env.NODE_ENV === 'development') {
             console.log(`✓ Flight ${flight.route.routeNumber} completed (full round-trip)`);
           }
@@ -549,7 +558,15 @@ class WorldTimeService {
           const checkType = pattern.checkType;
 
           // Check if we've already recorded this check today
-          const lastCheckField = checkType === 'A' ? 'lastACheckDate' : 'lastBCheckDate';
+          const checkFieldMap = {
+            'daily': 'lastDailyCheckDate',
+            'A': 'lastACheckDate',
+            'B': 'lastBCheckDate',
+            'C': 'lastCCheckDate',
+            'D': 'lastDCheckDate'
+          };
+          const lastCheckField = checkFieldMap[checkType];
+          if (!lastCheckField) continue; // Unknown check type
           const lastCheckDate = aircraft[lastCheckField];
           // Convert Date to ISO string for comparison
           let lastCheckDateStr = null;
@@ -575,8 +592,110 @@ class WorldTimeService {
           }
         }
       }
+      // Auto-schedule C and D checks the day before they expire
+      await this.processAutomaticHeavyMaintenance(membershipIds, currentGameTime);
+
     } catch (error) {
       console.error('Error processing maintenance:', error);
+    }
+  }
+
+  /**
+   * Process automatic C and D check scheduling
+   * Takes aircraft out of service the day before check expires
+   */
+  async processAutomaticHeavyMaintenance(membershipIds, currentGameTime) {
+    try {
+      // Get all active aircraft for these memberships
+      const aircraft = await UserAircraft.findAll({
+        where: {
+          worldMembershipId: { [Op.in]: membershipIds },
+          status: 'active' // Only check active aircraft
+        }
+      });
+
+      const gameDate = currentGameTime.toISOString().split('T')[0];
+
+      for (const ac of aircraft) {
+        // Check C check expiry
+        if (ac.lastCCheckDate && ac.cCheckIntervalDays) {
+          const cCheckExpiry = new Date(ac.lastCCheckDate);
+          cCheckExpiry.setUTCDate(cCheckExpiry.getUTCDate() + ac.cCheckIntervalDays);
+
+          // Calculate days until expiry
+          const daysUntilCExpiry = Math.floor((cCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
+
+          // If check expires tomorrow or sooner, take aircraft out of service
+          if (daysUntilCExpiry <= 1 && daysUntilCExpiry >= 0) {
+            await ac.update({ status: 'maintenance' });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`🔧 ${ac.registration} entering C Check maintenance (14 days) - expires in ${daysUntilCExpiry} day(s)`);
+            }
+          }
+        }
+
+        // Check D check expiry
+        if (ac.lastDCheckDate && ac.dCheckIntervalDays) {
+          const dCheckExpiry = new Date(ac.lastDCheckDate);
+          dCheckExpiry.setUTCDate(dCheckExpiry.getUTCDate() + ac.dCheckIntervalDays);
+
+          // Calculate days until expiry
+          const daysUntilDExpiry = Math.floor((dCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
+
+          // If check expires tomorrow or sooner, take aircraft out of service
+          if (daysUntilDExpiry <= 1 && daysUntilDExpiry >= 0) {
+            await ac.update({ status: 'maintenance' });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`🔧 ${ac.registration} entering D Check maintenance (60 days) - expires in ${daysUntilDExpiry} day(s)`);
+            }
+          }
+        }
+
+        // Check if aircraft in maintenance should be returned to service
+        // C check: 14 days, D check: 60 days
+        if (ac.status === 'maintenance') {
+          let shouldReturn = false;
+          let checkCompleted = null;
+
+          // Check if C check maintenance is complete
+          if (ac.lastCCheckDate) {
+            const cCheckStart = new Date(ac.lastCCheckDate);
+            const cCheckEnd = new Date(cCheckStart);
+            cCheckEnd.setUTCDate(cCheckEnd.getUTCDate() + 14); // 14 days duration
+
+            if (currentGameTime >= cCheckEnd) {
+              // C check duration completed - update the check date to now
+              await ac.update({ lastCCheckDate: currentGameTime });
+              shouldReturn = true;
+              checkCompleted = 'C';
+            }
+          }
+
+          // Check if D check maintenance is complete
+          if (ac.lastDCheckDate) {
+            const dCheckStart = new Date(ac.lastDCheckDate);
+            const dCheckEnd = new Date(dCheckStart);
+            dCheckEnd.setUTCDate(dCheckEnd.getUTCDate() + 60); // 60 days duration
+
+            if (currentGameTime >= dCheckEnd) {
+              // D check duration completed - update the check date to now
+              await ac.update({ lastDCheckDate: currentGameTime });
+              shouldReturn = true;
+              checkCompleted = 'D';
+            }
+          }
+
+          // Return aircraft to service if maintenance completed
+          if (shouldReturn) {
+            await ac.update({ status: 'active' });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`✓ ${ac.registration} returned to service after ${checkCompleted} Check maintenance`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing automatic heavy maintenance:', error);
     }
   }
 

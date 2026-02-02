@@ -115,29 +115,66 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'acquired_at'
   },
   // Maintenance check dates (timestamps to track exact time)
+  lastDailyCheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_daily_check_date',
+    comment: 'Daily check - valid for 2 calendar days until midnight UTC'
+  },
+  lastTransitCheckDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_transit_check_date',
+    comment: 'Transit check - completed automatically between flights (20 mins)'
+  },
   lastACheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_a_check_date',
-    comment: 'Daily check - valid until midnight of next day (UTC)'
+    comment: 'A Check - valid for 35-50 days (3 hours duration)'
   },
   lastBCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_b_check_date',
-    comment: 'Weekly check - valid for 7 days'
+    comment: 'B Check - valid for 6-8 months (6 hours duration)'
   },
   lastCCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_c_check_date',
-    comment: 'C Check - reserved for future use'
+    comment: 'C Check - valid for 20-24 months (14 days duration)'
   },
   lastDCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_d_check_date',
-    comment: 'D Check - reserved for future use'
+    comment: 'D Check - valid for 6-10 years (60 days duration)'
+  },
+  // Check intervals (randomized per aircraft for variety)
+  aCheckIntervalDays: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'a_check_interval_days',
+    comment: 'A Check interval in days (35-50)'
+  },
+  bCheckIntervalDays: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'b_check_interval_days',
+    comment: 'B Check interval in days (180-240, i.e. 6-8 months)'
+  },
+  cCheckIntervalDays: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'c_check_interval_days',
+    comment: 'C Check interval in days (600-720, i.e. 20-24 months)'
+  },
+  dCheckIntervalDays: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'd_check_interval_days',
+    comment: 'D Check interval in days (2190-3650, i.e. 6-10 years)'
   }
 }, {
   tableName: 'user_aircraft',
@@ -174,6 +211,33 @@ UserAircraft.generateRegistration = function() {
   }
 
   return registration;
+};
+
+/**
+ * Generate random maintenance intervals for a new aircraft
+ * Returns an object with randomized check intervals
+ */
+UserAircraft.generateMaintenanceIntervals = function() {
+  const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  return {
+    aCheckIntervalDays: randomBetween(35, 50),           // 35-50 days
+    bCheckIntervalDays: randomBetween(180, 240),         // 6-8 months
+    cCheckIntervalDays: randomBetween(600, 720),         // 20-24 months
+    dCheckIntervalDays: randomBetween(2190, 3650)        // 6-10 years
+  };
+};
+
+/**
+ * Check durations in minutes
+ */
+UserAircraft.CHECK_DURATIONS = {
+  daily: 60,           // 1 hour
+  transit: 20,         // 20 minutes
+  A: 180,              // 3 hours
+  B: 360,              // 6 hours
+  C: 20160,            // 14 days (14 * 24 * 60)
+  D: 86400             // 60 days (60 * 24 * 60)
 };
 
 module.exports = UserAircraft;

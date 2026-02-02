@@ -3,12 +3,64 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const { ScheduledFlight, RecurringMaintenance, Route, UserAircraft, Airport, Aircraft, WorldMembership, User, World } = require('../models');
 
+// Wind and route variation constants (must match frontend scheduling-v3.js)
+const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
+const ROUTE_VARIATION_FACTOR = 0.035; // ±3.5% for natural-looking times
+
+/**
+ * Calculate wind multiplier based on flight direction (matches frontend logic)
+ * Eastbound flights are faster (tailwind), westbound are slower (headwind)
+ */
+function getWindMultiplier(depLng, arrLng, depLat = 0, arrLat = 0) {
+  // Calculate longitude difference (handling date line crossing)
+  let lngDiff = arrLng - depLng;
+  if (lngDiff > 180) lngDiff -= 360;
+  else if (lngDiff < -180) lngDiff += 360;
+
+  // Scale effect based on latitude (strongest at mid-latitudes 30-60°)
+  const avgLat = Math.abs((depLat + arrLat) / 2);
+  let latitudeScale = 1.0;
+  if (avgLat < 20) latitudeScale = 0.2;
+  else if (avgLat < 30) latitudeScale = 0.5;
+  else if (avgLat > 60) latitudeScale = 0.6;
+
+  // Only apply wind effect for significant east-west travel
+  if (Math.abs(lngDiff) < 10) return 1.0;
+
+  // Eastbound (positive lngDiff) = faster, Westbound = slower
+  const direction = lngDiff > 0 ? -1 : 1;
+  const eastWestRatio = Math.min(1, Math.abs(lngDiff) / 90);
+  return 1 + (direction * WIND_ADJUSTMENT_FACTOR * latitudeScale * eastWestRatio);
+}
+
+/**
+ * Calculate route variation for natural-looking times (matches frontend logic)
+ * Deterministic based on coordinates so same route always has same variation
+ */
+function getRouteVariation(depLat, depLng, arrLat, arrLng) {
+  const coordSum = (depLat * 7.3) + (depLng * 11.7) + (arrLat * 13.1) + (arrLng * 17.9);
+  const hash = Math.sin(coordSum) * 10000;
+  const normalized = hash - Math.floor(hash);
+  const variation = (normalized - 0.5) * 2 * ROUTE_VARIATION_FACTOR;
+  return 1 + variation;
+}
+
+/**
+ * Calculate flight minutes with wind and route variation (matches frontend logic)
+ */
+function calculateFlightMinutes(distanceNm, cruiseSpeed, depLng, arrLng, depLat, arrLat) {
+  const baseMinutes = (distanceNm / cruiseSpeed) * 60;
+  const windMultiplier = getWindMultiplier(depLng, arrLng, depLat, arrLat);
+  const routeVariation = getRouteVariation(depLat, depLng, arrLat, arrLng);
+  return Math.round(baseMinutes * windMultiplier * routeVariation);
+}
+
 /**
  * Calculate arrival date and time based on departure and full round-trip duration
- * Accounts for outbound + turnaround + return, and tech stops if present
+ * Accounts for outbound + turnaround + return, tech stops, wind effects, and route variation
  * @param {string} departureDate - YYYY-MM-DD format
  * @param {string} departureTime - HH:MM:SS format
- * @param {object} route - Route object with distance, turnaroundTime, and optional techStopAirport
+ * @param {object} route - Route object with distance, turnaroundTime, airports with coordinates
  * @param {number} cruiseSpeed - Aircraft cruise speed in knots (defaults to 450)
  * @returns {{ arrivalDate: string, arrivalTime: string }}
  */
@@ -22,40 +74,60 @@ function calculateArrivalDateTime(departureDate, departureTime, route, cruiseSpe
   const turnaroundMinutes = typeof route === 'object' ? (route.turnaroundTime || 45) : 45;
   const hasTechStop = typeof route === 'object' && route.techStopAirport;
 
-  let totalFlightMs;
+  // Get coordinates for wind calculation
+  const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+  const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+  const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+  const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+  let totalMinutes;
 
   if (hasTechStop) {
     // Tech stop route: leg1 + techStop + leg2 + turnaround + leg3 + techStop + leg4
-    const techStopMinutes = 30; // 30 min tech stop time
+    const techStopMinutes = 30;
+    const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+    const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
     const leg1Distance = route.legOneDistance || Math.round(distance * 0.4);
     const leg2Distance = route.legTwoDistance || Math.round(distance * 0.6);
 
-    // Calculate each leg (simplified - no wind adjustment here for consistency)
-    const leg1Hours = leg1Distance / speed;
-    const leg2Hours = leg2Distance / speed;
-    const leg3Hours = leg2Distance / speed; // Return leg (ARR→TECH)
-    const leg4Hours = leg1Distance / speed; // Return leg (TECH→DEP)
+    // Calculate each leg with wind effects
+    const leg1Minutes = calculateFlightMinutes(leg1Distance, speed, depLng, techLng, depLat, techLat);
+    const leg2Minutes = calculateFlightMinutes(leg2Distance, speed, techLng, arrLng, techLat, arrLat);
+    const leg3Minutes = calculateFlightMinutes(leg2Distance, speed, arrLng, techLng, arrLat, techLat);
+    const leg4Minutes = calculateFlightMinutes(leg1Distance, speed, techLng, depLng, techLat, depLat);
 
-    const totalHours = leg1Hours + (techStopMinutes / 60) + leg2Hours +
-                       (turnaroundMinutes / 60) +
-                       leg3Hours + (techStopMinutes / 60) + leg4Hours;
-    totalFlightMs = totalHours * 60 * 60 * 1000;
+    totalMinutes = leg1Minutes + techStopMinutes + leg2Minutes +
+                   turnaroundMinutes +
+                   leg3Minutes + techStopMinutes + leg4Minutes;
   } else {
-    // Standard round-trip: outbound + turnaround + return
-    const oneWayHours = distance / speed;
-    const totalHours = oneWayHours + (turnaroundMinutes / 60) + oneWayHours;
-    totalFlightMs = totalHours * 60 * 60 * 1000;
+    // Standard round-trip with wind effects
+    const outboundMinutes = calculateFlightMinutes(distance, speed, depLng, arrLng, depLat, arrLat);
+    const returnMinutes = calculateFlightMinutes(distance, speed, arrLng, depLng, arrLat, depLat);
+    totalMinutes = outboundMinutes + turnaroundMinutes + returnMinutes;
   }
 
   // Calculate arrival datetime (when the round-trip completes)
-  const arrDateTime = new Date(depDateTime.getTime() + totalFlightMs);
+  const arrDateTime = new Date(depDateTime.getTime() + totalMinutes * 60 * 1000);
+
+  // Round minutes to nearest 5
+  const rawMinutes = arrDateTime.getMinutes();
+  const roundedMinutes = Math.round(rawMinutes / 5) * 5;
+  if (roundedMinutes === 60) {
+    arrDateTime.setHours(arrDateTime.getHours() + 1);
+    arrDateTime.setMinutes(0);
+  } else {
+    arrDateTime.setMinutes(roundedMinutes);
+  }
+  arrDateTime.setSeconds(0);
 
   // Format arrival date and time using local time (avoids UTC timezone shift)
   const year = arrDateTime.getFullYear();
   const month = String(arrDateTime.getMonth() + 1).padStart(2, '0');
   const day = String(arrDateTime.getDate()).padStart(2, '0');
   const arrivalDate = `${year}-${month}-${day}`;
-  const arrivalTime = arrDateTime.toTimeString().split(' ')[0]; // HH:MM:SS
+  const hours = String(arrDateTime.getHours()).padStart(2, '0');
+  const mins = String(arrDateTime.getMinutes()).padStart(2, '0');
+  const arrivalTime = `${hours}:${mins}:00`;
 
   return { arrivalDate, arrivalTime };
 }
@@ -760,12 +832,14 @@ router.post('/maintenance', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Validate check type and set duration (60 minutes for Daily, 120 minutes for Weekly)
-    if (!['A', 'B'].includes(checkType)) {
-      return res.status(400).json({ error: 'Invalid check type. Must be A or B' });
+    // Validate check type and set duration
+    if (!['daily', 'A', 'B'].includes(checkType)) {
+      return res.status(400).json({ error: 'Invalid check type. Must be daily, A, or B' });
     }
 
-    const duration = checkType === 'A' ? 60 : 120; // Duration in minutes
+    // Duration in minutes: daily=60 (1hr), A=180 (3hrs), B=360 (6hrs)
+    const durationMap = { 'daily': 60, 'A': 180, 'B': 360 };
+    const duration = durationMap[checkType];
 
     // Get day of week from scheduledDate
     const [year, month, day] = scheduledDate.split('-').map(Number);
@@ -776,13 +850,13 @@ router.post('/maintenance', async (req, res) => {
     const daysToSchedule = [];
 
     if (repeat) {
-      if (checkType === 'A') {
+      if (checkType === 'daily') {
         // Daily checks: create pattern for every day of the week (0-6)
         for (let i = 0; i < 7; i++) {
           daysToSchedule.push(i);
         }
       } else {
-        // Weekly checks: create pattern for the selected day only
+        // A/B checks: create pattern for the selected day only (weekly repeat)
         daysToSchedule.push(dayOfWeek);
       }
     } else {
@@ -790,19 +864,7 @@ router.post('/maintenance', async (req, res) => {
       daysToSchedule.push(dayOfWeek);
     }
 
-    console.log(`Creating recurring maintenance patterns for days: ${daysToSchedule}`);
-
-    // If this is a weekly check, delete any daily check patterns on the same day of week
-    if (checkType === 'B') {
-      const deleted = await RecurringMaintenance.destroy({
-        where: {
-          aircraftId,
-          dayOfWeek: daysToSchedule,
-          checkType: 'A'
-        }
-      });
-      console.log(`Deleted ${deleted} daily check patterns for day(s) ${daysToSchedule}`);
-    }
+    console.log(`Creating recurring ${checkType} check patterns for days: ${daysToSchedule}`);
 
     // Create recurring maintenance patterns
     const createdPatterns = [];

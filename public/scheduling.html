@@ -234,6 +234,35 @@
     opacity: 0.9;
   }
 
+  /* Turnaround extension styling */
+  .turnaround-extension {
+    position: absolute;
+    top: 3px;
+    height: calc(100% - 6px);
+    cursor: pointer;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    color: rgba(255,255,255,0.8);
+    font-weight: 600;
+  }
+  .turnaround-extension:hover {
+    opacity: 0.85;
+  }
+  .turnaround-extension.preflight {
+    background: #1a5f3c;
+    border-radius: 3px 0 0 3px;
+  }
+  .turnaround-extension.postflight {
+    background: #1e3a5f;
+    border-radius: 0 3px 3px 0;
+  }
+  .turnaround-extension.postflight.has-check {
+    background: #7c3aed;
+  }
+
   /* Route number styling - prefix (letters) vs number differentiation */
   .route-prefix {
     color: rgba(255, 255, 255, 0.6);

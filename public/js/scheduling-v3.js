@@ -29,6 +29,61 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+// Calculate effective arrival date for a flight (from stored data or calculated from duration)
+function getEffectiveArrivalDate(flight) {
+  // If arrivalDate is stored, use it
+  if (flight.arrivalDate) {
+    return flight.arrivalDate;
+  }
+
+  // Otherwise calculate from flight duration
+  const route = flight.route;
+  const aircraft = flight.aircraft;
+  if (!route || !aircraft?.aircraft?.cruiseSpeed) {
+    return flight.scheduledDate; // Fallback to same day
+  }
+
+  const cruiseSpeed = aircraft.aircraft.cruiseSpeed;
+  const turnaroundMinutes = route.turnaroundTime || 45;
+  const distance = route.distance || 500;
+
+  const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+  const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+  const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+  const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+  let totalMinutes;
+  if (route.techStopAirport) {
+    const techStopMinutes = 30;
+    const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+    const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
+    const leg1Distance = route.legOneDistance || Math.round(distance * 0.4);
+    const leg2Distance = route.legTwoDistance || Math.round(distance * 0.6);
+
+    const leg1Min = calculateFlightMinutes(leg1Distance, cruiseSpeed, depLng, techLng, depLat, techLat);
+    const leg2Min = calculateFlightMinutes(leg2Distance, cruiseSpeed, techLng, arrLng, techLat, arrLat);
+    const leg3Min = calculateFlightMinutes(leg2Distance, cruiseSpeed, arrLng, techLng, arrLat, techLat);
+    const leg4Min = calculateFlightMinutes(leg1Distance, cruiseSpeed, techLng, depLng, techLat, depLat);
+    totalMinutes = leg1Min + techStopMinutes + leg2Min + turnaroundMinutes + leg3Min + techStopMinutes + leg4Min;
+  } else {
+    const outMin = calculateFlightMinutes(distance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
+    const retMin = calculateFlightMinutes(distance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
+    totalMinutes = outMin + turnaroundMinutes + retMin;
+  }
+
+  // Parse departure time and calculate arrival datetime
+  const depDate = new Date(flight.scheduledDate + 'T00:00:00');
+  const depTimeStr = flight.departureTime?.substring(0, 5) || '00:00';
+  const [depH, depM] = depTimeStr.split(':').map(Number);
+  const depDateTime = new Date(Date.UTC(depDate.getFullYear(), depDate.getMonth(), depDate.getDate(), depH, depM));
+  const arrDateTime = new Date(depDateTime.getTime() + totalMinutes * 60000);
+
+  const arrYear = arrDateTime.getUTCFullYear();
+  const arrMonth = String(arrDateTime.getUTCMonth() + 1).padStart(2, '0');
+  const arrDay = String(arrDateTime.getUTCDate()).padStart(2, '0');
+  return `${arrYear}-${arrMonth}-${arrDay}`;
+}
+
 // Calculate days until target day of week
 // Uses a heuristic: show the closest occurrence of the target day
 // If target is more than 3 days back, assume user wants next week instead
@@ -633,14 +688,14 @@ function roundTimeToNearest5(timeStr) {
 }
 
 // Render overnight arrival block (flight that departed yesterday, arriving today)
-// arrivalTime in the database is the FINAL return time (when round-trip completes)
-function renderOvernightArrivalBlock(flight, route) {
-  const arrTime = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : '??:??';
+// calculatedArrTime is the dynamically calculated arrival time with wind effects
+function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null) {
+  // Use calculated time if provided, otherwise fall back to stored time
+  const arrTime = calculatedArrTime || (flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : '??:??');
   const depTime = flight.departureTime ? flight.departureTime.substring(0, 5) : '??:??';
   const [arrHours, arrMinutes] = arrTime.split(':').map(Number);
   const [depHours, depMinutes] = depTime.split(':').map(Number);
 
-  // arrivalTime is already the final return time from the backend calculation
   // Block spans from midnight (00:00) to arrivalTime
   const arrivalMinutesFromMidnight = (arrHours * 60) + arrMinutes;
   const totalHoursFromMidnight = arrivalMinutesFromMidnight / 60;
@@ -661,6 +716,25 @@ function renderOvernightArrivalBlock(flight, route) {
 
   // Show flight numbers only if BOTH strips have enough space (>= 2 hours each)
   const showFlightNumbers = totalHoursFromMidnight >= 2 && departureStripHours >= 2;
+
+  // Calculate post-flight extension for overnight arrival
+  const postFlightInfo = calculatePostFlightDuration(flight.aircraft, flight.arrivalDate || flight.scheduledDate);
+  const postFlightMinutes = postFlightInfo.duration;
+  const postFlightWidthPercent = (postFlightMinutes / 60) * 100;
+  const postFlightLeftPercent = widthPercent; // Starts where flight ends
+
+  const postFlightExtensionHtml = postFlightMinutes > 0 ? `
+    <div
+      class="turnaround-extension postflight ${postFlightInfo.hasHeavyCheck ? 'has-check' : ''}"
+      style="
+        position: absolute;
+        left: ${postFlightLeftPercent}%;
+        width: ${postFlightWidthPercent}%;
+      "
+      onclick="event.stopPropagation(); showPostFlightModal('${flight.id}')"
+      title="Post-flight: Deboarding & Cleaning (${postFlightMinutes}m)${postFlightInfo.hasHeavyCheck ? ' + ' + postFlightInfo.checkType + ' Check' : ''} - Click for details"
+    >POST</div>
+  ` : '';
 
   // Overnight arrival block - shows the portion of round-trip after midnight
   // Arrow on left (continuing from prev day), arrival info, then return info on right
@@ -703,6 +777,7 @@ function renderOvernightArrivalBlock(flight, route) {
         <div style="font-size: 0.6rem;">${depAirport}</div>
       </div>
     </div>
+    ${postFlightExtensionHtml}
   `;
 }
 
@@ -773,15 +848,6 @@ function renderFlightBlocks(flights, viewingDate) {
       return renderContinuesBlock(flight, route);
     }
 
-    // Check if this is an overnight arrival (flight departed before, arrives today)
-    const isOvernightArrival = flight.arrivalDate === viewingDate && flight.scheduledDate !== viewingDate;
-    console.log('isOvernightArrival:', isOvernightArrival);
-
-    if (isOvernightArrival) {
-      // Render overnight arrival block - starts at midnight, ends at arrival time
-      return renderOvernightArrivalBlock(flight, route);
-    }
-
     const depTime = flight.departureTime.substring(0, 5); // HH:MM
 
     // Daily view: position horizontally to span across hours
@@ -832,11 +898,46 @@ function renderFlightBlocks(flights, viewingDate) {
     // Calculate total duration (outbound + turnaround + return)
     const totalDurationMinutes = outboundFlightMinutes + turnaroundMinutes + returnFlightMinutes;
 
+    // Calculate the arrival time with wind effects (for overnight arrival check)
+    const calcDepDate = new Date(`2000-01-01T${flight.departureTime}`);
+    const calcReturnArrDate = new Date(calcDepDate.getTime() + totalDurationMinutes * 60000);
+    const calculatedArrHours = calcReturnArrDate.getHours() % 24;
+    const calculatedArrMins = calcReturnArrDate.getMinutes();
+    const roundedMins = Math.round(calculatedArrMins / 5) * 5;
+    const finalArrHours = roundedMins === 60 ? (calculatedArrHours + 1) % 24 : calculatedArrHours;
+    const finalArrMins = roundedMins === 60 ? 0 : roundedMins;
+    const calculatedArrTime = `${String(finalArrHours).padStart(2, '0')}:${String(finalArrMins).padStart(2, '0')}`;
+
+    // Check if this is an overnight arrival (flight departed before, arrives today)
+    const isOvernightArrival = flight.arrivalDate === viewingDate && flight.scheduledDate !== viewingDate;
+    if (isOvernightArrival) {
+      // Render overnight arrival block with calculated arrival time
+      return renderOvernightArrivalBlock(flight, route, calculatedArrTime);
+    }
+
     // Convert duration to a percentage across multiple hour cells
     const durationHours = totalDurationMinutes / 60;
 
     // Width as percentage: span across cells (each cell is 100% of its width)
     let widthPercent = (durationHours * 100) - minuteOffsetPercent;
+
+    // Calculate pre-flight turnaround extension (for overnight flights that need it early)
+    const preFlightMinutesEarly = calculatePreFlightDuration(flight.aircraft, route);
+    const preFlightWidthPercentEarly = (preFlightMinutesEarly / 60) * 100;
+    const preFlightLeftPercentEarly = leftPercent - preFlightWidthPercentEarly;
+
+    const preFlightExtensionHtmlEarly = preFlightMinutesEarly > 0 ? `
+      <div
+        class="turnaround-extension preflight"
+        style="
+          position: absolute;
+          left: ${preFlightLeftPercentEarly}%;
+          width: ${preFlightWidthPercentEarly}%;
+        "
+        onclick="event.stopPropagation(); showPreFlightModal('${flight.id}')"
+        title="Pre-flight: Catering & Fuelling (${preFlightMinutesEarly}m) - Click for details"
+      >PRE</div>
+    ` : '';
 
     // Check if this flight spans past midnight (overnight departure)
     const isOvernightDeparture = flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate;
@@ -867,6 +968,7 @@ function renderFlightBlocks(flights, viewingDate) {
       // Render overnight departure block - goes to edge with arrow indicator (centered)
       // Render overnight departure block - departure info on left, flight numbers centered
       return `
+        ${preFlightExtensionHtmlEarly}
         <div
           class="flight-block overnight-departure"
           style="
@@ -933,6 +1035,49 @@ function renderFlightBlocks(flights, viewingDate) {
     const arrAirport = route.arrivalAirport.iataCode || route.arrivalAirport.icaoCode;
     const techStopAirport = route.techStopAirport ? (route.techStopAirport.iataCode || route.techStopAirport.icaoCode) : null;
 
+    // Calculate turnaround extensions (pre-flight and post-flight duties)
+    const preFlightMinutes = calculatePreFlightDuration(flight.aircraft, route);
+    const postFlightInfo = calculatePostFlightDuration(flight.aircraft, flight.scheduledDate);
+    const postFlightMinutes = postFlightInfo.duration;
+
+    // Convert turnaround durations to percentage widths (each hour = 100%)
+    const preFlightWidthPercent = (preFlightMinutes / 60) * 100;
+    const postFlightWidthPercent = (postFlightMinutes / 60) * 100;
+
+    // Calculate positions for extensions
+    // Pre-flight extension starts before the flight (to the left)
+    const preFlightLeftPercent = leftPercent - preFlightWidthPercent;
+    // Post-flight extension starts after the flight ends
+    const postFlightLeftPercent = leftPercent + widthPercent;
+
+    // Build pre-flight extension HTML (shown before the flight block)
+    const preFlightExtensionHtml = preFlightMinutes > 0 ? `
+      <div
+        class="turnaround-extension preflight"
+        style="
+          position: absolute;
+          left: ${preFlightLeftPercent}%;
+          width: ${preFlightWidthPercent}%;
+        "
+        onclick="event.stopPropagation(); showPreFlightModal('${flight.id}')"
+        title="Pre-flight: Catering & Fuelling (${preFlightMinutes}m) - Click for details"
+      >PRE</div>
+    ` : '';
+
+    // Build post-flight extension HTML (shown after the flight block)
+    const postFlightExtensionHtml = postFlightMinutes > 0 ? `
+      <div
+        class="turnaround-extension postflight ${postFlightInfo.hasHeavyCheck ? 'has-check' : ''}"
+        style="
+          position: absolute;
+          left: ${postFlightLeftPercent}%;
+          width: ${postFlightWidthPercent}%;
+        "
+        onclick="event.stopPropagation(); showPostFlightModal('${flight.id}')"
+        title="Post-flight: Deboarding & Cleaning (${postFlightMinutes}m)${postFlightInfo.hasHeavyCheck ? ' + ' + postFlightInfo.checkType + ' Check' : ''} - Click for details"
+      >POST</div>
+    ` : '';
+
     // Use simplified layout for short flights (under 2 hours total)
     const isShortFlight = durationHours < 2;
     const isVeryShortFlight = durationHours < 1.5;
@@ -942,6 +1087,7 @@ function renderFlightBlocks(flights, viewingDate) {
       // For tech stops, show tech stop code in green above route info
       if (techStopAirport) {
         return `
+          ${preFlightExtensionHtml}
           <div
             class="flight-block"
             style="
@@ -981,10 +1127,12 @@ function renderFlightBlocks(flights, viewingDate) {
 
             <div style="grid-column: 1 / 4; grid-row: 4; text-align: center; font-size: 0.48rem; opacity: 0.85; margin-top: 0.02rem;">${depTime}</div>
           </div>
+          ${postFlightExtensionHtml}
         `;
       }
 
       return `
+        ${preFlightExtensionHtml}
         <div
           class="flight-block"
           style="
@@ -1018,6 +1166,7 @@ function renderFlightBlocks(flights, viewingDate) {
           <div style="grid-column: 2; grid-row: 2; text-align: right;">${depAirport}</div>
           <div style="grid-column: 1 / 3; grid-row: 3; text-align: center; font-size: 0.52rem; opacity: 0.85; margin-top: 0.05rem;">${depTime}</div>
         </div>
+        ${postFlightExtensionHtml}
       `;
     }
 
@@ -1026,6 +1175,7 @@ function renderFlightBlocks(flights, viewingDate) {
       // For tech stops, show tech stop code above route numbers in green
       if (techStopAirport) {
         return `
+          ${preFlightExtensionHtml}
           <div
             class="flight-block"
             style="
@@ -1065,10 +1215,12 @@ function renderFlightBlocks(flights, viewingDate) {
             <div style="grid-column: 2; grid-row: 3; text-align: center; color: #10b981; font-size: 0.58rem; font-weight: 700;">via ${techStopAirport}</div>
             <div style="grid-column: 3; grid-row: 3; text-align: right;">${depAirport}</div>
           </div>
+          ${postFlightExtensionHtml}
         `;
       }
 
       return `
+        ${preFlightExtensionHtml}
         <div
           class="flight-block"
           style="
@@ -1103,6 +1255,7 @@ function renderFlightBlocks(flights, viewingDate) {
           <div style="grid-column: 3; grid-row: 1; text-align: right;">${arrAirport}</div>
           <div style="grid-column: 1; grid-row: 2; text-align: left; font-size: 0.52rem; opacity: 0.85;">${depTime}</div>
         </div>
+        ${postFlightExtensionHtml}
       `;
     }
 
@@ -1110,6 +1263,7 @@ function renderFlightBlocks(flights, viewingDate) {
     // For tech stops, show tech stop code in green above route numbers
     if (techStopAirport) {
       return `
+        ${preFlightExtensionHtml}
         <div
           class="flight-block"
           style="
@@ -1155,10 +1309,12 @@ function renderFlightBlocks(flights, viewingDate) {
           </div>
           <div style="grid-column: 3; grid-row: 3; text-align: right;">${depAirport}</div>
         </div>
+        ${postFlightExtensionHtml}
       `;
     }
 
     return `
+      ${preFlightExtensionHtml}
       <div
         class="flight-block"
         style="
@@ -1196,6 +1352,7 @@ function renderFlightBlocks(flights, viewingDate) {
         <div style="grid-column: 1 / 2; grid-row: 2; text-align: left; font-size: 0.6rem; opacity: 0.85;">${depTime}</div>
         <div style="grid-column: 3 / 4; grid-row: 2; text-align: right; font-size: 0.6rem; opacity: 0.85;">${returnArrTime}</div>
       </div>
+      ${postFlightExtensionHtml}
     `;
   }).join('');
 }
@@ -1212,22 +1369,33 @@ function renderMaintenanceBlocks(maintenance) {
     const minuteOffsetPercent = (minutes / 60) * 100;
     const leftPercent = minuteOffsetPercent;
 
-    // Duration in minutes (30 for Daily, 90 for Weekly)
+    // Duration in minutes
     const durationMinutes = check.duration;
     const durationHours = durationMinutes / 60;
 
-    // Width as percentage: span across cells
-    const widthPercent = (durationHours * 100) - minuteOffsetPercent;
+    // Width as percentage of cell width (60 min = 100% of one cell)
+    // The block will overflow into adjacent cells if needed
+    const widthPercent = durationHours * 100;
 
-    // Calculate end time
+    // Calculate end time (rounded to nearest 5 minutes)
     const startDate = new Date(`2000-01-01T${check.startTime}`);
     const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
-    const endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
+    const endMins = endDate.getMinutes();
+    const roundedEndMins = Math.round(endMins / 5) * 5;
+    const endHours = roundedEndMins === 60 ? (endDate.getHours() + 1) % 24 : endDate.getHours();
+    const finalEndMins = roundedEndMins === 60 ? 0 : roundedEndMins;
+    const endTime = `${endHours.toString().padStart(2, '0')}:${finalEndMins.toString().padStart(2, '0')}`;
 
-    // Color based on check type
-    const backgroundColor = check.checkType === 'A' ? '#FFA500' : '#DC3545';
-    const checkLabel = check.checkType === 'A' ? 'DAILY' : 'WEEKLY';
-    const checkDescription = check.checkType === 'A' ? 'Daily Check (60 minutes)' : 'Weekly Check (120 minutes)';
+    // Color and label based on check type
+    const checkConfig = {
+      'daily': { color: '#FFA500', label: 'DAILY', description: 'Daily Check (60 minutes)' },
+      'A': { color: '#17A2B8', label: 'A CHK', description: 'A Check (3 hours)' },
+      'B': { color: '#6F42C1', label: 'B CHK', description: 'B Check (6 hours)' }
+    };
+    const config = checkConfig[check.checkType] || { color: '#6C757D', label: check.checkType, description: 'Maintenance' };
+    const backgroundColor = config.color;
+    const checkLabel = config.label;
+    const checkDescription = config.description;
 
     // Get aircraft registration
     const registration = check.aircraft ? check.aircraft.registration : 'Unknown';
@@ -1262,6 +1430,824 @@ function renderMaintenanceBlocks(maintenance) {
       </div>
     `;
   }).join('');
+}
+
+// Calculate pre-flight turnaround duration (catering + boarding + fuelling before departure)
+// Returns duration in minutes
+// Boarding can't start until catering is complete, fuelling happens in parallel
+function calculatePreFlightDuration(aircraft, route) {
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+
+  // Pre-flight catering (5-15 mins for 50+ pax)
+  let cateringDuration = 0;
+  if (paxCapacity >= 50 && acType !== 'Cargo') {
+    if (paxCapacity < 100) {
+      cateringDuration = 5;
+    } else if (paxCapacity < 200) {
+      cateringDuration = 10;
+    } else {
+      cateringDuration = 15;
+    }
+  }
+
+  // Boarding duration (10-35 mins based on capacity) - starts after catering
+  let boardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) {
+      boardingDuration = 10;
+    } else if (paxCapacity < 100) {
+      boardingDuration = 15;
+    } else if (paxCapacity < 200) {
+      boardingDuration = 20;
+    } else if (paxCapacity < 300) {
+      boardingDuration = 25;
+    } else {
+      boardingDuration = 35;
+    }
+  }
+
+  // Catering + boarding happen in sequence
+  const cateringBoardingDuration = cateringDuration + boardingDuration;
+
+  // Pre-flight fuelling based on the route distance (10-25 mins) - happens in parallel
+  const distance = route?.distance || 0;
+  let fuellingDuration = 0;
+  if (distance < 500) {
+    fuellingDuration = 10;
+  } else if (distance < 1500) {
+    fuellingDuration = 15;
+  } else if (distance < 3000) {
+    fuellingDuration = 20;
+  } else {
+    fuellingDuration = 25;
+  }
+
+  // Total is the max of (catering + boarding) vs fuelling
+  return Math.max(cateringBoardingDuration, fuellingDuration);
+}
+
+// Calculate post-flight turnaround duration (deboarding + cleaning)
+// Returns { duration: number, hasHeavyCheck: boolean, checkType: 'C'|'D'|null }
+function calculatePostFlightDuration(aircraft, scheduledDate) {
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+
+  // Calculate deboarding time (5-20 mins based on capacity)
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) {
+      deboardingDuration = 5;
+    } else if (paxCapacity < 100) {
+      deboardingDuration = 8;
+    } else if (paxCapacity < 200) {
+      deboardingDuration = 12;
+    } else if (paxCapacity < 300) {
+      deboardingDuration = 15;
+    } else {
+      deboardingDuration = 20;
+    }
+  }
+
+  // Calculate cleaning duration (5-25 mins based on size) - starts after deboarding
+  let cleaningDuration;
+  if (paxCapacity < 50) {
+    cleaningDuration = 5;
+  } else if (paxCapacity < 100) {
+    cleaningDuration = 10;
+  } else if (paxCapacity < 200) {
+    cleaningDuration = 15;
+  } else if (paxCapacity < 300) {
+    cleaningDuration = 20;
+  } else {
+    cleaningDuration = 25;
+  }
+
+  const totalDuration = deboardingDuration + cleaningDuration;
+
+  // Check for scheduled heavy maintenance (C/D check)
+  let hasHeavyCheck = false;
+  let checkType = null;
+
+  const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
+  const cCheckDue = isHeavyCheckDue(aircraft, 'C', scheduledDate);
+
+  if (dCheckDue) {
+    hasHeavyCheck = true;
+    checkType = 'D';
+  } else if (cCheckDue) {
+    hasHeavyCheck = true;
+    checkType = 'C';
+  }
+
+  return { duration: totalDuration, hasHeavyCheck, checkType };
+}
+
+// Build post-flight actions HTML for flight details modal
+function buildPostFlightHtml(aircraft, flight, arrHomeMins, formatTime, allFlights) {
+  const scheduledDate = flight.scheduledDate;
+
+  // Get aircraft details for cleaning/catering duration
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+
+  // Calculate deboarding time (5-20 mins based on capacity)
+  // Cleaning and catering can't start until deboarding is complete
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) {
+      deboardingDuration = 5;
+    } else if (paxCapacity < 100) {
+      deboardingDuration = 8;
+    } else if (paxCapacity < 200) {
+      deboardingDuration = 12;
+    } else if (paxCapacity < 300) {
+      deboardingDuration = 15;
+    } else {
+      deboardingDuration = 20;
+    }
+  }
+  const deboardingEndMins = arrHomeMins + deboardingDuration;
+
+  // Calculate cleaning duration (5-25 mins based on size) - starts after deboarding
+  let cleaningDuration;
+  if (paxCapacity < 50) {
+    cleaningDuration = 5;
+  } else if (paxCapacity < 100) {
+    cleaningDuration = 10;
+  } else if (paxCapacity < 200) {
+    cleaningDuration = 15;
+  } else if (paxCapacity < 300) {
+    cleaningDuration = 20;
+  } else {
+    cleaningDuration = 25;
+  }
+  const cleaningEndMins = deboardingEndMins + cleaningDuration;
+
+  // Calculate catering duration (5-15 mins for 50+ pax aircraft) - starts after deboarding
+  let cateringDuration = 0;
+  let cateringEndMins = deboardingEndMins;
+  if (paxCapacity >= 50 && acType !== 'Cargo') {
+    if (paxCapacity < 100) {
+      cateringDuration = 5;
+    } else if (paxCapacity < 200) {
+      cateringDuration = 10;
+    } else {
+      cateringDuration = 15;
+    }
+    cateringEndMins = deboardingEndMins + cateringDuration;
+  }
+
+  // Calculate water/waste servicing duration (5-10 mins for regional and airliners) - starts at arrival
+  let waterWasteDuration = 0;
+  let waterWasteEndMins = arrHomeMins;
+  if (paxCapacity >= 30 && acType !== 'Cargo') {
+    if (paxCapacity < 100) {
+      waterWasteDuration = 5;
+    } else if (paxCapacity < 200) {
+      waterWasteDuration = 7;
+    } else {
+      waterWasteDuration = 10;
+    }
+    waterWasteEndMins = arrHomeMins + waterWasteDuration;
+  }
+
+  // Check if there's a next flight for this aircraft to determine fuelling
+  let fuellingDuration = 0;
+  let fuellingEndMins = arrHomeMins;
+  let fuellingSector = '';
+
+  if (allFlights && allFlights.length > 0) {
+    // Find the next flight for this aircraft (same or later date)
+    const nextFlight = allFlights
+      .filter(f =>
+        f.aircraft.id === aircraft.id &&
+        f.id !== flight.id &&
+        (f.scheduledDate > scheduledDate ||
+         (f.scheduledDate === scheduledDate && f.departureTime > flight.departureTime))
+      )
+      .sort((a, b) => {
+        if (a.scheduledDate !== b.scheduledDate) {
+          return a.scheduledDate.localeCompare(b.scheduledDate);
+        }
+        return a.departureTime.localeCompare(b.departureTime);
+      })[0];
+
+    if (nextFlight) {
+      // Calculate fuelling duration based on next flight's distance (10-25 mins)
+      const nextDistance = nextFlight.route?.distance || 0;
+      if (nextDistance < 500) {
+        fuellingDuration = 10;
+      } else if (nextDistance < 1500) {
+        fuellingDuration = 15;
+      } else if (nextDistance < 3000) {
+        fuellingDuration = 20;
+      } else {
+        fuellingDuration = 25;
+      }
+      fuellingEndMins = arrHomeMins + fuellingDuration;
+
+      // Get the sector for display
+      const depCode = nextFlight.route?.departureAirport?.iataCode || nextFlight.route?.departureAirport?.icaoCode || '???';
+      const arrCode = nextFlight.route?.arrivalAirport?.iataCode || nextFlight.route?.arrivalAirport?.icaoCode || '???';
+      fuellingSector = `${depCode}-${arrCode}`;
+    }
+  }
+
+  // Calculate turnaround end time - the latest of all activities
+  const turnaroundEndMins = Math.max(cleaningEndMins, cateringEndMins, waterWasteEndMins, fuellingEndMins);
+
+  // Check if C or D check is due for this aircraft
+  let heavyCheckHtml = '';
+  let availableDate = scheduledDate;
+  let availableTime = formatTime(turnaroundEndMins);
+
+  // Calculate if C check is due (check expiry based on last check date and interval)
+  const cCheckDue = isHeavyCheckDue(aircraft, 'C', scheduledDate);
+  const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
+
+  if (dCheckDue) {
+    // D check takes 60 days
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    heavyCheckHtml = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem; margin-top: 0.25rem;">
+        <span style="color: #f85149;">D Check</span>
+        <span style="color: #8b949e;">Heavy maintenance overhaul</span>
+        <span style="color: #f85149;">60 days</span>
+      </div>
+    `;
+    availableDate = releaseDate;
+    availableTime = '00:00';
+  } else if (cCheckDue) {
+    // C check takes 14 days
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    heavyCheckHtml = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem; margin-top: 0.25rem;">
+        <span style="color: #a371f7;">C Check</span>
+        <span style="color: #8b949e;">Structural inspection</span>
+        <span style="color: #a371f7;">14 days</span>
+      </div>
+    `;
+    availableDate = releaseDate;
+    availableTime = '00:00';
+  }
+
+  // Format the available date/time string
+  const showDate = availableDate !== scheduledDate;
+  const availableStr = showDate
+    ? `${formatDateShort(availableDate)} at ${availableTime}`
+    : availableTime;
+
+  // Determine which activity finishes last (to highlight it)
+  const isCleaningLast = cleaningEndMins >= turnaroundEndMins;
+  const isCateringLast = cateringDuration > 0 && cateringEndMins >= turnaroundEndMins;
+  const isWaterWasteLast = waterWasteDuration > 0 && waterWasteEndMins >= turnaroundEndMins;
+  const isFuellingLast = fuellingDuration > 0 && fuellingEndMins >= turnaroundEndMins;
+
+  const highlightColor = '#ffa657';
+  const normalColor = '#8b949e';
+
+  // Build deboarding row if applicable
+  const deboardingRowHtml = deboardingDuration > 0 ? `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem;">
+        <span>Deboarding</span>
+        <span style="color: #8b949e;">${formatTime(arrHomeMins)} → ${formatTime(deboardingEndMins)}</span>
+        <span style="color: #8b949e;">${deboardingDuration}m</span>
+      </div>
+  ` : '';
+
+  // Build catering row if applicable (with conditional highlighting) - starts after deboarding
+  const cateringRowHtml = cateringDuration > 0 ? `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem;">
+        <span>Catering</span>
+        <span style="color: #8b949e;">${formatTime(deboardingEndMins)} → ${formatTime(cateringEndMins)}</span>
+        <span style="color: ${isCateringLast ? highlightColor : normalColor};">${cateringDuration}m</span>
+      </div>
+  ` : '';
+
+  // Build water/waste row if applicable (with conditional highlighting) - starts at arrival
+  const waterWasteRowHtml = waterWasteDuration > 0 ? `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem;">
+        <span>Water &amp; Waste</span>
+        <span style="color: #8b949e;">${formatTime(arrHomeMins)} → ${formatTime(waterWasteEndMins)}</span>
+        <span style="color: ${isWaterWasteLast ? highlightColor : normalColor};">${waterWasteDuration}m</span>
+      </div>
+  ` : '';
+
+  // Build fuelling row if there's a next flight scheduled
+  const fuellingRowHtml = fuellingDuration > 0 ? `
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem;">
+        <span>Fuelling <span style="color: #58a6ff;">(${fuellingSector})</span></span>
+        <span style="color: #8b949e;">${formatTime(arrHomeMins)} → ${formatTime(fuellingEndMins)}</span>
+        <span style="color: ${isFuellingLast ? highlightColor : normalColor};">${fuellingDuration}m</span>
+      </div>
+  ` : '';
+
+  return `
+    <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+      <div style="font-weight: 600; margin-bottom: 0.5rem; color: #58a6ff;">Post-flight Actions</div>
+      ${deboardingRowHtml}
+      <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.85rem;">
+        <span>Cleaning</span>
+        <span style="color: #8b949e;">${formatTime(deboardingEndMins)} → ${formatTime(cleaningEndMins)}</span>
+        <span style="color: ${isCleaningLast ? highlightColor : normalColor};">${cleaningDuration}m</span>
+      </div>
+      ${cateringRowHtml}
+      ${waterWasteRowHtml}
+      ${fuellingRowHtml}
+      ${heavyCheckHtml}
+      <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #7ee787;">
+        Aircraft available from ${availableStr}
+      </div>
+    </div>
+  `;
+}
+
+// Check if a heavy maintenance check (C or D) is due
+function isHeavyCheckDue(aircraft, checkType, flightDate) {
+  const lastCheckField = checkType === 'C' ? 'lastCCheckDate' : 'lastDCheckDate';
+  const intervalField = checkType === 'C' ? 'cCheckIntervalDays' : 'dCheckIntervalDays';
+  const defaultInterval = checkType === 'C' ? 660 : 2920; // ~22 months for C, ~8 years for D
+
+  const lastCheckDate = aircraft[lastCheckField];
+  if (!lastCheckDate) return false; // Never had a check, not automatically due yet
+
+  const interval = aircraft[intervalField] || defaultInterval;
+  const lastCheck = new Date(lastCheckDate);
+  const flightDateObj = new Date(flightDate + 'T23:59:59Z');
+
+  // Calculate expiry date
+  const expiryDate = new Date(lastCheck);
+  expiryDate.setUTCDate(expiryDate.getUTCDate() + interval);
+
+  // Check is due if flight date is past expiry
+  return flightDateObj >= expiryDate;
+}
+
+// Add days to a date string (YYYY-MM-DD format)
+function addDaysToDate(dateStr, days) {
+  const date = new Date(dateStr + 'T00:00:00Z');
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().split('T')[0];
+}
+
+// Format date as short string (e.g., "8 Feb 2014")
+function formatDateShort(dateStr) {
+  const date = new Date(dateStr + 'T00:00:00Z');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+// Show pre-flight actions modal
+function showPreFlightModal(flightId) {
+  const flight = scheduledFlights.find(f => f.id === flightId);
+  if (!flight) return;
+
+  const aircraft = flight.aircraft;
+  const route = flight.route;
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+
+  // Calculate pre-flight durations
+  let cateringDuration = 0;
+  if (paxCapacity >= 50 && acType !== 'Cargo') {
+    if (paxCapacity < 100) cateringDuration = 5;
+    else if (paxCapacity < 200) cateringDuration = 10;
+    else cateringDuration = 15;
+  }
+
+  // Boarding duration (10-35 mins based on capacity) - starts after catering
+  let boardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) boardingDuration = 10;
+    else if (paxCapacity < 100) boardingDuration = 15;
+    else if (paxCapacity < 200) boardingDuration = 20;
+    else if (paxCapacity < 300) boardingDuration = 25;
+    else boardingDuration = 35;
+  }
+
+  const distance = route?.distance || 0;
+  let fuellingDuration = 0;
+  if (distance < 500) fuellingDuration = 10;
+  else if (distance < 1500) fuellingDuration = 15;
+  else if (distance < 3000) fuellingDuration = 20;
+  else fuellingDuration = 25;
+
+  // Catering + boarding happen in sequence, fuelling in parallel
+  const cateringBoardingDuration = cateringDuration + boardingDuration;
+  const totalDuration = Math.max(cateringBoardingDuration, fuellingDuration);
+
+  // Calculate progress based on current time
+  const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
+  const scheduledDate = flight.scheduledDate;
+  const depTime = flight.departureTime.substring(0, 5);
+  const [depH, depM] = depTime.split(':').map(Number);
+
+  // Create departure datetime
+  const [year, month, day] = scheduledDate.split('-').map(Number);
+  const departureTime = new Date(Date.UTC(year, month - 1, day, depH, depM));
+
+  // Pre-flight starts before departure
+  const preFlightStartTime = new Date(departureTime.getTime() - totalDuration * 60000);
+
+  // Calculate elapsed minutes since pre-flight start
+  const elapsedMins = (now.getTime() - preFlightStartTime.getTime()) / 60000;
+
+  // Calculate progress for each action
+  // Catering: starts at 0, ends at cateringDuration
+  // Boarding: starts at cateringDuration, ends at cateringDuration + boardingDuration
+  // Fuelling: starts at 0, ends at fuellingDuration (parallel)
+  const calcProgress = (startMin, duration) => {
+    if (duration === 0) return 100;
+    if (elapsedMins < startMin) return 0;
+    if (elapsedMins >= startMin + duration) return 100;
+    return Math.round(((elapsedMins - startMin) / duration) * 100);
+  };
+
+  const cateringProgress = calcProgress(0, cateringDuration);
+  const boardingProgress = calcProgress(cateringDuration, boardingDuration);
+  const fuellingProgress = calcProgress(0, fuellingDuration);
+  const totalProgress = calcProgress(0, totalDuration);
+
+  // Helper to build progress bar HTML
+  const progressBar = (progress, color) => `
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+      <div style="flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden;">
+        <div style="width: ${progress}%; height: 100%; background: ${color}; border-radius: 3px; transition: width 0.3s;"></div>
+      </div>
+      <span style="color: ${progress === 100 ? '#7ee787' : '#8b949e'}; font-size: 0.75rem; min-width: 35px; text-align: right;">${progress}%</span>
+    </div>
+  `;
+
+  // Build modal content
+  let content = `
+    <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.5rem 1rem; font-size: 0.9rem;">
+      <span style="color: #8b949e;">Aircraft:</span>
+      <span style="color: #f0f6fc; font-weight: 600;">${aircraft.registration}</span>
+      <span style="color: #8b949e;">Route:</span>
+      <span style="color: #f0f6fc;">${route.routeNumber} / ${route.returnRouteNumber}</span>
+    </div>
+    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #30363d;">
+      <div style="font-weight: 600; margin-bottom: 0.5rem; color: #3fb950;">Pre-flight Actions</div>
+  `;
+
+  if (cateringDuration > 0) {
+    content += `
+      <div style="padding: 0.35rem 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+          <span>Catering</span>
+          <span style="color: #8b949e;">${cateringDuration}m</span>
+        </div>
+        ${progressBar(cateringProgress, '#f97316')}
+      </div>
+    `;
+  }
+
+  if (boardingDuration > 0) {
+    content += `
+      <div style="padding: 0.35rem 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+          <span>Boarding${cateringDuration > 0 ? ' <span style="color: #ffa657; font-size: 0.7rem;">(after catering)</span>' : ''}</span>
+          <span style="color: #8b949e;">${boardingDuration}m</span>
+        </div>
+        ${progressBar(boardingProgress, '#a855f7')}
+      </div>
+    `;
+  }
+
+  content += `
+    <div style="padding: 0.35rem 0;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+        <span>Fuelling <span style="color: #58a6ff; font-size: 0.7rem;">(${Math.round(distance)}nm)</span></span>
+        <span style="color: #8b949e;">${fuellingDuration}m</span>
+      </div>
+      ${progressBar(fuellingProgress, '#3b82f6')}
+    </div>
+    <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #30363d;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
+        <span>Total Pre-flight</span>
+        <span style="color: #3fb950;">${totalDuration}m</span>
+      </div>
+      ${progressBar(totalProgress, '#22c55e')}
+    </div>
+  </div>
+  `;
+
+  showTurnaroundModal('Pre-flight Actions', content);
+}
+
+// Show post-flight actions modal
+function showPostFlightModal(flightId) {
+  const flight = scheduledFlights.find(f => f.id === flightId);
+  if (!flight) return;
+
+  const aircraft = flight.aircraft;
+  const route = flight.route;
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+  const scheduledDate = flight.scheduledDate;
+
+  // Calculate deboarding duration
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) deboardingDuration = 5;
+    else if (paxCapacity < 100) deboardingDuration = 8;
+    else if (paxCapacity < 200) deboardingDuration = 12;
+    else if (paxCapacity < 300) deboardingDuration = 15;
+    else deboardingDuration = 20;
+  }
+
+  // Calculate cleaning duration
+  let cleaningDuration;
+  if (paxCapacity < 50) cleaningDuration = 5;
+  else if (paxCapacity < 100) cleaningDuration = 10;
+  else if (paxCapacity < 200) cleaningDuration = 15;
+  else if (paxCapacity < 300) cleaningDuration = 20;
+  else cleaningDuration = 25;
+
+  const totalDuration = deboardingDuration + cleaningDuration;
+
+  // Check for heavy maintenance
+  const cCheckDue = isHeavyCheckDue(aircraft, 'C', scheduledDate);
+  const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
+
+  // Calculate arrival time for progress calculation
+  const hasTechStopForProgress = route.techStopAirport;
+  const techStopMinsForProgress = 30;
+  const turnaroundMinsForProgress = route.turnaroundTime || 45;
+  let outboundMinsForProgress = 0;
+  let returnMinsForProgress = 0;
+
+  if (aircraft.aircraft && aircraft.aircraft.cruiseSpeed) {
+    const cruiseSpeed = aircraft.aircraft.cruiseSpeed;
+    const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+    const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+    const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+    const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+    if (hasTechStopForProgress) {
+      const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+      const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
+      const leg1Distance = route.legOneDistance || Math.round(route.distance * 0.4);
+      const leg2Distance = route.legTwoDistance || Math.round(route.distance * 0.6);
+      const leg1Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, depLng, techLng, depLat, techLat);
+      const leg2Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, techLng, arrLng, techLat, arrLat);
+      const leg3Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, arrLng, techLng, arrLat, techLat);
+      const leg4Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, techLng, depLng, techLat, depLat);
+      outboundMinsForProgress = leg1Minutes + techStopMinsForProgress + leg2Minutes;
+      returnMinsForProgress = leg3Minutes + techStopMinsForProgress + leg4Minutes;
+    } else {
+      outboundMinsForProgress = calculateFlightMinutes(route.distance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
+      returnMinsForProgress = calculateFlightMinutes(route.distance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
+    }
+  }
+
+  const totalFlightMinsForProgress = outboundMinsForProgress + turnaroundMinsForProgress + returnMinsForProgress;
+  const depTimeStr = flight.departureTime.substring(0, 5);
+  const [depHour, depMin] = depTimeStr.split(':').map(Number);
+
+  // Create arrival datetime
+  const [year, month, day] = scheduledDate.split('-').map(Number);
+  const departureDateTime = new Date(Date.UTC(year, month - 1, day, depHour, depMin));
+  const arrivalTime = new Date(departureDateTime.getTime() + totalFlightMinsForProgress * 60000);
+
+  // Calculate progress based on current time
+  const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
+  const elapsedMins = (now.getTime() - arrivalTime.getTime()) / 60000;
+
+  // Calculate progress for each action
+  // Deboarding: starts at 0 (arrival), ends at deboardingDuration
+  // Cleaning: starts at deboardingDuration, ends at deboardingDuration + cleaningDuration
+  const calcProgress = (startMin, duration) => {
+    if (duration === 0) return 100;
+    if (elapsedMins < startMin) return 0;
+    if (elapsedMins >= startMin + duration) return 100;
+    return Math.round(((elapsedMins - startMin) / duration) * 100);
+  };
+
+  const deboardingProgress = calcProgress(0, deboardingDuration);
+  const cleaningProgress = calcProgress(deboardingDuration, cleaningDuration);
+  const totalProgress = calcProgress(0, totalDuration);
+
+  // Helper to build progress bar HTML
+  const progressBar = (progress, color) => `
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+      <div style="flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden;">
+        <div style="width: ${progress}%; height: 100%; background: ${color}; border-radius: 3px; transition: width 0.3s;"></div>
+      </div>
+      <span style="color: ${progress === 100 ? '#7ee787' : '#8b949e'}; font-size: 0.75rem; min-width: 35px; text-align: right;">${progress}%</span>
+    </div>
+  `;
+
+  // Build modal content
+  let content = `
+    <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.5rem 1rem; font-size: 0.9rem;">
+      <span style="color: #8b949e;">Aircraft:</span>
+      <span style="color: #f0f6fc; font-weight: 600;">${aircraft.registration}</span>
+      <span style="color: #8b949e;">Route:</span>
+      <span style="color: #f0f6fc;">${route.routeNumber} / ${route.returnRouteNumber}</span>
+    </div>
+    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #30363d;">
+      <div style="font-weight: 600; margin-bottom: 0.5rem; color: #58a6ff;">Post-flight Actions</div>
+  `;
+
+  if (deboardingDuration > 0) {
+    content += `
+      <div style="padding: 0.35rem 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+          <span>Deboarding</span>
+          <span style="color: #8b949e;">${deboardingDuration}m</span>
+        </div>
+        ${progressBar(deboardingProgress, '#f97316')}
+      </div>
+    `;
+  }
+
+  content += `
+    <div style="padding: 0.35rem 0;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+        <span>Cleaning</span>
+        <span style="color: #8b949e;">${cleaningDuration}m</span>
+      </div>
+      ${progressBar(cleaningProgress, '#06b6d4')}
+    </div>
+    <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #30363d;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
+        <span>Total Post-flight</span>
+        <span style="color: #58a6ff;">${totalDuration}m</span>
+      </div>
+      ${progressBar(totalProgress, '#3b82f6')}
+    </div>
+  `;
+
+  if (dCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    content += `
+      <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem; color: #f85149;">Scheduled Heavy Maintenance</div>
+        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; font-size: 0.85rem;">
+          <span style="color: #f85149;">D Check</span>
+          <span style="color: #8b949e;">60 days</span>
+        </div>
+        <div style="font-size: 0.85rem; color: #7ee787; margin-top: 0.25rem;">
+          Release: ${formatDateShort(releaseDate)}
+        </div>
+      </div>
+    `;
+  } else if (cCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    content += `
+      <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem; color: #a371f7;">Scheduled Heavy Maintenance</div>
+        <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; font-size: 0.85rem;">
+          <span style="color: #a371f7;">C Check</span>
+          <span style="color: #8b949e;">14 days</span>
+        </div>
+        <div style="font-size: 0.85rem; color: #7ee787; margin-top: 0.25rem;">
+          Release: ${formatDateShort(releaseDate)}
+        </div>
+      </div>
+    `;
+  }
+
+  // Calculate aircraft available time
+  const hasTechStop = route.techStopAirport;
+  const techStopMinutes = 30;
+  const turnaroundMinutes = route.turnaroundTime || 45;
+  let outboundMinutes = 0;
+  let returnMinutes = 0;
+
+  if (aircraft.aircraft && aircraft.aircraft.cruiseSpeed) {
+    const cruiseSpeed = aircraft.aircraft.cruiseSpeed;
+    const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+    const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+    const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+    const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+    if (hasTechStop) {
+      const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+      const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
+      const leg1Distance = route.legOneDistance || Math.round(route.distance * 0.4);
+      const leg2Distance = route.legTwoDistance || Math.round(route.distance * 0.6);
+      const leg1Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, depLng, techLng, depLat, techLat);
+      const leg2Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, techLng, arrLng, techLat, arrLat);
+      const leg3Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, arrLng, techLng, arrLat, techLat);
+      const leg4Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, techLng, depLng, techLat, depLat);
+      outboundMinutes = leg1Minutes + techStopMinutes + leg2Minutes;
+      returnMinutes = leg3Minutes + techStopMinutes + leg4Minutes;
+    } else {
+      outboundMinutes = calculateFlightMinutes(route.distance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
+      returnMinutes = calculateFlightMinutes(route.distance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
+    }
+  }
+
+  const totalFlightMinutes = outboundMinutes + turnaroundMinutes + returnMinutes;
+  const depTime = flight.departureTime.substring(0, 5);
+  const [depH, depM] = depTime.split(':').map(Number);
+  const depTotalMins = depH * 60 + depM;
+  const arrHomeMins = depTotalMins + totalFlightMinutes;
+  const availableMins = arrHomeMins + totalDuration;
+
+  const formatTime = (totalMins) => {
+    const roundedTotalMins = Math.round(totalMins / 5) * 5;
+    const h = Math.floor((roundedTotalMins % 1440) / 60);
+    const m = roundedTotalMins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  // Add aircraft available info
+  if (dCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    content += `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+        <span style="color: #f85149; font-size: 0.85rem; font-weight: 600;">${formatDateShort(releaseDate)} (after D Check)</span>
+      </div>
+    `;
+  } else if (cCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    content += `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+        <span style="color: #a371f7; font-size: 0.85rem; font-weight: 600;">${formatDateShort(releaseDate)} (after C Check)</span>
+      </div>
+    `;
+  } else {
+    const availableDay = Math.floor(availableMins / 1440);
+    let availableDateStr = scheduledDate;
+    if (availableDay > 0) {
+      availableDateStr = addDaysToDate(scheduledDate, availableDay);
+    }
+    content += `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+        <span style="color: #7ee787; font-size: 0.85rem; font-weight: 600;">${availableDay > 0 ? formatDateShort(availableDateStr) + ' ' : ''}${formatTime(availableMins)}</span>
+      </div>
+    `;
+  }
+
+  content += `</div>`;
+
+  showTurnaroundModal('Post-flight Actions', content);
+}
+
+// Show turnaround modal
+function showTurnaroundModal(title, content) {
+  // Remove existing modal if any
+  const existing = document.getElementById('turnaroundModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'turnaroundModal';
+  modal.innerHTML = `
+    <div style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(10, 15, 26, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2500;
+    " onclick="closeTurnaroundModal()">
+      <div style="
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        min-width: 320px;
+        max-width: 400px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      " onclick="event.stopPropagation()">
+        <div style="padding: 1rem 1.5rem; border-bottom: 1px solid #30363d;">
+          <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${title}</h3>
+        </div>
+        <div style="padding: 1.5rem;">
+          ${content}
+        </div>
+        <div style="padding: 1rem 1.5rem; border-top: 1px solid #30363d; display: flex; justify-content: flex-end;">
+          <button onclick="closeTurnaroundModal()" style="
+            padding: 0.5rem 1rem;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            cursor: pointer;
+            font-size: 0.9rem;
+          ">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+// Close turnaround modal
+function closeTurnaroundModal() {
+  const modal = document.getElementById('turnaroundModal');
+  if (modal) modal.remove();
 }
 
 // View flight details
@@ -1312,11 +2298,13 @@ async function viewFlightDetails(flightId) {
 
   const totalMinutes = outboundMinutes + turnaroundMinutes + returnMinutes;
 
-  // Format time helper
+  // Format time helper (rounded to nearest 5 mins, padded)
   const formatDuration = (mins) => {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    const roundedMins = Math.round(mins / 5) * 5;
+    const h = Math.floor(roundedMins / 60);
+    const m = roundedMins % 60;
+    const mStr = String(m).padStart(2, '0');
+    return h > 0 ? `${h}h ${mStr}m` : `${m}m`;
   };
 
   // Calculate arrival times
@@ -1329,8 +2317,10 @@ async function viewFlightDetails(flightId) {
   const arrHomeMins = depReturnMins + returnMinutes;
 
   const formatTime = (totalMins) => {
-    const h = Math.floor((totalMins % 1440) / 60);
-    const m = totalMins % 60;
+    // Round to nearest 5 minutes
+    const roundedTotalMins = Math.round(totalMins / 5) * 5;
+    const h = Math.floor((roundedTotalMins % 1440) / 60);
+    const m = roundedTotalMins % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
@@ -1387,6 +2377,73 @@ async function viewFlightDetails(flightId) {
     `;
   }
 
+  // Calculate aircraft available time (after post-flight duties)
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+  const scheduledDate = flight.scheduledDate;
+
+  // Calculate post-flight duration (deboarding + cleaning)
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) deboardingDuration = 5;
+    else if (paxCapacity < 100) deboardingDuration = 8;
+    else if (paxCapacity < 200) deboardingDuration = 12;
+    else if (paxCapacity < 300) deboardingDuration = 15;
+    else deboardingDuration = 20;
+  }
+
+  let cleaningDuration;
+  if (paxCapacity < 50) cleaningDuration = 5;
+  else if (paxCapacity < 100) cleaningDuration = 10;
+  else if (paxCapacity < 200) cleaningDuration = 15;
+  else if (paxCapacity < 300) cleaningDuration = 20;
+  else cleaningDuration = 25;
+
+  const postFlightDuration = deboardingDuration + cleaningDuration;
+  const availableMins = arrHomeMins + postFlightDuration;
+
+  // Check for heavy maintenance
+  const cCheckDue = isHeavyCheckDue(aircraft, 'C', scheduledDate);
+  const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
+
+  let availableHtml = '';
+  if (dCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    availableHtml = `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+          <span style="color: #f85149; font-size: 0.85rem; font-weight: 600;">${formatDateShort(releaseDate)} (after D Check)</span>
+        </div>
+      </div>
+    `;
+  } else if (cCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    availableHtml = `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+          <span style="color: #a371f7; font-size: 0.85rem; font-weight: 600;">${formatDateShort(releaseDate)} (after C Check)</span>
+        </div>
+      </div>
+    `;
+  } else {
+    // Calculate if goes into next day
+    const availableDay = Math.floor(availableMins / 1440);
+    let availableDateStr = scheduledDate;
+    if (availableDay > 0) {
+      availableDateStr = addDaysToDate(scheduledDate, availableDay);
+    }
+    availableHtml = `
+      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #30363d;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #8b949e; font-size: 0.85rem;">Aircraft Available:</span>
+          <span style="color: #7ee787; font-size: 0.85rem; font-weight: 600;">${availableDay > 0 ? formatDateShort(availableDateStr) + ' ' : ''}${formatTime(availableMins)}</span>
+        </div>
+      </div>
+    `;
+  }
+
   // Create and show custom modal
   const modalHtml = `
     <div id="flightDetailsModal" style="
@@ -1425,6 +2482,7 @@ async function viewFlightDetails(flightId) {
             <span style="color: #f0f6fc;">${depTime} → ${formatTime(arrHomeMins)} (${formatDuration(totalMinutes)})</span>
           </div>
           ${sectorHtml}
+          ${availableHtml}
         </div>
         <div style="padding: 1rem 1.5rem; border-top: 1px solid #30363d; display: flex; gap: 0.75rem; justify-content: flex-end;">
           <button onclick="closeFlightDetailsModal()" style="
@@ -1462,6 +2520,411 @@ async function viewFlightDetails(flightId) {
 function closeFlightDetailsModal() {
   const modal = document.getElementById('flightDetailsModal');
   if (modal) modal.remove();
+}
+
+// View flight details for weekly view (includes turnaround details)
+async function viewFlightDetailsWeekly(flightId) {
+  const flight = scheduledFlights.find(f => f.id === flightId);
+  if (!flight) return;
+
+  const route = flight.route;
+  const aircraft = flight.aircraft;
+  const hasTechStop = route.techStopAirport;
+  const acType = aircraft.aircraft?.type || 'Narrowbody';
+  const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+  const scheduledDate = flight.scheduledDate;
+
+  // Get airport codes
+  const depAirport = route.departureAirport.iataCode || route.departureAirport.icaoCode;
+  const arrAirport = route.arrivalAirport.iataCode || route.arrivalAirport.icaoCode;
+  const techAirport = hasTechStop ? (route.techStopAirport.iataCode || route.techStopAirport.icaoCode) : null;
+
+  // Calculate flight times
+  const techStopMinutes = 30;
+  const turnaroundMinutes = route.turnaroundTime || 45;
+  let outboundMinutes = 0;
+  let returnMinutes = 0;
+
+  if (aircraft.aircraft && aircraft.aircraft.cruiseSpeed) {
+    const cruiseSpeed = aircraft.aircraft.cruiseSpeed;
+    const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+    const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+    const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+    const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+    if (hasTechStop) {
+      const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+      const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
+      const leg1Distance = route.legOneDistance || Math.round(route.distance * 0.4);
+      const leg2Distance = route.legTwoDistance || Math.round(route.distance * 0.6);
+
+      const leg1Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, depLng, techLng, depLat, techLat);
+      const leg2Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, techLng, arrLng, techLat, arrLat);
+      const leg3Minutes = calculateFlightMinutes(leg2Distance, cruiseSpeed, arrLng, techLng, arrLat, techLat);
+      const leg4Minutes = calculateFlightMinutes(leg1Distance, cruiseSpeed, techLng, depLng, techLat, depLat);
+      outboundMinutes = leg1Minutes + techStopMinutes + leg2Minutes;
+      returnMinutes = leg3Minutes + techStopMinutes + leg4Minutes;
+    } else {
+      outboundMinutes = calculateFlightMinutes(route.distance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
+      returnMinutes = calculateFlightMinutes(route.distance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
+    }
+  }
+
+  const totalMinutes = outboundMinutes + turnaroundMinutes + returnMinutes;
+
+  const formatDuration = (mins) => {
+    const roundedMins = Math.round(mins / 5) * 5;
+    const h = Math.floor(roundedMins / 60);
+    const m = roundedMins % 60;
+    const mStr = String(m).padStart(2, '0');
+    return h > 0 ? `${h}h ${mStr}m` : `${m}m`;
+  };
+
+  const depTime = flight.departureTime.substring(0, 5);
+  const [depH, depM] = depTime.split(':').map(Number);
+  const depTotalMins = depH * 60 + depM;
+  const arrAtDestMins = depTotalMins + outboundMinutes;
+  const depReturnMins = arrAtDestMins + turnaroundMinutes;
+  const arrHomeMins = depReturnMins + returnMinutes;
+
+  const formatTime = (totalMins) => {
+    const roundedTotalMins = Math.round(totalMins / 5) * 5;
+    const h = Math.floor((roundedTotalMins % 1440) / 60);
+    const m = roundedTotalMins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  // Calculate pre-flight durations (same for both sectors)
+  let cateringDuration = 0;
+  if (paxCapacity >= 50 && acType !== 'Cargo') {
+    if (paxCapacity < 100) cateringDuration = 5;
+    else if (paxCapacity < 200) cateringDuration = 10;
+    else cateringDuration = 15;
+  }
+
+  // Boarding duration (10-35 mins based on capacity) - starts after catering
+  let boardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) boardingDuration = 10;
+    else if (paxCapacity < 100) boardingDuration = 15;
+    else if (paxCapacity < 200) boardingDuration = 20;
+    else if (paxCapacity < 300) boardingDuration = 25;
+    else boardingDuration = 35;
+  }
+
+  const distance = route?.distance || 0;
+  let fuellingDuration = 0;
+  if (distance < 500) fuellingDuration = 10;
+  else if (distance < 1500) fuellingDuration = 15;
+  else if (distance < 3000) fuellingDuration = 20;
+  else fuellingDuration = 25;
+
+  // Catering + boarding in sequence, fuelling in parallel
+  const preFlightTotal = Math.max(cateringDuration + boardingDuration, fuellingDuration);
+
+  // Calculate post-flight durations (same for both sectors)
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) deboardingDuration = 5;
+    else if (paxCapacity < 100) deboardingDuration = 8;
+    else if (paxCapacity < 200) deboardingDuration = 12;
+    else if (paxCapacity < 300) deboardingDuration = 15;
+    else deboardingDuration = 20;
+  }
+
+  let cleaningDuration;
+  if (paxCapacity < 50) cleaningDuration = 5;
+  else if (paxCapacity < 100) cleaningDuration = 10;
+  else if (paxCapacity < 200) cleaningDuration = 15;
+  else if (paxCapacity < 300) cleaningDuration = 20;
+  else cleaningDuration = 25;
+
+  const postFlightTotal = deboardingDuration + cleaningDuration;
+
+  // Check for heavy maintenance
+  const cCheckDue = isHeavyCheckDue(aircraft, 'C', scheduledDate);
+  const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
+
+  // Calculate all phase times
+  const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
+  const [year, month, day] = scheduledDate.split('-').map(Number);
+  const departureDateTime = new Date(Date.UTC(year, month - 1, day, depH, depM));
+
+  // Outbound sector times
+  const outboundPreFlightStart = new Date(departureDateTime.getTime() - preFlightTotal * 60000);
+  const outboundDepartureTime = departureDateTime;
+  const outboundArrivalTime = new Date(departureDateTime.getTime() + outboundMinutes * 60000);
+  const outboundPostFlightEnd = new Date(outboundArrivalTime.getTime() + postFlightTotal * 60000);
+
+  // Return sector times
+  const returnPreFlightStart = outboundPostFlightEnd; // Pre-flight for return starts after outbound post-flight
+  const returnDepartureTime = new Date(returnPreFlightStart.getTime() + preFlightTotal * 60000);
+  const returnArrivalTime = new Date(returnDepartureTime.getTime() + returnMinutes * 60000);
+  const returnPostFlightEnd = new Date(returnArrivalTime.getTime() + postFlightTotal * 60000);
+
+  // Total operation time
+  const totalOperationMs = returnPostFlightEnd.getTime() - outboundPreFlightStart.getTime();
+  const totalOperationMins = totalOperationMs / 60000;
+
+  // Overall flight progress
+  const overallElapsedMs = now.getTime() - outboundPreFlightStart.getTime();
+  const overallProgress = Math.max(0, Math.min(100, Math.round((overallElapsedMs / totalOperationMs) * 100)));
+
+  // Helper to calculate progress for a phase
+  const calcPhaseProgress = (phaseStartTime, phaseDurationMins) => {
+    const phaseStartMs = phaseStartTime.getTime();
+    const phaseDurationMs = phaseDurationMins * 60000;
+    const elapsedMs = now.getTime() - phaseStartMs;
+    if (elapsedMs < 0) return 0;
+    if (elapsedMs >= phaseDurationMs) return 100;
+    return Math.round((elapsedMs / phaseDurationMs) * 100);
+  };
+
+  // Outbound pre-flight progress
+  const outPreFlightProgress = calcPhaseProgress(outboundPreFlightStart, preFlightTotal);
+  const outCateringProgress = cateringDuration > 0 ? calcPhaseProgress(outboundPreFlightStart, cateringDuration) : 100;
+  const outBoardingProgress = boardingDuration > 0 ? calcPhaseProgress(new Date(outboundPreFlightStart.getTime() + cateringDuration * 60000), boardingDuration) : 100;
+  const outFuellingProgress = calcPhaseProgress(outboundPreFlightStart, fuellingDuration);
+
+  // Outbound flight progress
+  const outFlightProgress = calcPhaseProgress(outboundDepartureTime, outboundMinutes);
+
+  // Outbound post-flight progress
+  const outPostFlightProgress = calcPhaseProgress(outboundArrivalTime, postFlightTotal);
+  const outDeboardingProgress = deboardingDuration > 0 ? calcPhaseProgress(outboundArrivalTime, deboardingDuration) : 100;
+  const outCleaningProgress = calcPhaseProgress(new Date(outboundArrivalTime.getTime() + deboardingDuration * 60000), cleaningDuration);
+
+  // Return pre-flight progress
+  const retPreFlightProgress = calcPhaseProgress(returnPreFlightStart, preFlightTotal);
+  const retCateringProgress = cateringDuration > 0 ? calcPhaseProgress(returnPreFlightStart, cateringDuration) : 100;
+  const retBoardingProgress = boardingDuration > 0 ? calcPhaseProgress(new Date(returnPreFlightStart.getTime() + cateringDuration * 60000), boardingDuration) : 100;
+  const retFuellingProgress = calcPhaseProgress(returnPreFlightStart, fuellingDuration);
+
+  // Return flight progress
+  const retFlightProgress = calcPhaseProgress(returnDepartureTime, returnMinutes);
+
+  // Return post-flight progress
+  const retPostFlightProgress = calcPhaseProgress(returnArrivalTime, postFlightTotal);
+  const retDeboardingProgress = deboardingDuration > 0 ? calcPhaseProgress(returnArrivalTime, deboardingDuration) : 100;
+  const retCleaningProgress = calcPhaseProgress(new Date(returnArrivalTime.getTime() + deboardingDuration * 60000), cleaningDuration);
+
+  // Helper to build progress bar HTML
+  const progressBar = (progress, color, height = '4px') => `
+    <div style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.1rem;">
+      <div style="flex: 1; height: ${height}; background: #21262d; border-radius: 2px; overflow: hidden;">
+        <div style="width: ${progress}%; height: 100%; background: ${color}; border-radius: 2px; transition: width 0.3s;"></div>
+      </div>
+      <span style="color: ${progress === 100 ? '#7ee787' : '#8b949e'}; font-size: 0.65rem; min-width: 28px; text-align: right;">${progress}%</span>
+    </div>
+  `;
+
+  // Helper to build pre-flight section
+  const buildPreFlightSection = (cateringProg, boardingProg, fuellingProg, totalProg) => `
+    <div style="flex: 1; min-width: 140px;">
+      <div style="font-weight: 600; margin-bottom: 0.4rem; color: #3fb950; font-size: 0.75rem;">PRE-FLIGHT</div>
+      <div style="font-size: 0.75rem;">
+        ${cateringDuration > 0 ? `<div style="margin-bottom: 0.2rem;"><div style="display: flex; justify-content: space-between;"><span>Catering</span><span style="color: #8b949e;">${cateringDuration}m</span></div>${progressBar(cateringProg, '#f97316')}</div>` : ''}
+        ${boardingDuration > 0 ? `<div style="margin-bottom: 0.2rem;"><div style="display: flex; justify-content: space-between;"><span>Boarding</span><span style="color: #8b949e;">${boardingDuration}m</span></div>${progressBar(boardingProg, '#a855f7')}</div>` : ''}
+        <div style="margin-bottom: 0.2rem;"><div style="display: flex; justify-content: space-between;"><span>Fuelling</span><span style="color: #8b949e;">${fuellingDuration}m</span></div>${progressBar(fuellingProg, '#3b82f6')}</div>
+        <div style="margin-top: 0.3rem; padding-top: 0.3rem; border-top: 1px solid #30363d;"><div style="display: flex; justify-content: space-between; font-weight: 600;"><span>Total</span><span style="color: #3fb950;">${preFlightTotal}m</span></div>${progressBar(totalProg, '#22c55e')}</div>
+      </div>
+    </div>
+  `;
+
+  // Helper to build post-flight section
+  const buildPostFlightSection = (deboardingProg, cleaningProg, totalProg) => `
+    <div style="flex: 1; min-width: 140px;">
+      <div style="font-weight: 600; margin-bottom: 0.4rem; color: #58a6ff; font-size: 0.75rem;">POST-FLIGHT</div>
+      <div style="font-size: 0.75rem;">
+        ${deboardingDuration > 0 ? `<div style="margin-bottom: 0.2rem;"><div style="display: flex; justify-content: space-between;"><span>Deboarding</span><span style="color: #8b949e;">${deboardingDuration}m</span></div>${progressBar(deboardingProg, '#f97316')}</div>` : ''}
+        <div style="margin-bottom: 0.2rem;"><div style="display: flex; justify-content: space-between;"><span>Cleaning</span><span style="color: #8b949e;">${cleaningDuration}m</span></div>${progressBar(cleaningProg, '#06b6d4')}</div>
+        <div style="margin-top: 0.3rem; padding-top: 0.3rem; border-top: 1px solid #30363d;"><div style="display: flex; justify-content: space-between; font-weight: 600;"><span>Total</span><span style="color: #58a6ff;">${postFlightTotal}m</span></div>${progressBar(totalProg, '#3b82f6')}</div>
+      </div>
+    </div>
+  `;
+
+  // Build maintenance info if applicable
+  let maintenanceHtml = '';
+  if (dCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    maintenanceHtml = `
+      <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(248, 81, 73, 0.1); border: 1px solid #f85149; border-radius: 6px;">
+        <div style="font-weight: 600; color: #f85149; font-size: 0.85rem;">D Check Scheduled</div>
+        <div style="font-size: 0.8rem; color: #8b949e; margin-top: 0.25rem;">Duration: 60 days • Release: <span style="color: #7ee787;">${formatDateShort(releaseDate)}</span></div>
+      </div>
+    `;
+  } else if (cCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    maintenanceHtml = `
+      <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(163, 113, 247, 0.1); border: 1px solid #a371f7; border-radius: 6px;">
+        <div style="font-weight: 600; color: #a371f7; font-size: 0.85rem;">C Check Scheduled</div>
+        <div style="font-size: 0.8rem; color: #8b949e; margin-top: 0.25rem;">Duration: 14 days • Release: <span style="color: #7ee787;">${formatDateShort(releaseDate)}</span></div>
+      </div>
+    `;
+  }
+
+  // Calculate aircraft available time
+  const availableMins = arrHomeMins + postFlightTotal;
+  let availableText = '';
+  if (dCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 60);
+    availableText = `<span style="color: #f85149;">${formatDateShort(releaseDate)} (after D Check)</span>`;
+  } else if (cCheckDue) {
+    const releaseDate = addDaysToDate(scheduledDate, 14);
+    availableText = `<span style="color: #a371f7;">${formatDateShort(releaseDate)} (after C Check)</span>`;
+  } else {
+    const availableDay = Math.floor(availableMins / 1440);
+    let availableDateStr = scheduledDate;
+    if (availableDay > 0) {
+      availableDateStr = addDaysToDate(scheduledDate, availableDay);
+    }
+    availableText = `<span style="color: #7ee787;">${availableDay > 0 ? formatDateShort(availableDateStr) + ' ' : ''}${formatTime(availableMins)}</span>`;
+  }
+
+  // Create and show custom modal
+  const modalHtml = `
+    <div id="flightDetailsModal" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    ">
+      <div style="
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        width: 850px;
+        max-width: 95vw;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      ">
+        <div style="padding: 1rem 1.5rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; color: #f0f6fc; font-size: 1.1rem;">Flight Details - ${route.routeNumber} / ${route.returnRouteNumber}</h3>
+          <button onclick="closeFlightDetailsModal()" style="background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+        </div>
+        <div style="padding: 1.25rem;">
+          <!-- Header info row -->
+          <div style="display: flex; gap: 2rem; margin-bottom: 1rem; font-size: 0.85rem; flex-wrap: wrap;">
+            <div><span style="color: #8b949e;">Aircraft:</span> <span style="color: #f0f6fc; font-weight: 600;">${aircraft.registration}</span> <span style="color: #8b949e;">(${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model})</span></div>
+            <div><span style="color: #8b949e;">Date:</span> <span style="color: #f0f6fc;">${flight.scheduledDate}</span></div>
+            <div><span style="color: #8b949e;">Flight Time:</span> <span style="color: #7ee787; font-weight: 600;">${formatDuration(totalMinutes)}</span></div>
+            <div><span style="color: #8b949e;">Total Operation:</span> <span style="color: #ffa657; font-weight: 600;">${formatDuration(totalOperationMins)}</span></div>
+          </div>
+
+          <!-- Overall progress bar -->
+          <div style="margin-bottom: 1.25rem; padding: 0.75rem; background: #21262d; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span style="color: #f0f6fc; font-weight: 600; font-size: 0.85rem;">Overall Flight Progress</span>
+              <span style="color: ${overallProgress === 100 ? '#7ee787' : '#ffa657'}; font-weight: 600; font-size: 0.9rem;">${overallProgress}%</span>
+            </div>
+            <div style="height: 8px; background: #30363d; border-radius: 4px; overflow: hidden;">
+              <div style="width: ${overallProgress}%; height: 100%; background: linear-gradient(90deg, #3fb950, #58a6ff); border-radius: 4px; transition: width 0.3s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 0.4rem; font-size: 0.7rem; color: #8b949e;">
+              <span>${formatTime(depTotalMins - preFlightTotal)}</span>
+              <span>Aircraft Available: ${availableText}</span>
+            </div>
+          </div>
+
+          <!-- Two sector columns -->
+          <div style="display: flex; gap: 1.5rem;">
+            <!-- Outbound Sector -->
+            <div style="flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #30363d;">
+                <div>
+                  <div style="font-weight: 700; color: #58a6ff; font-size: 0.9rem;">OUTBOUND</div>
+                  <div style="color: #8b949e; font-size: 0.75rem;">${route.routeNumber}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="color: #f0f6fc; font-weight: 600;">${depAirport} → ${arrAirport}</div>
+                  <div style="color: #8b949e; font-size: 0.8rem;">${depTime} → ${formatTime(arrAtDestMins)}</div>
+                </div>
+              </div>
+
+              <!-- Flight progress -->
+              <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: #161b22; border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                  <span style="color: #ffa657; font-weight: 600;">Flight</span>
+                  <span style="color: #7ee787;">${formatDuration(outboundMinutes)}</span>
+                </div>
+                ${progressBar(outFlightProgress, '#ffa657', '6px')}
+              </div>
+
+              <!-- Pre and Post flight side by side -->
+              <div style="display: flex; gap: 0.75rem;">
+                ${buildPreFlightSection(outCateringProgress, outBoardingProgress, outFuellingProgress, outPreFlightProgress)}
+                ${buildPostFlightSection(outDeboardingProgress, outCleaningProgress, outPostFlightProgress)}
+              </div>
+            </div>
+
+            <!-- Return Sector -->
+            <div style="flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #30363d;">
+                <div>
+                  <div style="font-weight: 700; color: #a855f7; font-size: 0.9rem;">RETURN</div>
+                  <div style="color: #8b949e; font-size: 0.75rem;">${route.returnRouteNumber}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="color: #f0f6fc; font-weight: 600;">${arrAirport} → ${depAirport}</div>
+                  <div style="color: #8b949e; font-size: 0.8rem;">${formatTime(depReturnMins)} → ${formatTime(arrHomeMins)}</div>
+                </div>
+              </div>
+
+              <!-- Flight progress -->
+              <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: #161b22; border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                  <span style="color: #ffa657; font-weight: 600;">Flight</span>
+                  <span style="color: #7ee787;">${formatDuration(returnMinutes)}</span>
+                </div>
+                ${progressBar(retFlightProgress, '#ffa657', '6px')}
+              </div>
+
+              <!-- Pre and Post flight side by side -->
+              <div style="display: flex; gap: 0.75rem;">
+                ${buildPreFlightSection(retCateringProgress, retBoardingProgress, retFuellingProgress, retPreFlightProgress)}
+                ${buildPostFlightSection(retDeboardingProgress, retCleaningProgress, retPostFlightProgress)}
+              </div>
+            </div>
+          </div>
+
+          ${maintenanceHtml}
+        </div>
+        <div style="padding: 1rem 1.5rem; border-top: 1px solid #30363d; display: flex; gap: 0.75rem; justify-content: flex-end;">
+          <button onclick="closeFlightDetailsModal()" style="
+            padding: 0.5rem 1rem;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            cursor: pointer;
+            font-size: 0.9rem;
+          ">Close</button>
+          <button onclick="removeFlightFromModal('${flightId}')" style="
+            padding: 0.5rem 1rem;
+            background: #da3633;
+            border: 1px solid #f85149;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+          ">Remove from Schedule</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Remove existing modal if any
+  const existingModal = document.getElementById('flightDetailsModal');
+  if (existingModal) existingModal.remove();
+
+  // Add modal to page
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 async function removeFlightFromModal(flightId) {
@@ -1597,8 +3060,10 @@ async function viewMaintenanceDetails(maintenanceId) {
 function calculateEndTime(startTime, durationMinutes) {
   const [h, m] = startTime.split(':').map(Number);
   const totalMins = h * 60 + m + durationMinutes;
-  const endH = Math.floor((totalMins % 1440) / 60);
-  const endM = totalMins % 60;
+  // Round to nearest 5 minutes
+  const roundedTotalMins = Math.round(totalMins / 5) * 5;
+  const endH = Math.floor((roundedTotalMins % 1440) / 60);
+  const endM = roundedTotalMins % 60;
   return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 }
 
@@ -1812,24 +3277,24 @@ function renderWeeklySchedule() {
 
   const dayColumns = generateWeeklyDayColumns();
 
-  // Build schedule grid HTML
-  let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">';
+  // Build schedule grid HTML - use table-layout: fixed for even day column widths
+  let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; table-layout: fixed;">';
 
   // Header row
   html += '<thead><tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 10;">';
-  html += '<th style="padding: 0.75rem 1rem; text-align: left; color: var(--text-secondary); font-weight: 600; min-width: 200px; position: sticky; left: 0; background: var(--surface-elevated); border-right: 2px solid var(--border-color); z-index: 11;">AIRCRAFT</th>';
+  html += '<th style="padding: 0.75rem 1rem; text-align: left; color: var(--text-secondary); font-weight: 600; width: 180px; min-width: 180px; position: sticky; left: 0; background: var(--surface-elevated); border-right: 2px solid var(--border-color); z-index: 11;">AIRCRAFT</th>';
 
   dayColumns.forEach((col) => {
     const isToday = col.dayOfWeek === getCurrentWorldTime()?.getDay();
     const bgColor = isToday ? 'background: rgba(0, 102, 204, 0.15);' : '';
     const todayIndicator = isToday ? '<span style="color: var(--accent-color); font-size: 0.65rem; margin-left: 0.25rem;">●</span>' : '';
     html += `
-      <th style="padding: 0.75rem 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: 110px; border-left: 1px solid var(--border-color); cursor: pointer; ${bgColor}" onclick="goToDay(${col.dayOfWeek})" title="Click to view ${col.label}">
+      <th style="padding: 0.75rem 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; border-left: 1px solid var(--border-color); cursor: pointer; ${bgColor}" onclick="goToDay(${col.dayOfWeek})" title="Click to view ${col.label}">
         ${col.label}${todayIndicator}
       </th>`;
   });
 
-  html += '<th style="padding: 0.75rem 0.5rem 0.75rem 0.75rem; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: 100px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>';
+  html += '<th style="padding: 0.75rem 0.5rem 0.75rem 0.75rem; text-align: center; color: var(--text-secondary); font-weight: 600; width: 100px; min-width: 100px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>';
   html += '</tr></thead>';
 
   html += '<tbody>';
@@ -1933,12 +3398,13 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         const depMinutes = depH * 60 + depM;
         const arrMinutes = arrH * 60 + arrM;
 
-        // Get day of week for departure and arrival
+        // Get day of week for departure and arrival (calculate arrival date if not stored)
         const depDate = new Date(flight.scheduledDate + 'T00:00:00');
         const depDayOfWeek = depDate.getDay();
-        const arrDate = flight.arrivalDate ? new Date(flight.arrivalDate + 'T00:00:00') : depDate;
+        const effectiveArrivalDate = getEffectiveArrivalDate(flight);
+        const arrDate = new Date(effectiveArrivalDate + 'T00:00:00');
         const arrDayOfWeek = arrDate.getDay();
-        const isMultiDay = flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate;
+        const isMultiDay = effectiveArrivalDate !== flight.scheduledDate;
 
         // Calculate days difference to detect transit days
         const daysDiff = Math.round((arrDate - depDate) / (1000 * 60 * 60 * 24));
@@ -2013,18 +3479,36 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           }
         }
 
-        // Build label content with optional tech stop
-        const techStopLabel = techStopAirport ? `<div style="color: #22c55e; font-size: 0.55rem; white-space: nowrap;">via ${techStopAirport}</div>` : '';
-        const labelContent = showLabel ? `
-          <div style="display: flex; flex-direction: column; align-items: center; line-height: 1.2;">
-            <span style="color: white; font-size: 0.7rem; font-weight: 600; white-space: nowrap;">${arrAirport}</span>
-            ${techStopLabel}
-          </div>
-        ` : '';
+        // Build label content - use vertical text for narrow strips, hide if too small
+        let labelContent = '';
+        if (showLabel) {
+          const isNarrow = widthPct < 12; // Less than ~12% of day width
+          const isTooSmall = widthPct < 5; // Less than ~5% - don't show label at all
 
+          if (isTooSmall) {
+            labelContent = '';
+          } else if (isNarrow) {
+            // Vertically stacked letters for narrow strips (letters upright, stacked top to bottom)
+            const stackedLetters = arrAirport.split('').join('<br>');
+            labelContent = `
+              <span style="color: white; font-size: 0.55rem; font-weight: 600; line-height: 0.9; text-align: center;">${stackedLetters}</span>
+            `;
+          } else {
+            // Normal horizontal text with optional tech stop
+            const techStopLabel = techStopAirport ? `<div style="color: #22c55e; font-size: 0.55rem; white-space: nowrap;">via ${techStopAirport}</div>` : '';
+            labelContent = `
+              <div style="display: flex; flex-direction: column; align-items: center; line-height: 1.2;">
+                <span style="color: white; font-size: 0.7rem; font-weight: 600; white-space: nowrap;">${arrAirport}</span>
+                ${techStopLabel}
+              </div>
+            `;
+          }
+        }
+
+        // Main flight block - covers the full flight time (no separate pre/post-flight slivers in weekly view)
         cellContent += `
           <div
-            onclick="event.stopPropagation(); viewFlightDetails('${flight.id}')"
+            onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
             title="${routeNum}: ${depTimeStr}→${arrTimeStr}${techStopAirport ? ' via ' + techStopAirport : ''}"
             style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: var(--accent-color); border-radius: ${borderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;"
           >
@@ -2073,7 +3557,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         class="schedule-cell weekly-cell"
         data-day="${col.dayOfWeek}"
         data-aircraft-id="${aircraft.id}"
-        style="position: relative; height: 36px; border-left: 1px solid var(--border-color); background: ${bgColor}; cursor: pointer; min-width: 110px;"
+        style="position: relative; height: 36px; border-left: 1px solid var(--border-color); background: ${bgColor}; cursor: pointer;"
         onclick="goToDay(${col.dayOfWeek})"
         ondragover="handleWeeklyDragOver(event, ${col.dayOfWeek})"
         ondragleave="handleWeeklyDragLeave(event)"
@@ -2174,9 +3658,12 @@ function getFlightsForDay(aircraftId, dayOfWeek) {
     // Check departure day
     if (depDayOfWeek === dayOfWeek) return true;
 
+    // Get effective arrival date (from stored data or calculated)
+    const effectiveArrivalDate = getEffectiveArrivalDate(f);
+
     // Check arrival day and transit days
-    if (f.arrivalDate && f.arrivalDate !== f.scheduledDate) {
-      const arrDate = new Date(f.arrivalDate + 'T00:00:00');
+    if (effectiveArrivalDate && effectiveArrivalDate !== f.scheduledDate) {
+      const arrDate = new Date(effectiveArrivalDate + 'T00:00:00');
       const arrDayOfWeek = arrDate.getDay();
 
       // Check if arrival day matches
@@ -2963,15 +4450,17 @@ async function scheduleMaintenance(aircraftId) {
     <div style="margin-bottom: 1.5rem;">
       <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-weight: 600;">Check Type</label>
       <select id="checkType" style="width: 100%; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 1rem;">
-        <option value="A">Daily Check (60 minutes)</option>
-        <option value="B">Weekly Check (120 minutes)</option>
+        <option value="daily">Daily Check (1 hour)</option>
+        <option value="A">A Check (3 hours)</option>
+        <option value="B">B Check (6 hours)</option>
       </select>
+      <p id="checkDescription" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Valid for 2 calendar days until midnight UTC</p>
     </div>
 
-    <div style="margin-bottom: 1.5rem;">
+    <div id="repeatContainer" style="margin-bottom: 1.5rem;">
       <label style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary); cursor: pointer;">
         <input type="checkbox" id="repeatCheck" checked style="width: 18px; height: 18px; cursor: pointer;" />
-        <span id="repeatLabel" style="font-weight: 600;">Repeat daily</span>
+        <span id="repeatLabel" style="font-weight: 600;">Repeat every day at this time</span>
       </label>
     </div>
 
@@ -2994,16 +4483,32 @@ async function scheduleMaintenance(aircraftId) {
     document.body.removeChild(overlay);
   });
 
-  // Update repeat label when check type changes
+  // Update description and show/hide repeat option when check type changes
   document.getElementById('checkType').addEventListener('change', function() {
-    const repeatLabel = document.getElementById('repeatLabel');
-    repeatLabel.textContent = this.value === 'A' ? 'Repeat daily' : 'Repeat weekly';
+    const repeatContainer = document.getElementById('repeatContainer');
+    const checkDescription = document.getElementById('checkDescription');
+
+    switch (this.value) {
+      case 'daily':
+        checkDescription.textContent = 'Valid for 2 calendar days until midnight UTC';
+        repeatContainer.style.display = 'block';
+        break;
+      case 'A':
+        checkDescription.textContent = 'Interval: 35-50 days (varies per aircraft)';
+        repeatContainer.style.display = 'none';
+        break;
+      case 'B':
+        checkDescription.textContent = 'Interval: 6-8 months (varies per aircraft)';
+        repeatContainer.style.display = 'none';
+        break;
+    }
   });
 
   document.getElementById('scheduleMaintenanceBtn').addEventListener('click', async () => {
     const checkType = document.getElementById('checkType').value;
     const startTime = document.getElementById('startTime').value;
-    const repeatCheck = document.getElementById('repeatCheck').checked;
+    // Only daily checks can repeat - A and B checks are one-off
+    const repeatCheck = checkType === 'daily' ? document.getElementById('repeatCheck').checked : false;
 
     if (!startTime) {
       await showAlertModal('Validation Error', 'Please select a start time');
@@ -3017,10 +4522,11 @@ async function scheduleMaintenance(aircraftId) {
       document.body.removeChild(overlay);
 
       // Show loading overlay
-      const checkTypeLabel = checkType === 'A' ? 'Daily' : 'Weekly';
+      const checkTypeLabels = { 'daily': 'Daily', 'A': 'A', 'B': 'B' };
+      const checkTypeLabel = checkTypeLabels[checkType] || checkType;
       const message = repeatCheck ?
-        `Creating recurring ${checkTypeLabel.toLowerCase()} maintenance patterns...` :
-        `Scheduling ${checkTypeLabel.toLowerCase()} maintenance check...`;
+        `Creating recurring ${checkTypeLabel} Check patterns...` :
+        `Scheduling ${checkTypeLabel} Check...`;
       showLoadingOverlay(message);
 
       const response = await fetch('/api/schedule/maintenance', {

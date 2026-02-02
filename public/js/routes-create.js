@@ -1176,10 +1176,12 @@ function calculateFlightTiming() {
   };
 
   const formatDuration = (minutes) => {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
+    const roundedMins = Math.round(minutes / 5) * 5;
+    const h = Math.floor(roundedMins / 60);
+    const m = roundedMins % 60;
+    const mStr = String(m).padStart(2, '0');
     if (h > 0) {
-      return `${h}h ${m}m`;
+      return `${h}h ${mStr}m`;
     }
     return `${m}m`;
   };

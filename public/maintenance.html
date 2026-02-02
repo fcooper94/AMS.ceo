@@ -6,11 +6,18 @@
   .check-status {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.85rem;
+    justify-content: center;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
     font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    min-width: 40px;
+  }
+
+  .check-status:hover {
+    opacity: 0.8;
   }
 
   .check-valid {
@@ -39,9 +46,9 @@
 
   .aircraft-type-header {
     background: var(--surface-elevated);
-    padding: 1rem 1.5rem;
+    padding: 0.5rem 1rem;
     border-bottom: 2px solid var(--accent-color);
-    margin-top: 1.5rem;
+    margin-top: 1rem;
   }
 
   .aircraft-type-header:first-child {
@@ -51,17 +58,179 @@
   .aircraft-type-header h3 {
     margin: 0;
     color: var(--accent-color);
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 700;
-    letter-spacing: 0.5px;
   }
 
   .aircraft-type-header span {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 400;
   }
 
+  .maintenance-header {
+    display: grid;
+    grid-template-columns: 80px repeat(5, 1fr);
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .maintenance-header span {
+    text-align: center;
+  }
+
+  .maintenance-header span:first-child {
+    text-align: left;
+  }
+
+  .maintenance-row {
+    display: grid;
+    grid-template-columns: 80px repeat(5, 1fr);
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .maintenance-row:hover {
+    background: var(--surface-elevated);
+  }
+
+  .maintenance-reg {
+    color: var(--accent-color);
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .maintenance-check-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .filter-bar {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-bar input, .filter-bar select {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+
+  .filter-bar input:focus, .filter-bar select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+
+  .filter-bar label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-right: 0.25rem;
+  }
+
+  /* Modal styles */
+  .maint-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .maint-modal {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    min-width: 350px;
+    max-width: 450px;
+  }
+
+  .maint-modal h3 {
+    margin: 0 0 1rem 0;
+    color: var(--accent-color);
+    font-size: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+  }
+
+  .maint-modal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .maint-modal-row:last-child {
+    border-bottom: none;
+  }
+
+  .maint-modal-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+
+  .maint-modal-value {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: right;
+    max-width: 200px;
+  }
+
+  .maint-modal-close {
+    margin-top: 1rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .maint-modal-close:hover {
+    opacity: 0.9;
+  }
+
+  .legend-compact {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--text-muted);
+  }
 </style>
 
 <div class="dashboard-container">
@@ -71,31 +240,58 @@
       <p class="subtitle">MAINTENANCE CHECK STATUS</p>
     </div>
 
-    <!-- Legend -->
-    <div style="margin-bottom: 1.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="check-status check-valid" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">VALID</span>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">Check is current</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="check-status check-warning" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">EXPIRING</span>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">Expires within 24 hours</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="check-status check-expired" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">EXPIRED</span>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">Check has expired</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="check-status check-none" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">NEVER</span>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">Never performed</span>
-      </div>
-    </div>
-
     <div class="ops-panel full-width">
       <div class="panel-header">
-        <h2>MAINTENANCE STATUS BY AIRCRAFT TYPE</h2>
+        <h2>MAINTENANCE STATUS</h2>
       </div>
       <div class="panel-body" style="padding: 0;">
+        <!-- Compact Legend -->
+        <div class="legend-compact">
+          <div class="legend-item">
+            <span class="check-status check-valid" style="padding: 0.1rem 0.3rem; font-size: 0.65rem; min-width: auto;">OK</span>
+            Valid
+          </div>
+          <div class="legend-item">
+            <span class="check-status check-warning" style="padding: 0.1rem 0.3rem; font-size: 0.65rem; min-width: auto;">DUE</span>
+            Due Soon
+          </div>
+          <div class="legend-item">
+            <span class="check-status check-expired" style="padding: 0.1rem 0.3rem; font-size: 0.65rem; min-width: auto;">EXP</span>
+            Overdue
+          </div>
+          <div class="legend-item">
+            <span class="check-status check-none" style="padding: 0.1rem 0.3rem; font-size: 0.65rem; min-width: auto;">--</span>
+            Never
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div>
+            <label>Search:</label>
+            <input type="text" id="searchFilter" placeholder="Registration..." style="width: 120px;">
+          </div>
+          <div>
+            <label>Type:</label>
+            <select id="typeFilter">
+              <option value="">All Types</option>
+            </select>
+          </div>
+          <div>
+            <label>Status:</label>
+            <select id="statusFilter">
+              <option value="">All</option>
+              <option value="expired">Expired</option>
+              <option value="warning">Expiring</option>
+              <option value="valid">Valid</option>
+              <option value="none">Never</option>
+            </select>
+          </div>
+          <div style="margin-left: auto; color: var(--text-muted); font-size: 0.8rem;">
+            <span id="aircraftCount">0</span> aircraft
+          </div>
+        </div>
+
         <div id="maintenanceGrid">
           <div class="table-empty">
             <div class="empty-message">LOADING MAINTENANCE DATA...</div>
@@ -104,4 +300,13 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Modal container -->
+<div id="maintModalOverlay" class="maint-modal-overlay" style="display: none;" onclick="closeMaintenanceModal(event)">
+  <div class="maint-modal" onclick="event.stopPropagation()">
+    <h3 id="modalTitle">Check Details</h3>
+    <div id="modalContent"></div>
+    <button class="maint-modal-close" onclick="closeMaintenanceModal()">Close</button>
+  </div>
 </div>

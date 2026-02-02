@@ -13,9 +13,10 @@ const RecurringMaintenance = sequelize.define('RecurringMaintenance', {
     field: 'aircraft_id'
   },
   checkType: {
-    type: DataTypes.ENUM('A', 'B'),
+    type: DataTypes.ENUM('daily', 'A', 'B'),
     allowNull: false,
-    field: 'check_type'
+    field: 'check_type',
+    comment: 'daily=Daily Check (1hr), A=A Check (3hrs), B=B Check (6hrs). C/D are automatic.'
   },
   dayOfWeek: {
     type: DataTypes.INTEGER,
