@@ -536,6 +536,254 @@ function showAircraftMarketplaceOptions() {
   });
 }
 
+// Bankruptcy modal functionality
+function showBankruptcyModal() {
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'bankruptcyOverlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  `;
+
+  // Create modal content
+  const modalContent = document.createElement('div');
+  modalContent.style.cssText = `
+    background: var(--surface);
+    border: 2px solid #f85149;
+    border-radius: 8px;
+    padding: 2rem;
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+  `;
+
+  modalContent.innerHTML = `
+    <div style="margin-bottom: 1.5rem;">
+      <svg width="64" height="64" viewBox="-1 -1 26 26" fill="none" stroke="#f85149" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem; overflow: visible;">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <circle cx="12" cy="17" r="0.5" fill="#f85149"></circle>
+      </svg>
+      <h2 style="color: #f85149; margin-bottom: 0.5rem; font-size: 1.5rem;">DECLARE BANKRUPTCY</h2>
+    </div>
+
+    <div style="background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem;">
+      <p style="color: #ff6b63; font-weight: 600; margin-bottom: 0.5rem;">WARNING: This action is IRREVERSIBLE!</p>
+      <p style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+        Declaring bankruptcy will:
+      </p>
+      <ul style="color: var(--text-secondary); font-size: 0.9rem; text-align: left; margin: 0.75rem 0 0 1.5rem; line-height: 1.6;">
+        <li>Liquidate your entire company</li>
+        <li>Sell all aircraft at reduced market value</li>
+        <li>Cancel all routes and schedules</li>
+        <li>Terminate all staff contracts</li>
+        <li>Reset your airline in this world</li>
+      </ul>
+    </div>
+
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
+      Type <strong style="color: #f85149;">BANKRUPT</strong> to confirm:
+    </p>
+
+    <input type="text" id="bankruptcyConfirmInput" placeholder="Type BANKRUPT" style="
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 1rem;
+      text-align: center;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+      box-sizing: border-box;
+    ">
+
+    <div style="display: flex; gap: 1rem; justify-content: center;">
+      <button id="cancelBankruptcyBtn" style="
+        padding: 0.75rem 1.5rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      ">Cancel</button>
+      <button id="confirmBankruptcyBtn" disabled style="
+        padding: 0.75rem 1.5rem;
+        background: #f85149;
+        border: 1px solid #f85149;
+        border-radius: 4px;
+        color: white;
+        cursor: not-allowed;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        opacity: 0.5;
+      ">Declare Bankruptcy</button>
+    </div>
+  `;
+
+  overlay.appendChild(modalContent);
+  document.body.appendChild(overlay);
+
+  // Get elements
+  const input = document.getElementById('bankruptcyConfirmInput');
+  const confirmBtn = document.getElementById('confirmBankruptcyBtn');
+  const cancelBtn = document.getElementById('cancelBankruptcyBtn');
+
+  // Enable/disable confirm button based on input
+  input.addEventListener('input', function() {
+    const isValid = this.value.toUpperCase() === 'BANKRUPT';
+    confirmBtn.disabled = !isValid;
+    confirmBtn.style.opacity = isValid ? '1' : '0.5';
+    confirmBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+  });
+
+  // Cancel button handler
+  cancelBtn.addEventListener('click', function() {
+    closeBankruptcyModal();
+  });
+
+  // Confirm button handler
+  confirmBtn.addEventListener('click', function() {
+    if (input.value.toUpperCase() === 'BANKRUPT') {
+      executeBankruptcy();
+    }
+  });
+
+  // Close on overlay click
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) {
+      closeBankruptcyModal();
+    }
+  });
+
+  // Close on Escape key
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') {
+      closeBankruptcyModal();
+      document.removeEventListener('keydown', escHandler);
+    }
+  });
+
+  // Focus the input
+  input.focus();
+}
+
+function closeBankruptcyModal() {
+  const overlay = document.getElementById('bankruptcyOverlay');
+  if (overlay) {
+    document.body.removeChild(overlay);
+  }
+}
+
+async function executeBankruptcy() {
+  const confirmBtn = document.getElementById('confirmBankruptcyBtn');
+  if (confirmBtn) {
+    confirmBtn.textContent = 'Processing...';
+    confirmBtn.disabled = true;
+  }
+
+  try {
+    const response = await fetch('/api/world/bankruptcy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      // Update modal to show success state
+      const modalContent = document.querySelector('#bankruptcyOverlay > div');
+      if (modalContent) {
+        const liquidationValue = data.summary?.liquidationValue || 0;
+        const aircraftCount = data.summary?.aircraftSold || 0;
+        const routesCount = data.summary?.routesCancelled || 0;
+
+        modalContent.innerHTML = `
+          <div style="margin-bottom: 1.5rem;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M8 12l3 3 5-6"></path>
+            </svg>
+            <h2 style="color: #22c55e; margin-bottom: 0.5rem; font-size: 1.5rem;">BANKRUPTCY COMPLETE</h2>
+          </div>
+
+          <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem;">
+            <p style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin-bottom: 0.75rem;">
+              Your airline has been liquidated.
+            </p>
+            <div style="text-align: left; color: var(--text-secondary); font-size: 0.9rem;">
+              <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid var(--border-color);">
+                <span>Aircraft sold:</span>
+                <span style="color: var(--text-primary);">${aircraftCount}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid var(--border-color);">
+                <span>Routes cancelled:</span>
+                <span style="color: var(--text-primary);">${routesCount}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; font-weight: 600;">
+                <span>Liquidation value:</span>
+                <span style="color: #22c55e;">$${liquidationValue.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.85rem;">
+            You can start a new airline by joining a world.
+          </p>
+
+          <button id="bankruptcyDoneBtn" style="
+            padding: 0.75rem 2rem;
+            background: #22c55e;
+            border: 1px solid #22c55e;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          ">Continue</button>
+        `;
+
+        document.getElementById('bankruptcyDoneBtn').addEventListener('click', function() {
+          window.location.href = '/world-selection';
+        });
+      }
+    } else {
+      alert(data.error || 'Failed to declare bankruptcy. Please try again.');
+      if (confirmBtn) {
+        confirmBtn.textContent = 'Declare Bankruptcy';
+        confirmBtn.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error('Bankruptcy error:', error);
+    alert('An error occurred. Please try again.');
+    if (confirmBtn) {
+      confirmBtn.textContent = 'Declare Bankruptcy';
+      confirmBtn.disabled = false;
+    }
+  }
+}
+
+// Make bankruptcy modal available globally
+window.showBankruptcyModal = showBankruptcyModal;
+
 // Sidebar toggle functionality
 function initSidebarToggle() {
   const toggleBtn = document.getElementById('sidebarToggle');

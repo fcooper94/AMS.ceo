@@ -25,7 +25,7 @@ const CHECK_INTERVALS = {
 
 // How many days before expiry to schedule each check type
 const SCHEDULE_BEFORE_EXPIRY = {
-  daily: 1,      // Schedule 1 day before expiry
+  daily: 7,      // Schedule daily checks proactively (up to 7 days ahead)
   A: 7,          // Schedule 1 week before expiry
   B: 14,         // Schedule 2 weeks before expiry
   C: 30,         // Schedule 1 month before expiry
@@ -356,119 +356,182 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
       continue;
     }
 
-    // Calculate days until expiry
-    const daysUntilExpiry = Math.floor((expiryDate - gameNow) / (1000 * 60 * 60 * 24));
-    const scheduleBefore = SCHEDULE_BEFORE_EXPIRY[checkType];
-
-    console.log(`${aircraft.registration} ${checkType} check: ${daysUntilExpiry} days until expiry, schedule threshold: ${scheduleBefore} days`);
-
-    // Only schedule if within the scheduling window
-    if (daysUntilExpiry > scheduleBefore) {
-      console.log(`${checkType} check not due yet for ${aircraft.registration}`);
-      continue;
-    }
-
-    // Check if already scheduled for this check type
-    const existingScheduled = await RecurringMaintenance.findOne({
-      where: {
-        aircraftId,
-        checkType,
-        status: 'active',
-        scheduledDate: { [Op.ne]: null }
-      }
-    });
-
-    if (existingScheduled) {
-      console.log(`${checkType} check already scheduled for ${aircraft.registration} on ${existingScheduled.scheduledDate}`);
-      createdRecords.push(existingScheduled);
-      continue;
-    }
-
     // Delete any old patterns for this check type (cleanup legacy recurring entries)
     await RecurringMaintenance.destroy({
       where: { aircraftId, checkType, scheduledDate: null }
     });
 
     const duration = CHECK_DURATIONS[checkType];
+    const durationDays = Math.ceil(duration / (24 * 60)); // Convert minutes to days (round up)
 
-    // For C and D checks (heavy maintenance spanning multiple days),
-    // we need to find a window where the aircraft can be grounded
-    if (checkType === 'C' || checkType === 'D') {
-      // Calculate the target date (aim for just before expiry)
-      // For C check: 14 days, for D check: 60 days of downtime
-      const daysNeeded = checkType === 'C' ? 14 : 60;
+    // For A, B, C, D checks - plan for next 12 months
+    if (checkType === 'A' || checkType === 'B' || checkType === 'C' || checkType === 'D') {
+      const planningHorizon = 365; // Plan 12 months ahead
+      const endPlanningDate = new Date(gameNow);
+      endPlanningDate.setDate(endPlanningDate.getDate() + planningHorizon);
 
-      // Find a start date that allows the check to complete before expiry
-      let targetStartDate = new Date(expiryDate);
-      targetStartDate.setDate(targetStartDate.getDate() - daysNeeded - 1); // 1 day buffer
-
-      // Don't schedule in the past
-      if (targetStartDate < gameNow) {
-        targetStartDate = new Date(gameNow);
-        targetStartDate.setDate(targetStartDate.getDate() + 1);
-      }
-
-      const targetDateStr = targetStartDate.toISOString().split('T')[0];
-
-      // For heavy maintenance, just schedule it - flights need to be cleared
-      const record = await RecurringMaintenance.create({
-        aircraftId,
-        checkType,
-        scheduledDate: targetDateStr,
-        startTime: '00:00',
-        duration,
-        status: 'active'
+      // Get existing scheduled checks for this type
+      const existingScheduled = await RecurringMaintenance.findAll({
+        where: {
+          aircraftId,
+          checkType,
+          status: 'active',
+          scheduledDate: { [Op.ne]: null }
+        },
+        order: [['scheduledDate', 'ASC']]
       });
-      createdRecords.push(record);
-      console.log(`Scheduled ${checkType} check for ${aircraft.registration} on ${targetDateStr} (${daysNeeded} days)`);
-    } else {
-      // For daily, A, B checks - find available slots
-      // Try dates starting from today up to expiry
-      let scheduled = false;
-      const maxDaysToTry = Math.min(daysUntilExpiry + 1, 30); // Don't search more than 30 days
 
-      for (let dayOffset = 0; dayOffset < maxDaysToTry && !scheduled; dayOffset++) {
-        const tryDate = new Date(gameNow);
-        tryDate.setDate(tryDate.getDate() + dayOffset);
-        const dateStr = tryDate.toISOString().split('T')[0];
+      // Track when checks are scheduled to calculate next expiry
+      let currentExpiryDate = new Date(expiryDate);
+      let checkInterval = fieldInfo.interval;
 
-        const availableTime = await findAvailableSlotOnDate(aircraftId, dateStr, duration);
+      // Iterate through planning horizon, scheduling checks as needed
+      let iterationCount = 0;
+      const maxIterations = 20; // Safety limit
 
-        if (availableTime) {
+      while (currentExpiryDate <= endPlanningDate && iterationCount < maxIterations) {
+        iterationCount++;
+
+        // Calculate when to schedule (leave buffer for check duration + 1-2 days)
+        const bufferDays = durationDays + 2;
+        let targetStartDate = new Date(currentExpiryDate);
+        targetStartDate.setDate(targetStartDate.getDate() - bufferDays);
+
+        // Don't schedule in the past
+        if (targetStartDate < gameNow) {
+          targetStartDate = new Date(gameNow);
+          targetStartDate.setDate(targetStartDate.getDate() + 1);
+        }
+
+        const targetDateStr = targetStartDate.toISOString().split('T')[0];
+
+        // Check if already scheduled for this period
+        const alreadyScheduled = existingScheduled.some(s => {
+          const schedDate = new Date(s.scheduledDate);
+          // Consider it scheduled if there's one within 7 days of target
+          return Math.abs(schedDate - targetStartDate) < 7 * 24 * 60 * 60 * 1000;
+        });
+
+        if (!alreadyScheduled) {
+          // Find available slot for A/B checks, or use midnight for C/D checks
+          let startTime = '02:00';
+          if (checkType === 'A' || checkType === 'B') {
+            const availableTime = await findAvailableSlotOnDate(aircraftId, targetDateStr, duration);
+            if (availableTime) {
+              startTime = availableTime;
+            }
+          } else {
+            startTime = '00:00'; // Heavy maintenance starts at midnight
+          }
+
           const record = await RecurringMaintenance.create({
             aircraftId,
             checkType,
-            scheduledDate: dateStr,
-            startTime: availableTime,
+            scheduledDate: targetDateStr,
+            startTime,
             duration,
             status: 'active'
           });
           createdRecords.push(record);
-          scheduled = true;
-          console.log(`Scheduled ${checkType} check for ${aircraft.registration} on ${dateStr} at ${availableTime}`);
+          console.log(`Scheduled ${checkType} check for ${aircraft.registration} on ${targetDateStr} at ${startTime}`);
+        }
+
+        // Calculate next expiry after this check completes
+        // Check completes on targetStartDate + durationDays, then valid for checkInterval days
+        const checkCompletionDate = new Date(targetStartDate);
+        checkCompletionDate.setDate(checkCompletionDate.getDate() + durationDays);
+        currentExpiryDate = new Date(checkCompletionDate);
+        currentExpiryDate.setDate(currentExpiryDate.getDate() + checkInterval);
+      }
+      continue; // Skip to next check type
+    } else if (checkType === 'daily') {
+      // Daily checks are valid for 2 days - schedule every OTHER day for efficiency
+      // This means we need 4 checks per week, not 7
+      const daysToSchedule = 7;
+
+      // Get all existing daily check schedules for this aircraft
+      const existingDailyChecks = await RecurringMaintenance.findAll({
+        where: {
+          aircraftId,
+          checkType: 'daily',
+          status: 'active',
+          scheduledDate: { [Op.ne]: null }
+        }
+      });
+      const existingDates = new Set(existingDailyChecks.map(m => {
+        if (m.scheduledDate instanceof Date) {
+          return m.scheduledDate.toISOString().split('T')[0];
+        }
+        return String(m.scheduledDate).split('T')[0];
+      }));
+
+      console.log(`[DAILY AUTO-SCHEDULE] ${aircraft.registration}: gameNow=${gameNow.toISOString()}, existing schedules: ${existingDates.size}`);
+
+      // Check if aircraft needs a daily check today or tomorrow based on last check
+      const lastDailyCheck = aircraft.lastDailyCheckDate;
+      let nextRequiredDate = gameNow;
+      if (lastDailyCheck) {
+        const lastCheckDate = new Date(lastDailyCheck);
+        // Daily checks valid for 2 days, so next required is lastCheck + 2 days
+        nextRequiredDate = new Date(lastCheckDate);
+        nextRequiredDate.setDate(nextRequiredDate.getDate() + 2);
+        if (nextRequiredDate < gameNow) {
+          nextRequiredDate = gameNow; // If overdue, need one today
         }
       }
 
-      // If no slot found, force schedule on the day before expiry
-      if (!scheduled) {
-        const expiryDateStr = new Date(expiryDate);
-        expiryDateStr.setDate(expiryDateStr.getDate() - 1);
-        const forceDateStr = expiryDateStr.toISOString().split('T')[0];
+      // Schedule checks every 2 days starting from next required date
+      let lastScheduledDate = null;
+      for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset++) {
+        try {
+          const tryDate = new Date(gameNow);
+          tryDate.setDate(tryDate.getDate() + dayOffset);
+          const dateStr = tryDate.toISOString().split('T')[0];
 
-        const record = await RecurringMaintenance.create({
-          aircraftId,
-          checkType,
-          scheduledDate: forceDateStr,
-          startTime: '02:00', // Default early morning
-          duration,
-          status: 'active'
-        });
-        createdRecords.push(record);
-        console.log(`Force scheduled ${checkType} check for ${aircraft.registration} on ${forceDateStr} (conflicts may exist)`);
+          // Skip if already scheduled for this date
+          if (existingDates.has(dateStr)) {
+            lastScheduledDate = dateStr;
+            continue;
+          }
+
+          // Check if we need a check on this day
+          // We need one if: no check scheduled in the previous day (since valid for 2 days)
+          const yesterday = new Date(tryDate);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+          const hasCoverageFromYesterday = existingDates.has(yesterdayStr) || lastScheduledDate === yesterdayStr;
+
+          if (hasCoverageFromYesterday) {
+            console.log(`[DAILY] ${aircraft.registration}: ${dateStr} covered by ${yesterdayStr}, skipping`);
+            continue;
+          }
+
+          // Find available slot - prefer early morning to maximize flying time
+          const availableTime = await findAvailableSlotOnDate(aircraftId, dateStr, duration);
+          const startTime = availableTime || '02:00';
+
+          const record = await RecurringMaintenance.create({
+            aircraftId,
+            checkType,
+            scheduledDate: dateStr,
+            startTime,
+            duration,
+            status: 'active'
+          });
+          createdRecords.push(record);
+          existingDates.add(dateStr);
+          lastScheduledDate = dateStr;
+          console.log(`[DAILY] Scheduled ${aircraft.registration} on ${dateStr} at ${startTime}`);
+        } catch (dayError) {
+          console.error(`[DAILY] Error scheduling ${aircraft.registration} for day ${dayOffset}:`, dayError.message);
+        }
       }
+      console.log(`[DAILY] ${aircraft.registration}: completed, created ${createdRecords.length} records`);
     }
   }
 
+  console.log(`[AUTO-SCHEDULE] Completed for aircraft, total records created: ${createdRecords.length}`);
   return createdRecords;
 }
 
@@ -540,41 +603,47 @@ async function checkMaintenanceConflict(aircraftId, scheduledDate, departureTime
 
 /**
  * Attempt to reschedule maintenance to avoid flight conflict
- * Returns { success: boolean, newSlot: string | null, error: string | null }
+ * EFFICIENT: Position check RIGHT BEFORE the flight starts when possible
+ * Returns { success: boolean, newSlot: string | null, error: string | null, deleted: boolean }
  */
 async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightStart, flightEnd) {
   const maint = await RecurringMaintenance.findByPk(maintenanceId);
   if (!maint) return { success: false, error: 'Maintenance not found' };
 
   const duration = maint.duration;
-  const dayOfWeek = maint.dayOfWeek;
+  const scheduledDate = maint.scheduledDate;
+  const checkType = maint.checkType;
 
   // Get aircraft to check expiry dates
   const aircraft = await UserAircraft.findByPk(aircraftId);
   if (!aircraft) return { success: false, error: 'Aircraft not found' };
 
-  // Get check expiry info
-  const checkType = maint.checkType;
-  const intervalDays = aircraft[`${checkType === 'daily' ? '' : checkType.toLowerCase()}CheckIntervalDays`] || CHECK_INTERVALS[checkType];
+  // For daily checks - check if we're still covered by a previous day's check
+  // Daily checks are valid for 2 days, so we can delete this one if yesterday has coverage
+  if (checkType === 'daily') {
+    const yesterday = new Date(scheduledDate + 'T00:00:00');
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-  // Get last check date
-  const lastCheckField = checkType === 'daily' ? 'lastDailyCheckDate' : `last${checkType}CheckDate`;
-  const lastCheck = aircraft[lastCheckField];
+    const yesterdayCheck = await RecurringMaintenance.findOne({
+      where: { aircraftId, checkType: 'daily', scheduledDate: yesterdayStr, status: 'active' }
+    });
 
-  // Calculate expiry
-  let expiryDate = null;
-  if (lastCheck) {
-    expiryDate = new Date(lastCheck);
-    expiryDate.setDate(expiryDate.getDate() + intervalDays);
+    if (yesterdayCheck) {
+      // We have coverage from yesterday - just delete this redundant check
+      await maint.destroy();
+      console.log(`[MAINT] Deleted redundant daily check on ${scheduledDate} - covered by ${yesterdayStr}`);
+      return { success: true, newSlot: 'deleted (covered by previous day)', deleted: true };
+    }
   }
 
-  // Try to find alternative slot on same day first
-  const flightSlots = await getFlightSlotsForDay(aircraftId, dayOfWeek);
+  // Get all busy slots on this date
+  const flightSlots = await getFlightSlotsForDate(aircraftId, scheduledDate);
   const allBusy = [...flightSlots, { start: flightStart, end: flightEnd }];
 
-  // Get other maintenance on this day (excluding current one)
+  // Get other maintenance on this date (excluding current one)
   const otherMaint = await RecurringMaintenance.findAll({
-    where: { aircraftId, dayOfWeek, status: 'active', id: { [Op.ne]: maintenanceId } }
+    where: { aircraftId, scheduledDate, status: 'active', id: { [Op.ne]: maintenanceId } }
   });
   for (const m of otherMaint) {
     const [h, min] = m.startTime.split(':').map(Number);
@@ -583,55 +652,106 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
 
   allBusy.sort((a, b) => a.start - b.start);
 
-  // Try preferred times first
-  const preferredStarts = [120, 180, 240, 60, 300, 1320, 1380, 0];
-  for (const start of preferredStarts) {
-    const end = start + duration;
-    let ok = true;
+  // Helper to check if a time slot is available
+  const isSlotFree = (start, end) => {
     for (const busy of allBusy) {
-      if (start < busy.end && end > busy.start) { ok = false; break; }
+      if (start < busy.end && end > busy.start) return false;
     }
-    if (ok) {
+    return true;
+  };
+
+  // PRIORITY 1: Position check to END right when the flight starts (most efficient)
+  const efficientStart = flightStart - duration;
+  if (efficientStart >= 0 && isSlotFree(efficientStart, flightStart)) {
+    const newTime = `${Math.floor(efficientStart / 60).toString().padStart(2, '0')}:${(efficientStart % 60).toString().padStart(2, '0')}`;
+    await maint.update({ startTime: newTime });
+    console.log(`[MAINT] Moved ${checkType} check to ${newTime} (right before flight)`);
+    return { success: true, newSlot: newTime };
+  }
+
+  // PRIORITY 2: Find the largest gap between busy periods and fit the check there
+  const gaps = [];
+  let lastEnd = 0;
+  for (const busy of allBusy) {
+    if (busy.start > lastEnd) {
+      gaps.push({ start: lastEnd, end: busy.start, size: busy.start - lastEnd });
+    }
+    lastEnd = Math.max(lastEnd, busy.end);
+  }
+  // Gap at end of day
+  if (lastEnd < 1440) {
+    gaps.push({ start: lastEnd, end: 1440, size: 1440 - lastEnd });
+  }
+
+  // Sort gaps by size (prefer larger gaps) and find one that fits
+  gaps.sort((a, b) => b.size - a.size);
+  for (const gap of gaps) {
+    if (gap.size >= duration) {
+      // Position at the END of the gap (right before next flight)
+      const start = gap.end - duration;
       const newTime = `${Math.floor(start / 60).toString().padStart(2, '0')}:${(start % 60).toString().padStart(2, '0')}`;
       await maint.update({ startTime: newTime });
+      console.log(`[MAINT] Moved ${checkType} check to ${newTime} (gap before next activity)`);
       return { success: true, newSlot: newTime };
     }
   }
 
-  // Try any hour on same day
-  for (let h = 0; h < 24; h++) {
-    const start = h * 60;
-    const end = start + duration;
-    let ok = true;
-    for (const busy of allBusy) {
-      if (start < busy.end && end > busy.start) { ok = false; break; }
+  // PRIORITY 3: For daily checks, try to delete and rely on next day's check
+  if (checkType === 'daily') {
+    const tomorrow = new Date(scheduledDate + 'T00:00:00');
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    // Check if tomorrow already has a daily check scheduled
+    const tomorrowCheck = await RecurringMaintenance.findOne({
+      where: { aircraftId, checkType: 'daily', scheduledDate: tomorrowStr, status: 'active' }
+    });
+
+    if (tomorrowCheck) {
+      // Tomorrow has a check - we can delete this one
+      await maint.destroy();
+      console.log(`[MAINT] Deleted daily check on ${scheduledDate} - will use ${tomorrowStr} check`);
+      return { success: true, newSlot: 'deleted (using next day)', deleted: true };
     }
-    if (ok) {
-      const newTime = `${h.toString().padStart(2, '0')}:00`;
-      await maint.update({ startTime: newTime });
-      return { success: true, newSlot: newTime };
+
+    // Create a check for tomorrow instead
+    const tomorrowSlot = await findAvailableSlotOnDate(aircraftId, tomorrowStr, duration);
+    if (tomorrowSlot) {
+      await maint.update({ scheduledDate: tomorrowStr, startTime: tomorrowSlot });
+      console.log(`[MAINT] Moved daily check to ${tomorrowStr} @ ${tomorrowSlot}`);
+      return { success: true, newSlot: `${tomorrowStr} @ ${tomorrowSlot}` };
     }
   }
 
-  // Try other days if check won't expire
-  if (expiryDate) {
-    const today = new Date();
-    const daysUntilExpiry = Math.floor((expiryDate - today) / (1000 * 60 * 60 * 24));
+  // PRIORITY 4: Try other days if check won't expire (for non-daily checks)
+  const intervalDays = aircraft[`${checkType === 'daily' ? '' : checkType.toLowerCase()}CheckIntervalDays`] || CHECK_INTERVALS[checkType];
+  const lastCheckField = checkType === 'daily' ? 'lastDailyCheckDate' : `last${checkType}CheckDate`;
+  const lastCheck = aircraft[lastCheckField];
 
-    if (daysUntilExpiry > 7) {
-      // Can skip a week, try different day
-      for (let tryDay = 0; tryDay < 7; tryDay++) {
-        if (tryDay === dayOfWeek) continue;
-        const slot = await findAvailableMaintenanceSlot(aircraftId, tryDay, duration);
+  if (lastCheck && scheduledDate) {
+    const expiryDate = new Date(lastCheck);
+    expiryDate.setDate(expiryDate.getDate() + intervalDays);
+    const maintDate = new Date(scheduledDate + 'T00:00:00');
+    const daysUntilExpiry = Math.floor((expiryDate - maintDate) / (1000 * 60 * 60 * 24));
+
+    if (daysUntilExpiry > 1) {
+      for (let dayOffset = 1; dayOffset <= Math.min(daysUntilExpiry, 7); dayOffset++) {
+        const tryDate = new Date(maintDate);
+        tryDate.setDate(tryDate.getDate() + dayOffset);
+        const tryDateStr = tryDate.toISOString().split('T')[0];
+
+        if (tryDateStr === scheduledDate || tryDate > expiryDate) continue;
+
+        const slot = await findAvailableSlotOnDate(aircraftId, tryDateStr, duration);
         if (slot) {
-          await maint.update({ dayOfWeek: tryDay, startTime: slot });
-          return { success: true, newSlot: `Day ${tryDay} @ ${slot}` };
+          await maint.update({ scheduledDate: tryDateStr, startTime: slot });
+          return { success: true, newSlot: `${tryDateStr} @ ${slot}` };
         }
       }
     }
   }
 
-  // Check is about to expire and can't be moved
+  // Check cannot be moved without expiring
   return {
     success: false,
     error: `Cannot reschedule ${checkType} check - it would expire. Please clear flights first.`
@@ -878,10 +998,13 @@ router.post('/purchase', async (req, res) => {
       lastDCheckDate,
       cCheckIntervalDays: cInterval,
       dCheckIntervalDays: dInterval,
-      // For new aircraft, also set all other checks as just done
-      lastDailyCheckDate: now,
-      lastACheckDate: now,
-      lastBCheckDate: now,
+      // Daily check: EXPIRED on delivery (3-5 days ago, interval is 2 days)
+      // Aircraft needs a daily check before it can fly
+      lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
+      // A check: Valid but done in the past (5-30 days ago, interval is 42 days)
+      lastACheckDate: new Date(now.getTime() - ((5 + Math.floor(Math.random() * 25)) * 24 * 60 * 60 * 1000)),
+      // B check: Valid but done in the past (30-150 days ago, interval is 210 days)
+      lastBCheckDate: new Date(now.getTime() - ((30 + Math.floor(Math.random() * 120)) * 24 * 60 * 60 * 1000)),
       // Auto-schedule preferences
       autoScheduleDaily: autoScheduleDaily || false,
       autoScheduleA: autoScheduleA || false,
@@ -1108,9 +1231,13 @@ router.post('/lease', async (req, res) => {
       lastDCheckDate,
       cCheckIntervalDays: cInterval,
       dCheckIntervalDays: dInterval,
-      lastDailyCheckDate: now,
-      lastACheckDate: now,
-      lastBCheckDate: now,
+      // Daily check: EXPIRED on delivery (3-5 days ago, interval is 2 days)
+      // Aircraft needs a daily check before it can fly
+      lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
+      // A check: Valid but done in the past (5-30 days ago, interval is 42 days)
+      lastACheckDate: new Date(now.getTime() - ((5 + Math.floor(Math.random() * 25)) * 24 * 60 * 60 * 1000)),
+      // B check: Valid but done in the past (30-150 days ago, interval is 210 days)
+      lastBCheckDate: new Date(now.getTime() - ((30 + Math.floor(Math.random() * 120)) * 24 * 60 * 60 * 1000)),
       // Auto-schedule preferences
       autoScheduleDaily: autoScheduleDaily || false,
       autoScheduleA: autoScheduleA || false,
@@ -1403,6 +1530,238 @@ router.get('/:aircraftId/auto-schedule', async (req, res) => {
   }
 });
 
+/**
+ * POST /:aircraftId/optimize-maintenance
+ * Re-optimize all maintenance positions for an aircraft
+ * Moves daily checks to right before flights for efficiency
+ */
+router.post('/:aircraftId/optimize-maintenance', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { aircraftId } = req.params;
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Find the aircraft and verify ownership
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id }
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Get all scheduled maintenance dates for this aircraft
+    const maintenanceRecords = await RecurringMaintenance.findAll({
+      where: { aircraftId, status: 'active' },
+      attributes: ['scheduledDate']
+    });
+
+    const dates = [...new Set(maintenanceRecords.map(m => m.scheduledDate).filter(Boolean))];
+
+    if (dates.length === 0) {
+      return res.json({ message: 'No maintenance to optimize', optimized: [] });
+    }
+
+    // Run optimization
+    const optimized = await optimizeMaintenanceForDates(aircraftId, dates);
+
+    res.json({
+      message: `Optimized maintenance on ${dates.length} dates`,
+      optimized
+    });
+  } catch (error) {
+    console.error('Error optimizing maintenance:', error);
+    res.status(500).json({ error: 'Failed to optimize maintenance' });
+  }
+});
+
+/**
+ * Optimize maintenance positions for given dates
+ * Called after a flight is scheduled to reposition checks efficiently
+ * Places daily checks RIGHT BEFORE the first flight DEPARTURE of the day
+ * If a date only has arriving flights (no departures), move the check to the departure date
+ */
+async function optimizeMaintenanceForDates(aircraftId, dates) {
+  const optimized = [];
+
+  for (const dateStr of dates) {
+    // Get all daily checks on this date
+    const dailyChecks = await RecurringMaintenance.findAll({
+      where: { aircraftId, scheduledDate: dateStr, checkType: 'daily', status: 'active' }
+    });
+
+    if (dailyChecks.length === 0) continue;
+
+    // Get flights that DEPART on this date (not just arrive)
+    const departingFlights = await ScheduledFlight.findAll({
+      where: {
+        aircraftId,
+        scheduledDate: dateStr  // Only flights that DEPART on this date
+      },
+      include: [{
+        model: Route,
+        as: 'route'
+      }, {
+        model: UserAircraft,
+        as: 'aircraft',
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      }]
+    });
+
+    // Check if there are only arriving flights (from previous day) on this date
+    const arrivingOnlyFlights = await ScheduledFlight.findAll({
+      where: {
+        aircraftId,
+        arrivalDate: dateStr,
+        scheduledDate: { [Op.ne]: dateStr }  // Departed on different day
+      }
+    });
+
+    // If NO departing flights on this date, but there ARE arriving flights
+    // This means the daily check should be on the departure date instead
+    if (departingFlights.length === 0 && arrivingOnlyFlights.length > 0) {
+      // Move daily checks to the departure date of the arriving flight(s)
+      for (const check of dailyChecks) {
+        // Get the departure date from the arriving flight
+        const depDate = arrivingOnlyFlights[0].scheduledDate;
+
+        // Check if there's already a daily check on the departure date
+        const existingOnDepDate = await RecurringMaintenance.findOne({
+          where: { aircraftId, scheduledDate: depDate, checkType: 'daily', status: 'active' }
+        });
+
+        if (existingOnDepDate) {
+          // Already have a check on the departure date, remove this redundant one
+          await check.update({ status: 'inactive' });
+          optimized.push({
+            date: dateStr,
+            checkType: 'daily',
+            action: 'removed',
+            reason: `Covered by check on ${depDate}`
+          });
+          console.log(`[OPTIMIZE] Removed redundant daily check on ${dateStr} (covered by ${depDate})`);
+        } else {
+          // Move this check to the departure date
+          await check.update({ scheduledDate: depDate });
+          optimized.push({
+            date: dateStr,
+            checkType: 'daily',
+            action: 'moved',
+            newDate: depDate,
+            reason: 'Moved to actual departure date'
+          });
+          console.log(`[OPTIMIZE] Moved daily check from ${dateStr} to ${depDate} (actual departure date)`);
+
+          // Now optimize the check on its new date
+          dates.push(depDate); // Add to dates to process
+        }
+      }
+      continue;
+    }
+
+    // If we have departing flights, optimize the check position
+    if (departingFlights.length === 0) continue;
+
+    // Calculate pre-flight times for departing flights
+    const departureSlots = [];
+    for (const flight of departingFlights) {
+      const acType = flight.aircraft?.aircraft?.type || 'Narrowbody';
+      const pax = flight.aircraft?.aircraft?.passengerCapacity || 150;
+      const dist = flight.route?.distance || 0;
+
+      // Pre-flight calculation
+      let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : pax < 200 ? 10 : 15) : 0;
+      let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 20 : pax < 300 ? 25 : 35) : 0;
+      let fuelling = dist < 500 ? 10 : dist < 1500 ? 15 : dist < 3000 ? 20 : 25;
+      const preFlight = Math.max(catering + boarding, fuelling);
+
+      const [depH, depM] = flight.departureTime.split(':').map(Number);
+      const preFlightStart = depH * 60 + depM - preFlight;
+
+      departureSlots.push({
+        start: Math.max(0, preFlightStart),
+        departureTime: depH * 60 + depM,
+        preFlight
+      });
+    }
+
+    // Sort by earliest pre-flight start
+    departureSlots.sort((a, b) => a.start - b.start);
+
+    // Get all flight activity on this date (for conflict checking)
+    const allFlights = await getFlightSlotsForDate(aircraftId, dateStr);
+
+    // Get other maintenance (non-daily) on this date
+    const otherMaint = await RecurringMaintenance.findAll({
+      where: {
+        aircraftId,
+        scheduledDate: dateStr,
+        checkType: { [Op.ne]: 'daily' },
+        status: 'active'
+      }
+    });
+    const otherMaintSlots = otherMaint.map(m => {
+      const [h, min] = m.startTime.split(':').map(Number);
+      return { start: h * 60 + min, end: h * 60 + min + m.duration };
+    });
+
+    // Position check to END right when pre-flight starts (before first departure)
+    const firstPreFlightStart = departureSlots[0].start;
+
+    // For each daily check, try to position it right before the first departure's pre-flight
+    for (const check of dailyChecks) {
+      const duration = check.duration;
+      const optimalStart = firstPreFlightStart - duration;
+
+      // Check if this slot is actually free
+      if (optimalStart < 0) continue; // Can't fit before midnight
+
+      const allBusy = [...allFlights, ...otherMaintSlots];
+      let isFree = true;
+      for (const busy of allBusy) {
+        if (optimalStart < busy.end && (optimalStart + duration) > busy.start) {
+          isFree = false;
+          break;
+        }
+      }
+
+      if (isFree) {
+        const newTime = `${Math.floor(optimalStart / 60).toString().padStart(2, '0')}:${(optimalStart % 60).toString().padStart(2, '0')}`;
+        const oldTime = check.startTime.substring(0, 5);
+
+        if (newTime !== oldTime) {
+          await check.update({ startTime: newTime });
+          optimized.push({ date: dateStr, checkType: 'daily', oldTime, newTime });
+          console.log(`[OPTIMIZE] Moved daily check on ${dateStr} from ${oldTime} to ${newTime} (right before departure pre-flight)`);
+        }
+      }
+    }
+  }
+
+  return optimized;
+}
+
 // Export router as default and helper functions
 module.exports = router;
 module.exports.checkMaintenanceConflict = checkMaintenanceConflict;
@@ -1411,3 +1770,4 @@ module.exports.findAvailableMaintenanceSlot = findAvailableMaintenanceSlot;
 module.exports.findAvailableSlotOnDate = findAvailableSlotOnDate;
 module.exports.createAutoScheduledMaintenance = createAutoScheduledMaintenance;
 module.exports.refreshAutoScheduledMaintenance = refreshAutoScheduledMaintenance;
+module.exports.optimizeMaintenanceForDates = optimizeMaintenanceForDates;

@@ -102,16 +102,16 @@ function getEffectiveArrivalDate(flight) {
       totalMinutes = outMin + turnaroundMinutes + retMin;
     }
 
-    // Parse departure time and calculate arrival datetime
+    // Parse departure time and calculate arrival datetime (use local time to match world time)
     const depDate = new Date(flight.scheduledDate + 'T00:00:00');
     const depTimeStr = flight.departureTime?.substring(0, 5) || '00:00';
     const [depH, depM] = depTimeStr.split(':').map(Number);
-    const depDateTime = new Date(Date.UTC(depDate.getFullYear(), depDate.getMonth(), depDate.getDate(), depH, depM));
+    const depDateTime = new Date(depDate.getFullYear(), depDate.getMonth(), depDate.getDate(), depH, depM);
     const arrDateTime = new Date(depDateTime.getTime() + totalMinutes * 60000);
 
-    const arrYear = arrDateTime.getUTCFullYear();
-    const arrMonth = String(arrDateTime.getUTCMonth() + 1).padStart(2, '0');
-    const arrDay = String(arrDateTime.getUTCDate()).padStart(2, '0');
+    const arrYear = arrDateTime.getFullYear();
+    const arrMonth = String(arrDateTime.getMonth() + 1).padStart(2, '0');
+    const arrDay = String(arrDateTime.getDate()).padStart(2, '0');
     return `${arrYear}-${arrMonth}-${arrDay}`;
   } catch (e) {
     console.error('Error calculating arrival date:', e, flight);
@@ -513,15 +513,15 @@ async function fetchScheduledMaintenance() {
     let startDateStr, endDateStr;
 
     if (viewMode === 'weekly') {
-      // For weekly view, fetch the entire current week (Mon-Sun)
-      const daysToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + daysToMonday);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
+      // For weekly view, use forward-looking 7 days (today to today+6)
+      // Each weekday column shows the NEXT occurrence of that day
+      // Days that have passed this week will show next week's date
+      const startDay = new Date(today);
+      const endDay = new Date(today);
+      endDay.setDate(today.getDate() + 6); // Today + 6 more days = 7 days total
 
-      startDateStr = formatLocalDate(monday);
-      endDateStr = formatLocalDate(sunday);
+      startDateStr = formatLocalDate(startDay);
+      endDateStr = formatLocalDate(endDay);
     } else {
       // For daily view, fetch just the selected day
       const daysUntilTarget = getDaysUntilTargetInWeek(currentDay, selectedDayOfWeek);
@@ -533,7 +533,19 @@ async function fetchScheduledMaintenance() {
 
     const response = await fetch(`/api/schedule/maintenance?startDate=${startDateStr}&endDate=${endDateStr}`);
     if (response.ok) {
-      scheduledMaintenance = await response.json();
+      const data = await response.json();
+      // Handle both old format (array) and new format ({ maintenance, debug })
+      if (Array.isArray(data)) {
+        scheduledMaintenance = data;
+      } else {
+        scheduledMaintenance = data.maintenance || [];
+        if (data.debug) {
+          console.log('[MAINT DEBUG] Requested range:', data.debug.requestedRange);
+          console.log('[MAINT DEBUG] Patterns found:', data.debug.patternsFound);
+          console.log('[MAINT DEBUG] Patterns:', data.debug.patterns);
+          console.log('[MAINT DEBUG] Blocks generated:', data.debug.blocksGenerated);
+        }
+      }
     }
   } catch (error) {
     console.error('Error fetching scheduled maintenance:', error);
@@ -1957,9 +1969,9 @@ function showPreFlightModal(flightId) {
   const depTime = flight.departureTime.substring(0, 5);
   const [depH, depM] = depTime.split(':').map(Number);
 
-  // Create departure datetime
+  // Create departure datetime (use local time to match world time)
   const [year, month, day] = scheduledDate.split('-').map(Number);
-  const departureTime = new Date(Date.UTC(year, month - 1, day, depH, depM));
+  const departureTime = new Date(year, month - 1, day, depH, depM);
 
   // Pre-flight starts before departure
   const preFlightStartTime = new Date(departureTime.getTime() - totalDuration * 60000);
@@ -2120,9 +2132,9 @@ function showPostFlightModal(flightId) {
   const depTimeStr = flight.departureTime.substring(0, 5);
   const [depHour, depMin] = depTimeStr.split(':').map(Number);
 
-  // Create arrival datetime
+  // Create arrival datetime (use local time to match world time)
   const [year, month, day] = scheduledDate.split('-').map(Number);
-  const departureDateTime = new Date(Date.UTC(year, month - 1, day, depHour, depMin));
+  const departureDateTime = new Date(year, month - 1, day, depHour, depMin);
   const arrivalTime = new Date(departureDateTime.getTime() + totalFlightMinsForProgress * 60000);
 
   // Calculate progress based on current time
@@ -2841,7 +2853,8 @@ async function viewFlightDetailsWeekly(flightId) {
   // Calculate all phase times - MUST match display times for consistency
   const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
   const [year, month, day] = scheduledDate.split('-').map(Number);
-  const departureDateTime = new Date(Date.UTC(year, month - 1, day, depH, depM));
+  // Use local time (not UTC) to match how world time is represented
+  const departureDateTime = new Date(year, month - 1, day, depH, depM);
 
   // Outbound sector times
   const outboundPreFlightStart = new Date(departureDateTime.getTime() - preFlightTotal * 60000);
@@ -3421,24 +3434,40 @@ async function viewMaintenanceDetails(maintenanceId) {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayName = dayNames[date.getUTCDay()];
 
-  // Determine maintenance status based on current game time
+  // Determine maintenance status based on current game time AND date
   const gameTime = typeof getGlobalWorldTime === 'function' ? getGlobalWorldTime() : new Date();
+  const currentDateStr = formatLocalDate(gameTime); // YYYY-MM-DD
   const currentTimeStr = gameTime.toISOString().substring(11, 16);
   const startTimeStr = maintenance.startTime.substring(0, 5);
+  const scheduledDateStr = maintenance.scheduledDate.split('T')[0]; // Normalize to YYYY-MM-DD
 
   let statusText, statusColor, availableText;
-  if (currentTimeStr < startTimeStr) {
-    statusText = 'UPCOMING';
-    statusColor = '#8b949e';
-    availableText = `Available from ${endTime}`;
-  } else if (currentTimeStr < endTime) {
-    statusText = 'IN PROGRESS';
-    statusColor = '#ffa657';
-    availableText = `Available from ${endTime}`;
-  } else {
+
+  if (scheduledDateStr > currentDateStr) {
+    // Maintenance is scheduled for a future date
+    statusText = 'SCHEDULED';
+    statusColor = '#58a6ff';
+    availableText = `Scheduled for ${scheduledDateStr}`;
+  } else if (scheduledDateStr < currentDateStr) {
+    // Maintenance date has passed
     statusText = 'COMPLETED';
     statusColor = '#3fb950';
     availableText = `Completed at ${endTime}`;
+  } else {
+    // Same day - compare times
+    if (currentTimeStr < startTimeStr) {
+      statusText = 'UPCOMING';
+      statusColor = '#8b949e';
+      availableText = `Available from ${endTime}`;
+    } else if (currentTimeStr < endTime) {
+      statusText = 'IN PROGRESS';
+      statusColor = '#ffa657';
+      availableText = `Available from ${endTime}`;
+    } else {
+      statusText = 'COMPLETED';
+      statusColor = '#3fb950';
+      availableText = `Completed at ${endTime}`;
+    }
   }
 
   // Create and show custom modal
@@ -3614,10 +3643,28 @@ function generateWeeklyDayColumns() {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const dayValues = [1, 2, 3, 4, 5, 6, 0]; // JS day values (0=Sun, 1=Mon, etc.)
 
+  // Get current world time for forward-looking date calculation
+  const worldTime = getCurrentWorldTime();
+  const today = worldTime ? new Date(worldTime) : new Date();
+  const currentDay = today.getDay();
+
   for (let i = 0; i < 7; i++) {
+    const targetDayOfWeek = dayValues[i];
+
+    // Calculate forward-looking target date
+    // If the day has already passed this week, show next week's occurrence
+    let daysUntil = targetDayOfWeek - currentDay;
+    if (daysUntil < 0) {
+      daysUntil += 7; // Next week
+    }
+
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+
     columns.push({
       dayOfWeek: dayValues[i],
-      label: dayNames[i]
+      label: dayNames[i],
+      targetDate: formatLocalDate(targetDate) // YYYY-MM-DD string
     });
   }
 
@@ -3836,7 +3883,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
   // Day columns - render time-positioned flight blocks
   dayColumns.forEach(col => {
     const dayFlights = getFlightsForDay(aircraft.id, col.dayOfWeek);
-    const dayMaintenance = getMaintenanceForDay(aircraft.id, col.dayOfWeek);
+    const dayMaintenance = getMaintenanceForDay(aircraft.id, col.dayOfWeek, col.targetDate);
     const isToday = col.dayOfWeek === getCurrentWorldTime()?.getDay();
     const bgColor = isToday ? 'rgba(0, 102, 204, 0.1)' : 'var(--surface-elevated)';
 
@@ -4393,12 +4440,26 @@ function getFlightsForDay(aircraftId, dayOfWeek) {
   });
 }
 
-// Get maintenance for a specific day of week for an aircraft
-function getMaintenanceForDay(aircraftId, dayOfWeek) {
+// Get maintenance for a specific date for an aircraft
+// targetDate should be YYYY-MM-DD string for forward-looking match
+function getMaintenanceForDay(aircraftId, dayOfWeek, targetDate = null) {
   return scheduledMaintenance.filter(m => {
     if (m.aircraft?.id !== aircraftId) return false;
-    // Get day of week from scheduledDate
     if (!m.scheduledDate) return false;
+
+    // If targetDate is provided, match by exact date (forward-looking)
+    if (targetDate) {
+      // Normalize scheduledDate to YYYY-MM-DD string for comparison
+      let maintDateStr = m.scheduledDate;
+      if (typeof maintDateStr !== 'string') {
+        maintDateStr = new Date(maintDateStr).toISOString().split('T')[0];
+      } else {
+        maintDateStr = maintDateStr.split('T')[0];
+      }
+      return maintDateStr === targetDate;
+    }
+
+    // Fallback to day-of-week matching for backwards compatibility
     const maintDate = new Date(m.scheduledDate + 'T00:00:00');
     const maintDayOfWeek = maintDate.getDay();
     return maintDayOfWeek === dayOfWeek;
@@ -5416,21 +5477,35 @@ async function scheduleMaintenance(aircraftId) {
       scheduleBtn = `<span style="color: #6b7280; font-size: 0.7rem;">-</span>`;
     }
 
+    // Find next scheduled maintenance of this type for this aircraft (future only)
+    const worldTimeMs = worldTime.getTime();
+    const getScheduledTime = (m) => {
+      // Handle startTime formats: "HH:MM", "HH:MM:SS", or null
+      let time = m.startTime || '00:00';
+      if (time.length === 5) time += ':00'; // Add seconds if just HH:MM
+      return new Date(`${m.scheduledDate}T${time}Z`).getTime();
+    };
+    const nextScheduled = scheduledMaintenance
+      .filter(m => {
+        if (m.aircraftId !== aircraftId || m.checkType !== check.type) return false;
+        return getScheduledTime(m) > worldTimeMs;
+      })
+      .sort((a, b) => getScheduledTime(a) - getScheduledTime(b))[0];
+    const nextScheduledText = nextScheduled
+      ? formatCheckDate(`${nextScheduled.scheduledDate}T${(nextScheduled.startTime || '00:00').substring(0, 5)}:00Z`)
+      : 'Not yet planned';
+    const nextScheduledColor = nextScheduled ? 'var(--text-primary)' : '#6b7280';
+
     return `
-      <div style="display: grid; grid-template-columns: 95px 65px 1fr 1fr 45px 70px; gap: 0.5rem; align-items: center; padding: 0.65rem; background: var(--surface-elevated); border-radius: 6px; margin-bottom: 0.5rem;">
+      <div style="display: grid; grid-template-columns: 95px 65px 1fr 1fr 1fr 45px 70px; gap: 0.5rem; align-items: center; padding: 0.65rem; background: var(--surface-elevated); border-radius: 6px; margin-bottom: 0.5rem;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <span style="width: 10px; height: 10px; background: ${check.color}; border-radius: 2px; flex-shrink: 0;"></span>
           <span style="color: var(--text-primary); font-weight: 600; font-size: 0.8rem;">${check.name}</span>
         </div>
         <span style="color: ${statusColor}; font-weight: 600; font-size: 0.7rem;">${status.text}</span>
-        <div style="font-size: 0.7rem;">
-          <span style="color: #8b949e;">Last: </span>
-          <span style="color: var(--text-primary);">${lastCheckText}</span>
-        </div>
-        <div style="font-size: 0.7rem;">
-          <span style="color: #8b949e;">Until: </span>
-          <span style="color: ${status.status === 'expired' ? '#f85149' : 'var(--text-primary)'};">${expiryText}</span>
-        </div>
+        <span style="font-size: 0.75rem; color: var(--text-primary);">${lastCheckText}</span>
+        <span style="font-size: 0.75rem; color: ${status.status === 'expired' ? '#f85149' : 'var(--text-primary)'};">${expiryText}</span>
+        <span style="font-size: 0.75rem; color: ${nextScheduledColor};">${nextScheduledText}</span>
         <div style="display: flex; justify-content: center; align-items: center;">
           ${autoToggle}
         </div>
@@ -5464,7 +5539,7 @@ async function scheduleMaintenance(aircraftId) {
     border-radius: 8px;
     padding: 1.5rem;
     width: 95%;
-    max-width: 700px;
+    max-width: 850px;
     max-height: 90vh;
     overflow-y: auto;
   `;
@@ -5516,11 +5591,12 @@ async function scheduleMaintenance(aircraftId) {
     </div>
 
     <div style="margin-bottom: 1rem;">
-      <div style="display: grid; grid-template-columns: 95px 65px 1fr 1fr 45px 70px; gap: 0.5rem; padding: 0.5rem 0.65rem; color: #8b949e; font-size: 0.65rem; text-transform: uppercase; font-weight: 600;">
+      <div style="display: grid; grid-template-columns: 95px 65px 1fr 1fr 1fr 45px 70px; gap: 0.5rem; padding: 0.5rem 0.65rem; color: #8b949e; font-size: 0.65rem; text-transform: uppercase; font-weight: 600;">
         <span>Check</span>
         <span>Status</span>
         <span>Last Completed</span>
         <span>Valid Until</span>
+        <span>Next Scheduled</span>
         <span style="text-align: center;">Auto</span>
         <span style="text-align: right;">Manual</span>
       </div>

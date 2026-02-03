@@ -6,7 +6,7 @@ const historicalCountryService = require('../services/historicalCountryService')
 const airportCacheService = require('../services/airportCacheService');
 const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
-const { World, WorldMembership, User, Airport } = require('../models');
+const { World, WorldMembership, User, Airport, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault } = require('../models');
 
 /**
  * Get current world information (from session)
@@ -441,6 +441,140 @@ router.get('/airports/:id/slots', async (req, res) => {
   } catch (error) {
     console.error('Error fetching slot data:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Declare bankruptcy - liquidate all assets and reset airline
+ */
+router.post('/bankruptcy', async (req, res) => {
+  const sequelize = require('../config/database');
+  const transaction = await sequelize.transaction();
+
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+
+    if (!activeWorldId) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    if (!req.user) {
+      await transaction.rollback();
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Get user
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get membership
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId },
+      include: [
+        { model: UserAircraft, as: 'fleet' },
+        { model: Route, as: 'routes' }
+      ]
+    });
+
+    if (!membership) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'No airline found in this world' });
+    }
+
+    // Calculate liquidation value (50% of aircraft purchase prices)
+    let liquidationValue = 0;
+    const aircraftSold = [];
+
+    if (membership.fleet && membership.fleet.length > 0) {
+      for (const aircraft of membership.fleet) {
+        const saleValue = Math.round(parseFloat(aircraft.purchasePrice || 0) * 0.5);
+        liquidationValue += saleValue;
+        aircraftSold.push({
+          registration: aircraft.registration,
+          purchasePrice: parseFloat(aircraft.purchasePrice || 0),
+          saleValue: saleValue
+        });
+      }
+    }
+
+    // Get aircraft IDs for deleting related records
+    const aircraftIds = membership.fleet ? membership.fleet.map(a => a.id) : [];
+    const routeIds = membership.routes ? membership.routes.map(r => r.id) : [];
+
+    // Delete all related records in order (respect foreign keys)
+
+    // 1. Delete scheduled flights for all routes
+    if (routeIds.length > 0) {
+      await ScheduledFlight.destroy({
+        where: { routeId: routeIds },
+        transaction
+      });
+    }
+
+    // 2. Delete scheduled flights for all aircraft (maintenance blocks)
+    if (aircraftIds.length > 0) {
+      await ScheduledFlight.destroy({
+        where: { aircraftId: aircraftIds },
+        transaction
+      });
+    }
+
+    // 3. Delete recurring maintenance
+    if (aircraftIds.length > 0) {
+      await RecurringMaintenance.destroy({
+        where: { aircraftId: aircraftIds },
+        transaction
+      });
+    }
+
+    // 4. Delete routes
+    await Route.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 5. Delete fleet
+    await UserAircraft.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 6. Delete pricing defaults
+    await PricingDefault.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 7. Delete the membership itself
+    await membership.destroy({ transaction });
+
+    // Clear the active world from session
+    req.session.activeWorldId = null;
+
+    await transaction.commit();
+
+    console.log(`[BANKRUPTCY] User ${user.id} declared bankruptcy in world ${activeWorldId}. Liquidation value: $${liquidationValue}`);
+
+    res.json({
+      success: true,
+      message: 'Bankruptcy declared successfully',
+      summary: {
+        airlineName: membership.airlineName,
+        aircraftSold: aircraftSold.length,
+        routesCancelled: routeIds.length,
+        liquidationValue: liquidationValue,
+        details: aircraftSold
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error declaring bankruptcy:', error);
+    res.status(500).json({ error: 'Failed to declare bankruptcy', details: error.message });
   }
 });
 

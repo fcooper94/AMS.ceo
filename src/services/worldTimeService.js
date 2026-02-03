@@ -517,11 +517,15 @@ class WorldTimeService {
       const gameTimeStr = currentGameTime.toTimeString().split(' ')[0]; // HH:MM:SS
       const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
 
-      // Find all active recurring maintenance for today's day of week
+      // Find all active recurring maintenance for today
+      // Match by dayOfWeek (recurring patterns) OR by scheduledDate (one-time scheduled checks)
       const maintenancePatterns = await RecurringMaintenance.findAll({
         where: {
-          dayOfWeek: gameDayOfWeek,
-          status: 'active'
+          status: 'active',
+          [Op.or]: [
+            { dayOfWeek: gameDayOfWeek },
+            { scheduledDate: gameDate }
+          ]
         },
         include: [{
           model: UserAircraft,

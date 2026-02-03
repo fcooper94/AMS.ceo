@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const { ScheduledFlight, RecurringMaintenance, Route, UserAircraft, Airport, Aircraft, WorldMembership, User, World } = require('../models');
-const { checkMaintenanceConflict, attemptMaintenanceReschedule } = require('./fleet');
+const { checkMaintenanceConflict, attemptMaintenanceReschedule, optimizeMaintenanceForDates } = require('./fleet');
 
 // Wind and route variation constants (must match frontend scheduling-v3.js)
 const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
@@ -495,12 +495,17 @@ router.post('/flight', async (req, res) => {
     }
 
     // Check for overlapping maintenance and attempt to reschedule
-    const dayOfWeek = new Date(`${scheduledDate}T00:00:00`).getDay();
+    // Query maintenance for both departure date AND arrival date (for multi-day flights)
+    const datesToCheck = [scheduledDate];
+    if (arrivalDate && arrivalDate !== scheduledDate) {
+      datesToCheck.push(arrivalDate);
+    }
+
     const maintenancePatterns = await RecurringMaintenance.findAll({
       where: {
         aircraftId,
         status: 'active',
-        dayOfWeek: dayOfWeek
+        scheduledDate: { [Op.in]: datesToCheck }
       }
     });
 
@@ -510,25 +515,40 @@ router.post('/flight', async (req, res) => {
       const [maintH, maintM] = maint.startTime.split(':').map(Number);
       const maintStartMinutes = maintH * 60 + maintM;
       const maintEndMinutes = maintStartMinutes + maint.duration;
+      const maintDate = maint.scheduledDate;
 
-      // Check if maintenance overlaps with our operation on the scheduled date
-      // Convert operation window to minutes from midnight of scheduled date
-      let newOpStartMins = preFlightStartMinutes;
-      let newOpEndMins = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440 + postFlightEndMinutes;
+      // Calculate overlap based on which date this maintenance is on
+      let maintOverlaps = false;
 
-      // For same-day operations, check direct overlap
-      const maintOverlaps = newOpStartMins < maintEndMinutes && newOpEndMins > maintStartMinutes;
+      if (maintDate === scheduledDate) {
+        // Maintenance is on departure date - check from pre-flight start to midnight (or arrival if same day)
+        const opEndOnDepDate = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440;
+        maintOverlaps = preFlightStartMinutes < maintEndMinutes && opEndOnDepDate > maintStartMinutes;
+      } else if (maintDate === arrivalDate) {
+        // Maintenance is on arrival date - check from midnight to post-flight end
+        maintOverlaps = 0 < maintEndMinutes && postFlightEndMinutes > maintStartMinutes;
+      }
 
       if (maintOverlaps) {
         const checkNames = { 'daily': 'Daily Check', 'A': 'A Check', 'B': 'B Check', 'C': 'C Check', 'D': 'D Check' };
         const checkName = checkNames[maint.checkType] || `${maint.checkType} Check`;
 
+        // Calculate the blocked time window for this date
+        let blockedStart, blockedEnd;
+        if (maintDate === scheduledDate) {
+          blockedStart = preFlightStartMinutes;
+          blockedEnd = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440;
+        } else {
+          blockedStart = 0;
+          blockedEnd = postFlightEndMinutes;
+        }
+
         // Try to reschedule the maintenance
         const rescheduleResult = await attemptMaintenanceReschedule(
           maint.id,
           aircraftId,
-          newOpStartMins,
-          newOpEndMins
+          blockedStart,
+          blockedEnd
         );
 
         if (rescheduleResult.success) {
@@ -589,10 +609,20 @@ router.post('/flight', async (req, res) => {
       ]
     });
 
-    // Include rescheduled maintenance info in response
+    // Optimize maintenance positions on affected dates (reposition checks efficiently)
+    const datesToOptimize = [scheduledDate];
+    if (arrivalDate && arrivalDate !== scheduledDate) {
+      datesToOptimize.push(arrivalDate);
+    }
+    const optimizedMaintenance = await optimizeMaintenanceForDates(aircraftId, datesToOptimize);
+
+    // Include rescheduled and optimized maintenance info in response
     const response = completeFlightData.toJSON();
     if (rescheduledMaintenance.length > 0) {
       response.rescheduledMaintenance = rescheduledMaintenance;
+    }
+    if (optimizedMaintenance.length > 0) {
+      response.optimizedMaintenance = optimizedMaintenance;
     }
 
     res.status(201).json(response);
@@ -750,6 +780,16 @@ router.post('/flights/batch', async (req, res) => {
         }
       ]
     });
+
+    // Optimize maintenance positions on all affected dates
+    const allDates = new Set();
+    for (const flight of flightsToCreate) {
+      allDates.add(flight.scheduledDate);
+      if (flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate) {
+        allDates.add(flight.arrivalDate);
+      }
+    }
+    await optimizeMaintenanceForDates(aircraftId, [...allDates]);
 
     res.status(201).json({
       created: completeFlightData,
@@ -981,7 +1021,21 @@ router.get('/maintenance', async (req, res) => {
 
         // Add all matching patterns for this day
         for (const pattern of recurringPatterns) {
-          if (pattern.dayOfWeek === dayOfWeek) {
+          // Match by dayOfWeek (recurring pattern) OR by specific scheduledDate
+          const matchesByDayOfWeek = pattern.dayOfWeek === dayOfWeek && !pattern.scheduledDate;
+
+          // Normalize scheduledDate for comparison (could be Date object or string)
+          let patternDateStr = null;
+          if (pattern.scheduledDate) {
+            if (pattern.scheduledDate instanceof Date) {
+              patternDateStr = pattern.scheduledDate.toISOString().split('T')[0];
+            } else {
+              patternDateStr = String(pattern.scheduledDate).split('T')[0];
+            }
+          }
+          const matchesByDate = patternDateStr === dateStr;
+
+          if (matchesByDayOfWeek || matchesByDate) {
             // Generate a maintenance block for this date
             maintenanceBlocks.push({
               id: `${pattern.id}-${dateStr}`, // Composite ID for frontend tracking
@@ -1010,7 +1064,90 @@ router.get('/maintenance', async (req, res) => {
       return a.startTime.localeCompare(b.startTime);
     });
 
-    res.json(maintenanceBlocks);
+    // Auto-optimize maintenance positions (reposition daily checks before flights)
+    // Group by aircraftId and collect dates
+    const aircraftDates = new Map();
+    for (const block of maintenanceBlocks) {
+      if (block.checkType === 'daily') {
+        if (!aircraftDates.has(block.aircraftId)) {
+          aircraftDates.set(block.aircraftId, new Set());
+        }
+        aircraftDates.get(block.aircraftId).add(block.scheduledDate);
+      }
+    }
+
+    // Optimize each aircraft's maintenance
+    for (const [acId, dates] of aircraftDates) {
+      try {
+        await optimizeMaintenanceForDates(acId, [...dates]);
+      } catch (optError) {
+        console.error(`Error optimizing maintenance for aircraft ${acId}:`, optError.message);
+      }
+    }
+
+    // Re-fetch maintenance after optimization to get updated times
+    const updatedPatterns = await RecurringMaintenance.findAll({
+      where: { status: 'active' },
+      include: [{
+        model: UserAircraft,
+        as: 'aircraft',
+        where: { worldMembershipId: worldMembershipId },
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      }]
+    });
+
+    // Rebuild maintenance blocks with updated times
+    const updatedBlocks = [];
+    const updatedStart = new Date(startDate || new Date().toISOString().split('T')[0]);
+    const updatedEnd = new Date(endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+
+    const curDate = new Date(updatedStart);
+    while (curDate <= updatedEnd) {
+      const dateStr = curDate.toISOString().split('T')[0];
+      for (const pattern of updatedPatterns) {
+        let patternDateStr = null;
+        if (pattern.scheduledDate) {
+          patternDateStr = pattern.scheduledDate instanceof Date
+            ? pattern.scheduledDate.toISOString().split('T')[0]
+            : String(pattern.scheduledDate).split('T')[0];
+        }
+        if (patternDateStr === dateStr) {
+          updatedBlocks.push({
+            id: `${pattern.id}-${dateStr}`,
+            patternId: pattern.id,
+            aircraftId: pattern.aircraftId,
+            checkType: pattern.checkType,
+            scheduledDate: dateStr,
+            startTime: pattern.startTime,
+            duration: pattern.duration,
+            status: 'scheduled',
+            aircraft: pattern.aircraft
+          });
+        }
+      }
+      curDate.setUTCDate(curDate.getUTCDate() + 1);
+    }
+
+    updatedBlocks.sort((a, b) => {
+      if (a.scheduledDate !== b.scheduledDate) return a.scheduledDate.localeCompare(b.scheduledDate);
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    // Include debug info in response
+    const debugInfo = {
+      requestedRange: { startDate, endDate },
+      patternsFound: updatedPatterns.length,
+      patterns: updatedPatterns.map(p => ({
+        aircraft: p.aircraft?.registration,
+        checkType: p.checkType,
+        scheduledDate: p.scheduledDate,
+        dayOfWeek: p.dayOfWeek
+      })),
+      blocksGenerated: updatedBlocks.length,
+      optimized: true
+    };
+
+    res.json({ maintenance: updatedBlocks, debug: debugInfo });
   } catch (error) {
     console.error('Error fetching maintenance:', error);
     res.status(500).json({ error: error.message });

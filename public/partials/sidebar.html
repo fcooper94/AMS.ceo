@@ -33,7 +33,7 @@
         </li>
       </ul>
     </li>
-    <li class="nav-item parent" data-path="/fleet,/maintenance">
+    <li class="nav-item parent" data-path="/fleet,/maintenance,/aircraft-marketplace">
       <a href="#" onclick="return false;">
         <span class="nav-text">Fleet Management</span>
       </a>
@@ -48,17 +48,34 @@
             <span class="nav-text">Aircraft Maintenance</span>
           </a>
         </li>
+        <li class="nav-item" data-path="/aircraft-marketplace">
+          <a href="/aircraft-marketplace">
+            <span class="nav-text">Aircraft Marketplace</span>
+          </a>
+        </li>
       </ul>
     </li>
-    <li class="nav-item" data-path="/finances">
-      <a href="/finances">
-        <span class="nav-text">Financial Reports</span>
+    <li class="nav-item parent" data-path="/finances,/staff,/bankruptcy">
+      <a href="#" onclick="return false;">
+        <span class="nav-text">Office</span>
       </a>
-    </li>
-    <li class="nav-item" data-path="/aircraft-marketplace">
-      <a href="/aircraft-marketplace">
-        <span class="nav-text">Aircraft Marketplace</span>
-      </a>
+      <ul class="nav-submenu">
+        <li class="nav-item" data-path="/finances">
+          <a href="/finances">
+            <span class="nav-text">Financial Reports</span>
+          </a>
+        </li>
+        <li class="nav-item" data-path="/staff">
+          <a href="#">
+            <span class="nav-text">Staff</span>
+          </a>
+        </li>
+        <li class="nav-item" data-path="/bankruptcy">
+          <a href="#" onclick="showBankruptcyModal(); return false;">
+            <span class="nav-text" style="color: #f85149;">Declare Bankruptcy</span>
+          </a>
+        </li>
+      </ul>
     </li>
   </ul>
 
