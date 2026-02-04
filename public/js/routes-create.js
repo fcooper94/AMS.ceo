@@ -11,6 +11,111 @@ let aircraftTypePricing = {};
 let aircraftDataById = {}; // Store aircraft data by ID for lookup
 let demandDataCache = {}; // Cache demand data for airport pairs
 
+// Route preview map variables
+let routePreviewMap = null;
+let routePreviewLine = null;
+let routePreviewMarkers = [];
+
+// Debounced search for performance
+let searchDebounceTimer = null;
+function debouncedApplyFilters() {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    applyDestinationFilters();
+  }, 150); // 150ms debounce
+}
+
+// Warning modal function
+function showWarningModal(message, inputId = null) {
+  // Highlight the input if provided
+  if (inputId) {
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.style.borderColor = 'var(--warning-color)';
+      input.style.boxShadow = '0 0 0 3px rgba(210, 153, 34, 0.3)';
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Remove highlight after 3 seconds
+      setTimeout(() => {
+        input.style.borderColor = '';
+        input.style.boxShadow = '';
+      }, 3000);
+    }
+  }
+
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'warningModalOverlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  `;
+
+  // Create modal content
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    background: var(--surface);
+    border: 2px solid var(--warning-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+  `;
+
+  modal.innerHTML = `
+    <div style="margin-bottom: 1rem;">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <circle cx="12" cy="17" r="0.5" fill="var(--warning-color)"></circle>
+      </svg>
+    </div>
+    <p style="color: var(--text-primary); font-size: 1rem; margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
+    <button id="warningModalCloseBtn" style="
+      padding: 0.6rem 1.5rem;
+      background: var(--warning-color);
+      border: none;
+      border-radius: 4px;
+      color: #000;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    ">OK</button>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Close handlers
+  const closeModal = () => {
+    overlay.remove();
+    if (inputId) {
+      const input = document.getElementById(inputId);
+      if (input) input.focus();
+    }
+  };
+
+  document.getElementById('warningModalCloseBtn').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal();
+  });
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') {
+      closeModal();
+      document.removeEventListener('keydown', escHandler);
+    }
+  });
+}
+
 // Loading overlay functions
 function showLoadingOverlay(message = 'Loading...') {
   let overlay = document.getElementById('airportLoadingOverlay');
@@ -77,6 +182,130 @@ function hideLoadingOverlay() {
   if (overlay) {
     overlay.style.display = 'none';
   }
+}
+
+// Leaflet loading for route preview map
+function loadLeaflet() {
+  return new Promise((resolve, reject) => {
+    if (typeof L !== 'undefined') {
+      resolve();
+      return;
+    }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+// Initialize route preview map
+async function initRoutePreviewMap() {
+  await loadLeaflet();
+  const container = document.getElementById('routePreviewMap');
+  if (!container || routePreviewMap) return;
+
+  routePreviewMap = L.map('routePreviewMap', {
+    center: [30, 0],
+    zoom: 2,
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    touchZoom: false,
+    doubleClickZoom: false,
+    scrollWheelZoom: false,
+    boxZoom: false,
+    keyboard: false
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(routePreviewMap);
+}
+
+// Update route preview map
+function updateRoutePreview() {
+  if (!routePreviewMap || !baseAirport || !selectedDestinationAirport) return;
+
+  // Clear existing markers and lines
+  routePreviewMarkers.forEach(m => routePreviewMap.removeLayer(m));
+  routePreviewMarkers = [];
+  if (routePreviewLine) {
+    routePreviewLine.forEach(l => routePreviewMap.removeLayer(l));
+  }
+
+  // Coordinates
+  const dep = [parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude)];
+  const arr = [parseFloat(selectedDestinationAirport.latitude), parseFloat(selectedDestinationAirport.longitude)];
+
+  // Departure marker (green)
+  const depMarker = L.circleMarker(dep, {
+    radius: 8,
+    fillColor: '#3fb950',
+    fillOpacity: 1,
+    color: '#fff',
+    weight: 2
+  }).addTo(routePreviewMap).bindPopup(`<b>${baseAirport.iataCode || baseAirport.icaoCode}</b><br>${baseAirport.name}`);
+  routePreviewMarkers.push(depMarker);
+
+  // Arrival marker (blue)
+  const arrMarker = L.circleMarker(arr, {
+    radius: 8,
+    fillColor: '#58a6ff',
+    fillOpacity: 1,
+    color: '#fff',
+    weight: 2
+  }).addTo(routePreviewMap).bindPopup(`<b>${selectedDestinationAirport.iataCode || selectedDestinationAirport.icaoCode}</b><br>${selectedDestinationAirport.name}`);
+  routePreviewMarkers.push(arrMarker);
+
+  // Tech stop marker if present (yellow)
+  if (selectedTechStopAirport) {
+    const tech = [parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)];
+    const techMarker = L.circleMarker(tech, {
+      radius: 6,
+      fillColor: '#d29922',
+      fillOpacity: 1,
+      color: '#fff',
+      weight: 2
+    }).addTo(routePreviewMap).bindPopup(`<b>${selectedTechStopAirport.iataCode || selectedTechStopAirport.icaoCode}</b><br>Tech Stop`);
+    routePreviewMarkers.push(techMarker);
+  }
+
+  // Draw route line
+  routePreviewLine = drawRoutePreviewLine(dep, arr, selectedTechStopAirport);
+
+  // Fit bounds to show entire route
+  const bounds = L.latLngBounds([dep, arr]);
+  if (selectedTechStopAirport) {
+    bounds.extend([parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)]);
+  }
+  routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
+}
+
+// Draw route line (handles tech stop)
+function drawRoutePreviewLine(dep, arr, techStop) {
+  const style = {
+    color: '#58a6ff',
+    weight: 2,
+    opacity: 0.8,
+    dashArray: '5, 10'
+  };
+  const lines = [];
+
+  if (techStop) {
+    const tech = [parseFloat(techStop.latitude), parseFloat(techStop.longitude)];
+    lines.push(L.polyline([dep, tech], style).addTo(routePreviewMap));
+    lines.push(L.polyline([tech, arr], style).addTo(routePreviewMap));
+  } else {
+    lines.push(L.polyline([dep, arr], style).addTo(routePreviewMap));
+  }
+  return lines;
 }
 
 // Fetch world info and base airport
@@ -166,87 +395,40 @@ function getAircraftTypeKey(aircraftData) {
   return `${aircraftData.manufacturer}_${aircraftData.model}_${aircraftData.variant || 'default'}`;
 }
 
-// Load default turnaround time for aircraft type
-function loadDefaultTurnaroundTime(aircraftData) {
-  const typeKey = getAircraftTypeKey(aircraftData);
-  if (!typeKey) return;
-
-  // Load from localStorage
-  const savedDefaults = JSON.parse(localStorage.getItem('aircraftTurnaroundDefaults') || '{}');
-  const defaultTime = savedDefaults[typeKey];
-
-  if (defaultTime) {
-    document.getElementById('turnaroundTime').value = defaultTime;
-    calculateFlightTiming();
-  }
-}
-
-// Save default turnaround time for aircraft type
-function saveDefaultTurnaroundTime() {
-  const aircraftSelect = document.getElementById('assignedAircraft');
-  if (!aircraftSelect.value) return;
-
-  try {
-    // Look up aircraft data by ID
-    const aircraftData = aircraftDataById[aircraftSelect.value];
-    if (!aircraftData) return;
-
-    const typeKey = getAircraftTypeKey(aircraftData);
-    const turnaroundTime = parseInt(document.getElementById('turnaroundTime').value);
-
-    if (typeKey && turnaroundTime) {
-      // Load existing defaults
-      const savedDefaults = JSON.parse(localStorage.getItem('aircraftTurnaroundDefaults') || '{}');
-
-      // Update with new default
-      savedDefaults[typeKey] = turnaroundTime;
-
-      // Save back to localStorage
-      localStorage.setItem('aircraftTurnaroundDefaults', JSON.stringify(savedDefaults));
-
-      // Show feedback
-      const checkbox = document.getElementById('saveDefaultTurnaround');
-      const label = checkbox.parentElement;
-      const originalText = label.querySelector('span').textContent;
-      label.querySelector('span').textContent = '✓ Saved as default for this aircraft type';
-      label.querySelector('span').style.color = 'var(--success-color)';
-
-      setTimeout(() => {
-        label.querySelector('span').textContent = originalText;
-        label.querySelector('span').style.color = '';
-        checkbox.checked = false;
-      }, 2000);
-    }
-  } catch (e) {
-    console.error('Error saving default turnaround time:', e);
-  }
-}
 
 // Handle aircraft selection change
 function onAircraftSelectionChange() {
   const aircraftSelect = document.getElementById('assignedAircraft');
-  const pricingSection = document.getElementById('pricingConfigSection');
+  const timingMapContainer = document.getElementById('flightTimingMapContainer');
 
   if (aircraftSelect.value) {
     try {
       // Look up aircraft data by ID
       const aircraftData = aircraftDataById[aircraftSelect.value];
       if (aircraftData) {
-        // Show pricing section when aircraft is selected
-        if (pricingSection) {
-          pricingSection.style.display = 'block';
-        }
-        loadDefaultTurnaroundTime(aircraftData);
         updatePassengerClassAvailability(aircraftData);
         applyDefaultPricing(aircraftData);
+
+        // Show flight timing and map container when aircraft is selected
+        if (timingMapContainer) {
+          timingMapContainer.style.display = 'grid';
+          initRoutePreviewMap().then(() => {
+            setTimeout(() => {
+              if (routePreviewMap) {
+                routePreviewMap.invalidateSize();
+                updateRoutePreview();
+              }
+            }, 100);
+          });
+        }
       }
     } catch (e) {
-      console.error('Error loading default turnaround time:', e);
+      console.error('Error in aircraft selection change:', e);
     }
   } else {
-    // No aircraft selected - hide pricing section and enable all fields
-    if (pricingSection) {
-      pricingSection.style.display = 'none';
+    // No aircraft selected - hide timing/map container and reset fields
+    if (timingMapContainer) {
+      timingMapContainer.style.display = 'none';
     }
     updatePassengerClassAvailability(null);
   }
@@ -452,19 +634,10 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 // Load available airports for destination selection
 async function loadAvailableAirports() {
-  // Show loading overlay
-  showLoadingOverlay('Loading airports...');
-
   try {
     const response = await fetch('/api/world/airports');
     if (response.ok) {
       const data = await response.json();
-
-      // Update loading message if it's first load
-      if (data.isFirstLoad) {
-        updateLoadingOverlay('Loading for the first time...<br><small style="opacity: 0.7;">This may take a moment</small>');
-      }
-
       const airports = data.airports || data; // Support both new and old format
 
       // Filter out the base airport and calculate distances
@@ -484,21 +657,14 @@ async function loadAvailableAirports() {
       populateCountryFilter();
       populateTimezoneFilter();
 
-      // Load demand data in background
-      loadDemandForAirports(availableAirports).then(() => {
-        // Refresh display with demand data
-        applyDestinationFilters();
-      });
+      // Load demand data first, then display airports (avoids reordering flash)
+      await loadDemandForAirports(availableAirports);
 
-      // Display airports
+      // Display airports (now with demand data for proper sorting)
       applyDestinationFilters();
-
-      // Hide loading overlay
-      hideLoadingOverlay();
     }
   } catch (error) {
     console.error('Error loading airports:', error);
-    hideLoadingOverlay();
     document.getElementById('availableAirportsList').innerHTML = `
       <div style="padding: 3rem; text-align: center; color: var(--warning-color);">
         Error loading airports
@@ -565,17 +731,6 @@ function populateTimezoneFilter() {
 // Filter airports by continent (updates country filter)
 function filterAirportsByContinent() {
   const continent = document.getElementById('continentFilter').value;
-
-  // Continent to countries mapping
-  const continentCountries = {
-    'Africa': ['South Africa', 'Nigeria', 'Kenya', 'Ethiopia', 'Morocco', 'Algeria', 'Tunisia', 'Ghana', 'Tanzania', 'Uganda', 'Zimbabwe', 'Angola', 'Mozambique'],
-    'Asia': ['China', 'Japan', 'South Korea', 'India', 'Singapore', 'Malaysia', 'Indonesia', 'Thailand', 'Philippines', 'Vietnam', 'Hong Kong', 'Taiwan', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Nepal'],
-    'Europe': ['United Kingdom', 'Germany', 'France', 'Italy', 'Spain', 'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'Sweden', 'Norway', 'Denmark', 'Finland', 'Poland', 'Czech Republic', 'Portugal', 'Greece', 'Turkey', 'Russia', 'Ukraine', 'Romania', 'Hungary', 'Bulgaria', 'Serbia', 'Croatia', 'Slovenia', 'Slovakia', 'Ireland', 'Iceland', 'Luxembourg'],
-    'North America': ['United States', 'Canada', 'Mexico', 'Costa Rica', 'Panama', 'Cuba', 'Jamaica'],
-    'South America': ['Brazil', 'Argentina', 'Chile', 'Colombia', 'Peru', 'Venezuela', 'Ecuador', 'Bolivia', 'Paraguay', 'Uruguay'],
-    'Oceania': ['Australia', 'New Zealand']
-  };
-
   const countryFilter = document.getElementById('countryFilter');
 
   if (!continent) {
@@ -596,9 +751,47 @@ function filterAirportsByContinent() {
   applyDestinationFilters();
 }
 
+// Apply haul type filter (sets range values and applies filters)
+function applyHaulTypeFilter() {
+  const haulType = document.getElementById('haulTypeFilter').value;
+  const minRangeInput = document.getElementById('minRange');
+  const maxRangeInput = document.getElementById('maxRange');
+
+  switch (haulType) {
+    case 'short':
+      minRangeInput.value = '';
+      maxRangeInput.value = '1500';
+      break;
+    case 'medium':
+      minRangeInput.value = '1500';
+      maxRangeInput.value = '3500';
+      break;
+    case 'long':
+      minRangeInput.value = '3500';
+      maxRangeInput.value = '';
+      break;
+    default:
+      minRangeInput.value = '';
+      maxRangeInput.value = '';
+  }
+
+  applyDestinationFilters();
+}
+
+// Continent to countries mapping (shared)
+const continentCountries = {
+  'Africa': ['South Africa', 'Nigeria', 'Kenya', 'Ethiopia', 'Morocco', 'Algeria', 'Tunisia', 'Ghana', 'Tanzania', 'Uganda', 'Zimbabwe', 'Angola', 'Mozambique', 'Egypt', 'Senegal', 'Ivory Coast', 'Cameroon', 'Zambia', 'Botswana', 'Namibia', 'Rwanda', 'Mauritius', 'Madagascar', 'Seychelles', 'Cape Verde', 'Libya', 'Sudan'],
+  'Asia': ['China', 'Japan', 'South Korea', 'India', 'Singapore', 'Malaysia', 'Indonesia', 'Thailand', 'Philippines', 'Vietnam', 'Hong Kong', 'Taiwan', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Nepal', 'Myanmar', 'Cambodia', 'Laos', 'Brunei', 'Maldives', 'Mongolia', 'Kazakhstan', 'Uzbekistan', 'Turkmenistan', 'Kyrgyzstan', 'Tajikistan', 'Afghanistan', 'Iran', 'Iraq', 'Saudi Arabia', 'United Arab Emirates', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Jordan', 'Lebanon', 'Israel', 'Syria', 'Yemen', 'Azerbaijan', 'Georgia', 'Armenia'],
+  'Europe': ['United Kingdom', 'Germany', 'France', 'Italy', 'Spain', 'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'Sweden', 'Norway', 'Denmark', 'Finland', 'Poland', 'Czech Republic', 'Czechia', 'Portugal', 'Greece', 'Turkey', 'Russia', 'Ukraine', 'Romania', 'Hungary', 'Bulgaria', 'Serbia', 'Croatia', 'Slovenia', 'Slovakia', 'Ireland', 'Iceland', 'Luxembourg', 'Estonia', 'Latvia', 'Lithuania', 'Belarus', 'Moldova', 'Albania', 'North Macedonia', 'Montenegro', 'Bosnia and Herzegovina', 'Kosovo', 'Malta', 'Cyprus'],
+  'North America': ['United States', 'Canada', 'Mexico', 'Costa Rica', 'Panama', 'Cuba', 'Jamaica', 'Dominican Republic', 'Puerto Rico', 'Haiti', 'Guatemala', 'Honduras', 'El Salvador', 'Nicaragua', 'Belize', 'Bahamas', 'Trinidad and Tobago', 'Barbados', 'Bermuda', 'Cayman Islands', 'Aruba', 'Curacao'],
+  'South America': ['Brazil', 'Argentina', 'Chile', 'Colombia', 'Peru', 'Venezuela', 'Ecuador', 'Bolivia', 'Paraguay', 'Uruguay', 'Guyana', 'Suriname', 'French Guiana'],
+  'Oceania': ['Australia', 'New Zealand', 'Fiji', 'Papua New Guinea', 'Samoa', 'Tonga', 'Vanuatu', 'Solomon Islands', 'New Caledonia', 'French Polynesia', 'Guam']
+};
+
 // Apply all destination filters
 function applyDestinationFilters() {
   const searchKeyword = document.getElementById('searchKeyword').value.toLowerCase();
+  const continent = document.getElementById('continentFilter').value;
   const country = document.getElementById('countryFilter').value;
   const infraOperator = document.getElementById('infraOperator').value;
   const infraLevel = parseInt(document.getElementById('infraLevel').value) || null;
@@ -620,6 +813,11 @@ function applyDestinationFilters() {
       airport.name.toLowerCase().includes(searchKeyword) ||
       airport.city.toLowerCase().includes(searchKeyword)
     )) {
+      return false;
+    }
+
+    // Continent filter
+    if (continent && !continentCountries[continent]?.includes(airport.country)) {
       return false;
     }
 
@@ -663,18 +861,24 @@ function applyDestinationFilters() {
     return true;
   });
 
-  // Sort by demand (high to low), then distance (low to high) as tiebreaker
+  // Get sort order from dropdown
+  const sortOrder = document.getElementById('sortOrder')?.value || 'demand';
+
+  // Sort based on selected order
   filtered.sort((a, b) => {
-    const demandA = demandDataCache[a.id]?.demand || 0;
-    const demandB = demandDataCache[b.id]?.demand || 0;
-
-    // Primary sort: demand (descending)
-    if (demandB !== demandA) {
-      return demandB - demandA;
+    if (sortOrder === 'closest') {
+      return a.distance - b.distance;
+    } else if (sortOrder === 'furthest') {
+      return b.distance - a.distance;
+    } else {
+      // Default: sort by demand (high to low), distance as tiebreaker
+      const demandA = demandDataCache[a.id]?.demand || 0;
+      const demandB = demandDataCache[b.id]?.demand || 0;
+      if (demandB !== demandA) {
+        return demandB - demandA;
+      }
+      return a.distance - b.distance;
     }
-
-    // Secondary sort: distance (ascending)
-    return a.distance - b.distance;
   });
 
   // Update badge
@@ -832,9 +1036,117 @@ function generateDemandIndicator(airport) {
   `;
 }
 
-// Display available airports
+// Virtual scrolling state
+let currentFilteredAirports = [];
+let displayedAirportCount = 0;
+const AIRPORTS_BATCH_SIZE = 50;
+let airportListObserver = null;
+
+// Render a single airport item
+function renderAirportItem(airport) {
+  const isSelected = selectedDestinationAirport?.id === airport.id;
+  return `
+    <div
+      class="airport-item"
+      data-airport-id="${airport.id}"
+      onclick="selectDestinationAirport('${airport.id}')"
+      style="
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        background: ${isSelected ? 'var(--accent-color-dim)' : 'transparent'};
+        transition: background 0.15s;
+      "
+      onmouseover="if (!${isSelected}) this.style.background='var(--surface-elevated)'"
+      onmouseout="if (!${isSelected}) this.style.background='transparent'"
+    >
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <!-- Airport Info -->
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.25rem;">
+            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">
+              ${airport.icaoCode}${airport.iataCode ? ` (${airport.iataCode})` : ''}
+            </span>
+            <span style="color: var(--text-secondary); font-size: 0.85rem;">
+              ${airport.name}
+            </span>
+          </div>
+          <div style="color: var(--text-muted); font-size: 0.8rem;">
+            ${airport.city}, ${airport.country} • ${airport.type}
+          </div>
+        </div>
+
+        <!-- Spare Capacity, Operations & Demand -->
+        <div style="display: flex; gap: 1.5rem; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Capacity:</span>
+            ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Operations:</span>
+            ${generateLevelScaleCompact(airport.movementsIndex || airport.trafficDemand)}
+          </div>
+          ${generateDemandIndicator(airport)}
+        </div>
+
+        <!-- Distance -->
+        <div style="text-align: right; min-width: 80px;">
+          <div style="color: var(--accent-color); font-weight: 600; font-size: 1rem; white-space: nowrap;">${Math.round(airport.distance)} NM</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Load more airports (for infinite scroll)
+function loadMoreAirports() {
+  const container = document.getElementById('availableAirportsList');
+  const loadMoreSentinel = document.getElementById('loadMoreSentinel');
+
+  if (displayedAirportCount >= currentFilteredAirports.length) {
+    // All airports displayed, remove sentinel
+    if (loadMoreSentinel) loadMoreSentinel.remove();
+    return;
+  }
+
+  const nextBatch = currentFilteredAirports.slice(
+    displayedAirportCount,
+    displayedAirportCount + AIRPORTS_BATCH_SIZE
+  );
+
+  const html = nextBatch.map(renderAirportItem).join('');
+
+  // Insert before the sentinel
+  if (loadMoreSentinel) {
+    loadMoreSentinel.insertAdjacentHTML('beforebegin', html);
+  } else {
+    container.insertAdjacentHTML('beforeend', html);
+  }
+
+  displayedAirportCount += nextBatch.length;
+
+  // Update remaining count on sentinel
+  const remaining = currentFilteredAirports.length - displayedAirportCount;
+  if (loadMoreSentinel && remaining > 0) {
+    loadMoreSentinel.querySelector('.remaining-count').textContent = `${remaining} more`;
+  } else if (loadMoreSentinel && remaining <= 0) {
+    loadMoreSentinel.remove();
+  }
+}
+
+// Display available airports with virtual scrolling
 function displayAvailableAirports(airports) {
   const container = document.getElementById('availableAirportsList');
+
+  // Clean up previous observer
+  if (airportListObserver) {
+    airportListObserver.disconnect();
+    airportListObserver = null;
+  }
+
+  // Reset state
+  currentFilteredAirports = airports;
+  displayedAirportCount = 0;
 
   if (airports.length === 0) {
     container.innerHTML = `
@@ -845,60 +1157,33 @@ function displayAvailableAirports(airports) {
     return;
   }
 
-  const html = airports.map(airport => {
-    const isSelected = selectedDestinationAirport?.id === airport.id;
-    return `
-      <div
-        onclick="selectDestinationAirport('${airport.id}')"
-        style="
-          padding: 0.75rem 1rem;
-          border-bottom: 1px solid var(--border-color);
-          cursor: pointer;
-          background: ${isSelected ? 'var(--accent-color-dim)' : 'transparent'};
-          transition: background 0.2s;
-        "
-        onmouseover="if (!${isSelected}) this.style.background='var(--surface-elevated)'"
-        onmouseout="if (!${isSelected}) this.style.background='transparent'"
-      >
-        <div style="display: flex; align-items: center; gap: 1rem;">
-          <!-- Airport Info -->
-          <div style="flex: 1; min-width: 0;">
-            <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.25rem;">
-              <span style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">
-                ${airport.icaoCode}${airport.iataCode ? ` (${airport.iataCode})` : ''}
-              </span>
-              <span style="color: var(--text-secondary); font-size: 0.85rem;">
-                ${airport.name}
-              </span>
-            </div>
-            <div style="color: var(--text-muted); font-size: 0.8rem;">
-              ${airport.city}, ${airport.country} • ${airport.type}
-            </div>
-          </div>
+  // Render initial batch
+  const initialBatch = airports.slice(0, AIRPORTS_BATCH_SIZE);
+  const html = initialBatch.map(renderAirportItem).join('');
+  displayedAirportCount = initialBatch.length;
 
-          <!-- Spare Capacity, Operations & Demand -->
-          <div style="display: flex; gap: 1.5rem; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Capacity:</span>
-              ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
-            </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Operations:</span>
-              ${generateLevelScaleCompact(airport.movementsIndex || airport.trafficDemand)}
-            </div>
-            ${generateDemandIndicator(airport)}
-          </div>
+  // Add load more sentinel if there are more airports
+  const remaining = airports.length - displayedAirportCount;
+  const sentinelHtml = remaining > 0 ? `
+    <div id="loadMoreSentinel" style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+      <span class="remaining-count">${remaining} more</span> airports • Scroll to load more
+    </div>
+  ` : '';
 
-          <!-- Distance -->
-          <div style="text-align: right; min-width: 80px;">
-            <div style="color: var(--accent-color); font-weight: 600; font-size: 1rem; white-space: nowrap;">${Math.round(airport.distance)} NM</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
+  container.innerHTML = html + sentinelHtml;
 
-  container.innerHTML = html;
+  // Set up IntersectionObserver for infinite scroll
+  if (remaining > 0) {
+    const sentinel = document.getElementById('loadMoreSentinel');
+    if (sentinel) {
+      airportListObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreAirports();
+        }
+      }, { rootMargin: '100px' });
+      airportListObserver.observe(sentinel);
+    }
+  }
 }
 
 // Select destination airport
@@ -920,6 +1205,9 @@ function selectDestinationAirport(airportId) {
     const panelStep1 = document.getElementById('selectedDestinationPanelStep1');
     panelStep1.style.display = 'block';
 
+    // Hide the search panel for cleaner UI
+    document.getElementById('destinationSearchPanel').style.display = 'none';
+
     document.getElementById('selectedDestNameStep1').textContent =
       `${selectedDestinationAirport.icaoCode} - ${selectedDestinationAirport.name}`;
 
@@ -928,9 +1216,6 @@ function selectDestinationAirport(airportId) {
 
     document.getElementById('selectedDestDistanceStep1').textContent =
       `${Math.round(selectedDestinationAirport.distance)} NM`;
-
-    // Re-render list to show selection
-    applyDestinationFilters();
 
     // Scroll to selected destination panel
     panelStep1.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -941,6 +1226,10 @@ function selectDestinationAirport(airportId) {
 function clearDestinationStep1() {
   selectedDestinationAirport = null;
   document.getElementById('selectedDestinationPanelStep1').style.display = 'none';
+
+  // Show the search panel again
+  document.getElementById('destinationSearchPanel').style.display = 'block';
+
   applyDestinationFilters();
 
   // Scroll to search section
@@ -950,7 +1239,7 @@ function clearDestinationStep1() {
 // Proceed to step 2 (route configuration)
 function proceedToStep2() {
   if (!selectedDestinationAirport) {
-    alert('Please select a destination airport first');
+    showWarningModal('Please select a destination airport first');
     return;
   }
 
@@ -1008,6 +1297,118 @@ function backToStep1() {
 
   // Scroll to top
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Proceed to step 3 (pricing)
+function proceedToStep3() {
+  // Validate Step 2 required fields
+  if (!document.getElementById('routeNumber').value.trim()) {
+    showWarningModal('Please enter an outbound flight number', 'routeNumber');
+    return;
+  }
+  if (!document.getElementById('returnRouteNumber').value.trim()) {
+    showWarningModal('Please enter a return flight number', 'returnRouteNumber');
+    return;
+  }
+  if (!document.getElementById('assignedAircraft').value) {
+    showWarningModal('Please select an aircraft type', 'assignedAircraft');
+    return;
+  }
+  if (!document.getElementById('departureTime').value) {
+    showWarningModal('Please enter a schedule time', 'departureTime');
+    return;
+  }
+  if (selectedDaysOfWeek.length === 0) {
+    showWarningModal('Please select at least one day of operation', 'daysOfWeekContainer');
+    return;
+  }
+
+  // Hide step 2, show step 3
+  document.getElementById('step2Container').style.display = 'none';
+  document.getElementById('step3Container').style.display = 'block';
+
+  // Update step indicators
+  updateStepIndicators(3);
+
+  // Update subtitle
+  document.getElementById('stepSubtitle').textContent = 'STEP 3: SET PRICING';
+
+  // Populate route summary
+  updateStep3Summary();
+
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Go back to step 2 (schedule)
+function backToStep2() {
+  // Show step 2, hide step 3
+  document.getElementById('step3Container').style.display = 'none';
+  document.getElementById('step2Container').style.display = 'block';
+
+  // Update step indicators
+  updateStepIndicators(2);
+
+  // Update subtitle
+  document.getElementById('stepSubtitle').textContent = 'STEP 2: CONFIGURE ROUTE';
+
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Update step indicators based on active step
+function updateStepIndicators(activeStep) {
+  const steps = [
+    { id: 'step1Indicator', step: 1 },
+    { id: 'step2Indicator', step: 2 },
+    { id: 'step3Indicator', step: 3 }
+  ];
+
+  steps.forEach(({ id, step }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    if (step < activeStep) {
+      // Completed step
+      el.style.background = 'var(--surface-elevated)';
+      el.style.border = '1px solid var(--success-color)';
+      el.style.color = 'var(--success-color)';
+    } else if (step === activeStep) {
+      // Active step
+      el.style.background = 'var(--accent-color)';
+      el.style.border = 'none';
+      el.style.color = 'white';
+    } else {
+      // Future step
+      el.style.background = 'var(--surface-elevated)';
+      el.style.border = '1px solid var(--border-color)';
+      el.style.color = 'var(--text-muted)';
+    }
+  });
+}
+
+// Update Step 3 route summary
+function updateStep3Summary() {
+  const summary = document.getElementById('step3RouteSummary');
+  if (!summary) return;
+
+  const depCode = baseAirport?.iataCode || baseAirport?.icaoCode || '--';
+  const arrCode = selectedDestinationAirport?.iataCode || selectedDestinationAirport?.icaoCode || '--';
+  const prefix = worldInfo?.iataCode || '';
+  const routeNum = prefix + document.getElementById('routeNumber').value.trim();
+  const distance = Math.round(selectedDestinationAirport?.distance || 0);
+  const techCode = selectedTechStopAirport ? (selectedTechStopAirport.iataCode || selectedTechStopAirport.icaoCode) : null;
+
+  summary.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <span style="font-size: 1.1rem; font-weight: 700; color: var(--accent-color); font-family: monospace;">${routeNum}</span>
+      <span style="color: var(--text-secondary);">${depCode} ${techCode ? '→ ' + techCode + ' ' : ''}→ ${arrCode}</span>
+      <span style="color: var(--text-muted); font-size: 0.85rem;">${distance} NM</span>
+    </div>
+    <div style="color: var(--text-muted); font-size: 0.8rem;">
+      ${document.getElementById('departureTime').value} departure
+    </div>
+  `;
 }
 
 // Toggle a specific day of the week
@@ -1079,6 +1480,178 @@ function calculateFlightTime(distanceNM) {
   return flightTimeMinutes;
 }
 
+// Calculate fuelling duration based on route distance
+function calculateFuellingDuration(distanceNM) {
+  // Fuelling time scales with distance:
+  // Short-haul (<500nm): 15 mins
+  // Medium-haul (500-2000nm): 20 mins
+  // Long-haul (2000-5000nm): 30 mins
+  // Ultra long-haul (>5000nm): 45 mins
+  if (distanceNM < 500) return 15;
+  if (distanceNM < 2000) return 20;
+  if (distanceNM < 5000) return 30;
+  return 45;
+}
+
+// Calculate catering duration based on passenger capacity
+function calculateCateringDuration(passengerCapacity) {
+  // Catering time scales with aircraft size:
+  // Small (<100 pax): 15 mins
+  // Medium (100-200 pax): 20 mins
+  // Large (200-350 pax): 25 mins
+  // Very Large (>350 pax): 30 mins
+  if (!passengerCapacity) return 15;
+  if (passengerCapacity < 100) return 15;
+  if (passengerCapacity < 200) return 20;
+  if (passengerCapacity < 350) return 25;
+  return 30;
+}
+
+// Calculate boarding duration based on passenger capacity
+function calculateBoardingDuration(passengerCapacity) {
+  // Boarding time scales with aircraft size:
+  // Small (<100 pax): 20 mins
+  // Medium (100-200 pax): 25 mins
+  // Large (200-350 pax): 35 mins
+  // Very Large (>350 pax): 45 mins
+  if (!passengerCapacity) return 20;
+  if (passengerCapacity < 100) return 20;
+  if (passengerCapacity < 200) return 25;
+  if (passengerCapacity < 350) return 35;
+  return 45;
+}
+
+// Calculate deboarding duration based on passenger capacity
+function calculateDeboardingDuration(passengerCapacity) {
+  // Deboarding is typically faster than boarding:
+  // Small (<100 pax): 10 mins
+  // Medium (100-200 pax): 15 mins
+  // Large (200-350 pax): 20 mins
+  // Very Large (>350 pax): 25 mins
+  if (!passengerCapacity) return 10;
+  if (passengerCapacity < 100) return 10;
+  if (passengerCapacity < 200) return 15;
+  if (passengerCapacity < 350) return 20;
+  return 25;
+}
+
+// Calculate cleaning duration based on passenger capacity
+function calculateCleaningDuration(passengerCapacity) {
+  // Cleaning time scales with aircraft size:
+  // Small (<100 pax): 10 mins
+  // Medium (100-200 pax): 15 mins
+  // Large (200-350 pax): 20 mins
+  // Very Large (>350 pax): 25 mins
+  if (!passengerCapacity) return 10;
+  if (passengerCapacity < 100) return 10;
+  if (passengerCapacity < 200) return 15;
+  if (passengerCapacity < 350) return 20;
+  return 25;
+}
+
+// Calculate total pre-flight duration
+// Fuelling runs in PARALLEL with catering
+// Boarding starts when catering is complete
+// Pre-flight total = MAX(fuelling, catering + boarding)
+function calculatePreFlightDuration(distanceNM, passengerCapacity) {
+  const fuelling = calculateFuellingDuration(distanceNM);
+  const catering = calculateCateringDuration(passengerCapacity);
+  const boarding = calculateBoardingDuration(passengerCapacity);
+  const total = Math.max(fuelling, catering + boarding);
+  return { fuelling, catering, boarding, total };
+}
+
+// Calculate total post-flight duration
+function calculatePostFlightDuration(passengerCapacity) {
+  const deboarding = calculateDeboardingDuration(passengerCapacity);
+  const cleaning = calculateCleaningDuration(passengerCapacity);
+  return { deboarding, cleaning, total: deboarding + cleaning };
+}
+
+// Calculate turnaround duration with detailed breakdown
+// Operations at turnaround:
+// - Fuelling starts IMMEDIATELY at landing (parallel with everything)
+// - Deboarding happens after landing
+// - Catering and Cleaning run in PARALLEL after deboarding
+// - Boarding can start when BOTH catering AND cleaning are complete
+// Formula: MAX(fuelling, deboarding + MAX(cleaning, catering) + boarding)
+function calculateTurnaroundDuration(distanceNM, passengerCapacity) {
+  const fuelling = calculateFuellingDuration(distanceNM);
+  const deboarding = calculateDeboardingDuration(passengerCapacity);
+  const catering = calculateCateringDuration(passengerCapacity);
+  const cleaning = calculateCleaningDuration(passengerCapacity);
+  const boarding = calculateBoardingDuration(passengerCapacity);
+
+  // Catering and cleaning run in parallel after deboarding
+  const parallelCateringCleaning = Math.max(catering, cleaning);
+
+  // Sequential path: deboarding → max(catering, cleaning) → boarding
+  const sequentialPath = deboarding + parallelCateringCleaning + boarding;
+
+  // Fuelling runs parallel to everything, starting at landing
+  const total = Math.max(fuelling, sequentialPath);
+
+  return {
+    fuelling,
+    deboarding,
+    catering,
+    cleaning,
+    boarding,
+    parallelCateringCleaning,
+    sequentialPath,
+    total
+  };
+}
+
+// Calculate minimum turnaround time
+function calculateMinimumTurnaround(distanceNM, passengerCapacity) {
+  return calculateTurnaroundDuration(distanceNM, passengerCapacity).total;
+}
+
+// Handle turnaround time change - enforce minimum
+function onTurnaroundTimeChange() {
+  const turnaroundInput = document.getElementById('turnaroundTime');
+  const minDisplay = document.getElementById('minTurnaroundDisplay');
+  const minInfo = document.getElementById('turnaroundMinInfo');
+
+  if (!selectedDestinationAirport) {
+    calculateFlightTiming();
+    return;
+  }
+
+  const aircraftSelect = document.getElementById('assignedAircraft');
+  if (!aircraftSelect.value) {
+    calculateFlightTiming();
+    return;
+  }
+
+  const aircraftData = aircraftDataById[aircraftSelect.value];
+  if (!aircraftData) {
+    calculateFlightTiming();
+    return;
+  }
+
+  const distance = selectedTechStopAirport && selectedDestinationAirport.routingDistance
+    ? selectedDestinationAirport.routingDistance
+    : selectedDestinationAirport.distance;
+
+  const passengerCapacity = aircraftData.passengerCapacity || 0;
+  const minTurnaround = calculateMinimumTurnaround(distance, passengerCapacity);
+
+  const currentValue = parseInt(turnaroundInput.value) || 0;
+
+  // Enforce minimum
+  if (currentValue < minTurnaround) {
+    turnaroundInput.value = minTurnaround;
+    turnaroundInput.style.borderColor = 'var(--warning-color)';
+    setTimeout(() => {
+      turnaroundInput.style.borderColor = '';
+    }, 1000);
+  }
+
+  calculateFlightTiming();
+}
+
 // Calculate flight time based on aircraft speed and distance
 function calculateFlightTimeWithAircraft(distanceNM, aircraftData) {
   if (!aircraftData || !aircraftData.cruiseSpeed) {
@@ -1095,20 +1668,29 @@ function calculateFlightTimeWithAircraft(distanceNM, aircraftData) {
 // Calculate and display detailed flight timing
 function calculateFlightTiming() {
   const timingContainer = document.getElementById('flightTimingDisplay');
+  const turnaroundInput = document.getElementById('turnaroundTime');
+
+  // Preserve turnaround details open state before rebuilding
+  const existingDetails = document.getElementById('turnaroundDetails');
+  const wasTurnaroundOpen = existingDetails ? existingDetails.open : false;
+  const minDisplay = document.getElementById('minTurnaroundDisplay');
+  const minInfo = document.getElementById('turnaroundMinInfo');
 
   if (!selectedDestinationAirport) {
     if (timingContainer) {
       timingContainer.style.display = 'none';
     }
+    if (minInfo) minInfo.style.display = 'none';
     document.getElementById('calculatedReturnTime').value = '--:--';
     return;
   }
 
-  const outboundDepartureTime = document.getElementById('departureTime').value;
-  if (!outboundDepartureTime) {
+  const scheduleTime = document.getElementById('departureTime').value;
+  if (!scheduleTime) {
     if (timingContainer) {
       timingContainer.style.display = 'none';
     }
+    if (minInfo) minInfo.style.display = 'none';
     document.getElementById('calculatedReturnTime').value = '--:--';
     return;
   }
@@ -1121,6 +1703,7 @@ function calculateFlightTiming() {
     if (timingContainer) {
       timingContainer.style.display = 'none';
     }
+    if (minInfo) minInfo.style.display = 'none';
     document.getElementById('calculatedReturnTime').value = '--:--';
     return;
   }
@@ -1132,23 +1715,43 @@ function calculateFlightTiming() {
     if (timingContainer) {
       timingContainer.style.display = 'none';
     }
+    if (minInfo) minInfo.style.display = 'none';
     document.getElementById('calculatedReturnTime').value = '--:--';
     return;
   }
-
-  const turnaroundMinutes = parseInt(document.getElementById('turnaroundTime').value) || 45;
 
   // Use routing distance if tech stop is present, otherwise use direct distance
   const effectiveDistance = selectedTechStopAirport && selectedDestinationAirport.routingDistance
     ? selectedDestinationAirport.routingDistance
     : selectedDestinationAirport.distance;
 
+  const passengerCapacity = aircraftData.passengerCapacity || 0;
+
+  // Calculate pre-flight and post-flight durations for departure/arrival
+  const outboundPreFlight = calculatePreFlightDuration(effectiveDistance, passengerCapacity);
+  const returnPostFlight = calculatePostFlightDuration(passengerCapacity);
+
+  // Calculate turnaround duration (includes all ground ops at destination)
+  const turnaround = calculateTurnaroundDuration(effectiveDistance, passengerCapacity);
+  const minTurnaround = turnaround.total;
+
+  // Update minimum turnaround display
+  if (minDisplay) minDisplay.textContent = minTurnaround;
+  if (minInfo) minInfo.style.display = 'block';
+
+  // Set turnaround input minimum and auto-update if needed
+  turnaroundInput.min = minTurnaround;
+  let turnaroundMinutes = parseInt(turnaroundInput.value) || minTurnaround;
+  if (turnaroundMinutes < minTurnaround) {
+    turnaroundMinutes = minTurnaround;
+    turnaroundInput.value = minTurnaround;
+  }
+
   const flightTimeMinutes = calculateFlightTimeWithAircraft(effectiveDistance, aircraftData);
 
   // Taxi time: normal route has 2 taxi operations per leg (out + in)
   // Tech stop route has 4 taxi operations per leg (out at A, in at B, out at B, in at C)
-  // So tech stop doubles the taxi time
-  const BASE_TAXI_TIME_PER_LEG = 15; // minutes for normal route
+  const BASE_TAXI_TIME_PER_LEG = 15;
   const taxiTimePerLeg = selectedTechStopAirport ? BASE_TAXI_TIME_PER_LEG * 2 : BASE_TAXI_TIME_PER_LEG;
 
   // Refueling time at tech stop (20 minutes per leg)
@@ -1156,19 +1759,33 @@ function calculateFlightTiming() {
 
   const blockTimeMinutes = flightTimeMinutes + taxiTimePerLeg + refuelingTimePerLeg;
 
-  // Parse outbound departure time
-  const [hours, minutes] = outboundDepartureTime.split(':').map(Number);
+  // Parse schedule time (this is when pre-flight actions begin)
+  const [hours, minutes] = scheduleTime.split(':').map(Number);
 
-  // Calculate all timing points using block time
-  const offBlocksOutbound = hours * 60 + minutes;
+  // Calculate all timing points
+  // Schedule time = pre-flight start, Off-blocks = schedule time + pre-flight duration
+  const preFlightStart = hours * 60 + minutes;
+  const offBlocksOutbound = preFlightStart + outboundPreFlight.total;
   const onBlocksDestination = offBlocksOutbound + blockTimeMinutes;
+
+  // Turnaround happens at destination (all ground ops between landing and return departure)
+  // Turnaround ends when boarding is complete → ready for off-blocks return
   const offBlocksReturn = onBlocksDestination + turnaroundMinutes;
   const onBlocksBase = offBlocksReturn + blockTimeMinutes;
+  const postFlightReturnEnd = onBlocksBase + returnPostFlight.total;
+
+  // Calculate timing with any additional buffer
+  const actualOffBlocksReturn = onBlocksDestination + turnaroundMinutes;
+  const actualOnBlocksBase = actualOffBlocksReturn + blockTimeMinutes;
+  const actualPostFlightReturnEnd = actualOnBlocksBase + returnPostFlight.total;
+
+  // Turnaround end time (when boarding is complete)
+  const turnaroundEndTime = onBlocksDestination + turnaroundMinutes;
 
   // Format times
   const formatTime = (totalMinutes) => {
     const days = Math.floor(totalMinutes / (24 * 60));
-    const mins = totalMinutes % (24 * 60);
+    const mins = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -1176,90 +1793,162 @@ function calculateFlightTiming() {
   };
 
   const formatDuration = (minutes) => {
-    const roundedMins = Math.round(minutes / 5) * 5;
-    const h = Math.floor(roundedMins / 60);
-    const m = roundedMins % 60;
-    const mStr = String(m).padStart(2, '0');
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
     if (h > 0) {
-      return `${h}h ${mStr}m`;
+      return `${h}h ${m}m`;
     }
     return `${m}m`;
   };
 
-  // Update return time field
-  document.getElementById('calculatedReturnTime').value = formatTime(offBlocksReturn);
+  // Update return time field (this shows return off-blocks time)
+  document.getElementById('calculatedReturnTime').value = formatTime(actualOffBlocksReturn);
 
-  // Display detailed timing
+  // Display compact timing breakdown
   if (timingContainer) {
-    const aircraftName = aircraftData ? `${aircraftData.manufacturer} ${aircraftData.model}${aircraftData.variant ? '-' + aircraftData.variant : ''}` : 'Default Aircraft';
-    const cruiseSpeed = aircraftData ? aircraftData.cruiseSpeed : 450;
+    const depCode = baseAirport.iataCode || baseAirport.icaoCode;
+    const destCode = selectedDestinationAirport.iataCode || selectedDestinationAirport.icaoCode;
+    const techCode = selectedTechStopAirport ? (selectedTechStopAirport.iataCode || selectedTechStopAirport.icaoCode) : null;
+    const hasTechStop = !!selectedTechStopAirport;
 
-    // Build tech stop routing display
-    let routingDisplay = '';
-    let distanceDisplay = '';
+    // Compact time block helper
+    const timeBlock = (label, time, color) => `
+      <div style="text-align: center;">
+        <div style="font-size: 0.55rem; color: var(--text-muted); text-transform: uppercase;">${label}</div>
+        <div style="font-size: 0.85rem; font-weight: 700; color: ${color};">${formatTime(time)}</div>
+      </div>
+    `;
 
-    if (selectedTechStopAirport) {
-      const depCode = baseAirport.icaoCode;
-      const techCode = selectedTechStopAirport.icaoCode;
-      const destCode = selectedDestinationAirport.icaoCode;
-
-      routingDisplay = `<div style="color: var(--text-secondary); font-size: 0.9rem;">Routing: <span style="color: var(--accent-color); font-weight: 600;">${depCode} → ${techCode} → ${destCode} → ${techCode} → ${depCode}</span></div>`;
-
-      const legAB = selectedTechStopAirport.distanceFromDeparture;
-      const legBC = selectedTechStopAirport.distanceToDestination;
-      const totalRouting = legAB + legBC;
-
-      distanceDisplay = `
-        <div style="color: var(--text-secondary); font-size: 0.9rem;">
-          Distance: <span style="color: var(--text-primary); font-weight: 600;">${Math.round(totalRouting)} NM</span>
-          <span style="color: var(--text-muted); font-size: 0.85rem;"> (${legAB} + ${legBC})</span>
-        </div>`;
-    } else {
-      const directDistance = Math.round(selectedDestinationAirport.distance);
-      distanceDisplay = `<div style="color: var(--text-secondary); font-size: 0.9rem;">Distance: <span style="color: var(--text-primary); font-weight: 600;">${directDistance} NM</span></div>`;
-    }
+    // Action row helper for turnaround details
+    const actionRow = (label, duration, color) => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.2rem 0;">
+        <div style="display: flex; align-items: center; gap: 0.3rem;">
+          <div style="width: 5px; height: 5px; border-radius: 50%; background: ${color};"></div>
+          <span style="color: var(--text-secondary); font-size: 0.7rem;">${label}</span>
+        </div>
+        <span style="color: var(--text-primary); font-size: 0.7rem; font-weight: 600;">${duration}m</span>
+      </div>
+    `;
 
     timingContainer.style.display = 'block';
     timingContainer.innerHTML = `
-      <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; padding: 1.5rem;">
-        <h4 style="margin: 0 0 1rem 0; color: var(--text-primary); font-weight: 600;">FLIGHT TIMING</h4>
-        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Aircraft: <span style="color: var(--text-primary); font-weight: 600;">${aircraftName}</span></div>
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Cruise Speed: <span style="color: var(--text-primary); font-weight: 600;">${cruiseSpeed} knots</span></div>
-          ${routingDisplay}
-          ${distanceDisplay}
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Flight Time (air): <span style="color: var(--text-primary); font-weight: 600;">${formatDuration(flightTimeMinutes)}</span></div>
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Taxi Time (per leg): <span style="color: var(--text-primary); font-weight: 600;">${formatDuration(taxiTimePerLeg)}</span>${selectedTechStopAirport ? ' <span style="color: var(--accent-color); font-size: 0.85rem;">(doubled for tech stop)</span>' : ''}</div>
-          ${selectedTechStopAirport ? `<div style="color: var(--text-secondary); font-size: 0.9rem;">Refueling Time: <span style="color: var(--accent-color); font-weight: 600;">${formatDuration(refuelingTimePerLeg)}</span> <span style="color: var(--text-muted); font-size: 0.85rem;">(at ${selectedTechStopAirport.icaoCode})</span></div>` : ''}
-          <div style="color: var(--text-secondary); font-size: 0.9rem;">Block Time (per leg): <span style="color: var(--text-primary); font-weight: 600;">${formatDuration(blockTimeMinutes)}</span></div>
+      <div id="flightTimingContent" style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.75rem; height: 100%; box-sizing: border-box;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span style="font-weight: 600; color: var(--text-primary); font-size: 0.8rem;">FLIGHT TIMING</span>
+          <span style="color: var(--text-muted); font-size: 0.7rem;">${Math.round(effectiveDistance)} NM</span>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">OFF BLOCKS</div>
-            <div style="color: var(--accent-color); font-weight: 700; font-size: 1.3rem;">${formatTime(offBlocksOutbound)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">Outbound Departure</div>
+
+        <!-- OUTBOUND Timeline -->
+        <div style="background: var(--surface); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.4rem;">
+          <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #3b82f6;"></div>
+            <span style="font-weight: 600; color: #3b82f6; font-size: 0.7rem;">OUTBOUND</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">${depCode} → ${destCode}</span>
           </div>
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">ON BLOCKS</div>
-            <div style="color: var(--success-color); font-weight: 700; font-size: 1.3rem;">${formatTime(onBlocksDestination)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">Arrival at ${selectedDestinationAirport.iataCode || selectedDestinationAirport.icaoCode}</div>
-          </div>
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">OFF BLOCKS</div>
-            <div style="color: var(--accent-color); font-weight: 700; font-size: 1.3rem;">${formatTime(offBlocksReturn)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">Return Departure</div>
-          </div>
-          <div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">ON BLOCKS</div>
-            <div style="color: var(--success-color); font-weight: 700; font-size: 1.3rem;">${formatTime(onBlocksBase)}</div>
-            <div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">Arrival at ${baseAirport.iataCode || baseAirport.icaoCode}</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center;">
+            ${timeBlock('Pre-flight', preFlightStart, 'var(--text-secondary)')}
+            ${timeBlock('Off Blocks', offBlocksOutbound, 'var(--accent-color)')}
+            ${timeBlock('On Blocks', onBlocksDestination, 'var(--success-color)')}
           </div>
         </div>
-        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85rem;">
-          Total Block Time: <span style="color: var(--text-primary); font-weight: 600;">${formatDuration(onBlocksBase - offBlocksOutbound)}</span>
+
+        <!-- TURNAROUND - Expandable -->
+        <details id="turnaroundDetails" style="margin-bottom: 0.4rem;">
+          <summary style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.4rem; background: #a855f715; border-radius: 4px; cursor: pointer; list-style: none;">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background: #a855f7;"></div>
+            <span style="font-weight: 600; color: #a855f7; font-size: 0.7rem;">TURNAROUND ${formatDuration(turnaroundMinutes)}</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">(min ${formatDuration(minTurnaround)})</span>
+            <svg class="turnaround-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" style="transition: transform 0.2s;">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div style="background: #a855f710; border-radius: 0 0 4px 4px; padding: 0.5rem; margin-top: 2px; border: 1px solid #a855f730; border-top: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+              <div>
+                <div style="font-size: 0.6rem; color: #a855f7; font-weight: 600; margin-bottom: 0.3rem;">GROUND OPS</div>
+                ${actionRow('Deboarding', turnaround.deboarding, '#22c55e')}
+                ${actionRow('Cabin Service', turnaround.parallelCateringCleaning, '#f59e0b')}
+                ${actionRow('Boarding', turnaround.boarding, '#3b82f6')}
+              </div>
+              <div>
+                <div style="font-size: 0.6rem; color: #ef4444; font-weight: 600; margin-bottom: 0.3rem;">PARALLEL</div>
+                ${actionRow('Fuelling', turnaround.fuelling, '#ef4444')}
+                <div style="margin-top: 0.4rem; padding: 0.3rem; background: var(--surface); border-radius: 4px; text-align: center;">
+                  <div style="font-size: 0.55rem; color: var(--text-muted);">MIN REQUIRED</div>
+                  <div style="font-size: 0.9rem; font-weight: 700; color: #a855f7;">${formatDuration(minTurnaround)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- RETURN Timeline -->
+        <div style="background: var(--surface); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #60a5fa;"></div>
+            <span style="font-weight: 600; color: #60a5fa; font-size: 0.7rem;">RETURN</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">${destCode} → ${depCode}</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center;">
+            ${timeBlock('Off Blocks', actualOffBlocksReturn, 'var(--accent-color)')}
+            ${timeBlock('On Blocks', actualOnBlocksBase, 'var(--success-color)')}
+            ${timeBlock('Complete', actualPostFlightReturnEnd, 'var(--text-secondary)')}
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(168, 85, 247, 0.1)); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 4px; padding: 0.5rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center; text-align: center;">
+            <div>
+              <div style="font-size: 0.6rem; color: var(--text-muted);">PRE-FLIGHT BEGINS</div>
+              <div style="font-size: 1rem; font-weight: 700; color: var(--accent-color);">${formatTime(preFlightStart)}</div>
+            </div>
+            <div>
+              <div style="font-size: 0.6rem; color: var(--text-muted);">A/C NEXT AVAILABLE</div>
+              <div style="font-size: 1rem; font-weight: 700; color: var(--success-color);">${formatTime(actualPostFlightReturnEnd)}</div>
+            </div>
+          </div>
         </div>
       </div>
     `;
+
+    // Add expand/collapse behavior for turnaround details
+    const details = document.getElementById('turnaroundDetails');
+    if (details) {
+      // Restore previous open state
+      if (wasTurnaroundOpen) {
+        details.open = true;
+        const chevron = details.querySelector('.turnaround-chevron');
+        if (chevron) {
+          chevron.style.transform = 'rotate(180deg)';
+        }
+      }
+
+      details.addEventListener('toggle', () => {
+        const chevron = details.querySelector('.turnaround-chevron');
+        if (chevron) {
+          chevron.style.transform = details.open ? 'rotate(180deg)' : 'rotate(0)';
+        }
+        // Sync map height with timing panel after a small delay for DOM update
+        setTimeout(syncMapHeight, 50);
+      });
+    }
+
+    // Initial sync of map height
+    setTimeout(syncMapHeight, 100);
+  }
+}
+
+// Sync map container height with flight timing panel
+function syncMapHeight() {
+  const timingContent = document.getElementById('flightTimingContent');
+  const mapContainer = document.getElementById('routePreviewMap');
+  if (timingContent && mapContainer) {
+    const timingHeight = timingContent.offsetHeight;
+    mapContainer.style.height = (timingHeight - 30) + 'px'; // Subtract header height
+    if (routePreviewMap) {
+      routePreviewMap.invalidateSize();
+    }
   }
 }
 
@@ -1397,14 +2086,12 @@ async function submitNewRoute() {
 
   // Validation - check for empty flight numbers
   if (!routeNumberPart) {
-    alert('Please enter an outbound flight number');
-    document.getElementById('routeNumber').focus();
+    showWarningModal('Please enter an outbound flight number', 'routeNumber');
     return;
   }
 
   if (!returnRouteNumberPart) {
-    alert('Please enter a return flight number');
-    document.getElementById('returnRouteNumber').focus();
+    showWarningModal('Please enter a return flight number', 'returnRouteNumber');
     return;
   }
 
@@ -1423,32 +2110,28 @@ async function submitNewRoute() {
 
   // Check for route number conflicts on same operating days
   if (!validateRouteNumber('routeNumber')) {
-    alert('Route number conflicts with an existing route on the selected operating days. Choose a different route number or change the operating days.');
-    document.getElementById('routeNumber').focus();
+    showWarningModal('Route number conflicts with an existing route on the selected operating days. Choose a different route number or change the operating days.', 'routeNumber');
     return;
   }
 
   // Check for return route number conflicts on same operating days
   if (!validateRouteNumber('returnRouteNumber')) {
-    alert('Return route number conflicts with an existing route on the selected operating days. Choose a different route number or change the operating days.');
-    document.getElementById('returnRouteNumber').focus();
+    showWarningModal('Return route number conflicts with an existing route on the selected operating days. Choose a different route number or change the operating days.', 'returnRouteNumber');
     return;
   }
 
   if (!selectedDestinationAirport) {
-    alert('Please select a destination airport');
+    showWarningModal('Please select a destination airport');
     return;
   }
 
   if (!departureTime) {
-    alert('Please enter a departure time');
-    document.getElementById('departureTime').focus();
+    showWarningModal('Please enter a departure time', 'departureTime');
     return;
   }
 
   if (!assignedAircraftId) {
-    alert('Please select an aircraft type for route calculations');
-    document.getElementById('assignedAircraft').focus();
+    showWarningModal('Please select an aircraft type for route calculations', 'assignedAircraft');
     return;
   }
 
@@ -1457,14 +2140,13 @@ async function submitNewRoute() {
     const economyField = document.getElementById('economyPrice');
     // Only validate economy price if the field is enabled (aircraft has economy class)
     if (!economyField.disabled && (!economyPrice || economyPrice <= 0)) {
-      alert('Please enter a valid Economy class ticket price');
-      economyField.focus();
+      showWarningModal('Please enter a valid Economy class ticket price', 'economyPrice');
       return;
     }
   }
 
   if (selectedDaysOfWeek.length === 0) {
-    alert('Please select at least one day of operation');
+    showWarningModal('Please select at least one day of operation', 'daysOfWeekContainer');
     return;
   }
 
@@ -1582,7 +2264,7 @@ async function submitNewRoute() {
   } catch (error) {
     hideLoadingOverlay();
     console.error('Error creating route:', error);
-    alert(`Error: ${error.message}`);
+    showWarningModal(`Error: ${error.message}`);
   }
 }
 
@@ -1879,7 +2561,7 @@ function searchTechStopAirports() {
 
 function selectTechStop(airportId) {
   if (!baseAirport || !selectedDestinationAirport) {
-    alert('Please select a destination first');
+    showWarningModal('Please select a destination first');
     return;
   }
 
@@ -1931,6 +2613,9 @@ function selectTechStop(airportId) {
 
   // Recalculate flight timing with tech stop
   calculateFlightTiming();
+
+  // Update route preview map
+  updateRoutePreview();
 }
 
 function clearTechStop() {
@@ -1947,6 +2632,9 @@ function clearTechStop() {
 
   // Recalculate flight timing without tech stop
   calculateFlightTiming();
+
+  // Update route preview map
+  updateRoutePreview();
 }
 
 // Initialize when page loads
@@ -1960,29 +2648,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   fetchAircraftTypePricing();
 
   if (!baseAirport) {
-    alert('Error: Could not determine your base airport. Please set a base airport first.');
-    window.location.href = '/routes';
+    showWarningModal('Could not determine your base airport. Please set a base airport first.');
+    setTimeout(() => { window.location.href = '/routes'; }, 2000);
     return;
   }
 
   await loadAvailableAirports();
 
   // Add event listeners for return route calculations
-  document.getElementById('departureTime').addEventListener('change', calculateReturnTime);
-  document.getElementById('turnaroundTime').addEventListener('input', calculateReturnTime);
+  document.getElementById('departureTime').addEventListener('change', calculateFlightTiming);
+  document.getElementById('turnaroundTime').addEventListener('input', onTurnaroundTimeChange);
   document.getElementById('assignedAircraft').addEventListener('change', onAircraftSelectionChange);
   document.getElementById('routeNumber').addEventListener('input', suggestReturnRouteNumber);
   document.getElementById('returnRouteNumber').addEventListener('input', () => validateRouteNumber('returnRouteNumber'));
-
-  // Add event listener for default turnaround time checkbox
-  const saveDefaultCheckbox = document.getElementById('saveDefaultTurnaround');
-  if (saveDefaultCheckbox) {
-    saveDefaultCheckbox.addEventListener('change', function() {
-      if (this.checked) {
-        saveDefaultTurnaroundTime();
-      }
-    });
-  }
 
   // Add event listeners for pricing functionality
   const transportTypeEl = document.getElementById('transportType');

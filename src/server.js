@@ -143,22 +143,20 @@ async function renderPage(pagePath, requestPath) {
 
     // Set active class on the correct nav item based on current path
     let processedSidebar = sidebarHtml;
-    // Handle exact path matches and parent paths (e.g., /routes/create should activate /routes)
-    const pathsToCheck = [requestPath];
-    if (requestPath.includes('/')) {
-      // Add parent path for nested routes like /routes/create -> /routes
-      const parentPath = '/' + requestPath.split('/')[1];
-      if (parentPath !== requestPath) {
-        pathsToCheck.push(parentPath);
-      }
-    }
 
-    // Add active class to matching nav items
-    pathsToCheck.forEach(checkPath => {
-      // Match data-path that contains the current path (handles comma-separated paths too)
-      const dataPathRegex = new RegExp(`(<li class="nav-item[^"]*"[^>]*data-path="[^"]*${checkPath.replace(/\//g, '\\/')}[^"]*")`, 'g');
-      processedSidebar = processedSidebar.replace(dataPathRegex, (match) => {
-        // Add active class if not already present
+    // Add active class to nav items - check exact path first, then parent for submenu expansion
+    const addActiveClass = (sidebar, checkPath) => {
+      // Match data-path that exactly matches or is in a comma-separated list
+      // This regex ensures we match exact paths, not substrings (e.g., /routes shouldn't match /routes/create)
+      const escapedPath = checkPath.replace(/\//g, '\\/');
+      // Match: data-path="/path" OR data-path="/path,..." OR data-path="...,/path" OR data-path="...,/path,..."
+      const dataPathRegex = new RegExp(`(<li class="nav-item[^"]*"[^>]*data-path="(?:${escapedPath}|${escapedPath},[^"]*|[^"]*,${escapedPath}|[^"]*,${escapedPath},[^"]*)")`, 'g');
+
+      return sidebar.replace(dataPathRegex, (match) => {
+        // Skip if already active
+        if (match.includes('active')) return match;
+
+        // Add active class
         if (match.includes('class="nav-item"')) {
           return match.replace('class="nav-item"', 'class="nav-item active"');
         } else if (match.includes('class="nav-item parent"')) {
@@ -166,7 +164,24 @@ async function renderPage(pagePath, requestPath) {
         }
         return match;
       });
-    });
+    };
+
+    // First, activate the exact path match
+    processedSidebar = addActiveClass(processedSidebar, requestPath);
+
+    // Then, activate parent menu for nested routes (e.g., /routes/create -> activate /routes parent)
+    if (requestPath.includes('/')) {
+      const parentPath = '/' + requestPath.split('/')[1];
+      if (parentPath !== requestPath) {
+        // Only activate parent items (for submenu expansion), not child items
+        const escapedParent = parentPath.replace(/\//g, '\\/');
+        const parentRegex = new RegExp(`(<li class="nav-item parent"[^>]*data-path="[^"]*${escapedParent}[^"]*")`, 'g');
+        processedSidebar = processedSidebar.replace(parentRegex, (match) => {
+          if (match.includes('active')) return match;
+          return match.replace('class="nav-item parent"', 'class="nav-item parent active"');
+        });
+      }
+    }
 
     let result = layoutHtml;
 
