@@ -401,12 +401,12 @@ function showAircraftDetails(aircraftId) {
               <div style="color: var(--text-muted); font-size: 0.5rem;">Walk-around</div>
             </div>
             <div style="padding: 0.3rem; background: var(--surface); border-radius: 3px; text-align: center;">
-              <div style="color: #3B82F6; font-size: 0.6rem; font-weight: 600;">A Check</div>
-              <div style="color: var(--text-muted); font-size: 0.5rem;">400-600h</div>
+              <div style="color: #8B5CF6; font-size: 0.6rem; font-weight: 600;">Weekly</div>
+              <div style="color: var(--text-muted); font-size: 0.5rem;">7-8 days</div>
             </div>
             <div style="padding: 0.3rem; background: var(--surface); border-radius: 3px; text-align: center;">
-              <div style="color: #8B5CF6; font-size: 0.6rem; font-weight: 600;">B Check</div>
-              <div style="color: var(--text-muted); font-size: 0.5rem;">6-8 mo</div>
+              <div style="color: #3B82F6; font-size: 0.6rem; font-weight: 600;">A Check</div>
+              <div style="color: var(--text-muted); font-size: 0.5rem;">800-1000h</div>
             </div>
           </div>
           <div style="margin-top: 0.4rem; padding: 0.3rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 3px;">
@@ -486,7 +486,7 @@ function showPurchaseConfirmationModal() {
       <h2 style="margin-bottom: 1.5rem; color: var(--text-primary); text-align: center;">CONFIRM ACQUISITION</h2>
 
       <div style="margin-bottom: 2rem; padding: 1rem; background: var(--surface-elevated); border-radius: 4px;">
-        <h3 style="margin: 0 0 1rem 0; color: var(--accent-color);">${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.variant ? '-' + selectedAircraft.variant : ''}</h3>
+        <h3 style="margin: 0 0 1rem 0; color: var(--accent-color);">${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.variant ? (selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant) : ''}</h3>
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; font-size: 0.9rem;">
           <div><span style="color: var(--text-secondary);">Condition:</span> <strong>${conditionPercent}%</strong></div>
           <div><span style="color: var(--text-secondary);">Age:</span> <strong>${ageYears} years</strong></div>
@@ -633,8 +633,8 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
         dCheckRemainingDays: selectedAircraft.dCheckRemainingDays || null,
         // Auto-schedule preferences (light checks only - C/D scheduled manually)
         autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
-        autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
-        autoScheduleB: autoSchedulePrefs.autoScheduleB || false
+        autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
+        autoScheduleA: autoSchedulePrefs.autoScheduleA || false
       })
     });
 
@@ -736,16 +736,16 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
             </label>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.85rem; color: #3B82F6;">A Check</span>
+            <span style="font-size: 0.85rem; color: #8B5CF6;">Weekly</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 36px; height: 20px;">
-              <input type="checkbox" id="autoScheduleA" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleWeekly" style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 20px;"></span>
             </label>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.85rem; color: #8B5CF6;">B Check</span>
+            <span style="font-size: 0.85rem; color: #3B82F6;">A Check</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 36px; height: 20px;">
-              <input type="checkbox" id="autoScheduleB" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleA" style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 20px;"></span>
             </label>
           </div>
@@ -790,14 +790,14 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
   const confirmBtn = document.getElementById('confirmActionBtn');
   const inputContainer = registrationSuffix.parentElement;
 
-  // Auto-schedule toggle handlers (only for light checks: Daily, A, B)
+  // Auto-schedule toggle handlers (only for light checks: Daily, Weekly, A)
   // C and D checks are heavy maintenance and scheduled manually when due
   const autoScheduleAll = document.getElementById('autoScheduleAll');
   const autoScheduleDaily = document.getElementById('autoScheduleDaily');
+  const autoScheduleWeekly = document.getElementById('autoScheduleWeekly');
   const autoScheduleA = document.getElementById('autoScheduleA');
-  const autoScheduleB = document.getElementById('autoScheduleB');
 
-  const individualToggles = [autoScheduleDaily, autoScheduleA, autoScheduleB];
+  const individualToggles = [autoScheduleDaily, autoScheduleWeekly, autoScheduleA];
 
   // Auto All toggle
   autoScheduleAll.addEventListener('change', () => {
@@ -866,8 +866,8 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
     // Collect auto-schedule preferences (only light checks - C/D are heavy maintenance)
     const autoSchedulePrefs = {
       autoScheduleDaily: autoScheduleDaily.checked,
-      autoScheduleA: autoScheduleA.checked,
-      autoScheduleB: autoScheduleB.checked
+      autoScheduleWeekly: autoScheduleWeekly.checked,
+      autoScheduleA: autoScheduleA.checked
     };
 
     // Remove overlay and call confirm callback with registration and auto-schedule prefs
@@ -1079,16 +1079,16 @@ function showLeaseConfirmationDialog() {
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.8rem; color: #3B82F6;">A Check</span>
+                <span style="font-size: 0.8rem; color: #8B5CF6;">Weekly</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
-                  <input type="checkbox" id="leaseAutoScheduleA" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleWeekly" style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.8rem; color: #8B5CF6;">B Check</span>
+                <span style="font-size: 0.8rem; color: #3B82F6;">A Check</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
-                  <input type="checkbox" id="leaseAutoScheduleB" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleA" style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
                 </label>
               </div>
@@ -1142,33 +1142,88 @@ function showLeaseConfirmationDialog() {
 
   document.body.appendChild(overlay);
 
-  // Duration selection logic
-  let selectedDuration = 12;
-  const durationBtns = overlay.querySelectorAll('.lease-duration-btn');
-  durationBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      durationBtns.forEach(b => {
-        b.style.background = 'var(--surface-elevated)';
-        b.style.borderColor = 'var(--border-color)';
-        b.style.color = 'var(--text-secondary)';
-      });
-      btn.style.background = 'rgba(59, 130, 246, 0.15)';
-      btn.style.borderColor = 'var(--accent-color)';
-      btn.style.color = 'var(--accent-color)';
-      selectedDuration = parseInt(btn.dataset.months);
+  // Duration spinner logic
+  let leaseYears = 1;
+  let leaseMonths = 0;
+  const minTotalMonths = 6;
+  const maxTotalMonths = 120; // 10 years
 
-      // Update pricing display
-      const monthlyPrice = selectedAircraft.leasePrice || 0;
-      document.getElementById('leaseTotalDisplay').textContent = '$' + formatCurrency(monthlyPrice * selectedDuration);
-    });
-  });
+  const yearsValueEl = document.getElementById('leaseYearsValue');
+  const monthsValueEl = document.getElementById('leaseMonthsValue');
+  const totalDisplayEl = document.getElementById('leaseDurationTotal');
+  const totalCommitmentEl = document.getElementById('leaseTotalDisplay');
+
+  function getTotalMonths() {
+    return leaseYears * 12 + leaseMonths;
+  }
+
+  function updateDurationDisplay() {
+    yearsValueEl.textContent = leaseYears;
+    monthsValueEl.textContent = leaseMonths;
+    const total = getTotalMonths();
+    totalDisplayEl.textContent = `${total} months`;
+
+    // Update total commitment price
+    const monthlyPrice = selectedAircraft.leasePrice || 0;
+    totalCommitmentEl.textContent = '$' + formatCurrency(monthlyPrice * total);
+  }
+
+  function adjustYears(delta) {
+    const newYears = leaseYears + delta;
+    const newTotal = newYears * 12 + leaseMonths;
+
+    // Check bounds
+    if (newYears < 0 || newYears > 10) return;
+    if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
+
+    leaseYears = newYears;
+    updateDurationDisplay();
+  }
+
+  function adjustMonths(delta) {
+    let newMonths = leaseMonths + delta;
+    let newYears = leaseYears;
+
+    // Handle wraparound
+    if (newMonths < 0) {
+      if (newYears > 0) {
+        newYears--;
+        newMonths = 11;
+      } else {
+        return; // Can't go below 0
+      }
+    } else if (newMonths > 11) {
+      if (newYears < 10) {
+        newYears++;
+        newMonths = 0;
+      } else {
+        return; // Can't exceed 10 years
+      }
+    }
+
+    const newTotal = newYears * 12 + newMonths;
+    if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
+
+    leaseYears = newYears;
+    leaseMonths = newMonths;
+    updateDurationDisplay();
+  }
+
+  // Spinner button event listeners
+  document.getElementById('leaseYearsDown').addEventListener('click', () => adjustYears(-1));
+  document.getElementById('leaseYearsUp').addEventListener('click', () => adjustYears(1));
+  document.getElementById('leaseMonthsDown').addEventListener('click', () => adjustMonths(-1));
+  document.getElementById('leaseMonthsUp').addEventListener('click', () => adjustMonths(1));
+
+  // Initialize display
+  updateDurationDisplay();
 
   // Auto-schedule toggle handlers
   const autoScheduleAll = document.getElementById('leaseAutoScheduleAll');
   const autoScheduleDaily = document.getElementById('leaseAutoScheduleDaily');
+  const autoScheduleWeekly = document.getElementById('leaseAutoScheduleWeekly');
   const autoScheduleA = document.getElementById('leaseAutoScheduleA');
-  const autoScheduleB = document.getElementById('leaseAutoScheduleB');
-  const individualToggles = [autoScheduleDaily, autoScheduleA, autoScheduleB];
+  const individualToggles = [autoScheduleDaily, autoScheduleWeekly, autoScheduleA];
 
   autoScheduleAll.addEventListener('change', () => {
     const checked = autoScheduleAll.checked;
@@ -1218,12 +1273,12 @@ function showLeaseConfirmationDialog() {
     // Collect auto-schedule preferences
     const autoSchedulePrefs = {
       autoScheduleDaily: autoScheduleDaily.checked,
-      autoScheduleA: autoScheduleA.checked,
-      autoScheduleB: autoScheduleB.checked
+      autoScheduleWeekly: autoScheduleWeekly.checked,
+      autoScheduleA: autoScheduleA.checked
     };
 
     document.body.removeChild(overlay);
-    confirmLease(validation.value, autoSchedulePrefs, selectedDuration);
+    confirmLease(validation.value, autoSchedulePrefs, getTotalMonths());
   });
 
   // Cancel button
@@ -1282,8 +1337,8 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
         dCheckRemainingDays: selectedAircraft.dCheckRemainingDays || null,
         // Auto-schedule preferences (light checks only - C/D scheduled manually)
         autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
-        autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
-        autoScheduleB: autoSchedulePrefs.autoScheduleB || false
+        autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
+        autoScheduleA: autoSchedulePrefs.autoScheduleA || false
       })
     });
 

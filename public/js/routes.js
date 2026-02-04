@@ -61,7 +61,7 @@ function populateAircraftTypeFilter(routes) {
   routes.forEach(route => {
     if (route.assignedAircraft && route.assignedAircraft.aircraft) {
       const aircraft = route.assignedAircraft.aircraft;
-      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}`;
+      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
       aircraftTypes.add(typeName);
     }
   });
@@ -99,19 +99,19 @@ function displayAllRoutes(routes) {
   const allSelected = routes.length > 0 && routes.every(r => selectedRouteIds.has(r.id));
 
   const tableHtml = `
-    <table style="width: 100%; border-collapse: collapse;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
       <thead>
         <tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color);">
-          <th style="padding: 1rem; text-align: center; width: 50px;">
-            <input type="checkbox" id="selectAllRoutes" onchange="toggleSelectAll(this.checked)" ${allSelected ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-color);" title="Select all routes" />
+          <th style="padding: 0.5rem; text-align: center; width: 40px;">
+            <input type="checkbox" id="selectAllRoutes" onchange="toggleSelectAll(this.checked)" ${allSelected ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color);" title="Select all routes" />
           </th>
-          <th style="padding: 1rem; text-align: left; color: var(--text-secondary); font-weight: 600;">ROUTE</th>
-          <th style="padding: 1rem; text-align: left; color: var(--text-secondary); font-weight: 600; white-space: nowrap;">FROM → TO</th>
-          <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">OPERATING DAYS</th>
-          <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">PROFIT</th>
-          <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">LOAD %</th>
-          <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">STATUS</th>
-          <th style="padding: 1rem; text-align: center; color: var(--text-secondary); font-weight: 600;">ACTIONS</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">ROUTE</th>
+          <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; white-space: nowrap;">FROM → TO</th>
+          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">OPERATING DAYS</th>
+          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">PROFIT</th>
+          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">LOAD %</th>
+          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">STATUS</th>
+          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">ACTIONS</th>
         </tr>
       </thead>
       <tbody>
@@ -124,13 +124,13 @@ function displayAllRoutes(routes) {
 
           return `
             <tr style="border-bottom: 1px solid var(--border-color); ${isSelected ? 'background: rgba(var(--accent-color-rgb, 59, 130, 246), 0.1);' : ''}">
-              <td style="padding: 1rem; text-align: center;">
-                <input type="checkbox" class="route-checkbox" data-route-id="${route.id}" onchange="toggleRouteSelection('${route.id}', this.checked)" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-color);" />
+              <td style="padding: 0.4rem 0.5rem; text-align: center;">
+                <input type="checkbox" class="route-checkbox" data-route-id="${route.id}" onchange="toggleRouteSelection('${route.id}', this.checked)" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color);" />
               </td>
-              <td style="padding: 1rem; color: var(--accent-color); font-weight: 600; white-space: nowrap;">
+              <td style="padding: 0.4rem 0.5rem; color: var(--accent-color); font-weight: 600; white-space: nowrap;">
                 ${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}
               </td>
-              <td style="padding: 1rem; white-space: nowrap;">
+              <td style="padding: 0.4rem 0.5rem; white-space: nowrap;">
                 <div style="color: var(--text-primary);">
                   ${route.techStopAirport
                     ? `${route.departureAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.arrivalAirport.icaoCode} → <span style="color: var(--accent-color); font-weight: 600;" title="Technical stop for refuelling">${route.techStopAirport.icaoCode}</span> → ${route.departureAirport.icaoCode}`
@@ -138,26 +138,26 @@ function displayAllRoutes(routes) {
                   }
                 </div>
               </td>
-              <td style="padding: 1rem; text-align: center; color: var(--text-primary); font-size: 0.95rem; white-space: nowrap;">
+              <td style="padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
                 ${displayDaysOfWeek(route.daysOfWeek)}
               </td>
-              <td style="padding: 1rem; text-align: center; color: ${profitColor}; font-weight: 600; white-space: nowrap;">
+              <td style="padding: 0.4rem 0.5rem; text-align: center; color: ${profitColor}; font-weight: 600; white-space: nowrap;">
                 ${profit >= 0 ? '+' : ''}$${Math.round(profit).toLocaleString('en-US')}
               </td>
-              <td style="padding: 1rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
+              <td style="padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
                 ${route.averageLoadFactor.toFixed(1)}%
               </td>
-              <td style="padding: 1rem; text-align: center; white-space: nowrap;">
-                <span style="color: ${statusColor}; font-weight: 600; font-size: 0.85rem;">
+              <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
+                <span style="color: ${statusColor}; font-weight: 600; font-size: 0.8rem;">
                   ${statusText}
                 </span>
               </td>
-              <td style="padding: 1rem; text-align: center; white-space: nowrap;">
-                <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                  <button onclick="editRoute('${route.id}')" title="Edit Route" style="background: transparent; border: none; color: var(--accent-color); cursor: pointer; padding: 0.4rem 0.8rem; font-size: 1.2rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+              <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
+                <div style="display: flex; gap: 0.25rem; justify-content: center;">
+                  <button onclick="editRoute('${route.id}')" title="Edit Route" style="background: transparent; border: none; color: var(--accent-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
                     ✎
                   </button>
-                  <button onclick="deleteRoute('${route.id}')" title="Delete Route" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.4rem 0.8rem; font-size: 1.5rem; line-height: 1; font-weight: 400; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+                  <button onclick="deleteRoute('${route.id}')" title="Delete Route" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1.2rem; line-height: 1; font-weight: 400; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
                     ×
                   </button>
                 </div>
@@ -295,7 +295,7 @@ function filterRoutes() {
       if (!route.assignedAircraft || !route.assignedAircraft.aircraft) return false;
 
       const aircraft = route.assignedAircraft.aircraft;
-      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}`;
+      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
 
       return typeName === selectedAircraftType;
     });

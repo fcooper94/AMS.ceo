@@ -155,7 +155,7 @@ function populateFleetDropdown() {
   // Extract unique aircraft types
   const uniqueTypes = new Map();
   userFleet.forEach(aircraft => {
-    const typeName = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}`;
+    const typeName = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? (aircraft.aircraft.variant.startsWith('-') ? aircraft.aircraft.variant : '-' + aircraft.aircraft.variant) : ''}`;
     const typeKey = `${aircraft.aircraft.manufacturer}_${aircraft.aircraft.model}_${aircraft.aircraft.variant || ''}`;
 
     if (!uniqueTypes.has(typeKey)) {

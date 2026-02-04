@@ -141,7 +141,15 @@ async function fetchAircraftTypes() {
     const aircraftTypes = {};
     userFleet.forEach(aircraft => {
       const typeKey = `${aircraft.aircraft.manufacturer}_${aircraft.aircraft.model}_${aircraft.aircraft.variant || 'default'}`;
-      const displayName = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}`;
+      // Build display name, avoiding double-dash if model already ends with dash
+      const model = aircraft.aircraft.model;
+      const variant = aircraft.aircraft.variant;
+      let displayName;
+      if (variant) {
+        displayName = model.endsWith('-') ? `${aircraft.aircraft.manufacturer} ${model}${variant}` : `${aircraft.aircraft.manufacturer} ${model}-${variant}`;
+      } else {
+        displayName = `${aircraft.aircraft.manufacturer} ${model}`;
+      }
 
       if (!aircraftTypes[typeKey]) {
         aircraftTypes[typeKey] = {
@@ -178,153 +186,63 @@ async function fetchAircraftTypes() {
   }
 }
 
-// Display aircraft type pricing
+// Display aircraft type pricing as a single table
 function displayAircraftTypePricing(aircraftTypes) {
   const container = document.getElementById('aircraftTypePricingList');
 
   if (Object.keys(aircraftTypes).length === 0) {
     container.innerHTML = `
-      <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+      <div style="padding: 0.75rem; text-align: center; color: var(--text-muted); font-size: 0.75rem;">
         No aircraft in your fleet
       </div>
     `;
     return;
   }
 
-  let html = '';
+  let html = `
+    <table class="aircraft-pricing-table">
+      <thead>
+        <tr>
+          <th style="width: 22%;">Aircraft Type</th>
+          <th class="pax-header">Econ</th>
+          <th class="pax-header">Econ+</th>
+          <th class="pax-header">Biz</th>
+          <th class="pax-header">First</th>
+          <th class="cargo-header">Light</th>
+          <th class="cargo-header">Std</th>
+          <th class="cargo-header">Heavy</th>
+          <th style="width: 50px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
 
   Object.keys(aircraftTypes).sort().forEach(typeKey => {
     const type = aircraftTypes[typeKey];
     const pricing = aircraftTypePricing[typeKey] || {};
 
     html += `
-      <div class="pricing-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-          <div>
-            <h3 style="color: var(--text-primary); margin: 0; font-size: 1.1rem; font-weight: 600;">
-              ${type.displayName}
-            </h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.25rem 0 0 0;">
-              ${type.count} aircraft in fleet
-            </p>
-          </div>
-          <button onclick="saveAircraftTypePricing('${typeKey}')" class="btn btn-primary btn-sm">
-            SAVE
-          </button>
-        </div>
-
-        <div style="margin-bottom: 1.5rem;">
-          <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem; font-weight: 600;">PASSENGER CLASSES</h4>
-          <div class="pricing-grid">
-            <div class="price-input-group">
-              <label>Economy</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-economy"
-                  value="${pricing.economyPrice || ''}"
-                  placeholder="${globalPricing.economyPrice || '0'}"
-                  min="0"
-                  step="1"
-                />
-              </div>
-              ${pricing.economyPrice ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-            <div class="price-input-group">
-              <label>Economy Plus</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-economyPlus"
-                  value="${pricing.economyPlusPrice || ''}"
-                  placeholder="${globalPricing.economyPlusPrice || '0'}"
-                  min="0"
-                  step="1"
-                />
-              </div>
-              ${pricing.economyPlusPrice ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-            <div class="price-input-group">
-              <label>Business</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-business"
-                  value="${pricing.businessPrice || ''}"
-                  placeholder="${globalPricing.businessPrice || '0'}"
-                  min="0"
-                  step="1"
-                />
-              </div>
-              ${pricing.businessPrice ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-            <div class="price-input-group">
-              <label>First</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-first"
-                  value="${pricing.firstPrice || ''}"
-                  placeholder="${globalPricing.firstPrice || '0'}"
-                  min="0"
-                  step="1"
-                />
-              </div>
-              ${pricing.firstPrice ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem; font-weight: 600;">CARGO RATES (per ton)</h4>
-          <div class="pricing-grid">
-            <div class="price-input-group">
-              <label>Light Cargo</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-cargoLight"
-                  value="${pricing.cargoLightRate || ''}"
-                  placeholder="${globalPricing.cargoLightRate || '0'}"
-                  min="0"
-                  step="10"
-                />
-              </div>
-              ${pricing.cargoLightRate ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-            <div class="price-input-group">
-              <label>Standard Cargo</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-cargoStandard"
-                  value="${pricing.cargoStandardRate || ''}"
-                  placeholder="${globalPricing.cargoStandardRate || '0'}"
-                  min="0"
-                  step="10"
-                />
-              </div>
-              ${pricing.cargoStandardRate ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-            <div class="price-input-group">
-              <label>Heavy Cargo</label>
-              <div class="price-input-wrapper">
-                <input
-                  type="number"
-                  id="aircraft-${typeKey}-cargoHeavy"
-                  value="${pricing.cargoHeavyRate || ''}"
-                  placeholder="${globalPricing.cargoHeavyRate || '0'}"
-                  min="0"
-                  step="10"
-                />
-              </div>
-              ${pricing.cargoHeavyRate ? '<div class="override-status"><span class="overridden">Overriding global</span></div>' : '<div class="override-status">Using global default</div>'}
-            </div>
-          </div>
-        </div>
-      </div>
+        <tr>
+          <td>
+            <span class="aircraft-name">${type.displayName}</span>
+            <span class="aircraft-count">(${type.count})</span>
+          </td>
+          <td><input type="number" id="aircraft-${typeKey}-economy" value="${pricing.economyPrice || ''}" placeholder="${globalPricing.economyPrice || '0'}" min="0" step="1" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-economyPlus" value="${pricing.economyPlusPrice || ''}" placeholder="${globalPricing.economyPlusPrice || '0'}" min="0" step="1" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-business" value="${pricing.businessPrice || ''}" placeholder="${globalPricing.businessPrice || '0'}" min="0" step="1" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-first" value="${pricing.firstPrice || ''}" placeholder="${globalPricing.firstPrice || '0'}" min="0" step="1" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-cargoLight" value="${pricing.cargoLightRate || ''}" placeholder="${globalPricing.cargoLightRate || '0'}" min="0" step="10" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-cargoStandard" value="${pricing.cargoStandardRate || ''}" placeholder="${globalPricing.cargoStandardRate || '0'}" min="0" step="10" /></td>
+          <td><input type="number" id="aircraft-${typeKey}-cargoHeavy" value="${pricing.cargoHeavyRate || ''}" placeholder="${globalPricing.cargoHeavyRate || '0'}" min="0" step="10" /></td>
+          <td class="save-btn-cell"><button onclick="saveAircraftTypePricing('${typeKey}')" class="btn btn-primary">SAVE</button></td>
+        </tr>
     `;
   });
+
+  html += `
+      </tbody>
+    </table>
+  `;
 
   container.innerHTML = html;
 }
@@ -444,7 +362,7 @@ function displayRoutes() {
 
   if (filteredRoutes.length === 0) {
     container.innerHTML = `
-      <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+      <div style="padding: 0.75rem; text-align: center; color: var(--text-muted); font-size: 0.75rem;">
         No routes found
       </div>
     `;
@@ -459,152 +377,79 @@ function displayRoutes() {
 
     // Determine effective pricing level
     let pricingLevel = 'global';
-    let pricingSource = 'Global defaults';
 
     if (route.economyPrice > 0) {
       pricingLevel = 'route';
-      pricingSource = 'Route-specific pricing';
     } else if (route.assignedAircraft) {
       const typeKey = `${route.assignedAircraft.aircraft.manufacturer}_${route.assignedAircraft.aircraft.model}_${route.assignedAircraft.aircraft.variant || 'default'}`;
       if (aircraftTypePricing[typeKey] && aircraftTypePricing[typeKey].economyPrice) {
         pricingLevel = 'aircraft';
-        pricingSource = 'Aircraft type pricing';
       }
     }
 
     html += `
-      <div class="pricing-card" style="cursor: pointer;" onclick="toggleRoutePricing('${route.id}')">
-        <div style="display: flex; justify-content: space-between; align-items: start;">
-          <div style="flex: 1;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-              <h3 style="color: var(--text-primary); margin: 0; font-size: 1.1rem; font-weight: 600;">
-                ${route.routeNumber} / ${route.returnRouteNumber}
-              </h3>
-              <span class="pricing-level-badge ${pricingLevel}">${pricingLevel.toUpperCase()}</span>
-            </div>
-            <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">
-              ${depAirport.icaoCode} (${depAirport.city}) → ${arrAirport.icaoCode} (${arrAirport.city})
-            </p>
-            <p style="color: var(--text-muted); margin: 0.25rem 0 0 0; font-size: 0.85rem;">
-              ${pricingSource}
-            </p>
+      <div class="route-card" onclick="toggleRoutePricing('${route.id}')">
+        <div class="route-card-header">
+          <div class="route-info">
+            <span class="route-number">${route.routeNumber}/${route.returnRouteNumber}</span>
+            <span class="route-airports">${depAirport.icaoCode} → ${arrAirport.icaoCode}</span>
+            <span class="pricing-level-badge ${pricingLevel}">${pricingLevel.toUpperCase()}</span>
           </div>
-          <button onclick="event.stopPropagation(); toggleRoutePricing('${route.id}')" class="btn btn-secondary btn-sm">
-            MANAGE
-          </button>
+          <button onclick="event.stopPropagation(); toggleRoutePricing('${route.id}')" class="btn btn-secondary save-btn-small">EDIT</button>
         </div>
 
-        <div id="route-pricing-${route.id}" style="display: none; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-          <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem; font-weight: 600;">PASSENGER CLASSES</h4>
-            <div class="pricing-grid">
-              <div class="price-input-group">
-                <label>Economy</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-economy"
-                    value="${route.economyPrice || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="1"
-                  />
-                </div>
+        <div id="route-pricing-${route.id}" class="route-pricing-panel">
+          <div class="pricing-row-label">Passengers</div>
+          <div class="pricing-row">
+            <div class="price-field">
+              <label>Econ</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-economy" value="${route.economyPrice || ''}" placeholder="Def" min="0" step="1" />
               </div>
-              <div class="price-input-group">
-                <label>Economy Plus</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-economyPlus"
-                    value="${route.economyPlusPrice || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="1"
-                  />
-                </div>
+            </div>
+            <div class="price-field">
+              <label>Econ+</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-economyPlus" value="${route.economyPlusPrice || ''}" placeholder="Def" min="0" step="1" />
               </div>
-              <div class="price-input-group">
-                <label>Business</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-business"
-                    value="${route.businessPrice || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="1"
-                  />
-                </div>
+            </div>
+            <div class="price-field">
+              <label>Biz</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-business" value="${route.businessPrice || ''}" placeholder="Def" min="0" step="1" />
               </div>
-              <div class="price-input-group">
-                <label>First</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-first"
-                    value="${route.firstPrice || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="1"
-                  />
-                </div>
+            </div>
+            <div class="price-field">
+              <label>First</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-first" value="${route.firstPrice || ''}" placeholder="Def" min="0" step="1" />
               </div>
             </div>
           </div>
-
-          <div style="margin-bottom: 1.5rem;">
-            <h4 style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem; font-weight: 600;">CARGO RATES (per ton)</h4>
-            <div class="pricing-grid">
-              <div class="price-input-group">
-                <label>Light Cargo</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-cargoLight"
-                    value="${route.cargoLightRate || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="10"
-                  />
-                </div>
+          <div class="pricing-row-label">Cargo</div>
+          <div class="pricing-row cargo">
+            <div class="price-field">
+              <label>Light</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-cargoLight" value="${route.cargoLightRate || ''}" placeholder="Def" min="0" step="10" />
               </div>
-              <div class="price-input-group">
-                <label>Standard Cargo</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-cargoStandard"
-                    value="${route.cargoStandardRate || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="10"
-                  />
-                </div>
+            </div>
+            <div class="price-field">
+              <label>Std</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-cargoStandard" value="${route.cargoStandardRate || ''}" placeholder="Def" min="0" step="10" />
               </div>
-              <div class="price-input-group">
-                <label>Heavy Cargo</label>
-                <div class="price-input-wrapper">
-                  <input
-                    type="number"
-                    id="route-${route.id}-cargoHeavy"
-                    value="${route.cargoHeavyRate || ''}"
-                    placeholder="Default"
-                    min="0"
-                    step="10"
-                  />
-                </div>
+            </div>
+            <div class="price-field">
+              <label>Heavy</label>
+              <div class="price-field-wrapper">
+                <input type="number" id="route-${route.id}-cargoHeavy" value="${route.cargoHeavyRate || ''}" placeholder="Def" min="0" step="10" />
               </div>
             </div>
           </div>
-
-          <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-            <button onclick="event.stopPropagation(); clearRoutePricing('${route.id}')" class="btn btn-secondary btn-sm">
-              CLEAR OVERRIDES
-            </button>
-            <button onclick="event.stopPropagation(); saveRoutePricing('${route.id}')" class="btn btn-primary btn-sm">
-              SAVE ROUTE PRICING
-            </button>
+          <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
+            <button onclick="event.stopPropagation(); clearRoutePricing('${route.id}')" class="btn btn-secondary save-btn-small">CLEAR</button>
+            <button onclick="event.stopPropagation(); saveRoutePricing('${route.id}')" class="btn btn-primary save-btn-small">SAVE</button>
           </div>
         </div>
       </div>
@@ -617,11 +462,7 @@ function displayRoutes() {
 // Toggle route pricing editor
 function toggleRoutePricing(routeId) {
   const editor = document.getElementById(`route-pricing-${routeId}`);
-  if (editor.style.display === 'none') {
-    editor.style.display = 'block';
-  } else {
-    editor.style.display = 'none';
-  }
+  editor.classList.toggle('open');
 }
 
 // Save route pricing

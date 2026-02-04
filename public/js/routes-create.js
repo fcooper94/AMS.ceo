@@ -363,7 +363,7 @@ function populateFleetDropdown() {
   // Group aircraft by type and get unique types
   const aircraftTypes = {};
   userFleet.forEach(userAircraft => {
-    const typeKey = `${userAircraft.aircraft.manufacturer} ${userAircraft.aircraft.model}${userAircraft.aircraft.variant ? '-' + userAircraft.aircraft.variant : ''}`;
+    const typeKey = `${userAircraft.aircraft.manufacturer} ${userAircraft.aircraft.model}${userAircraft.aircraft.variant ? (userAircraft.aircraft.variant.startsWith('-') ? userAircraft.aircraft.variant : '-' + userAircraft.aircraft.variant) : ''}`;
     if (!aircraftTypes[typeKey]) {
       aircraftTypes[typeKey] = {
         displayName: typeKey,
@@ -2671,5 +2671,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const economyPriceEl = document.getElementById('economyPrice');
   if (economyPriceEl) {
     economyPriceEl.addEventListener('change', autoCalculateBusinessFirst);
+  }
+
+  // Check for pre-filled departure time from URL (e.g., from "Create Next Flight" button)
+  const urlParams = new URLSearchParams(window.location.search);
+  const prefilledTime = urlParams.get('time');
+  if (prefilledTime) {
+    const departureTimeInput = document.getElementById('departureTime');
+    if (departureTimeInput) {
+      departureTimeInput.value = prefilledTime;
+      // Trigger change event to update flight timing calculations
+      departureTimeInput.dispatchEvent(new Event('change'));
+    }
   }
 });

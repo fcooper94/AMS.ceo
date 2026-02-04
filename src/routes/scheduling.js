@@ -530,7 +530,7 @@ router.post('/flight', async (req, res) => {
       }
 
       if (maintOverlaps) {
-        const checkNames = { 'daily': 'Daily Check', 'A': 'A Check', 'B': 'B Check', 'C': 'C Check', 'D': 'D Check' };
+        const checkNames = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
         const checkName = checkNames[maint.checkType] || `${maint.checkType} Check`;
 
         // Calculate the blocked time window for this date
@@ -1143,6 +1143,45 @@ router.get('/maintenance', async (req, res) => {
 
     const worldMembershipId = membership.id;
 
+    // Get game world time for cleanup logic (not real-world time!)
+    const worldTimeService = require('../services/worldTimeService');
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const now = gameTime || new Date(); // Fallback to real time only if game time unavailable
+
+    // Cleanup: Mark old C/D checks as completed if their scheduledDate + duration has passed
+    // This prevents old maintenance records from causing conflicts with new scheduling
+    const activeHeavyMaintenance = await RecurringMaintenance.findAll({
+      where: {
+        status: 'active',
+        checkType: { [Op.in]: ['C', 'D'] },
+        scheduledDate: { [Op.ne]: null }
+      },
+      include: [{
+        model: UserAircraft,
+        as: 'aircraft',
+        required: true,
+        where: { worldMembershipId }
+      }]
+    });
+
+    for (const pattern of activeHeavyMaintenance) {
+      const scheduledDateStr = pattern.scheduledDate instanceof Date
+        ? pattern.scheduledDate.toISOString().split('T')[0]
+        : String(pattern.scheduledDate).split('T')[0];
+
+      // Calculate completion date
+      const startDate = new Date(scheduledDateStr + 'T00:00:00Z');
+      const daysSpan = Math.ceil((pattern.duration || 60) / 1440);
+      const completionDate = new Date(startDate);
+      completionDate.setUTCDate(completionDate.getUTCDate() + daysSpan);
+
+      // If completion date has passed (using game time, not real time!), mark as completed
+      if (now > completionDate) {
+        await pattern.update({ status: 'completed' });
+        console.log(`[MAINT CLEANUP] Marked old ${pattern.checkType} check as completed (scheduled: ${scheduledDateStr}, completed: ${completionDate.toISOString().split('T')[0]}, gameTime: ${now.toISOString().split('T')[0]})`);
+      }
+    }
+
     // Fetch all active recurring maintenance patterns for user's aircraft
     const recurringPatterns = await RecurringMaintenance.findAll({
       where: {
@@ -1193,19 +1232,38 @@ router.get('/maintenance', async (req, res) => {
               patternDateStr = String(pattern.scheduledDate).split('T')[0];
             }
           }
+
+          // For multi-day maintenance (C, D checks), check if current date falls within maintenance period
+          let matchesByDateRange = false;
+          if (patternDateStr && ['C', 'D'].includes(pattern.checkType)) {
+            const patternStart = new Date(patternDateStr + 'T00:00:00Z');
+            const daysSpan = Math.ceil((pattern.duration || 60) / 1440); // Duration in days
+            const patternEnd = new Date(patternStart);
+            patternEnd.setUTCDate(patternEnd.getUTCDate() + daysSpan - 1); // -1 because start day counts
+
+            const checkDate = new Date(dateStr + 'T00:00:00Z');
+            matchesByDateRange = checkDate >= patternStart && checkDate <= patternEnd;
+          }
+
           const matchesByDate = patternDateStr === dateStr;
 
-          if (matchesByDayOfWeek || matchesByDate) {
+          if (matchesByDayOfWeek || matchesByDate || matchesByDateRange) {
             // Generate a maintenance block for this date
+            // For multi-day maintenance on subsequent days, adjust the display
+            const isMultiDayOngoing = matchesByDateRange && !matchesByDate;
+
             maintenanceBlocks.push({
               id: `${pattern.id}-${dateStr}`, // Composite ID for frontend tracking
               patternId: pattern.id,
               aircraftId: pattern.aircraftId,
               checkType: pattern.checkType,
-              scheduledDate: dateStr,
-              startTime: pattern.startTime,
-              duration: pattern.duration,
+              scheduledDate: isMultiDayOngoing ? patternDateStr : dateStr, // Original start date for reference
+              displayDate: dateStr, // The date this block is being displayed on
+              startTime: isMultiDayOngoing ? '00:00:00' : pattern.startTime, // Full day for ongoing
+              duration: pattern.duration, // Always use full duration for progress calculation
+              displayDuration: isMultiDayOngoing ? 1440 : pattern.duration, // Display duration (one day for ongoing)
               status: 'scheduled',
+              isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block
               aircraft: pattern.aircraft
             });
           }
@@ -1271,16 +1329,37 @@ router.get('/maintenance', async (req, res) => {
             ? pattern.scheduledDate.toISOString().split('T')[0]
             : String(pattern.scheduledDate).split('T')[0];
         }
-        if (patternDateStr === dateStr) {
+
+        // For multi-day maintenance (C, D checks), check if current date falls within maintenance period
+        let matchesByDateRange = false;
+        if (patternDateStr && ['C', 'D'].includes(pattern.checkType)) {
+          const patternStart = new Date(patternDateStr + 'T00:00:00Z');
+          const daysSpan = Math.ceil((pattern.duration || 60) / 1440); // Duration in days
+          const patternEnd = new Date(patternStart);
+          patternEnd.setUTCDate(patternEnd.getUTCDate() + daysSpan - 1); // -1 because start day counts
+
+          const checkDate = new Date(dateStr + 'T00:00:00Z');
+          matchesByDateRange = checkDate >= patternStart && checkDate <= patternEnd;
+        }
+
+        const matchesByDate = patternDateStr === dateStr;
+
+        if (matchesByDate || matchesByDateRange) {
+          // For multi-day maintenance on subsequent days, adjust the display
+          const isMultiDayOngoing = matchesByDateRange && !matchesByDate;
+
           updatedBlocks.push({
             id: `${pattern.id}-${dateStr}`,
             patternId: pattern.id,
             aircraftId: pattern.aircraftId,
             checkType: pattern.checkType,
-            scheduledDate: dateStr,
-            startTime: pattern.startTime,
-            duration: pattern.duration,
+            scheduledDate: isMultiDayOngoing ? patternDateStr : dateStr, // Original start date for reference
+            displayDate: dateStr, // The date this block is being displayed on
+            startTime: isMultiDayOngoing ? '00:00:00' : pattern.startTime, // Full day for ongoing
+            duration: pattern.duration, // Always use full duration for progress calculation
+            displayDuration: isMultiDayOngoing ? 1440 : pattern.duration, // Display duration (one day for ongoing)
             status: 'scheduled',
+            isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block
             aircraft: pattern.aircraft
           });
         }
@@ -1361,12 +1440,12 @@ router.post('/maintenance', async (req, res) => {
     }
 
     // Validate check type and set duration
-    if (!['daily', 'A', 'B'].includes(checkType)) {
-      return res.status(400).json({ error: 'Invalid check type. Must be daily, A, or B' });
+    if (!['daily', 'weekly', 'A', 'C', 'D'].includes(checkType)) {
+      return res.status(400).json({ error: 'Invalid check type. Must be daily, weekly, A, C, or D' });
     }
 
-    // Duration in minutes: daily=60 (1hr), A=180 (3hrs), B=360 (6hrs)
-    const durationMap = { 'daily': 60, 'A': 180, 'B': 360 };
+    // Duration in minutes: daily=60 (1hr), weekly=135 (2.25hrs), A=540 (9hrs), C=30240 (21 days), D=108000 (75 days)
+    const durationMap = { 'daily': 60, 'weekly': 135, 'A': 540, 'C': 30240, 'D': 108000 };
     const duration = durationMap[checkType];
 
     // Get day of week from scheduledDate
@@ -1383,8 +1462,11 @@ router.post('/maintenance', async (req, res) => {
         for (let i = 0; i < 7; i++) {
           daysToSchedule.push(i);
         }
+      } else if (['C', 'D'].includes(checkType)) {
+        // C and D checks: one-time only (they take weeks/months and repeat yearly, not weekly)
+        daysToSchedule.push(dayOfWeek);
       } else {
-        // A/B checks: create pattern for the selected day only (weekly repeat)
+        // weekly/A checks: create pattern for the selected day only (weekly repeat)
         daysToSchedule.push(dayOfWeek);
       }
     } else {
@@ -1495,7 +1577,7 @@ router.post('/maintenance', async (req, res) => {
         const exDateParts = existingFlight.scheduledDate.split('-');
         const formattedExDate = `${exDateParts[2]}/${exDateParts[1]}/${exDateParts[0]}`;
 
-        const checkNames = { 'daily': 'Daily Check', 'A': 'A Check', 'B': 'B Check' };
+        const checkNames = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check' };
         const checkName = checkNames[checkType] || `${checkType} Check`;
 
         return res.status(409).json({
@@ -1518,7 +1600,8 @@ router.post('/maintenance', async (req, res) => {
     // Create recurring maintenance patterns
     const createdPatterns = [];
     for (const day of daysToSchedule) {
-      // Check for conflicts with other maintenance (same aircraft, day of week, overlapping time)
+      // Check for conflicts with other maintenance (same aircraft, overlapping time window)
+      // For scheduled (one-time) maintenance, also check if the dates overlap
       const existingMaintenance = await RecurringMaintenance.findAll({
         where: {
           aircraftId,
@@ -1529,7 +1612,36 @@ router.post('/maintenance', async (req, res) => {
 
       let maintConflict = null;
       for (const existing of existingMaintenance) {
-        const [exMaintH, exMaintM] = existing.startTime.split(':').map(Number);
+        // For multi-day maintenance (C, D checks), check if date ranges overlap
+        if (existing.scheduledDate) {
+          const existingDateStr = existing.scheduledDate instanceof Date
+            ? existing.scheduledDate.toISOString().split('T')[0]
+            : String(existing.scheduledDate).split('T')[0];
+
+          // Calculate when existing maintenance ends
+          const existingStartDate = new Date(existingDateStr + 'T00:00:00Z');
+          const existingDuration = existing.duration || 60;
+          const existingDaysSpan = Math.ceil(existingDuration / 1440); // Days the maintenance spans
+          const existingEndDate = new Date(existingStartDate);
+          existingEndDate.setUTCDate(existingEndDate.getUTCDate() + existingDaysSpan);
+
+          // Calculate when new maintenance would end
+          const newStartDate = new Date(scheduledDate + 'T00:00:00Z');
+          const newDaysSpan = Math.ceil(duration / 1440);
+          const newEndDate = new Date(newStartDate);
+          newEndDate.setUTCDate(newEndDate.getUTCDate() + newDaysSpan);
+
+          // Check if date ranges overlap
+          const datesOverlap = newStartDate < existingEndDate && newEndDate > existingStartDate;
+
+          if (!datesOverlap) {
+            // If dates don't overlap, this existing maintenance is not a conflict
+            continue;
+          }
+        }
+
+        // Check time overlap within the day
+        const [exMaintH, exMaintM] = String(existing.startTime).split(':').map(Number);
         const exMaintStart = exMaintH * 60 + exMaintM;
         const exMaintEnd = exMaintStart + existing.duration;
 
@@ -1541,17 +1653,17 @@ router.post('/maintenance', async (req, res) => {
       }
 
       if (maintConflict) {
-        console.log(`Conflict found for day ${day} at ${startTime}, skipping`);
+        console.log(`Conflict found for day ${day} at ${startTime} with existing maintenance on ${maintConflict.scheduledDate}, skipping`);
         continue;
       }
 
-      // If this is a daily check, check if there's a weekly check on this day
-      if (checkType === 'A') {
+      // If this is a smaller check, check if there's a larger check on this day
+      if (checkType === 'daily') {
         const weeklyCheckExists = await RecurringMaintenance.findOne({
           where: {
             aircraftId,
             dayOfWeek: day,
-            checkType: 'B',
+            checkType: 'weekly',
             status: 'active'
           }
         });
@@ -1563,11 +1675,12 @@ router.post('/maintenance', async (req, res) => {
       }
 
       // Create recurring maintenance pattern
-      console.log(`Creating maintenance pattern for day ${day} at ${startTime}`);
+      console.log(`Creating maintenance pattern for day ${day} at ${startTime} on ${scheduledDate}`);
       const pattern = await RecurringMaintenance.create({
         aircraftId,
         checkType,
         dayOfWeek: day,
+        scheduledDate,  // Include the specific date for display
         startTime,
         duration,
         status: 'active'
@@ -1577,6 +1690,13 @@ router.post('/maintenance', async (req, res) => {
     }
 
     console.log(`Created ${createdPatterns.length} recurring maintenance patterns`);
+
+    // If no patterns were created (all skipped due to conflicts), return an error
+    if (createdPatterns.length === 0) {
+      return res.status(409).json({
+        error: 'No maintenance scheduled - conflicts with existing maintenance on this day/time'
+      });
+    }
 
     // Fetch complete pattern data
     const completePatternData = await RecurringMaintenance.findAll({
@@ -1593,6 +1713,14 @@ router.post('/maintenance', async (req, res) => {
         }
       ]
     });
+
+    console.log(`[MAINT] Returning ${completePatternData.length} patterns:`, completePatternData.map(p => ({
+      id: p.id,
+      checkType: p.checkType,
+      scheduledDate: p.scheduledDate,
+      dayOfWeek: p.dayOfWeek,
+      startTime: p.startTime
+    })));
 
     res.status(201).json(completePatternData);
   } catch (error) {
@@ -1680,8 +1808,8 @@ router.delete('/maintenance/aircraft/:aircraftId/type/:checkType', async (req, r
     const { aircraftId, checkType } = req.params;
 
     // Validate checkType
-    if (!['A', 'B'].includes(checkType)) {
-      return res.status(400).json({ error: 'Invalid check type. Must be A or B.' });
+    if (!['weekly', 'A'].includes(checkType)) {
+      return res.status(400).json({ error: 'Invalid check type. Must be weekly or A.' });
     }
 
     // Get active world from session

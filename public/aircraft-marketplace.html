@@ -149,6 +149,13 @@
     color: var(--warning-color);
     border: 1px solid var(--warning-color);
   }
+
+  /* Responsive: stack containers on smaller screens */
+  @media (max-width: 1000px) {
+    .market-grid-wrapper {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>
 
 <div class="dashboard-container">

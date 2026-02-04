@@ -32,7 +32,7 @@ function populateTypeFilter() {
   fleetData.forEach(userAircraft => {
     const aircraft = userAircraft.aircraft;
     if (aircraft) {
-      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}`;
+      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
       types.add(typeName);
     }
   });
@@ -59,7 +59,7 @@ function filterFleet() {
 
     // Type filter
     if (typeFilter) {
-      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}`;
+      const typeName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
       if (typeName !== typeFilter) return false;
     }
 
@@ -114,7 +114,7 @@ function displayFleet() {
     const aircraft = userAircraft.aircraft;
     if (!aircraft) return;
 
-    const typeKey = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}`;
+    const typeKey = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
     if (!groupedAircraft[typeKey]) {
       groupedAircraft[typeKey] = [];
     }
@@ -213,7 +213,7 @@ function showAircraftDetails(userAircraftId) {
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
-      <h2 style="margin-bottom: 1.5rem; color: var(--text-primary);">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? '-' + aircraft.variant : ''}</h2>
+      <h2 style="margin-bottom: 1.5rem; color: var(--text-primary);">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}</h2>
 
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 2rem; margin-bottom: 2rem;">
         <div>

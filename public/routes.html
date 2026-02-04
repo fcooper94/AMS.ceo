@@ -73,12 +73,12 @@
         <span style="color: var(--text-primary); font-weight: 600;">
           <span id="selectedCount">0</span> route(s) selected
         </span>
-        <button class="btn btn-secondary" onclick="clearSelection()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+        <button class="btn btn-secondary" onclick="clearSelection()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600;">
           Clear Selection
         </button>
       </div>
       <div style="display: flex; gap: 0.75rem;">
-        <button class="btn btn-danger" onclick="showBulkDeleteModal()" style="padding: 0.5rem 1rem;">
+        <button class="btn btn-danger" onclick="showBulkDeleteModal()" style="padding: 0.5rem 1rem; background: #dc2626; border: 1px solid #dc2626; color: white; border-radius: 4px; cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">
           DELETE SELECTED
         </button>
       </div>
@@ -130,8 +130,8 @@
         </p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="confirmDeleteRoute()">Delete Route</button>
+        <button class="btn btn-secondary" onclick="closeDeleteModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">CANCEL</button>
+        <button class="btn btn-danger" onclick="confirmDeleteRoute()" style="padding: 0.5rem 1rem; background: #dc2626; border: 1px solid #dc2626; color: white; border-radius: 4px; cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">DELETE ROUTE</button>
       </div>
     </div>
   </div>
@@ -149,8 +149,8 @@
         </p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeBulkDeleteModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="confirmBulkDelete()">Delete Routes</button>
+        <button class="btn btn-secondary" onclick="closeBulkDeleteModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">CANCEL</button>
+        <button class="btn btn-danger" onclick="confirmBulkDelete()" style="padding: 0.5rem 1rem; background: #dc2626; border: 1px solid #dc2626; color: white; border-radius: 4px; cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 0.8rem;">DELETE ROUTES</button>
       </div>
     </div>
   </div>

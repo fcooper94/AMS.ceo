@@ -18,10 +18,10 @@ const RecurringMaintenance = sequelize.define('RecurringMaintenance', {
     field: 'aircraft_id'
   },
   checkType: {
-    type: DataTypes.ENUM('daily', 'A', 'B', 'C', 'D'),
+    type: DataTypes.ENUM('daily', 'weekly', 'A', 'C', 'D'),
     allowNull: false,
     field: 'check_type',
-    comment: 'daily=Daily Check (1hr), A=A Check (3hrs), B=B Check (6hrs), C=C Check (14 days), D=D Check (60 days)'
+    comment: 'daily=Daily Check (30-90min), weekly=Weekly Check (1.5-3hrs), A=A Check (6-12hrs), C=C Check (2-4 weeks), D=D Check (2-3 months)'
   },
   // Specific date when this maintenance is scheduled (YYYY-MM-DD)
   scheduledDate: {

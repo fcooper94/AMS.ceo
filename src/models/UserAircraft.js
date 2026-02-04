@@ -119,62 +119,56 @@ const UserAircraft = sequelize.define('UserAircraft', {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_daily_check_date',
-    comment: 'Daily check - valid for 2 calendar days until midnight UTC'
+    comment: 'Daily check - valid for 1-2 days (30-90 mins duration)'
   },
-  lastTransitCheckDate: {
+  lastWeeklyCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
-    field: 'last_transit_check_date',
-    comment: 'Transit check - completed automatically between flights (20 mins)'
+    field: 'last_weekly_check_date',
+    comment: 'Weekly check - valid for 7-8 days (1.5-3 hrs duration)'
   },
   lastACheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_a_check_date',
-    comment: 'A Check - valid for 35-50 days (3 hours duration)'
+    comment: 'A Check - every 800-1000 flight hours (6-12 hours duration)'
   },
-  lastBCheckDate: {
-    type: DataTypes.DATE,
+  lastACheckHours: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
-    field: 'last_b_check_date',
-    comment: 'B Check - valid for 6-8 months (6 hours duration)'
+    field: 'last_a_check_hours',
+    comment: 'Flight hours at last A Check'
   },
   lastCCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_c_check_date',
-    comment: 'C Check - valid for 20-24 months (14 days duration)'
+    comment: 'C Check - every 2 years (2-4 weeks duration)'
   },
   lastDCheckDate: {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'last_d_check_date',
-    comment: 'D Check - valid for 6-10 years (60 days duration)'
+    comment: 'D Check - every 5-7 years (2-3 months duration)'
   },
   // Check intervals (randomized per aircraft for variety)
-  aCheckIntervalDays: {
+  aCheckIntervalHours: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    field: 'a_check_interval_days',
-    comment: 'A Check interval in days (35-50)'
-  },
-  bCheckIntervalDays: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    field: 'b_check_interval_days',
-    comment: 'B Check interval in days (180-240, i.e. 6-8 months)'
+    field: 'a_check_interval_hours',
+    comment: 'A Check interval in flight hours (800-1000)'
   },
   cCheckIntervalDays: {
     type: DataTypes.INTEGER,
     allowNull: true,
     field: 'c_check_interval_days',
-    comment: 'C Check interval in days (600-720, i.e. 20-24 months)'
+    comment: 'C Check interval in days (730, i.e. 2 years)'
   },
   dCheckIntervalDays: {
     type: DataTypes.INTEGER,
     allowNull: true,
     field: 'd_check_interval_days',
-    comment: 'D Check interval in days (2190-3650, i.e. 6-10 years)'
+    comment: 'D Check interval in days (1825-2555, i.e. 5-7 years)'
   },
   // Auto-scheduling preferences
   autoScheduleDaily: {
@@ -183,29 +177,17 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'auto_schedule_daily',
     comment: 'Automatically schedule daily checks'
   },
+  autoScheduleWeekly: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'auto_schedule_weekly',
+    comment: 'Automatically schedule weekly checks'
+  },
   autoScheduleA: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     field: 'auto_schedule_a',
     comment: 'Automatically schedule A checks'
-  },
-  autoScheduleB: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'auto_schedule_b',
-    comment: 'Automatically schedule B checks'
-  },
-  autoScheduleC: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'auto_schedule_c',
-    comment: 'Automatically schedule C checks'
-  },
-  autoScheduleD: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'auto_schedule_d',
-    comment: 'Automatically schedule D checks'
   }
 }, {
   tableName: 'user_aircraft',
@@ -252,23 +234,42 @@ UserAircraft.generateMaintenanceIntervals = function() {
   const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
   return {
-    aCheckIntervalDays: randomBetween(35, 50),           // 35-50 days
-    bCheckIntervalDays: randomBetween(180, 240),         // 6-8 months
-    cCheckIntervalDays: randomBetween(600, 720),         // 20-24 months
-    dCheckIntervalDays: randomBetween(2190, 3650)        // 6-10 years
+    aCheckIntervalHours: randomBetween(800, 1000),       // 800-1000 flight hours
+    cCheckIntervalDays: 730,                              // 2 years
+    dCheckIntervalDays: randomBetween(1825, 2555)        // 5-7 years
   };
 };
 
 /**
  * Check durations in minutes
+ * Daily: 30-90 mins (avg 60)
+ * Weekly: 1.5-3 hrs (avg 135 mins)
+ * A: 6-12 hours (avg 540 mins)
+ * C: 2-4 weeks (avg 21 days = 30240 mins)
+ * D: 2-3 months (avg 75 days = 108000 mins)
  */
 UserAircraft.CHECK_DURATIONS = {
-  daily: 60,           // 1 hour
-  transit: 20,         // 20 minutes
-  A: 180,              // 3 hours
-  B: 360,              // 6 hours
-  C: 20160,            // 14 days (14 * 24 * 60)
-  D: 86400             // 60 days (60 * 24 * 60)
+  daily: 60,           // 1 hour (30-90 mins avg)
+  weekly: 135,         // 2.25 hours (1.5-3 hrs avg)
+  A: 540,              // 9 hours (6-12 hours avg)
+  C: 30240,            // 21 days (2-4 weeks avg)
+  D: 108000            // 75 days (2-3 months avg)
+};
+
+/**
+ * Check validity periods
+ * Daily: 1-2 days
+ * Weekly: 7-8 days
+ * A: Based on flight hours (800-1000)
+ * C: 2 years
+ * D: 5-7 years
+ */
+UserAircraft.CHECK_VALIDITY = {
+  daily: { min: 1, max: 2 },           // days
+  weekly: { min: 7, max: 8 },          // days
+  A: { min: 800, max: 1000 },          // flight hours
+  C: { days: 730 },                    // 2 years
+  D: { min: 1825, max: 2555 }          // 5-7 years in days
 };
 
 module.exports = UserAircraft;

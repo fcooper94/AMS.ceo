@@ -79,7 +79,7 @@ function groupAircraftByType(fleet) {
   const grouped = {};
 
   fleet.forEach(aircraft => {
-    const typeKey = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}`;
+    const typeKey = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? (aircraft.aircraft.variant.startsWith('-') ? aircraft.aircraft.variant : '-' + aircraft.aircraft.variant) : ''}`;
 
     if (!grouped[typeKey]) {
       grouped[typeKey] = [];
@@ -350,7 +350,7 @@ async function loadSchedule() {
 // Generate a single aircraft row
 function generateAircraftRow(aircraft, timeColumns) {
   const aircraftRoutes = getAircraftRoutes(aircraft.id);
-  const typeStr = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? '-' + aircraft.aircraft.variant : ''}`;
+  const typeStr = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? (aircraft.aircraft.variant.startsWith('-') ? aircraft.aircraft.variant : '-' + aircraft.aircraft.variant) : ''}`;
 
   let html = '<tr style="border-bottom: 1px solid var(--border-color);">';
 

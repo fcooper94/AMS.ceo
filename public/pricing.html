@@ -3,194 +3,419 @@
 <!-- SCRIPTS: /js/pricing.js -->
 
 <style>
-  .pricing-card {
+  /* Aircraft Type Pricing Table */
+  .aircraft-pricing-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+  }
+
+  .aircraft-pricing-table th {
     background: var(--surface-elevated);
+    padding: 0.4rem 0.3rem;
+    text-align: center;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+
+  .aircraft-pricing-table th:first-child {
+    text-align: left;
+    padding-left: 0.5rem;
+  }
+
+  .aircraft-pricing-table th.pax-header {
+    background: rgba(59, 130, 246, 0.1);
+    border-bottom: 2px solid var(--accent-color);
+  }
+
+  .aircraft-pricing-table th.cargo-header {
+    background: rgba(217, 119, 6, 0.1);
+    border-bottom: 2px solid var(--warning-color);
+  }
+
+  .aircraft-pricing-table td {
+    padding: 0.3rem;
+    border-bottom: 1px solid var(--border-color);
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .aircraft-pricing-table td:first-child {
+    text-align: left;
+    padding-left: 0.5rem;
+  }
+
+  .aircraft-pricing-table tr:hover {
+    background: var(--surface-elevated);
+  }
+
+  .aircraft-pricing-table .aircraft-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+  }
+
+  .aircraft-pricing-table .aircraft-count {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 0.3rem;
+  }
+
+  .aircraft-pricing-table input {
+    width: 100%;
+    max-width: 60px;
+    padding: 0.2rem 0.25rem;
+    background: var(--surface);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: right;
   }
 
-  .pricing-card.active {
-    border: 2px solid var(--accent-color);
-    background: var(--accent-color-dim);
+  .aircraft-pricing-table input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: var(--surface-elevated);
   }
 
-  .pricing-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
+  .aircraft-pricing-table input::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
   }
 
-  .price-input-group {
+  .aircraft-pricing-table .save-btn-cell {
+    padding: 0.2rem;
+  }
+
+  .aircraft-pricing-table .save-btn-cell button {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.55rem;
+  }
+
+  .pricing-row-label {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+    letter-spacing: 0.5px;
+  }
+
+  .price-field {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.1rem;
   }
 
-  .price-input-group label {
+  .price-field label {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .price-field input {
+    width: 100%;
+    padding: 0.25rem 0.3rem 0.25rem 0.9rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 0.75rem;
     font-weight: 600;
   }
 
-  .price-input-wrapper {
+  .price-field input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+
+  .price-field-wrapper {
     position: relative;
   }
 
-  .price-input-wrapper input {
-    width: 100%;
-    padding: 0.75rem 0.75rem 0.75rem 2rem;
-    background: var(--surface);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 1rem;
-    font-weight: 600;
-  }
-
-  .price-input-wrapper::before {
+  .price-field-wrapper::before {
     content: '$';
     position: absolute;
-    left: 0.75rem;
+    left: 0.3rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-muted);
-    font-weight: 600;
+    font-size: 0.65rem;
   }
 
   .pricing-level-badge {
     display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.55rem;
     font-weight: 600;
     text-transform: uppercase;
   }
 
   .pricing-level-badge.global {
-    background: #4caf50;
-    color: white;
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+    border: 1px solid #4caf50;
   }
 
   .pricing-level-badge.aircraft {
-    background: #2196f3;
-    color: white;
+    background: rgba(33, 150, 243, 0.15);
+    color: #2196f3;
+    border: 1px solid #2196f3;
   }
 
   .pricing-level-badge.route {
-    background: #ff9800;
-    color: white;
+    background: rgba(255, 152, 0, 0.15);
+    color: #ff9800;
+    border: 1px solid #ff9800;
   }
 
-  .override-status {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-top: 0.5rem;
-  }
-
-  .override-status .overridden {
+  .override-indicator {
+    font-size: 0.5rem;
     color: var(--warning-color);
+  }
+
+  .save-btn-small {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.6rem;
+  }
+
+  /* Global pricing compact */
+  .global-pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+  }
+
+  .global-pricing-grid.cargo {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Hierarchy badges compact */
+  .hierarchy-info {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-elevated);
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+  }
+
+  .hierarchy-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+  }
+
+  .hierarchy-item .num {
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 0.55rem;
+    font-weight: 700;
+  }
+
+  /* Route pricing compact */
+  .route-card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.4rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .route-card:hover {
+    background: var(--surface-elevated);
+  }
+
+  .route-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .route-info {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .route-number {
+    font-weight: 700;
+    color: var(--accent-color);
+    font-size: 0.8rem;
+    font-family: monospace;
+  }
+
+  .route-airports {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+  }
+
+  .route-pricing-panel {
+    display: none;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .route-pricing-panel.open {
+    display: block;
+  }
+
+  /* Route pricing row layout */
+  .pricing-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.3rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .pricing-row.cargo {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .pricing-row:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Section panels */
+  .section-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .section-header h2 {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .section-body {
+    padding: 0.5rem;
+  }
+
+  /* Responsive */
+  @media (max-width: 1000px) {
+    .global-pricing-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .aircraft-pricing-table input {
+      max-width: 50px;
+      font-size: 0.65rem;
+    }
   }
 </style>
 
 <div class="dashboard-container">
   <main class="main-content">
-    <div class="page-header">
-      <h1>PRICE MANAGEMENT</h1>
-      <p class="subtitle">Manage ticket and cargo pricing across your airline</p>
+    <div class="page-header" style="margin-bottom: 0.5rem;">
+      <h1 style="font-size: 1rem;">PRICE MANAGEMENT</h1>
+      <p class="subtitle" style="font-size: 0.7rem;">Manage ticket and cargo pricing</p>
     </div>
 
-    <!-- Pricing Strategy Info -->
-    <div class="ops-panel full-width" style="margin-bottom: 2rem;">
-      <div class="panel-header">
-        <h2>PRICING HIERARCHY</h2>
+    <!-- Pricing Hierarchy - Compact -->
+    <div class="hierarchy-info">
+      <div class="hierarchy-item">
+        <span class="num" style="background: #4caf50; color: white;">1</span>
+        <span>Global</span>
       </div>
-      <div class="panel-body">
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
-          <div style="text-align: center; padding: 1rem;">
-            <div class="pricing-level-badge global" style="font-size: 0.9rem; padding: 0.5rem 1rem;">1. GLOBAL DEFAULT</div>
-            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 1rem;">
-              Base prices applied to all routes unless overridden
-            </p>
-          </div>
-          <div style="text-align: center; padding: 1rem;">
-            <div class="pricing-level-badge aircraft" style="font-size: 0.9rem; padding: 0.5rem 1rem;">2. AIRCRAFT TYPE</div>
-            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 1rem;">
-              Overrides global prices for specific aircraft types
-            </p>
-          </div>
-          <div style="text-align: center; padding: 1rem;">
-            <div class="pricing-level-badge route" style="font-size: 0.9rem; padding: 0.5rem 1rem;">3. ROUTE SPECIFIC</div>
-            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 1rem;">
-              Overrides all other prices for individual routes
-            </p>
-          </div>
-        </div>
+      <span style="color: var(--text-muted); font-size: 0.7rem;">→</span>
+      <div class="hierarchy-item">
+        <span class="num" style="background: #2196f3; color: white;">2</span>
+        <span>Aircraft</span>
       </div>
+      <span style="color: var(--text-muted); font-size: 0.7rem;">→</span>
+      <div class="hierarchy-item">
+        <span class="num" style="background: #ff9800; color: white;">3</span>
+        <span>Route</span>
+      </div>
+      <span style="color: var(--text-muted); font-size: 0.55rem; margin-left: auto;">Higher priority overrides lower</span>
     </div>
 
-    <!-- Global Pricing -->
-    <div class="ops-panel full-width" style="margin-bottom: 2rem;">
-      <div class="panel-header">
-        <h2>
-          <span class="pricing-level-badge global">GLOBAL</span>
-          GLOBAL DEFAULT PRICING
-        </h2>
-        <button onclick="saveGlobalPricing()" class="btn btn-primary">SAVE GLOBAL PRICES</button>
+    <!-- Global Pricing - Compact -->
+    <div class="section-panel">
+      <div class="section-header">
+        <h2><span class="pricing-level-badge global">GLOBAL</span> DEFAULT PRICING</h2>
+        <button onclick="saveGlobalPricing()" class="btn btn-primary save-btn-small">SAVE</button>
       </div>
-      <div class="panel-body">
-        <div style="margin-bottom: 2rem;">
-          <h3 style="color: var(--text-primary); font-size: 1rem; margin-bottom: 1rem; font-weight: 600;">PASSENGER CLASSES</h3>
-          <div class="pricing-grid">
-            <div class="price-input-group">
-              <label>Economy Class</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-economy" min="0" step="1" placeholder="0" />
-              </div>
+      <div class="section-body">
+        <div class="pricing-row-label">Passenger Classes</div>
+        <div class="global-pricing-grid" style="margin-bottom: 0.5rem;">
+          <div class="price-field">
+            <label>Economy</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-economy" min="0" step="1" placeholder="0" />
             </div>
-            <div class="price-input-group">
-              <label>Economy Plus</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-economyPlus" min="0" step="1" placeholder="0" />
-              </div>
+          </div>
+          <div class="price-field">
+            <label>Econ+</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-economyPlus" min="0" step="1" placeholder="0" />
             </div>
-            <div class="price-input-group">
-              <label>Business Class</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-business" min="0" step="1" placeholder="0" />
-              </div>
+          </div>
+          <div class="price-field">
+            <label>Business</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-business" min="0" step="1" placeholder="0" />
             </div>
-            <div class="price-input-group">
-              <label>First Class</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-first" min="0" step="1" placeholder="0" />
-              </div>
+          </div>
+          <div class="price-field">
+            <label>First</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-first" min="0" step="1" placeholder="0" />
             </div>
           </div>
         </div>
-
-        <div style="padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
-          <h3 style="color: var(--text-primary); font-size: 1rem; margin-bottom: 1rem; font-weight: 600;">CARGO RATES (per ton)</h3>
-          <div class="pricing-grid">
-            <div class="price-input-group">
-              <label>Light Cargo</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-cargoLight" min="0" step="10" placeholder="0" />
-              </div>
+        <div class="pricing-row-label">Cargo Rates (per ton)</div>
+        <div class="global-pricing-grid cargo">
+          <div class="price-field">
+            <label>Light</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoLight" min="0" step="10" placeholder="0" />
             </div>
-            <div class="price-input-group">
-              <label>Standard Cargo</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-cargoStandard" min="0" step="10" placeholder="0" />
-              </div>
+          </div>
+          <div class="price-field">
+            <label>Standard</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoStandard" min="0" step="10" placeholder="0" />
             </div>
-            <div class="price-input-group">
-              <label>Heavy Cargo</label>
-              <div class="price-input-wrapper">
-                <input type="number" id="global-cargoHeavy" min="0" step="10" placeholder="0" />
-              </div>
+          </div>
+          <div class="price-field">
+            <label>Heavy</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoHeavy" min="0" step="10" placeholder="0" />
             </div>
           </div>
         </div>
@@ -198,19 +423,14 @@
     </div>
 
     <!-- Aircraft Type Pricing -->
-    <div class="ops-panel full-width" style="margin-bottom: 2rem;">
-      <div class="panel-header">
-        <h2>
-          <span class="pricing-level-badge aircraft">AIRCRAFT TYPE</span>
-          AIRCRAFT TYPE PRICING
-        </h2>
+    <div class="section-panel">
+      <div class="section-header">
+        <h2><span class="pricing-level-badge aircraft">AIRCRAFT</span> TYPE PRICING</h2>
+        <span style="font-size: 0.55rem; color: var(--text-muted);">Blank = use global</span>
       </div>
-      <div class="panel-body">
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-          Set custom pricing for specific aircraft types. Leave blank to use global defaults.
-        </p>
+      <div class="section-body" style="padding: 0;">
         <div id="aircraftTypePricingList">
-          <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+          <div style="padding: 0.75rem; text-align: center; color: var(--text-muted); font-size: 0.75rem;">
             Loading aircraft types...
           </div>
         </div>
@@ -218,31 +438,20 @@
     </div>
 
     <!-- Route-Specific Pricing -->
-    <div class="ops-panel full-width" style="margin-bottom: 2rem;">
-      <div class="panel-header">
-        <h2>
-          <span class="pricing-level-badge route">ROUTE</span>
-          ROUTE-SPECIFIC PRICING
-        </h2>
+    <div class="section-panel">
+      <div class="section-header">
+        <h2><span class="pricing-level-badge route">ROUTE</span> SPECIFIC PRICING</h2>
       </div>
-      <div class="panel-body">
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-          Override pricing for individual routes. Click on a route to manage its pricing.
-        </p>
-
-        <!-- Search/Filter -->
-        <div style="margin-bottom: 1.5rem;">
-          <input
-            type="text"
-            id="routeSearchInput"
-            placeholder="Search routes by number, airport, or destination..."
-            oninput="filterRoutes()"
-            style="width: 100%; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);"
-          />
-        </div>
-
+      <div class="section-body">
+        <input
+          type="text"
+          id="routeSearchInput"
+          placeholder="Search routes..."
+          oninput="filterRoutes()"
+          style="width: 100%; padding: 0.3rem 0.5rem; margin-bottom: 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.75rem;"
+        />
         <div id="routePricingList">
-          <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+          <div style="padding: 0.75rem; text-align: center; color: var(--text-muted); font-size: 0.75rem;">
             Loading routes...
           </div>
         </div>

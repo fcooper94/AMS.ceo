@@ -552,20 +552,41 @@ class WorldTimeService {
         // Calculate end time in minutes from midnight
         const startMinutes = startHour * 60 + startMinute;
         const endMinutes = startMinutes + pattern.duration;
-        const endHour = Math.floor(endMinutes / 60) % 24;
-        const endMinute = endMinutes % 60;
+
+        // For multi-day maintenance (C, D checks), calculate actual completion date/time
+        const daysSpanned = Math.floor(endMinutes / 1440); // 1440 minutes per day
+        const endMinuteOfDay = endMinutes % 1440;
+        const endHour = Math.floor(endMinuteOfDay / 60);
+        const endMinute = endMinuteOfDay % 60;
         const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
 
-        // Check if current game time is past the maintenance end time
-        if (gameTimeStr >= endTimeStr) {
+        // Calculate the scheduled date (from scheduledDate or calculate from dayOfWeek)
+        let maintenanceStartDate;
+        if (pattern.scheduledDate) {
+          maintenanceStartDate = new Date(pattern.scheduledDate + 'T00:00:00Z');
+        } else {
+          // For recurring patterns, use current game date
+          maintenanceStartDate = new Date(gameDate + 'T00:00:00Z');
+        }
+
+        // Calculate actual completion date
+        const completionDate = new Date(maintenanceStartDate);
+        completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
+        const completionDateStr = completionDate.toISOString().split('T')[0];
+
+        // Check if current game date/time is past the maintenance end date/time
+        const isPastCompletionDate = gameDate > completionDateStr ||
+          (gameDate === completionDateStr && gameTimeStr >= endTimeStr);
+
+        if (isPastCompletionDate) {
           const aircraft = pattern.aircraft;
           const checkType = pattern.checkType;
 
           // Check if we've already recorded this check today
           const checkFieldMap = {
             'daily': 'lastDailyCheckDate',
+            'weekly': 'lastWeeklyCheckDate',
             'A': 'lastACheckDate',
-            'B': 'lastBCheckDate',
             'C': 'lastCCheckDate',
             'D': 'lastDCheckDate'
           };
@@ -588,7 +609,42 @@ class WorldTimeService {
             const updateData = {};
             updateData[lastCheckField] = currentGameTime; // Store full datetime
 
+            // Cascading check validation:
+            // D check → validates C, A, weekly, daily
+            // C check → validates A, weekly, daily
+            // A check → validates weekly, daily
+            // weekly check → validates daily
+            if (checkType === 'D') {
+              updateData.lastCCheckDate = currentGameTime;
+              updateData.lastACheckDate = currentGameTime;
+              updateData.lastACheckHours = aircraft.totalFlightHours || 0;
+              updateData.lastWeeklyCheckDate = currentGameTime;
+              updateData.lastDailyCheckDate = currentGameTime;
+            } else if (checkType === 'C') {
+              updateData.lastACheckDate = currentGameTime;
+              updateData.lastACheckHours = aircraft.totalFlightHours || 0;
+              updateData.lastWeeklyCheckDate = currentGameTime;
+              updateData.lastDailyCheckDate = currentGameTime;
+            } else if (checkType === 'A') {
+              updateData.lastWeeklyCheckDate = currentGameTime;
+              updateData.lastDailyCheckDate = currentGameTime;
+            } else if (checkType === 'weekly') {
+              updateData.lastDailyCheckDate = currentGameTime;
+            }
+            if (['A', 'C', 'D', 'weekly'].includes(checkType) && process.env.NODE_ENV === 'development') {
+              console.log(`🔧 ${checkType} Check also validates lower checks for ${aircraft.registration}`);
+            }
+
             await aircraft.update(updateData);
+
+            // Mark one-time scheduled maintenance (C, D checks with scheduledDate) as completed
+            // so they don't cause conflicts with future maintenance scheduling
+            if (['C', 'D'].includes(checkType) && pattern.scheduledDate) {
+              await pattern.update({ status: 'completed' });
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`🔧 ${checkType} Check marked as completed for ${aircraft.registration}`);
+              }
+            }
 
             if (process.env.NODE_ENV === 'development') {
               console.log(`🔧 ${checkType} Check recorded for ${aircraft.registration} at ${endTimeStr} (date: ${gameDate})`);
