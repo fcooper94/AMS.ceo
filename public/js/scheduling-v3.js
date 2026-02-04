@@ -16,6 +16,9 @@ let worldTimeFetchInProgress = false; // Prevent concurrent fetches
 let worldTimeFetchSequence = 0; // Track request order to ignore stale responses
 let confirmModalResolve = null; // Promise resolve for confirm modal
 let flightDetailsUpdateInterval = null; // Interval for auto-updating flight details modal
+let maintenanceDetailsUpdateInterval = null; // Interval for auto-updating maintenance details modal
+let currentMaintenanceModalId = null; // Track which maintenance modal is open
+let aircraftStatusUpdateInterval = null; // Interval for updating GROUNDED/IN MAINT badges
 
 // Wind adjustment for realistic flight times
 // Jet stream flows west to east at mid-latitudes, making eastbound flights faster
@@ -241,11 +244,42 @@ function getExpiredChecks(aircraft) {
 
   // Also check for maintenance IN PROGRESS - aircraft cannot fly during active maintenance
   const inProgressMaintenance = getInProgressMaintenance(aircraft.id);
+
+  // Determine what check types are covered by in-progress maintenance (cascading)
+  // D check covers: C, A, weekly, daily
+  // C check covers: A, weekly, daily
+  // A check covers: weekly, daily
+  // weekly check covers: daily
+  const coveredByInProgress = new Set();
   for (const maint of inProgressMaintenance) {
-    const checkName = checkNames[maint.checkType] || `${maint.checkType} Check`;
-    // Only add if not already in expired list
-    if (!expired.some(e => e.type === maint.checkType)) {
-      expired.push({ type: maint.checkType, name: checkName, inProgress: true });
+    coveredByInProgress.add(maint.checkType);
+    // Add cascading coverage
+    if (maint.checkType === 'D') {
+      coveredByInProgress.add('C');
+      coveredByInProgress.add('A');
+      coveredByInProgress.add('weekly');
+      coveredByInProgress.add('daily');
+    } else if (maint.checkType === 'C') {
+      coveredByInProgress.add('A');
+      coveredByInProgress.add('weekly');
+      coveredByInProgress.add('daily');
+    } else if (maint.checkType === 'A') {
+      coveredByInProgress.add('weekly');
+      coveredByInProgress.add('daily');
+    } else if (maint.checkType === 'weekly') {
+      coveredByInProgress.add('daily');
+    }
+  }
+
+  // Mark all covered checks as in-progress
+  for (const checkType of coveredByInProgress) {
+    const checkName = checkNames[checkType] || `${checkType} Check`;
+    const existingEntry = expired.find(e => e.type === checkType);
+    if (existingEntry) {
+      // Mark the existing expired entry as in-progress (maintenance has started or is covered)
+      existingEntry.inProgress = true;
+    } else {
+      expired.push({ type: checkType, name: checkName, inProgress: true });
     }
   }
 
@@ -255,20 +289,25 @@ function getExpiredChecks(aircraft) {
 // Check if aircraft has maintenance currently in progress
 function getInProgressMaintenance(aircraftId) {
   const worldTime = getCurrentWorldTime() || new Date();
-  const today = worldTime.toISOString().split('T')[0];
-  const currentMinutes = worldTime.getUTCHours() * 60 + worldTime.getUTCMinutes();
+  // Use local time methods to match the displayed game clock (not UTC)
+  const today = formatLocalDate(worldTime);
+  const currentMinutes = worldTime.getHours() * 60 + worldTime.getMinutes();
 
   return scheduledMaintenance.filter(m => {
     // Handle both m.aircraftId and m.aircraft.id patterns
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
     // Status can be 'active', 'scheduled', or undefined (all are valid for checking in-progress)
-    if (maintAircraftId !== aircraftId) return false;
+    if (maintAircraftId != aircraftId) return false; // Use != for type-coercive comparison
     if (m.status === 'completed' || m.status === 'inactive') return false;
+
+    // Skip "ongoing" display blocks - they're copies for multi-day display
+    // Only check the primary block (where scheduledDate matches displayDate or isOngoing is false)
+    if (m.isOngoing) return false;
 
     // Get scheduled date (could be Date object or string)
     let scheduledDate;
     if (m.scheduledDate instanceof Date) {
-      scheduledDate = m.scheduledDate.toISOString().split('T')[0];
+      scheduledDate = formatLocalDate(m.scheduledDate);
     } else if (m.scheduledDate) {
       scheduledDate = m.scheduledDate.split('T')[0];
     } else {
@@ -288,10 +327,10 @@ function getInProgressMaintenance(aircraftId) {
     const daysSpanned = Math.floor(endMinutes / 1440);
     const endMinuteOfDay = endMinutes % 1440;
 
-    // Calculate completion date
-    const completionDate = new Date(scheduledDate + 'T00:00:00Z');
-    completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
-    const completionDateStr = completionDate.toISOString().split('T')[0];
+    // Calculate completion date using local time
+    const startDate = new Date(scheduledDate + 'T12:00:00'); // Use noon to avoid DST issues
+    startDate.setDate(startDate.getDate() + daysSpanned);
+    const completionDateStr = formatLocalDate(startDate);
 
     // Check if maintenance has started (today >= scheduledDate AND time >= startTime)
     const hasStarted = today > scheduledDate ||
@@ -355,6 +394,99 @@ function getCheckStatusSimple(aircraft, checkType) {
 
   const hoursUntilExpiry = (expiryDate - worldTime) / (1000 * 60 * 60);
   return hoursUntilExpiry < 0 ? 'expired' : 'valid';
+}
+
+// Update GROUNDED/IN MAINT badges live as maintenance completes or starts
+function updateAircraftStatusBadges() {
+  // Find all aircraft rows with data-aircraft-id
+  const rows = document.querySelectorAll('tr[data-aircraft-id]');
+  if (rows.length === 0) return;
+
+  rows.forEach(row => {
+    const aircraftId = row.getAttribute('data-aircraft-id');
+    const aircraft = userFleet.find(a => a.id === aircraftId);
+    if (!aircraft) return;
+
+    // Recalculate expired/in-progress checks
+    const expiredChecks = getExpiredChecks(aircraft);
+    const hasExpiredChecks = expiredChecks.length > 0;
+    const inProgressChecks = expiredChecks.filter(c => c.inProgress);
+    const actuallyExpired = expiredChecks.filter(c => !c.inProgress);
+
+    // Find the info cell containing the badge
+    const infoCell = row.querySelector('.aircraft-info-cell');
+    if (!infoCell) return;
+
+    // Find existing badge (may or may not exist)
+    const existingBadge = infoCell.querySelector('.aircraft-status-badge');
+    const registrationSpan = infoCell.querySelector('.aircraft-registration');
+
+    // Determine if we should have a badge
+    if (hasExpiredChecks) {
+      // Build tooltip
+      let groundedTooltip = '';
+      if (actuallyExpired.length > 0 && inProgressChecks.length > 0) {
+        groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired; ${inProgressChecks.map(c => c.name).join(', ')} in progress`;
+      } else if (inProgressChecks.length > 0) {
+        groundedTooltip = `MAINTENANCE IN PROGRESS: ${inProgressChecks.map(c => c.name).join(', ')}`;
+      } else {
+        groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired`;
+      }
+
+      const badgeColor = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? '#d29922' : '#f85149';
+      const badgeText = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? 'IN MAINT' : 'GROUNDED';
+      const rgbaColor = badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73';
+
+      if (existingBadge) {
+        // Update existing badge
+        existingBadge.textContent = badgeText;
+        existingBadge.title = groundedTooltip;
+        existingBadge.style.color = badgeColor;
+        existingBadge.style.background = `rgba(${rgbaColor}, 0.15)`;
+      } else {
+        // Create new badge
+        const newBadge = document.createElement('span');
+        newBadge.className = 'aircraft-status-badge';
+        newBadge.textContent = badgeText;
+        newBadge.title = groundedTooltip;
+        newBadge.style.cssText = `font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${rgbaColor}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;`;
+        const container = infoCell.querySelector('div');
+        if (container) container.appendChild(newBadge);
+      }
+
+      // Update registration span color to grayed out
+      if (registrationSpan) {
+        registrationSpan.style.color = '#8b949e';
+      }
+    } else {
+      // No expired checks - remove badge if it exists
+      if (existingBadge) {
+        existingBadge.remove();
+      }
+      // Update registration span color to normal
+      if (registrationSpan) {
+        registrationSpan.style.color = 'var(--accent-color)';
+      }
+    }
+  });
+}
+
+// Start interval for updating aircraft status badges
+function startAircraftStatusUpdates() {
+  // Clear any existing interval
+  if (aircraftStatusUpdateInterval) {
+    clearInterval(aircraftStatusUpdateInterval);
+  }
+  // Update every 5 seconds
+  aircraftStatusUpdateInterval = setInterval(updateAircraftStatusBadges, 5000);
+}
+
+// Stop interval for updating aircraft status badges
+function stopAircraftStatusUpdates() {
+  if (aircraftStatusUpdateInterval) {
+    clearInterval(aircraftStatusUpdateInterval);
+    aircraftStatusUpdateInterval = null;
+  }
 }
 
 // Listen for world time updates from layout.js (which manages the centralized socket connection)
@@ -850,7 +982,7 @@ function getAircraftRoutes(aircraftId) {
 // Get flights for a specific cell (aircraft + date + optional hour for daily view)
 function getFlightsForCell(aircraftId, date, hour = null) {
   return scheduledFlights.filter(flight => {
-    if (flight.aircraftId !== aircraftId) {
+    if (flight.aircraftId != aircraftId) { // Use != for type-coercive comparison
       return false;
     }
 
@@ -888,7 +1020,7 @@ function getFlightsForCell(aircraftId, date, hour = null) {
 // Get maintenance checks for a specific cell (aircraft + date + optional hour for daily view)
 function getMaintenanceForCell(aircraftId, date, hour = null) {
   return scheduledMaintenance.filter(maintenance => {
-    if (maintenance.aircraftId !== aircraftId) {
+    if (maintenance.aircraftId != aircraftId) { // Use != for type-coercive comparison
       return false;
     }
 
@@ -1802,6 +1934,53 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
       `;
     }
 
+    // For A checks that start and extend past midnight (overnight A checks)
+    if (check.checkType === 'A') {
+      const startMinutes = hours * 60 + minutes;
+      const endMinutes = startMinutes + durationMinutes;
+      const isOvernight = check.spansOvernight || endMinutes > 1440;
+
+      if (isOvernight) {
+        // A check extends past midnight - show visual indication
+        const minutesToMidnight = 1440 - startMinutes;
+        const cappedWidthPercent = (minutesToMidnight / 60) * 100;
+
+        // Get completion time on next day
+        const nextDayEndTime = check.endTimeNextDay || endTime;
+        const tooltipText = `${checkLabel}: ${checkDescription} | Start ${startTime}, ends ${nextDayEndTime} (next day)`;
+
+        return `
+          <div
+            class="maintenance-block"
+            style="
+              position: absolute;
+              top: 2px;
+              left: ${leftPercent}%;
+              width: ${cappedWidthPercent}%;
+              height: calc(100% - 4px);
+              background: ${backgroundColor};
+              border-radius: ${borderRadius} 0 0 ${borderRadius};
+              color: white;
+              font-size: 0.85rem;
+              font-weight: 700;
+              padding: 0.15rem;
+              cursor: pointer;
+              z-index: 1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              line-height: 1;
+            "
+            onclick="viewMaintenanceDetails('${check.id}')"
+            title="${tooltipText}"
+          >
+            <span>${checkLabel}</span>
+          </div>
+        `;
+      }
+    }
+
     return `
       <div
         class="maintenance-block"
@@ -2023,7 +2202,7 @@ function buildPostFlightHtml(aircraft, flight, arrHomeMins, formatTime, allFligh
     // Find the next flight for this aircraft (same or later date)
     const nextFlight = allFlights
       .filter(f =>
-        f.aircraft.id === aircraft.id &&
+        f.aircraft.id == aircraft.id && // Use == for type-coercive comparison
         f.id !== flight.id &&
         (f.scheduledDate > scheduledDate ||
          (f.scheduledDate === scheduledDate && f.departureTime > flight.departureTime))
@@ -3827,7 +4006,7 @@ async function viewMaintenanceDetails(maintenanceId) {
       return;
     }
 
-    console.log('[MAINT] Found maintenance:', maintenance);
+    console.log('[MAINT] Found maintenance:', maintenance.checkType, 'startTime:', maintenance.startTime);
 
     // Get aircraft - either from maintenance object or from fleet
     let aircraft = maintenance.aircraft;
@@ -3842,21 +4021,169 @@ async function viewMaintenanceDetails(maintenanceId) {
 
     console.log('[MAINT] Aircraft:', aircraft.registration);
 
+    // Store the current maintenance ID for live updates
+    currentMaintenanceModalId = maintenanceId;
+
+    // Create the modal shell first (header and footer are static)
+    const checkColors = { 'daily': '#FFA500', 'weekly': '#8B5CF6', 'A': '#17A2B8', 'C': '#6B7280', 'D': '#4B5563' };
+    const checkColor = checkColors[maintenance.checkType] || '#6b7280';
+    const checkTypeLabels = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
+    const checkType = checkTypeLabels[maintenance.checkType] || `${maintenance.checkType} Check`;
+
+    const modalHtml = `
+      <div id="maintenanceDetailsModal" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+      " onclick="if(event.target === this) closeMaintenanceDetailsModal()">
+        <div style="
+          background: #161b22;
+          border: 1px solid #30363d;
+          border-radius: 8px;
+          width: 480px;
+          max-width: 95vw;
+          max-height: 90vh;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        ">
+          <!-- Header -->
+          <div style="padding: 1rem 1.25rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; background: ${checkColor}15;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span style="background: ${checkColor}; color: white; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem;">${maintenance.checkType === 'daily' ? 'D' : maintenance.checkType === 'weekly' ? 'W' : maintenance.checkType}</span>
+              <div>
+                <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${checkType}</h3>
+                <span style="color: #8b949e; font-size: 0.75rem;">${aircraft.registration}</span>
+              </div>
+            </div>
+            <button onclick="closeMaintenanceDetailsModal()" style="background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+          </div>
+
+          <!-- Dynamic content container (updated live) -->
+          <div id="maintenanceModalContent"></div>
+
+          <!-- Footer -->
+          <div style="padding: 0.75rem 1.25rem; border-top: 1px solid #30363d; display: flex; gap: 0.75rem; justify-content: flex-end;">
+            <button onclick="closeMaintenanceDetailsModal()" style="
+              padding: 0.4rem 0.8rem;
+              background: #21262d;
+              border: 1px solid #30363d;
+              border-radius: 6px;
+              color: #c9d1d9;
+              cursor: pointer;
+              font-size: 0.8rem;
+            ">Close</button>
+            <button onclick="removeMaintenanceFromModal('${maintenanceId}')" style="
+              padding: 0.4rem 0.8rem;
+              background: #da3633;
+              border: 1px solid #f85149;
+              border-radius: 6px;
+              color: white;
+              cursor: pointer;
+              font-size: 0.8rem;
+            ">Remove Check</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Remove existing modal if any
+    const existingModal = document.getElementById('maintenanceDetailsModal');
+    if (existingModal) existingModal.remove();
+
+    // Clear any existing update interval
+    if (maintenanceDetailsUpdateInterval) {
+      clearInterval(maintenanceDetailsUpdateInterval);
+      maintenanceDetailsUpdateInterval = null;
+    }
+
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Render initial content
+    updateMaintenanceModalContent(maintenance, aircraft);
+
+    // Set up live update interval (every second for smooth progress updates)
+    maintenanceDetailsUpdateInterval = setInterval(() => {
+      const modal = document.getElementById('maintenanceDetailsModal');
+      if (!modal) {
+        // Modal was closed, clear interval
+        clearInterval(maintenanceDetailsUpdateInterval);
+        maintenanceDetailsUpdateInterval = null;
+        currentMaintenanceModalId = null;
+        return;
+      }
+      updateMaintenanceModalContent(maintenance, aircraft);
+    }, 1000);
+
+  } catch (error) {
+    console.error('[MAINT] Error showing maintenance details:', error);
+    await showAlertModal('Error', 'Failed to load maintenance details. Check console for details.');
+  }
+}
+
+// Update the dynamic content of the maintenance modal (called every second for live updates)
+function updateMaintenanceModalContent(maintenance, aircraft) {
+  const contentContainer = document.getElementById('maintenanceModalContent');
+  if (!contentContainer) return;
+
   // Use actual duration from maintenance record, or calculate based on check type
   const checkTypeDurations = { 'daily': 60, 'weekly': 135, 'A': 540, 'C': 30240, 'D': 108000 };
   const durationMinutes = maintenance.duration || checkTypeDurations[maintenance.checkType] || 60;
 
+  // For C/D checks that span multiple days, the "ongoing" blocks (on subsequent days) have
+  // startTime='00:00:00'. Find the original pattern to get the real start time.
+  let originalMaintenance = maintenance;
+  if (maintenance.isOngoing && (maintenance.checkType === 'C' || maintenance.checkType === 'D')) {
+    const aircraftId = maintenance.aircraftId || maintenance.aircraft?.id;
+    const patternId = maintenance.patternId;
+
+    // Try to find the original (non-ongoing) block
+    let originalBlock = patternId ? scheduledMaintenance.find(m => m.patternId === patternId && !m.isOngoing) : null;
+
+    if (!originalBlock) {
+      originalBlock = scheduledMaintenance.find(m => {
+        const mAircraftId = m.aircraftId || m.aircraft?.id;
+        return mAircraftId == aircraftId &&
+               m.checkType === maintenance.checkType &&
+               m.scheduledDate === maintenance.scheduledDate &&
+               !m.isOngoing;
+      });
+    }
+
+    if (originalBlock) {
+      originalMaintenance = originalBlock;
+    }
+  }
+
   // Handle startTime - could be a string "HH:MM:SS" or Date object
-  let rawStartTime = maintenance.startTime;
+  let rawStartTime = originalMaintenance.startTime;
   if (rawStartTime instanceof Date) {
     rawStartTime = rawStartTime.toTimeString().split(' ')[0];
   }
   const startTimeForCalc = String(rawStartTime || '00:00:00');
   const endTime = calculateEndTime(startTimeForCalc, durationMinutes);
 
+  // Check if this is an overnight A check (spans past midnight)
+  const [sH, sM] = startTimeForCalc.split(':').map(Number);
+  const startMinutesTotal = sH * 60 + sM;
+  const isOvernightACheck = maintenance.checkType === 'A' && (startMinutesTotal + durationMinutes) > 1440;
+
+  // For overnight A checks, format the end time with "(next day)" indicator
+  let displayEndTime = endTime;
+  if (isOvernightACheck) {
+    displayEndTime = `${endTime} (next day)`;
+  }
+
   // Determine check type label and description
-  const checkTypeLabels = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
-  const checkType = checkTypeLabels[maintenance.checkType] || `${maintenance.checkType} Check`;
   const checkIntervals = { 'daily': '1-2 days', 'weekly': '7-8 days', 'A': '800-1000 hrs', 'C': '~2 years', 'D': '5-7 years' };
   const checkInterval = checkIntervals[maintenance.checkType] || '';
   const checkDurationText = { 'daily': '30-90 mins', 'weekly': '1.5-3 hrs', 'A': '6-12 hrs', 'C': '2-4 weeks', 'D': '2-3 months' };
@@ -3864,11 +4191,12 @@ async function viewMaintenanceDetails(maintenanceId) {
   // Determine maintenance status based on current game time AND date
   const gameTime = typeof getGlobalWorldTime === 'function' ? getGlobalWorldTime() : new Date();
   const currentDateStr = formatLocalDate(gameTime);
-  const currentTimeStr = gameTime.toISOString().substring(11, 16);
+  // Use local time methods to match the displayed clock (which uses toLocaleTimeString)
+  const currentTimeStr = `${String(gameTime.getHours()).padStart(2, '0')}:${String(gameTime.getMinutes()).padStart(2, '0')}`;
   const startTimeStr = startTimeForCalc.substring(0, 5);
 
-  // Handle scheduledDate - could be a string or Date object
-  let rawScheduledDate = maintenance.scheduledDate;
+  // Handle scheduledDate - use original maintenance's scheduledDate for calculations
+  let rawScheduledDate = originalMaintenance.scheduledDate;
   if (rawScheduledDate instanceof Date) {
     rawScheduledDate = rawScheduledDate.toISOString().split('T')[0];
   }
@@ -3876,8 +4204,8 @@ async function viewMaintenanceDetails(maintenanceId) {
 
   // Calculate elapsed time and progress for task list
   const [startH, startM] = startTimeStr.split(':').map(Number);
-  const startDateTime = new Date(scheduledDateStr + 'T00:00:00Z');
-  startDateTime.setUTCHours(startH, startM, 0, 0);
+  // Create startDateTime using local time to match the displayed clock
+  const startDateTime = new Date(scheduledDateStr + 'T' + startTimeStr + ':00');
 
   let elapsedMinutes = 0;
   let progressPercent = 0;
@@ -3886,10 +4214,7 @@ async function viewMaintenanceDetails(maintenanceId) {
   // For multi-day checks (C, D), calculate completion date
   const isHeavyMaintenance = maintenance.checkType === 'C' || maintenance.checkType === 'D';
   const daysSpanned = Math.floor(durationMinutes / 1440);
-  const completionDate = new Date(startDateTime);
-  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
-  const completionMinuteOfDay = durationMinutes % 1440;
-  completionDate.setUTCHours(startH + Math.floor(completionMinuteOfDay / 60), (startM + completionMinuteOfDay) % 60);
+  const completionDate = new Date(startDateTime.getTime() + durationMinutes * 60 * 1000);
 
   if (scheduledDateStr > currentDateStr) {
     statusText = 'SCHEDULED';
@@ -3923,8 +4248,36 @@ async function viewMaintenanceDetails(maintenanceId) {
       const remainingDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
       availableText = `~${remainingDays} day${remainingDays !== 1 ? 's' : ''} remaining`;
     }
+  } else if (isOvernightACheck) {
+    // For overnight A checks, use date-aware comparison like heavy maintenance
+    const now = gameTime.getTime();
+    const start = startDateTime.getTime();
+    const end = completionDate.getTime();
+
+    if (now < start) {
+      statusText = 'SCHEDULED';
+      statusColor = '#58a6ff';
+      availableText = `Starts ${startTimeStr}`;
+      elapsedMinutes = 0;
+      progressPercent = 0;
+    } else if (now >= end) {
+      statusText = 'COMPLETED';
+      statusColor = '#3fb950';
+      availableText = `Completed at ${displayEndTime}`;
+      elapsedMinutes = durationMinutes;
+      progressPercent = 100;
+    } else {
+      statusText = 'IN PROGRESS';
+      statusColor = '#ffa657';
+      elapsedMinutes = Math.floor((now - start) / (1000 * 60));
+      progressPercent = Math.min(100, Math.round((elapsedMinutes / durationMinutes) * 100));
+      const remainingMinutes = durationMinutes - elapsedMinutes;
+      const remainingHours = Math.floor(remainingMinutes / 60);
+      const remainingMins = remainingMinutes % 60;
+      availableText = `~${remainingHours}h ${remainingMins}m remaining`;
+    }
   } else {
-    // For same-day checks
+    // For same-day checks (daily, weekly, non-overnight A checks)
     if (currentTimeStr < startTimeStr) {
       statusText = 'UPCOMING';
       statusColor = '#8b949e';
@@ -3941,7 +4294,7 @@ async function viewMaintenanceDetails(maintenanceId) {
     } else {
       statusText = 'COMPLETED';
       statusColor = '#3fb950';
-      availableText = `Completed at ${endTime}`;
+      availableText = `Completed at ${displayEndTime}`;
       elapsedMinutes = durationMinutes;
       progressPercent = 100;
     }
@@ -3980,130 +4333,54 @@ async function viewMaintenanceDetails(maintenanceId) {
     `;
   }).join('');
 
-  // Check type colors
-  const checkColors = { 'daily': '#FFA500', 'weekly': '#8B5CF6', 'A': '#17A2B8', 'C': '#6B7280', 'D': '#4B5563' };
-  const checkColor = checkColors[maintenance.checkType] || '#6b7280';
-
   // Format completion date for heavy maintenance
   let completionText = '';
   if (isHeavyMaintenance) {
     completionText = completionDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  // Create and show custom modal
-  const modalHtml = `
-    <div id="maintenanceDetailsModal" style="
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 10000;
-    " onclick="if(event.target === this) closeMaintenanceDetailsModal()">
-      <div style="
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        width: 480px;
-        max-width: 95vw;
-        max-height: 90vh;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      ">
-        <!-- Header -->
-        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; background: ${checkColor}15;">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <span style="background: ${checkColor}; color: white; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem;">${maintenance.checkType === 'daily' ? 'D' : maintenance.checkType === 'weekly' ? 'W' : maintenance.checkType}</span>
-            <div>
-              <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${checkType}</h3>
-              <span style="color: #8b949e; font-size: 0.75rem;">${aircraft.registration}</span>
-            </div>
-          </div>
-          <button onclick="closeMaintenanceDetailsModal()" style="background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
-        </div>
-
-        <!-- Status & Progress -->
-        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid #30363d;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-            <span style="color: ${statusColor}; font-weight: 600; font-size: 0.9rem;">${statusText}</span>
-            <span style="color: #f0f6fc; font-size: 0.85rem;">${progressPercent}% Complete</span>
-          </div>
-          <div style="background: #21262d; border-radius: 4px; height: 8px; overflow: hidden;">
-            <div style="background: ${statusColor}; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.75rem; color: #8b949e;">
-            <span>${startTimeStr} ${isHeavyMaintenance ? `(${maintenance.scheduledDate})` : ''}</span>
-            <span>${isHeavyMaintenance ? completionText : endTime}</span>
-          </div>
-        </div>
-
-        <!-- Info Grid -->
-        <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem;">
-          <div>
-            <span style="color: #8b949e;">Duration:</span>
-            <span style="color: #f0f6fc; margin-left: 0.5rem;">${checkDurationText[maintenance.checkType] || durationMinutes + ' mins'}</span>
-          </div>
-          <div>
-            <span style="color: #8b949e;">Interval:</span>
-            <span style="color: #f0f6fc; margin-left: 0.5rem;">${checkInterval}</span>
-          </div>
-          <div style="grid-column: span 2;">
-            <span style="color: #8b949e;">Availability:</span>
-            <span style="color: #58a6ff; margin-left: 0.5rem; font-weight: 500;">${availableText}</span>
-          </div>
-        </div>
-
-        <!-- Task List -->
-        <div style="padding: 0.75rem 1.25rem; flex: 1; overflow-y: auto; max-height: 300px;">
-          <div style="color: #f0f6fc; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-            <span>Work Items</span>
-            <span style="color: #8b949e; font-weight: 400; font-size: 0.75rem;">(${tasks.filter((_, i) => elapsedMinutes >= (i + 1) * minutesPerTask).length}/${taskCount} complete)</span>
-          </div>
-          ${taskListHtml}
-        </div>
-
-        <!-- Footer -->
-        <div style="padding: 0.75rem 1.25rem; border-top: 1px solid #30363d; display: flex; gap: 0.75rem; justify-content: flex-end;">
-          <button onclick="closeMaintenanceDetailsModal()" style="
-            padding: 0.4rem 0.8rem;
-            background: #21262d;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            color: #c9d1d9;
-            cursor: pointer;
-            font-size: 0.8rem;
-          ">Close</button>
-          <button onclick="removeMaintenanceFromModal('${maintenanceId}')" style="
-            padding: 0.4rem 0.8rem;
-            background: #da3633;
-            border: 1px solid #f85149;
-            border-radius: 6px;
-            color: white;
-            cursor: pointer;
-            font-size: 0.8rem;
-          ">Remove Check</button>
-        </div>
+  // Update the content
+  contentContainer.innerHTML = `
+    <!-- Status & Progress -->
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid #30363d;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <span style="color: ${statusColor}; font-weight: 600; font-size: 0.9rem;">${statusText}</span>
+        <span style="color: #f0f6fc; font-size: 0.85rem;">${progressPercent}% Complete</span>
+      </div>
+      <div style="background: #21262d; border-radius: 4px; height: 8px; overflow: hidden;">
+        <div style="background: ${statusColor}; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.75rem; color: #8b949e;">
+        <span>${startTimeStr} ${isHeavyMaintenance ? `(${maintenance.scheduledDate})` : ''}</span>
+        <span>${isHeavyMaintenance ? completionText : displayEndTime}</span>
       </div>
     </div>
+
+    <!-- Info Grid -->
+    <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid #30363d; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem;">
+      <div>
+        <span style="color: #8b949e;">Duration:</span>
+        <span style="color: #f0f6fc; margin-left: 0.5rem;">${checkDurationText[maintenance.checkType] || durationMinutes + ' mins'}</span>
+      </div>
+      <div>
+        <span style="color: #8b949e;">Interval:</span>
+        <span style="color: #f0f6fc; margin-left: 0.5rem;">${checkInterval}</span>
+      </div>
+      <div style="grid-column: span 2;">
+        <span style="color: #8b949e;">Availability:</span>
+        <span style="color: #58a6ff; margin-left: 0.5rem; font-weight: 500;">${availableText}</span>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div style="padding: 0.75rem 1.25rem; flex: 1; overflow-y: auto; max-height: 300px;">
+      <div style="color: #f0f6fc; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+        <span>Work Items</span>
+        <span style="color: #8b949e; font-weight: 400; font-size: 0.75rem;">(${tasks.filter((_, i) => elapsedMinutes >= (i + 1) * minutesPerTask).length}/${taskCount} complete)</span>
+      </div>
+      ${taskListHtml}
+    </div>
   `;
-
-  // Remove existing modal if any
-  const existingModal = document.getElementById('maintenanceDetailsModal');
-  if (existingModal) existingModal.remove();
-
-  // Add modal to page
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-  } catch (error) {
-    console.error('[MAINT] Error showing maintenance details:', error);
-    await showAlertModal('Error', 'Failed to load maintenance details. Check console for details.');
-  }
 }
 
 function calculateEndTime(startTime, durationMinutes) {
@@ -4117,6 +4394,13 @@ function calculateEndTime(startTime, durationMinutes) {
 }
 
 function closeMaintenanceDetailsModal() {
+  // Clear the live update interval
+  if (maintenanceDetailsUpdateInterval) {
+    clearInterval(maintenanceDetailsUpdateInterval);
+    maintenanceDetailsUpdateInterval = null;
+  }
+  currentMaintenanceModalId = null;
+
   const modal = document.getElementById('maintenanceDetailsModal');
   if (modal) modal.remove();
 }
@@ -4149,7 +4433,7 @@ async function removeAllMaintenanceOfType(aircraftId, checkType) {
 
     // Remove from local array immediately
     scheduledMaintenance = scheduledMaintenance.filter(m =>
-      !(m.aircraft.id === aircraftId && m.checkType === checkType)
+      !(m.aircraft.id == aircraftId && m.checkType === checkType) // Use == for type-coercive comparison
     );
 
     await showAlertModal('Success', `All ${checkTypeName} deleted successfully`);
@@ -4239,6 +4523,8 @@ function renderSchedule() {
   } else {
     renderDailySchedule();
   }
+  // Start live updates for aircraft status badges (GROUNDED/IN MAINT)
+  startAircraftStatusUpdates();
 }
 
 // Render daily schedule view
@@ -4438,20 +4724,20 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired`;
   }
 
-  let html = '<tr style="border-bottom: 1px solid var(--border-color);">';
+  let html = `<tr data-aircraft-id="${aircraft.id}" style="border-bottom: 1px solid var(--border-color);">`;
 
   // Aircraft info column (sticky left)
   // Show different badge color for in-progress maintenance vs expired
   const badgeColor = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? '#d29922' : '#f85149';
   const badgeText = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? 'IN MAINT' : 'GROUNDED';
   const groundedBadge = hasExpiredChecks
-    ? `<span style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
+    ? `<span class="aircraft-status-badge" style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
     : '';
 
   html += `
-    <td style="padding: 0.75rem 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5; vertical-align: middle;">
+    <td class="aircraft-info-cell" style="padding: 0.75rem 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5; vertical-align: middle;">
       <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span style="color: ${hasExpiredChecks ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 0.95rem; ${hasExpiredChecks ? '' : 'text-decoration: underline; cursor: pointer;'}" onclick="event.stopPropagation();">
+        <span class="aircraft-registration" style="color: ${hasExpiredChecks ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 0.95rem; ${hasExpiredChecks ? '' : 'text-decoration: underline; cursor: pointer;'}" onclick="event.stopPropagation();">
           ${aircraft.registration}
         </span>
         ${groundedBadge}
@@ -4751,6 +5037,8 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         // Use actual duration or calculate from check type
         const checkTypeDurations = { 'daily': 60, 'weekly': 135, 'A': 540, 'C': 30240, 'D': 108000 };
         const durationMinutes = maint.duration || checkTypeDurations[maint.checkType] || 60;
+
+        // Calculate end time (capped at end of day for display purposes)
         const endMinutes = Math.min(startMinutes + durationMinutes, 1440);
 
         // Calculate completion time for tooltip
@@ -4867,39 +5155,71 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           `;
         } else {
           // Normal maintenance block (daily, weekly, A)
-          let widthPct = ((endMinutes - startMinutes) / 1440) * 100;
-          if (widthPct < 5) widthPct = 5;
-          const maintBorderRadius = isAdjacentToFlight ? '0 3px 3px 0' : '3px';
-          const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">${maintLabels[maint.checkType] || maint.checkType}</span>`;
 
-          // Build tooltip with completion time
-          const checkName = maint.checkType === 'daily' ? 'Daily' : (maint.checkType === 'weekly' ? 'Weekly' : maint.checkType);
-          const maintTooltip = `${checkName} Check\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
+          // Check if A check spans overnight using the new property from server
+          const isOvernightACheck = maint.checkType === 'A' && (maint.spansOvernight || (startMinutes + durationMinutes) > 1440);
 
-          cellContent += `
-            <div
-              onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
-              title="${maintTooltip}"
-              style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter};"
-            >
-              ${content}
-            </div>
-          `;
+          if (isOvernightACheck) {
+            // Overnight A check - render as a single block that visually extends into the next day
+            // Width = rest of today (100% - leftPct) + portion of next day
+            const nextDayEndTime = maint.endTimeNextDay || '07:00';
+            const [nextDayH, nextDayM] = nextDayEndTime.split(':').map(Number);
+            const nextDayMinutes = nextDayH * 60 + nextDayM;
+            const nextDayWidthPct = (nextDayMinutes / 1440) * 100;
+
+            // Total width: remaining today + next day portion
+            const todayRemainingPct = 100 - leftPct;
+            const totalWidthPct = todayRemainingPct + nextDayWidthPct;
+
+            const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">A</span>`;
+            const maintTooltip = `A Check\nStarts: ${startTimeStr}\nCompletes: ${nextDayEndTime} (next day)`;
+
+            cellContent += `
+              <div
+                onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
+                title="${maintTooltip}"
+                style="position: absolute; left: ${leftPct}%; width: ${totalWidthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${isAdjacentToFlight ? '0' : '3px'} 3px 3px ${isAdjacentToFlight ? '0' : '3px'}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: visible; z-index: 3;"
+              >
+                ${content}
+              </div>
+            `;
+          } else {
+            // Standard maintenance block (daily, weekly, or same-day A check)
+            let widthPct = ((endMinutes - startMinutes) / 1440) * 100;
+            if (widthPct < 5) widthPct = 5;
+
+            const maintBorderRadius = isAdjacentToFlight ? '0 3px 3px 0' : '3px';
+            const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">${maintLabels[maint.checkType] || maint.checkType}</span>`;
+
+            // Build tooltip with completion time
+            const checkName = maint.checkType === 'daily' ? 'Daily' : (maint.checkType === 'weekly' ? 'Weekly' : maint.checkType);
+            const maintTooltip = `${checkName} Check\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
+
+            cellContent += `
+              <div
+                onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
+                title="${maintTooltip}"
+                style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter};"
+              >
+                ${content}
+              </div>
+            `;
+          }
         }
       });
     }
 
     const hasContent = dayFlights.length > 0 || dayMaintenance.length > 0;
 
-    // Check if there's any scheduled heavy maintenance (C/D) for this aircraft
+    // Check if there's any scheduled maintenance for this aircraft
     // If so, don't show PERFORM NOW - maintenance is already being handled
-    const hasScheduledHeavyMaintenance = scheduledMaintenance.some(m => {
+    const hasScheduledMaintenance = scheduledMaintenance.some(m => {
       const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      return maintAircraftId === aircraft.id && (m.checkType === 'C' || m.checkType === 'D');
+      return maintAircraftId == aircraft.id && ['daily', 'weekly', 'A', 'C', 'D'].includes(m.checkType);
     });
 
-    // Only show PERFORM NOW if there's no heavy maintenance scheduled
-    const showPerformNow = actuallyExpired.length > 0 && !hasScheduledHeavyMaintenance;
+    // Only show PERFORM NOW if there's no maintenance scheduled
+    const showPerformNow = actuallyExpired.length > 0 && !hasScheduledMaintenance;
     const expiredCheckList = actuallyExpired.map(c => c.name).join(', ');
 
     const expiredOverlay = (showPerformNow && colIndex === 0) ? `
@@ -5152,7 +5472,7 @@ function getMaintenanceForDay(aircraftId, dayOfWeek, targetDate = null) {
   return scheduledMaintenance.filter(m => {
     // Check aircraftId - backend stores it at top level, but also check nested aircraft.id for compatibility
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    if (maintAircraftId !== aircraftId) return false;
+    if (maintAircraftId != aircraftId) return false;
     if (!m.scheduledDate && !m.displayDate) return false;
 
     // If targetDate is provided, match by exact date (forward-looking)
@@ -5240,7 +5560,7 @@ function generateAircraftRow(aircraft, timeColumns) {
   let html = '';
 
   // Single row containing both flights and maintenance
-  html += '<tr style="border-bottom: 1px solid var(--border-color);">';
+  html += `<tr data-aircraft-id="${aircraft.id}" style="border-bottom: 1px solid var(--border-color);">`;
 
   // Check for expired checks (aircraft cannot fly)
   const expiredChecks = getExpiredChecks(aircraft);
@@ -5264,13 +5584,13 @@ function generateAircraftRow(aircraft, timeColumns) {
   const badgeColor = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? '#d29922' : '#f85149';
   const badgeText = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? 'IN MAINT' : 'GROUNDED';
   const groundedBadge = hasExpiredChecks
-    ? `<span style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
+    ? `<span class="aircraft-status-badge" style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
     : '';
 
   html += `
-    <td style="padding: 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5;">
+    <td class="aircraft-info-cell" style="padding: 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5;">
       <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span style="color: ${hasExpiredChecks ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 1rem;">
+        <span class="aircraft-registration" style="color: ${hasExpiredChecks ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 1rem;">
           ${aircraft.registration}
         </span>
         ${groundedBadge}
@@ -5304,15 +5624,15 @@ function generateAircraftRow(aircraft, timeColumns) {
     const cellFlights = getFlightsForCell(aircraft.id, dateStr, col.hour);
     const cellMaintenance = getMaintenanceForCell(aircraft.id, dateStr, col.hour);
 
-    // Check if there's any scheduled heavy maintenance (C/D) for this aircraft
+    // Check if there's any scheduled maintenance for this aircraft
     // If so, don't show PERFORM NOW - maintenance is already being handled
-    const hasScheduledHeavyMaintenanceDaily = scheduledMaintenance.some(m => {
+    const hasScheduledMaintenanceDaily = scheduledMaintenance.some(m => {
       const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      return maintAircraftId === aircraft.id && (m.checkType === 'C' || m.checkType === 'D');
+      return maintAircraftId == aircraft.id && ['daily', 'weekly', 'A', 'C', 'D'].includes(m.checkType);
     });
 
-    // Only show PERFORM NOW if there's no heavy maintenance scheduled
-    const showPerformNowDaily = actuallyExpired.length > 0 && !hasScheduledHeavyMaintenanceDaily;
+    // Only show PERFORM NOW if there's no maintenance scheduled
+    const showPerformNowDaily = actuallyExpired.length > 0 && !hasScheduledMaintenanceDaily;
     const expiredCheckList = actuallyExpired.map(c => c.name).join(', ');
 
     const expiredOverlay = (showPerformNowDaily && index === 0) ? `
@@ -6274,6 +6594,24 @@ async function performAllChecksNow(aircraftId) {
 
   if (!highestCheck) return;
 
+  // Show loading overlay
+  showLoadingOverlay(`Scheduling ${highestCheck.name}...`);
+
+  // Immediately hide the PERFORM NOW banner for this aircraft
+  // Find all cells for this aircraft and hide any PERFORM NOW overlays
+  const cells = document.querySelectorAll(`td[data-aircraft-id="${aircraftId}"]`);
+  cells.forEach(cell => {
+    // Find the overlay div (it has position: absolute and contains the PERFORM NOW button)
+    const overlays = cell.querySelectorAll('div');
+    overlays.forEach(div => {
+      const button = div.querySelector('button');
+      if (button && button.textContent.includes('PERFORM NOW')) {
+        // Hide the parent overlay container
+        div.style.display = 'none';
+      }
+    });
+  });
+
   // Check durations in minutes
   const checkDurations = {
     'daily': 60,      // 1 hour
@@ -6295,6 +6633,7 @@ async function performAllChecksNow(aircraftId) {
   try {
     const worldTime = getCurrentWorldTime();
     if (!worldTime) {
+      hideLoadingOverlay();
       await showAlertModal('Error', 'World time not available. Please try again.');
       return;
     }
@@ -6331,6 +6670,9 @@ async function performAllChecksNow(aircraftId) {
     await loadSchedule();
     renderSchedule();
 
+    // Hide loading overlay
+    hideLoadingOverlay();
+
     // Show success confirmation with info about what will be validated
     const validatedChecks = validatesMap[highestCheck.type].map(t => {
       const names = { 'daily': 'Daily', 'weekly': 'Weekly', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
@@ -6341,6 +6683,7 @@ async function performAllChecksNow(aircraftId) {
       `Scheduled: ${highestCheck.name} on ${today} at ${startTime}\n\nThis will validate: ${validatedChecks}\n\nThe aircraft will be available once maintenance is complete.`);
 
   } catch (error) {
+    hideLoadingOverlay();
     console.error('Error scheduling check:', error);
     await showAlertModal('Error', error.message || 'Failed to schedule check. Please try again.');
   }
@@ -6455,7 +6798,7 @@ async function scheduleMaintenance(aircraftId) {
     };
     const nextScheduled = scheduledMaintenance
       .filter(m => {
-        if (m.aircraftId !== aircraftId || m.checkType !== check.type) return false;
+        if (m.aircraftId != aircraftId || m.checkType !== check.type) return false; // Use != for type-coercive comparison
         return getScheduledTime(m) > worldTimeMs;
       })
       .sort((a, b) => getScheduledTime(a) - getScheduledTime(b))[0];
@@ -7125,10 +7468,10 @@ async function clearWeekSchedule(aircraftId) {
   if (!aircraft) return;
 
   // Get all flights for this aircraft in the current week data
-  const weekFlights = scheduledFlights.filter(f => f.aircraft?.id === aircraftId);
+  const weekFlights = scheduledFlights.filter(f => f.aircraft?.id == aircraftId); // Use == for type-coercive comparison
 
   // Get all maintenance for this aircraft in the current week data
-  const weekMaint = scheduledMaintenance.filter(m => m.aircraft?.id === aircraftId);
+  const weekMaint = scheduledMaintenance.filter(m => m.aircraft?.id == aircraftId); // Use == for type-coercive comparison
 
   const totalItems = weekFlights.length + weekMaint.length;
 

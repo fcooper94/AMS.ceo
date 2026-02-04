@@ -189,12 +189,9 @@ function getEngineerName(aircraftId, checkType, country) {
   return names[hash % names.length];
 }
 
-// Format date as YYYY-MM-DD
+// Format date as YYYY-MM-DD (using UTC to match API)
 function formatDateStr(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return date.toISOString().split('T')[0];
 }
 
 // Fetch scheduled maintenance data
@@ -227,12 +224,12 @@ async function fetchScheduledMaintenance() {
 function isCheckInProgress(aircraftId, checkType) {
   const now = getGameTime();
   const todayStr = now.toISOString().split('T')[0];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
 
-  // Check for direct match first
+  // Check for direct match first (use == for type coercion)
   const directMatch = scheduledMaintenance.some(m => {
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    if (maintAircraftId !== aircraftId) return false;
+    if (maintAircraftId != aircraftId) return false; // Use != for type-coercive comparison
     if (m.checkType !== checkType) return false;
 
     return isMaintenanceInProgress(m, todayStr, currentMinutes);
@@ -256,7 +253,7 @@ function isCheckInProgress(aircraftId, checkType) {
   for (const higherCheck of higherChecks) {
     const higherInProgress = scheduledMaintenance.some(m => {
       const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      if (maintAircraftId !== aircraftId) return false;
+      if (maintAircraftId != aircraftId) return false; // Use != for type-coercive comparison
       if (m.checkType !== higherCheck) return false;
 
       return isMaintenanceInProgress(m, todayStr, currentMinutes);
@@ -270,6 +267,10 @@ function isCheckInProgress(aircraftId, checkType) {
 
 // Helper to check if a specific maintenance record is in progress
 function isMaintenanceInProgress(m, todayStr, currentMinutes) {
+  // Skip "ongoing" display blocks - they're copies for multi-day display
+  // Only check the primary block (where scheduledDate matches displayDate or isOngoing is false)
+  if (m.isOngoing) return false;
+
   // Get scheduled date
   let scheduledDate = m.scheduledDate;
   if (scheduledDate instanceof Date) {
@@ -291,9 +292,9 @@ function isMaintenanceInProgress(m, todayStr, currentMinutes) {
   const daysSpanned = Math.floor(endMinutes / 1440);
   const endMinuteOfDay = endMinutes % 1440;
 
-  // Calculate completion date
-  const completionDate = new Date(scheduledDate + 'T00:00:00');
-  completionDate.setDate(completionDate.getDate() + daysSpanned);
+  // Calculate completion date (using UTC)
+  const completionDate = new Date(scheduledDate + 'T00:00:00Z');
+  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
   const completionDateStr = completionDate.toISOString().split('T')[0];
 
   // Check if maintenance has started
@@ -307,13 +308,20 @@ function isMaintenanceInProgress(m, todayStr, currentMinutes) {
   return hasStarted && !hasCompleted;
 }
 
-// Check if ANY heavy maintenance (C/D) is scheduled for this aircraft
+// Check if ANY heavy maintenance (C/D) is scheduled and not yet complete for this aircraft
 // If so, all lower checks are covered by cascading
 function hasScheduledMaintenance(aircraftId, checkType) {
-  // Find all maintenance for this aircraft
+  const now = getGameTime();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  // Find all maintenance for this aircraft that is either in progress or scheduled for the future
   const aircraftMaint = scheduledMaintenance.filter(m => {
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    return maintAircraftId === aircraftId;
+    if (maintAircraftId != aircraftId) return false;
+
+    // Check if this maintenance is still active (in progress or not yet started)
+    return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
   });
 
   if (aircraftMaint.length === 0) return false;
@@ -340,16 +348,62 @@ function hasScheduledMaintenance(aircraftId, checkType) {
   return false;
 }
 
+// Helper to check if maintenance is active (in progress) or scheduled for the future
+function isMaintenanceActiveOrFuture(m, todayStr, currentMinutes) {
+  // Skip "ongoing" display blocks - they're copies for multi-day display
+  // Only check the primary block (where scheduledDate matches displayDate or isOngoing is false)
+  if (m.isOngoing) return false;
+
+  // Get scheduled date
+  let scheduledDate = m.scheduledDate;
+  if (scheduledDate instanceof Date) {
+    scheduledDate = scheduledDate.toISOString().split('T')[0];
+  } else if (scheduledDate) {
+    scheduledDate = scheduledDate.split('T')[0];
+  } else {
+    return false;
+  }
+
+  // Parse start time
+  const startTimeStr = m.startTime || '00:00:00';
+  const [startH, startM] = startTimeStr.split(':').map(Number);
+  const startMinutes = startH * 60 + startM;
+
+  // Calculate end date/time
+  const duration = m.duration || CHECK_DURATIONS[m.checkType] || 60;
+  const endMinutes = startMinutes + duration;
+  const daysSpanned = Math.floor(endMinutes / 1440);
+  const endMinuteOfDay = endMinutes % 1440;
+
+  // Calculate completion date (using UTC)
+  const completionDate = new Date(scheduledDate + 'T00:00:00Z');
+  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
+  const completionDateStr = completionDate.toISOString().split('T')[0];
+
+  // Check if maintenance has completed
+  const hasCompleted = todayStr > completionDateStr ||
+    (todayStr === completionDateStr && currentMinutes >= endMinuteOfDay);
+
+  // Return true if NOT completed (either in progress or scheduled for future)
+  return !hasCompleted;
+}
+
 // Get the expected completion time for maintenance in progress
 function getMaintenanceCompletionTime(aircraftId, checkType) {
-  // Find the highest-level maintenance that's covering this check
+  const now = getGameTime();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  // Find the highest-level maintenance that's covering this check (only active ones)
   const checkHierarchy = ['D', 'C', 'A', 'weekly', 'daily'];
   let effectiveCheckType = checkType;
 
   for (const higherCheck of checkHierarchy) {
     const maint = scheduledMaintenance.find(m => {
       const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      return maintAircraftId === aircraftId && m.checkType === higherCheck;
+      if (maintAircraftId != aircraftId || m.checkType !== higherCheck) return false;
+      // Only consider active maintenance
+      return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
     });
     if (maint) {
       effectiveCheckType = higherCheck;
@@ -357,10 +411,11 @@ function getMaintenanceCompletionTime(aircraftId, checkType) {
     }
   }
 
-  // Find the maintenance record
+  // Find the maintenance record (only active ones)
   const maint = scheduledMaintenance.find(m => {
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    return maintAircraftId === aircraftId && m.checkType === effectiveCheckType;
+    if (maintAircraftId != aircraftId || m.checkType !== effectiveCheckType) return false;
+    return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
   });
 
   if (!maint) return null;

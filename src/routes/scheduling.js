@@ -1233,11 +1233,26 @@ router.get('/maintenance', async (req, res) => {
             }
           }
 
-          // For multi-day maintenance (C, D checks), check if current date falls within maintenance period
+          // For multi-day maintenance (C, D checks) or overnight maintenance (A checks),
+          // check if current date falls within maintenance period
           let matchesByDateRange = false;
-          if (patternDateStr && ['C', 'D'].includes(pattern.checkType)) {
+          if (patternDateStr && ['A', 'C', 'D'].includes(pattern.checkType)) {
             const patternStart = new Date(patternDateStr + 'T00:00:00Z');
-            const daysSpan = Math.ceil((pattern.duration || 60) / 1440); // Duration in days
+
+            // For A checks, calculate if it spans overnight
+            // For C/D checks, use days-based calculation
+            let daysSpan;
+            if (pattern.checkType === 'A') {
+              // A check: calculate based on start time + duration crossing midnight
+              const startTimeParts = (pattern.startTime || '00:00:00').split(':');
+              const startMinutes = parseInt(startTimeParts[0]) * 60 + parseInt(startTimeParts[1]);
+              const endMinutes = startMinutes + (pattern.duration || 540);
+              daysSpan = Math.ceil(endMinutes / 1440); // How many calendar days it spans
+            } else {
+              // C/D checks: days-based
+              daysSpan = Math.ceil((pattern.duration || 60) / 1440);
+            }
+
             const patternEnd = new Date(patternStart);
             patternEnd.setUTCDate(patternEnd.getUTCDate() + daysSpan - 1); // -1 because start day counts
 
@@ -1252,6 +1267,37 @@ router.get('/maintenance', async (req, res) => {
             // For multi-day maintenance on subsequent days, adjust the display
             const isMultiDayOngoing = matchesByDateRange && !matchesByDate;
 
+            // For A checks: only create ONE block (on the scheduled date), not separate ongoing blocks
+            // The single block will include spansOvernight info for frontend rendering
+            if (pattern.checkType === 'A' && isMultiDayOngoing) {
+              // Skip creating the "day 2" ongoing block for A checks
+              // The original block already has all the info needed
+              continue;
+            }
+
+            // Calculate display duration for the current day
+            let displayDuration = pattern.duration;
+            if (isMultiDayOngoing) {
+              // For C/D checks: full day on subsequent days
+              displayDuration = 1440;
+            }
+
+            // For A checks, check if it spans overnight
+            let spansOvernight = false;
+            let endTimeNextDay = null;
+            if (pattern.checkType === 'A') {
+              const startTimeParts = (pattern.startTime || '00:00:00').split(':');
+              const startMinutes = parseInt(startTimeParts[0]) * 60 + parseInt(startTimeParts[1]);
+              const endMinutes = startMinutes + (pattern.duration || 540);
+              if (endMinutes > 1440) {
+                spansOvernight = true;
+                const nextDayMinutes = endMinutes - 1440;
+                const nextDayHours = Math.floor(nextDayMinutes / 60);
+                const nextDayMins = nextDayMinutes % 60;
+                endTimeNextDay = `${String(nextDayHours).padStart(2, '0')}:${String(nextDayMins).padStart(2, '0')}`;
+              }
+            }
+
             maintenanceBlocks.push({
               id: `${pattern.id}-${dateStr}`, // Composite ID for frontend tracking
               patternId: pattern.id,
@@ -1261,9 +1307,11 @@ router.get('/maintenance', async (req, res) => {
               displayDate: dateStr, // The date this block is being displayed on
               startTime: isMultiDayOngoing ? '00:00:00' : pattern.startTime, // Full day for ongoing
               duration: pattern.duration, // Always use full duration for progress calculation
-              displayDuration: isMultiDayOngoing ? 1440 : pattern.duration, // Display duration (one day for ongoing)
+              displayDuration: displayDuration, // Display duration for this day
               status: 'scheduled',
-              isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block
+              isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block (only for C/D)
+              spansOvernight: spansOvernight, // For A checks that go past midnight
+              endTimeNextDay: endTimeNextDay, // End time on the next day (e.g., "07:00")
               aircraft: pattern.aircraft
             });
           }
@@ -1330,11 +1378,26 @@ router.get('/maintenance', async (req, res) => {
             : String(pattern.scheduledDate).split('T')[0];
         }
 
-        // For multi-day maintenance (C, D checks), check if current date falls within maintenance period
+        // For multi-day maintenance (C, D checks) or overnight maintenance (A checks),
+        // check if current date falls within maintenance period
         let matchesByDateRange = false;
-        if (patternDateStr && ['C', 'D'].includes(pattern.checkType)) {
+        if (patternDateStr && ['A', 'C', 'D'].includes(pattern.checkType)) {
           const patternStart = new Date(patternDateStr + 'T00:00:00Z');
-          const daysSpan = Math.ceil((pattern.duration || 60) / 1440); // Duration in days
+
+          // For A checks, calculate if it spans overnight
+          // For C/D checks, use days-based calculation
+          let daysSpan;
+          if (pattern.checkType === 'A') {
+            // A check: calculate based on start time + duration crossing midnight
+            const startTimeParts = (pattern.startTime || '00:00:00').split(':');
+            const startMinutes = parseInt(startTimeParts[0]) * 60 + parseInt(startTimeParts[1]);
+            const endMinutes = startMinutes + (pattern.duration || 540);
+            daysSpan = Math.ceil(endMinutes / 1440); // How many calendar days it spans
+          } else {
+            // C/D checks: days-based
+            daysSpan = Math.ceil((pattern.duration || 60) / 1440);
+          }
+
           const patternEnd = new Date(patternStart);
           patternEnd.setUTCDate(patternEnd.getUTCDate() + daysSpan - 1); // -1 because start day counts
 
@@ -1348,6 +1411,35 @@ router.get('/maintenance', async (req, res) => {
           // For multi-day maintenance on subsequent days, adjust the display
           const isMultiDayOngoing = matchesByDateRange && !matchesByDate;
 
+          // For A checks: only create ONE block (on the scheduled date), not separate ongoing blocks
+          if (pattern.checkType === 'A' && isMultiDayOngoing) {
+            // Skip creating the "day 2" ongoing block for A checks
+            continue;
+          }
+
+          // Calculate display duration for the current day
+          let displayDuration = pattern.duration;
+          if (isMultiDayOngoing) {
+            // For C/D checks: full day on subsequent days
+            displayDuration = 1440;
+          }
+
+          // For A checks, check if it spans overnight
+          let spansOvernight = false;
+          let endTimeNextDay = null;
+          if (pattern.checkType === 'A') {
+            const startTimeParts = (pattern.startTime || '00:00:00').split(':');
+            const startMinutes = parseInt(startTimeParts[0]) * 60 + parseInt(startTimeParts[1]);
+            const endMinutes = startMinutes + (pattern.duration || 540);
+            if (endMinutes > 1440) {
+              spansOvernight = true;
+              const nextDayMinutes = endMinutes - 1440;
+              const nextDayHours = Math.floor(nextDayMinutes / 60);
+              const nextDayMins = nextDayMinutes % 60;
+              endTimeNextDay = `${String(nextDayHours).padStart(2, '0')}:${String(nextDayMins).padStart(2, '0')}`;
+            }
+          }
+
           updatedBlocks.push({
             id: `${pattern.id}-${dateStr}`,
             patternId: pattern.id,
@@ -1357,9 +1449,11 @@ router.get('/maintenance', async (req, res) => {
             displayDate: dateStr, // The date this block is being displayed on
             startTime: isMultiDayOngoing ? '00:00:00' : pattern.startTime, // Full day for ongoing
             duration: pattern.duration, // Always use full duration for progress calculation
-            displayDuration: isMultiDayOngoing ? 1440 : pattern.duration, // Display duration (one day for ongoing)
+            displayDuration: displayDuration, // Display duration for this day
             status: 'scheduled',
-            isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block
+            isOngoing: isMultiDayOngoing, // Flag to indicate this is an ongoing multi-day block (only for C/D)
+            spansOvernight: spansOvernight, // For A checks that go past midnight
+            endTimeNextDay: endTimeNextDay, // End time on the next day (e.g., "07:00")
             aircraft: pattern.aircraft
           });
         }
