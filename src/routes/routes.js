@@ -60,7 +60,7 @@ router.get('/', async (req, res) => {
           include: [{
             model: Aircraft,
             as: 'aircraft',
-            attributes: ['manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
+            attributes: ['id', 'manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
           }]
         }
       ],
@@ -85,6 +85,7 @@ router.get('/', async (req, res) => {
         assignedAircraft: route.assignedAircraft ? {
           id: route.assignedAircraft.id,
           registration: route.assignedAircraft.registration,
+          aircraftId: route.assignedAircraft.aircraftId,
           aircraft: route.assignedAircraft.aircraft
         } : null,
         distance: parseFloat(route.distance),

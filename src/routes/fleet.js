@@ -158,6 +158,43 @@ async function isAtHomeBase(aircraftId, dateStr, startMinutes, duration) {
 }
 
 /**
+ * Validate that a proposed maintenance slot doesn't overlap with any flights
+ * Returns { valid: true } or { valid: false, reason: string, conflict: object }
+ */
+async function validateMaintenanceSlot(aircraftId, dateStr, startTime, duration, checkType = 'daily') {
+  const [startH, startM] = startTime.split(':').map(Number);
+  const maintStart = startH * 60 + startM;
+  const maintEnd = maintStart + duration;
+
+  const flightSlots = await getFlightSlotsForDate(aircraftId, dateStr);
+
+  for (const slot of flightSlots) {
+    // Check for overlap: maintenance overlaps if it starts before slot ends AND ends after slot starts
+    if (maintStart < slot.end && maintEnd > slot.start) {
+      return {
+        valid: false,
+        reason: `Maintenance (${startTime} for ${duration}min) overlaps with flight operation (${Math.floor(slot.start/60)}:${String(slot.start%60).padStart(2,'0')} - ${Math.floor(slot.end/60)}:${String(slot.end%60).padStart(2,'0')})`,
+        conflict: slot
+      };
+    }
+  }
+
+  // For non-daily checks, also verify aircraft is at home base
+  if (checkType !== 'daily') {
+    const atHome = await isAtHomeBase(aircraftId, dateStr, maintStart, duration);
+    if (!atHome) {
+      return {
+        valid: false,
+        reason: `Aircraft not at home base during maintenance window`,
+        conflict: null
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Get flights for an aircraft on a specific date
  * Returns time slots that are occupied by flights
  */
@@ -300,8 +337,9 @@ async function getFlightSlotsForDay(aircraftId, dayOfWeek) {
  * @param {string} dateStr - Date in YYYY-MM-DD format
  * @param {number} duration - Duration in minutes
  * @param {string} checkType - Check type: 'daily', 'weekly', 'A', 'C', 'D' (optional, defaults to 'daily')
+ * @param {string} worldMembershipId - World membership ID for fleet-wide staggering (optional)
  */
-async function findAvailableSlotOnDate(aircraftId, dateStr, duration, checkType = 'daily') {
+async function findAvailableSlotOnDate(aircraftId, dateStr, duration, checkType = 'daily', worldMembershipId = null) {
   const flightSlots = await getFlightSlotsForDate(aircraftId, dateStr);
 
   // Get existing maintenance on this date
@@ -320,14 +358,65 @@ async function findAvailableSlotOnDate(aircraftId, dateStr, duration, checkType 
   // Sort by start time
   busyPeriods.sort((a, b) => a.start - b.start);
 
+  // Get fleet-wide maintenance counts for staggering (avoid all aircraft at same time)
+  let fleetMaintCountBySlot = {};
+  if (worldMembershipId) {
+    try {
+      // Get all aircraft in this fleet
+      const fleetAircraft = await UserAircraft.findAll({
+        where: { worldMembershipId },
+        attributes: ['id']
+      });
+      const fleetAircraftIds = fleetAircraft.map(a => a.id);
+
+      // Get maintenance scheduled on this date for the same check type across fleet
+      const fleetMaint = await RecurringMaintenance.findAll({
+        where: {
+          aircraftId: { [Op.in]: fleetAircraftIds },
+          scheduledDate: dateStr,
+          checkType,
+          status: 'active'
+        }
+      });
+
+      // Count how many checks at each time slot
+      for (const maint of fleetMaint) {
+        const slot = maint.startTime.substring(0, 5); // Normalize to HH:MM
+        fleetMaintCountBySlot[slot] = (fleetMaintCountBySlot[slot] || 0) + 1;
+      }
+    } catch (err) {
+      console.error('Error getting fleet maintenance for staggering:', err.message);
+    }
+  }
+
   // HEAVY PREFERENCE for night hours (22:00-05:00)
   // Order: 22:00, 23:00, 00:00, 01:00, 02:00, 03:00, 04:00, 05:00
   // Then fall back to early morning/late evening if needed
-  const preferredStarts = [
+  const basePreferredStarts = [
     1320, 1380, 0, 60, 120, 180, 240, 300,  // Night hours: 22:00-05:00 (primary)
     360, 1260, 1200, 1140,                   // 06:00, 21:00, 20:00, 19:00 (secondary)
     420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080  // Daytime (last resort)
   ];
+
+  // For staggering: sort preferred starts by fleet usage (least used first) within priority tiers
+  // Priority tiers: night (0-7), secondary (8-11), daytime (12+)
+  let preferredStarts;
+  if (Object.keys(fleetMaintCountBySlot).length > 0) {
+    const getFleetCount = (mins) => {
+      const hours = Math.floor(mins / 60).toString().padStart(2, '0');
+      const m = (mins % 60).toString().padStart(2, '0');
+      return fleetMaintCountBySlot[`${hours}:${m}`] || 0;
+    };
+
+    // Split into tiers and sort each tier by fleet usage
+    const nightTier = basePreferredStarts.slice(0, 8).sort((a, b) => getFleetCount(a) - getFleetCount(b));
+    const secondaryTier = basePreferredStarts.slice(8, 12).sort((a, b) => getFleetCount(a) - getFleetCount(b));
+    const daytimeTier = basePreferredStarts.slice(12).sort((a, b) => getFleetCount(a) - getFleetCount(b));
+
+    preferredStarts = [...nightTier, ...secondaryTier, ...daytimeTier];
+  } else {
+    preferredStarts = basePreferredStarts;
+  }
 
   // Non-daily checks require home base - check if aircraft will be there
   const requiresHomeBase = checkType !== 'daily';
@@ -471,6 +560,7 @@ function calculateCheckExpiry(lastCheckDate, intervalDays) {
  */
 async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = null) {
   const createdRecords = [];
+  const recordsToCreate = []; // Batch insert at the end
 
   // Get the aircraft with its check dates
   const aircraft = await UserAircraft.findByPk(aircraftId, {
@@ -488,7 +578,6 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     const world = await World.findByPk(worldId);
     gameNow = world ? new Date(world.currentTime) : new Date();
   } else {
-    // Try to get world from membership
     const membership = await WorldMembership.findByPk(aircraft.worldMembershipId);
     if (membership) {
       const world = await World.findByPk(membership.worldId);
@@ -496,6 +585,219 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     } else {
       gameNow = new Date();
     }
+  }
+
+  // === PRE-FETCH ALL DATA UPFRONT FOR SPEED ===
+  const planningHorizon = 365;
+  const endDate = new Date(gameNow);
+  endDate.setDate(endDate.getDate() + planningHorizon);
+  const startDateStr = gameNow.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // 1. Get ALL flights for this aircraft in planning window (single query)
+  const allFlights = await ScheduledFlight.findAll({
+    where: {
+      aircraftId,
+      [Op.or]: [
+        { scheduledDate: { [Op.between]: [startDateStr, endDateStr] } },
+        { arrivalDate: { [Op.between]: [startDateStr, endDateStr] } }
+      ]
+    },
+    include: [{
+      model: Route,
+      as: 'route'
+    }, {
+      model: UserAircraft,
+      as: 'aircraft',
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    }]
+  });
+
+  // 2. Get ALL existing maintenance for this aircraft (single query)
+  const allExistingMaint = await RecurringMaintenance.findAll({
+    where: {
+      aircraftId,
+      status: 'active',
+      scheduledDate: { [Op.ne]: null }
+    }
+  });
+
+  // 3. Get fleet aircraft IDs and their maintenance (for staggering) - single queries
+  const fleetAircraft = await UserAircraft.findAll({
+    where: { worldMembershipId: aircraft.worldMembershipId },
+    attributes: ['id']
+  });
+  const fleetAircraftIds = fleetAircraft.map(a => a.id);
+
+  const fleetMaint = await RecurringMaintenance.findAll({
+    where: {
+      aircraftId: { [Op.in]: fleetAircraftIds },
+      status: 'active',
+      scheduledDate: { [Op.between]: [startDateStr, endDateStr] }
+    }
+  });
+
+  // === BUILD IN-MEMORY LOOKUP STRUCTURES ===
+
+  // Index flights by date for quick lookup
+  const flightsByDate = {};
+  for (const flight of allFlights) {
+    const depDate = flight.scheduledDate;
+    const arrDate = flight.arrivalDate;
+    if (!flightsByDate[depDate]) flightsByDate[depDate] = [];
+    flightsByDate[depDate].push(flight);
+    if (arrDate && arrDate !== depDate) {
+      if (!flightsByDate[arrDate]) flightsByDate[arrDate] = [];
+      flightsByDate[arrDate].push(flight);
+    }
+  }
+
+  // Index existing maintenance by check type
+  const existingByCheckType = {};
+  for (const maint of allExistingMaint) {
+    if (!existingByCheckType[maint.checkType]) existingByCheckType[maint.checkType] = [];
+    existingByCheckType[maint.checkType].push(maint);
+  }
+
+  // Index fleet maintenance by date and check type (for staggering)
+  const fleetMaintByDateType = {};
+  for (const maint of fleetMaint) {
+    const key = `${maint.scheduledDate}_${maint.checkType}`;
+    if (!fleetMaintByDateType[key]) fleetMaintByDateType[key] = {};
+    const slot = maint.startTime.substring(0, 5);
+    fleetMaintByDateType[key][slot] = (fleetMaintByDateType[key][slot] || 0) + 1;
+  }
+
+  // === HELPER FUNCTIONS USING IN-MEMORY DATA ===
+
+  function getFlightSlotsForDateCached(dateStr) {
+    const slots = [];
+    const flights = flightsByDate[dateStr] || [];
+
+    for (const flight of flights) {
+      const acType = flight.aircraft?.aircraft?.type || 'Narrowbody';
+      const pax = flight.aircraft?.aircraft?.passengerCapacity || 150;
+      const dist = flight.route?.distance || 0;
+
+      let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : pax < 200 ? 10 : 15) : 0;
+      let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 20 : pax < 300 ? 25 : 35) : 0;
+      let fuelling = dist < 500 ? 10 : dist < 1500 ? 15 : dist < 3000 ? 20 : 25;
+      const preFlight = Math.max(catering + boarding, fuelling);
+
+      let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 8 : pax < 200 ? 12 : pax < 300 ? 15 : 20) : 0;
+      let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 15 : pax < 300 ? 20 : 25;
+      const postFlight = deboard + clean;
+
+      const [depH, depM] = flight.departureTime.split(':').map(Number);
+      const [arrH, arrM] = flight.arrivalTime.split(':').map(Number);
+
+      if (flight.scheduledDate === dateStr) {
+        let startMinutes = depH * 60 + depM - preFlight;
+        let endMinutes = arrH * 60 + arrM + postFlight;
+        if (flight.arrivalDate !== flight.scheduledDate) endMinutes = 1440;
+        slots.push({ start: Math.max(0, startMinutes), end: Math.min(1440, endMinutes) });
+      }
+
+      if (flight.arrivalDate === dateStr && flight.scheduledDate !== dateStr) {
+        let endMinutes = arrH * 60 + arrM + postFlight;
+        slots.push({ start: 0, end: Math.min(1440, endMinutes) });
+      }
+    }
+    return slots;
+  }
+
+  function findAvailableSlotCached(dateStr, duration, checkType) {
+    const flightSlots = getFlightSlotsForDateCached(dateStr);
+
+    // Get existing maintenance on this date
+    const existingMaintOnDate = allExistingMaint.filter(m =>
+      String(m.scheduledDate).split('T')[0] === dateStr
+    );
+
+    const busyPeriods = [...flightSlots];
+    for (const maint of existingMaintOnDate) {
+      const [h, m] = maint.startTime.split(':').map(Number);
+      const start = h * 60 + m;
+      busyPeriods.push({ start, end: start + maint.duration });
+    }
+    busyPeriods.sort((a, b) => a.start - b.start);
+
+    // Get fleet staggering data for this date/type
+    const key = `${dateStr}_${checkType}`;
+    const fleetMaintCountBySlot = fleetMaintByDateType[key] || {};
+
+    // Different preferred times based on check type
+    let basePreferredStarts;
+
+    if (checkType === 'daily') {
+      // Daily checks: prefer early morning 03:00-06:00
+      basePreferredStarts = [
+        180, 210, 240, 270, 300, 330, 360,  // 03:00-06:00 (ideal for daily)
+        150, 120, 90, 60, 30, 0,  // 02:30-00:00 (secondary)
+        1380, 1410, 1350, 1320, 1290, 1260,  // 23:00-21:00 (secondary)
+        420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200  // 07:00-20:00 (daytime last resort)
+      ];
+    } else {
+      // Other checks (weekly, A, C, D): prefer overnight 21:00-04:30
+      basePreferredStarts = [
+        1260, 1290, 1320, 1350, 1380, 1410,  // 21:00-23:30 (ideal overnight)
+        0, 30, 60, 90, 120, 150, 180, 210, 240, 270,  // 00:00-04:30
+        300, 330, 360,  // 05:00-06:00 (secondary)
+        1200, 1230,     // 20:00-20:30 (secondary)
+        420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140  // 07:00-19:00 (daytime last resort)
+      ];
+    }
+
+    let preferredStarts;
+    if (Object.keys(fleetMaintCountBySlot).length > 0) {
+      // Sort by fleet count to stagger across fleet, but keep priority order for ties
+      const getFleetCount = (mins) => {
+        const hours = Math.floor(mins / 60).toString().padStart(2, '0');
+        const m = (mins % 60).toString().padStart(2, '0');
+        return fleetMaintCountBySlot[`${hours}:${m}`] || 0;
+      };
+      // Sort by fleet count, use original index as tiebreaker to maintain priority
+      preferredStarts = basePreferredStarts
+        .map((mins, idx) => ({ mins, idx, count: getFleetCount(mins) }))
+        .sort((a, b) => a.count - b.count || a.idx - b.idx)
+        .map(x => x.mins);
+    } else {
+      preferredStarts = basePreferredStarts;
+    }
+
+    // For multi-day checks (C/D), only check for conflicts on the first day
+    const isMultiDay = duration > 1440;
+
+    for (const preferredStart of preferredStarts) {
+      // For multi-day checks, only check start time conflicts (first day)
+      // For single-day checks, check entire duration fits
+      const slotEnd = isMultiDay ? 1440 : preferredStart + duration;
+
+      if (slotEnd <= 1440) {
+        let conflict = false;
+        for (const busy of busyPeriods) {
+          if (isMultiDay) {
+            // Multi-day: just check if start time conflicts with any busy period
+            if (preferredStart >= busy.start && preferredStart < busy.end) {
+              conflict = true;
+              break;
+            }
+          } else {
+            // Single-day: check full duration overlap
+            if (preferredStart < busy.end && slotEnd > busy.start) {
+              conflict = true;
+              break;
+            }
+          }
+        }
+        if (!conflict) {
+          const hours = Math.floor(preferredStart / 60).toString().padStart(2, '0');
+          const mins = (preferredStart % 60).toString().padStart(2, '0');
+          return `${hours}:${mins}`;
+        }
+      }
+    }
+    return null;
   }
 
   // Check field mappings
@@ -508,16 +810,92 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     D: { lastCheck: 'lastDCheckDate', interval: aircraft.dCheckIntervalDays || CHECK_INTERVALS.D }
   };
 
-  for (const checkType of checkTypes) {
+  // === DETERMINE HEAVIEST EXPIRED CHECK ===
+  // Check hierarchy: D > C > A > weekly > daily (heavier checks include lighter ones)
+  // If a heavier check is expired, skip scheduling lighter expired checks
+  const checkHierarchy = ['D', 'C', 'A', 'weekly', 'daily'];
+  let heaviestExpiredCheck = null;
+
+  for (const ct of checkHierarchy) {
+    if (!checkTypes.includes(ct)) continue;
+    const fi = checkFieldMap[ct];
+    const lastCheck = aircraft[fi.lastCheck];
+
+    let expiry;
+    if (ct === 'A') {
+      const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
+      const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
+      const intervalHours = fi.intervalHours || 800;
+      const hoursUntilDue = intervalHours - (currentFlightHours - lastACheckHours);
+      if (hoursUntilDue <= 0) {
+        heaviestExpiredCheck = ct;
+        break;
+      }
+    } else {
+      expiry = calculateCheckExpiry(lastCheck, fi.interval);
+      if (expiry && expiry <= gameNow) {
+        heaviestExpiredCheck = ct;
+        break;
+      }
+    }
+  }
+
+  // Calculate "now + 30 min" time for expired checks
+  const nowPlus30 = new Date(gameNow);
+  nowPlus30.setMinutes(nowPlus30.getMinutes() + 30);
+  const nowPlus30Hours = nowPlus30.getUTCHours().toString().padStart(2, '0');
+  const nowPlus30Mins = nowPlus30.getMinutes().toString().padStart(2, '0');
+  const immediateStartTime = `${nowPlus30Hours}:${nowPlus30Mins}`;
+  const todayDateStr = gameNow.toISOString().split('T')[0];
+
+  // Sort checkTypes to process heavier checks first (D > C > A > weekly > daily)
+  // This ensures that when we process daily, heavier checks are already in recordsToCreate
+  // so the coverage detection works correctly
+  const sortedCheckTypes = [...checkTypes].sort((a, b) => {
+    return checkHierarchy.indexOf(a) - checkHierarchy.indexOf(b);
+  });
+
+  for (const checkType of sortedCheckTypes) {
     const fieldInfo = checkFieldMap[checkType];
     if (!fieldInfo) continue;
 
+    // Check if this lighter check's IMMEDIATE scheduling should be skipped
+    // (because a heavier check is expired and will cover this one)
+    // We still schedule FUTURE checks, just not the immediate one
+    let skipImmediateScheduling = false;
+    if (heaviestExpiredCheck && checkType !== heaviestExpiredCheck) {
+      const heavierIndex = checkHierarchy.indexOf(heaviestExpiredCheck);
+      const currentIndex = checkHierarchy.indexOf(checkType);
+      if (currentIndex > heavierIndex) {
+        skipImmediateScheduling = true; // Skip immediate, but continue to schedule future
+      }
+    }
+
     // Get last check date and calculate expiry
     const lastCheckDate = aircraft[fieldInfo.lastCheck];
-    const expiryDate = calculateCheckExpiry(lastCheckDate, fieldInfo.interval);
+
+    // A checks are hours-based, others are days-based
+    let expiryDate;
+    if (checkType === 'A') {
+      // For A checks, estimate expiry based on flight hours and average daily usage
+      // If no last A check date, use acquisition date as baseline
+      const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
+      const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
+      const intervalHours = fieldInfo.intervalHours || 800;
+      const hoursUntilDue = intervalHours - (currentFlightHours - lastACheckHours);
+
+      // Estimate ~6-8 flight hours per day for planning purposes
+      const estimatedDaysUntilDue = Math.max(1, Math.ceil(hoursUntilDue / 7));
+      expiryDate = new Date(gameNow);
+      expiryDate.setDate(expiryDate.getDate() + estimatedDaysUntilDue);
+
+      console.log(`[A CHECK] ${aircraft.registration}: ${hoursUntilDue.toFixed(0)} hrs until due, estimated ${estimatedDaysUntilDue} days`);
+    } else {
+      expiryDate = calculateCheckExpiry(lastCheckDate, fieldInfo.interval);
+    }
 
     if (!expiryDate) {
-      console.log(`No last check date for ${checkType} on aircraft ${aircraft.registration}`);
+      console.log(`No last check date for ${checkType} on aircraft ${aircraft.registration}, skipping auto-schedule`);
       continue;
     }
 
@@ -529,68 +907,99 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     const duration = CHECK_DURATIONS[checkType];
     const durationDays = Math.ceil(duration / (24 * 60)); // Convert minutes to days (round up)
 
-    // For A, C, D checks - plan for next 12 months (A is hours-based but still plan ahead)
-    if (checkType === 'A' || checkType === 'C' || checkType === 'D') {
-      const planningHorizon = 365; // Plan 12 months ahead
+    // For weekly, A, C, D checks - plan ahead
+    if (checkType === 'weekly' || checkType === 'A' || checkType === 'C' || checkType === 'D') {
       const endPlanningDate = new Date(gameNow);
       endPlanningDate.setDate(endPlanningDate.getDate() + planningHorizon);
 
-      // Get existing scheduled checks for this type
-      const existingScheduled = await RecurringMaintenance.findAll({
-        where: {
-          aircraftId,
-          checkType,
-          status: 'active',
-          scheduledDate: { [Op.ne]: null }
-        },
-        order: [['scheduledDate', 'ASC']]
-      });
+      // Use pre-fetched existing scheduled checks
+      const existingScheduled = existingByCheckType[checkType] || [];
 
-      // Track when checks are scheduled to calculate next expiry
+      // Check if this check is EXPIRED (needs immediate attention)
+      const isExpired = expiryDate <= gameNow;
+
       let currentExpiryDate = new Date(expiryDate);
       let checkInterval = fieldInfo.interval;
+      if (checkType === 'A') {
+        checkInterval = Math.ceil((fieldInfo.intervalHours || 800) / 7);
+      }
 
-      // Iterate through planning horizon, scheduling checks as needed
       let iterationCount = 0;
-      const maxIterations = 20; // Safety limit
+      const maxIterations = 20;
 
       while (currentExpiryDate <= endPlanningDate && iterationCount < maxIterations) {
         iterationCount++;
 
-        // Calculate when to schedule (leave buffer for check duration + 1-2 days)
         const bufferDays = durationDays + 2;
         let targetStartDate = new Date(currentExpiryDate);
         targetStartDate.setDate(targetStartDate.getDate() - bufferDays);
 
-        // Don't schedule in the past
+        // If expired or target is in the past, schedule for TODAY (not tomorrow)
         if (targetStartDate < gameNow) {
           targetStartDate = new Date(gameNow);
-          targetStartDate.setDate(targetStartDate.getDate() + 1);
+          // Only add 1 day if NOT expired - expired checks go TODAY
+          if (!isExpired || iterationCount > 1) {
+            targetStartDate.setDate(targetStartDate.getDate() + 1);
+          }
         }
 
-        const targetDateStr = targetStartDate.toISOString().split('T')[0];
+        let targetDateStr = targetStartDate.toISOString().split('T')[0];
 
-        // Check if already scheduled for this period
+        // Check if already scheduled for this period (in-memory check)
         const alreadyScheduled = existingScheduled.some(s => {
           const schedDate = new Date(s.scheduledDate);
-          // Consider it scheduled if there's one within 7 days of target
           return Math.abs(schedDate - targetStartDate) < 7 * 24 * 60 * 60 * 1000;
         });
 
         if (!alreadyScheduled) {
-          // Find available slot for A/weekly checks, or use midnight for C/D checks
-          // All non-daily checks require home base - checkType is passed to enforce this
           let startTime = '02:00';
-          if (checkType === 'A' || checkType === 'weekly') {
-            const availableTime = await findAvailableSlotOnDate(aircraftId, targetDateStr, duration, checkType);
-            if (availableTime) {
-              startTime = availableTime;
+
+          // If EXPIRED (first iteration), schedule NOW (current time + 30 min)
+          // BUT skip if a heavier check is already handling immediate scheduling
+          if (isExpired && iterationCount === 1) {
+            if (skipImmediateScheduling) {
+              // Skip immediate scheduling - heavier check covers this
+              // But continue loop to schedule future checks
+              const checkCompletionDate = new Date(gameNow);
+              checkCompletionDate.setDate(checkCompletionDate.getDate() + durationDays);
+              currentExpiryDate = new Date(checkCompletionDate);
+              currentExpiryDate.setDate(currentExpiryDate.getDate() + checkInterval);
+              continue;
             }
+            targetDateStr = todayDateStr;
+            startTime = immediateStartTime;
           } else {
-            startTime = '00:00'; // Heavy maintenance (C/D) starts at midnight (home base assumed)
+            // Use cached slot finder for ALL check types - prefer overnight hours
+            const datesToTry = [targetDateStr];
+            // For A/weekly, try nearby dates; for C/D, just use target date
+            if (checkType === 'A' || checkType === 'weekly') {
+              for (let offset = -2; offset <= 3; offset++) {
+                if (offset === 0) continue;
+                const altDate = new Date(targetStartDate);
+                altDate.setDate(altDate.getDate() + offset);
+                if (altDate >= gameNow) {
+                  datesToTry.push(altDate.toISOString().split('T')[0]);
+                }
+              }
+            }
+
+            for (const tryDate of datesToTry) {
+              const availableTime = findAvailableSlotCached(tryDate, duration, checkType);
+              if (availableTime) {
+                startTime = availableTime;
+                targetDateStr = tryDate;
+                break;
+              }
+            }
+
+            // Default to 22:00 if no slot found (overnight is realistic)
+            if (startTime === '02:00') {
+              startTime = '22:00';
+            }
           }
 
-          const record = await RecurringMaintenance.create({
+          // Collect for batch insert
+          recordsToCreate.push({
             aircraftId,
             checkType,
             scheduledDate: targetDateStr,
@@ -598,32 +1007,22 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
             duration,
             status: 'active'
           });
-          createdRecords.push(record);
-          console.log(`Scheduled ${checkType} check for ${aircraft.registration} on ${targetDateStr} at ${startTime}`);
         }
 
-        // Calculate next expiry after this check completes
-        // Check completes on targetStartDate + durationDays, then valid for checkInterval days
+        // Calculate next expiry
         const checkCompletionDate = new Date(targetStartDate);
         checkCompletionDate.setDate(checkCompletionDate.getDate() + durationDays);
         currentExpiryDate = new Date(checkCompletionDate);
+
+        if (!checkInterval || isNaN(checkInterval)) break;
         currentExpiryDate.setDate(currentExpiryDate.getDate() + checkInterval);
       }
-      continue; // Skip to next check type
+      continue;
     } else if (checkType === 'daily') {
-      // Daily checks are valid for 2 days - schedule every OTHER day for efficiency
-      // This means we need 4 checks per week, not 7
       const daysToSchedule = 7;
 
-      // Get all existing daily check schedules for this aircraft
-      const existingDailyChecks = await RecurringMaintenance.findAll({
-        where: {
-          aircraftId,
-          checkType: 'daily',
-          status: 'active',
-          scheduledDate: { [Op.ne]: null }
-        }
-      });
+      // Use pre-fetched existing daily checks
+      const existingDailyChecks = existingByCheckType['daily'] || [];
       const existingDates = new Set(existingDailyChecks.map(m => {
         if (m.scheduledDate instanceof Date) {
           return m.scheduledDate.toISOString().split('T')[0];
@@ -631,73 +1030,112 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         return String(m.scheduledDate).split('T')[0];
       }));
 
-      console.log(`[DAILY AUTO-SCHEDULE] ${aircraft.registration}: gameNow=${gameNow.toISOString()}, existing schedules: ${existingDates.size}`);
+      // Get heavier checks (weekly, A, C, D) - these cover daily requirements
+      const heavierChecks = [
+        ...(existingByCheckType['weekly'] || []),
+        ...(existingByCheckType['A'] || []),
+        ...(existingByCheckType['C'] || []),
+        ...(existingByCheckType['D'] || []),
+        ...recordsToCreate.filter(r => ['weekly', 'A', 'C', 'D'].includes(r.checkType))
+      ];
+      const heavierCheckDates = new Set(heavierChecks.map(m => {
+        const d = m.scheduledDate;
+        if (d instanceof Date) return d.toISOString().split('T')[0];
+        return String(d).split('T')[0];
+      }));
 
-      // Check if aircraft needs a daily check today or tomorrow based on last check
+      // Check if daily check is EXPIRED (needs immediate attention)
       const lastDailyCheck = aircraft.lastDailyCheckDate;
-      let nextRequiredDate = gameNow;
+      let isDailyExpired = true; // Default to expired if no last check
       if (lastDailyCheck) {
         const lastCheckDate = new Date(lastDailyCheck);
-        // Daily checks valid for 2 days, so next required is lastCheck + 2 days
-        nextRequiredDate = new Date(lastCheckDate);
-        nextRequiredDate.setDate(nextRequiredDate.getDate() + 2);
-        if (nextRequiredDate < gameNow) {
-          nextRequiredDate = gameNow; // If overdue, need one today
-        }
+        const expiryDate = new Date(lastCheckDate);
+        expiryDate.setDate(expiryDate.getDate() + 2); // Daily valid for 2 days
+        isDailyExpired = expiryDate <= gameNow;
       }
 
-      // Schedule checks every 2 days starting from next required date
       let lastScheduledDate = null;
       for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset++) {
-        try {
-          const tryDate = new Date(gameNow);
-          tryDate.setDate(tryDate.getDate() + dayOffset);
-          const dateStr = tryDate.toISOString().split('T')[0];
+        const tryDate = new Date(gameNow);
+        tryDate.setDate(tryDate.getDate() + dayOffset);
+        const dateStr = tryDate.toISOString().split('T')[0];
 
-          // Skip if already scheduled for this date
-          if (existingDates.has(dateStr)) {
-            lastScheduledDate = dateStr;
-            continue;
-          }
+        // Skip if there's a heavier check on this day or yesterday (covers daily)
+        const yesterday = new Date(tryDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-          // Check if we need a check on this day
-          // We need one if: no check scheduled in the previous day (since valid for 2 days)
-          const yesterday = new Date(tryDate);
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-          const hasCoverageFromYesterday = existingDates.has(yesterdayStr) || lastScheduledDate === yesterdayStr;
-
-          if (hasCoverageFromYesterday) {
-            console.log(`[DAILY] ${aircraft.registration}: ${dateStr} covered by ${yesterdayStr}, skipping`);
-            continue;
-          }
-
-          // Find available slot - prefer early morning to maximize flying time
-          const availableTime = await findAvailableSlotOnDate(aircraftId, dateStr, duration);
-          const startTime = availableTime || '02:00';
-
-          const record = await RecurringMaintenance.create({
-            aircraftId,
-            checkType,
-            scheduledDate: dateStr,
-            startTime,
-            duration,
-            status: 'active'
-          });
-          createdRecords.push(record);
-          existingDates.add(dateStr);
-          lastScheduledDate = dateStr;
-          console.log(`[DAILY] Scheduled ${aircraft.registration} on ${dateStr} at ${startTime}`);
-        } catch (dayError) {
-          console.error(`[DAILY] Error scheduling ${aircraft.registration} for day ${dayOffset}:`, dayError.message);
+        if (heavierCheckDates.has(dateStr) || heavierCheckDates.has(yesterdayStr)) {
+          // Heavier check covers daily - skip this day
+          lastScheduledDate = dateStr; // Treat as covered
+          continue;
         }
+
+        if (existingDates.has(dateStr)) {
+          lastScheduledDate = dateStr;
+          continue;
+        }
+
+        const hasCoverageFromYesterday = existingDates.has(yesterdayStr) || lastScheduledDate === yesterdayStr;
+
+        // For expired checks on day 0 (TODAY), skip coverage check - we NEED a check
+        // BUT skip if a heavier check is handling immediate scheduling
+        if (hasCoverageFromYesterday && !(isDailyExpired && dayOffset === 0 && !skipImmediateScheduling)) continue;
+
+        // For expired checks on day 0, schedule NOW (current time + 30 min)
+        // Skip if heavier check is handling it
+        let availableTime;
+        if (isDailyExpired && dayOffset === 0) {
+          if (skipImmediateScheduling) {
+            // Skip immediate - heavier check covers this
+            // Mark as handled so future checks use normal slot finding
+            isDailyExpired = false;
+            continue;
+          }
+          availableTime = immediateStartTime; // Schedule immediately
+        } else {
+          // Use cached slot finder for future checks
+          availableTime = findAvailableSlotCached(dateStr, duration, 'daily');
+        }
+
+        if (!availableTime) continue;
+
+        recordsToCreate.push({
+          aircraftId,
+          checkType,
+          scheduledDate: dateStr,
+          startTime: availableTime,
+          duration,
+          status: 'active'
+        });
+        existingDates.add(dateStr);
+        lastScheduledDate = dateStr;
+
+        // After scheduling first check, mark as no longer "expired" for subsequent iterations
+        if (dayOffset === 0) isDailyExpired = false;
       }
-      console.log(`[DAILY] ${aircraft.registration}: completed, created ${createdRecords.length} records`);
     }
   }
 
-  console.log(`[AUTO-SCHEDULE] Completed for aircraft, total records created: ${createdRecords.length}`);
+  // === BATCH INSERT ALL RECORDS AT ONCE ===
+  if (recordsToCreate.length > 0) {
+    try {
+      const created = await RecurringMaintenance.bulkCreate(recordsToCreate);
+      createdRecords.push(...created);
+    } catch (bulkError) {
+      console.error(`[AUTO-SCHEDULE] Batch insert failed:`, bulkError.message);
+      // Fallback to individual inserts
+      for (const record of recordsToCreate) {
+        try {
+          const created = await RecurringMaintenance.create(record);
+          createdRecords.push(created);
+        } catch (err) {
+          console.error(`[AUTO-SCHEDULE] Individual insert failed:`, err.message);
+        }
+      }
+    }
+  }
+
   return createdRecords;
 }
 
@@ -967,20 +1405,30 @@ router.get('/', async (req, res) => {
       order: [['acquiredAt', 'DESC']]
     });
 
-    // Fetch recurring maintenance for each aircraft separately to avoid association issues
-    const fleetWithMaintenance = await Promise.all(fleet.map(async (aircraft) => {
-      const aircraftJson = aircraft.toJSON();
-      try {
-        const maintenance = await RecurringMaintenance.findAll({
-          where: { aircraftId: aircraft.id }
-        });
-        aircraftJson.recurringMaintenance = maintenance;
-      } catch (err) {
-        console.error('Error fetching recurring maintenance for aircraft:', aircraft.id, err);
-        aircraftJson.recurringMaintenance = [];
+    // Fetch ALL maintenance for ALL aircraft in a single query (avoid N+1)
+    const aircraftIds = fleet.map(a => a.id);
+    let allMaintenance = [];
+    if (aircraftIds.length > 0) {
+      allMaintenance = await RecurringMaintenance.findAll({
+        where: { aircraftId: { [Op.in]: aircraftIds } }
+      });
+    }
+
+    // Group maintenance by aircraftId for O(1) lookup
+    const maintenanceByAircraft = {};
+    for (const m of allMaintenance) {
+      if (!maintenanceByAircraft[m.aircraftId]) {
+        maintenanceByAircraft[m.aircraftId] = [];
       }
+      maintenanceByAircraft[m.aircraftId].push(m);
+    }
+
+    // Attach maintenance to each aircraft
+    const fleetWithMaintenance = fleet.map(aircraft => {
+      const aircraftJson = aircraft.toJSON();
+      aircraftJson.recurringMaintenance = maintenanceByAircraft[aircraft.id] || [];
       return aircraftJson;
-    }));
+    });
 
     res.json(fleetWithMaintenance);
   } catch (error) {
@@ -1173,25 +1621,39 @@ router.post('/purchase', async (req, res) => {
       lastACheckDate: new Date(now.getTime() - ((1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000)),
       lastACheckHours: 0,
       aCheckIntervalHours: 800 + Math.floor(Math.random() * 200), // 800-1000 hrs
-      // Auto-schedule preferences
-      autoScheduleDaily: autoScheduleDaily || false,
-      autoScheduleWeekly: autoScheduleWeekly || false,
-      autoScheduleA: autoScheduleA || false,
-      autoScheduleC: autoScheduleC || false,
-      autoScheduleD: autoScheduleD || false
+      // Auto-schedule preferences (default to true for all checks)
+      autoScheduleDaily: autoScheduleDaily !== false,
+      autoScheduleWeekly: autoScheduleWeekly !== false,
+      autoScheduleA: autoScheduleA !== false,
+      autoScheduleC: autoScheduleC !== false,
+      autoScheduleD: autoScheduleD !== false
     });
 
-    // Create auto-scheduled maintenance for enabled check types
+    // Create auto-scheduled maintenance for enabled check types (default all on)
     const autoCheckTypes = [];
-    if (autoScheduleDaily) autoCheckTypes.push('daily');
-    if (autoScheduleWeekly) autoCheckTypes.push('weekly');
-    if (autoScheduleA) autoCheckTypes.push('A');
-    if (autoScheduleC) autoCheckTypes.push('C');
-    if (autoScheduleD) autoCheckTypes.push('D');
+    if (autoScheduleDaily !== false) autoCheckTypes.push('daily');
+    if (autoScheduleWeekly !== false) autoCheckTypes.push('weekly');
+    if (autoScheduleA !== false) autoCheckTypes.push('A');
+    if (autoScheduleC !== false) autoCheckTypes.push('C');
+    if (autoScheduleD !== false) autoCheckTypes.push('D');
 
     if (autoCheckTypes.length > 0) {
       await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
     }
+
+    // Schedule a daily check 2 hours after delivery so aircraft can be released to service
+    const deliveryCheckTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // +2 hours
+    const deliveryDateStr = deliveryCheckTime.toISOString().split('T')[0];
+    const deliveryStartTime = `${String(deliveryCheckTime.getHours()).padStart(2, '0')}:${String(deliveryCheckTime.getMinutes()).padStart(2, '0')}`;
+    await RecurringMaintenance.create({
+      aircraftId: userAircraft.id,
+      checkType: 'daily',
+      scheduledDate: deliveryDateStr,
+      startTime: deliveryStartTime,
+      duration: CHECK_DURATIONS.daily,
+      status: 'active'
+    });
+    console.log(`[DELIVERY] Scheduled daily check for ${registrationUpper} on ${deliveryDateStr} at ${deliveryStartTime}`);
 
     // Deduct from balance
     membership.balance -= price;
@@ -1408,25 +1870,39 @@ router.post('/lease', async (req, res) => {
       lastACheckDate: new Date(now.getTime() - ((1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000)),
       lastACheckHours: 0,
       aCheckIntervalHours: 800 + Math.floor(Math.random() * 200), // 800-1000 hrs
-      // Auto-schedule preferences
-      autoScheduleDaily: autoScheduleDaily || false,
-      autoScheduleWeekly: autoScheduleWeekly || false,
-      autoScheduleA: autoScheduleA || false,
-      autoScheduleC: autoScheduleC || false,
-      autoScheduleD: autoScheduleD || false
+      // Auto-schedule preferences (default to true for all checks)
+      autoScheduleDaily: autoScheduleDaily !== false,
+      autoScheduleWeekly: autoScheduleWeekly !== false,
+      autoScheduleA: autoScheduleA !== false,
+      autoScheduleC: autoScheduleC !== false,
+      autoScheduleD: autoScheduleD !== false
     });
 
-    // Create auto-scheduled maintenance for enabled check types
+    // Create auto-scheduled maintenance for enabled check types (default all on)
     const autoCheckTypes = [];
-    if (autoScheduleDaily) autoCheckTypes.push('daily');
-    if (autoScheduleWeekly) autoCheckTypes.push('weekly');
-    if (autoScheduleA) autoCheckTypes.push('A');
-    if (autoScheduleC) autoCheckTypes.push('C');
-    if (autoScheduleD) autoCheckTypes.push('D');
+    if (autoScheduleDaily !== false) autoCheckTypes.push('daily');
+    if (autoScheduleWeekly !== false) autoCheckTypes.push('weekly');
+    if (autoScheduleA !== false) autoCheckTypes.push('A');
+    if (autoScheduleC !== false) autoCheckTypes.push('C');
+    if (autoScheduleD !== false) autoCheckTypes.push('D');
 
     if (autoCheckTypes.length > 0) {
       await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
     }
+
+    // Schedule a daily check 2 hours after delivery so aircraft can be released to service
+    const deliveryCheckTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // +2 hours
+    const deliveryDateStr = deliveryCheckTime.toISOString().split('T')[0];
+    const deliveryStartTime = `${String(deliveryCheckTime.getHours()).padStart(2, '0')}:${String(deliveryCheckTime.getMinutes()).padStart(2, '0')}`;
+    await RecurringMaintenance.create({
+      aircraftId: userAircraft.id,
+      checkType: 'daily',
+      scheduledDate: deliveryDateStr,
+      startTime: deliveryStartTime,
+      duration: CHECK_DURATIONS.daily,
+      status: 'active'
+    });
+    console.log(`[DELIVERY] Scheduled daily check for ${registrationUpper} on ${deliveryDateStr} at ${deliveryStartTime}`);
 
     // Deduct first month's payment
     membership.balance -= monthlyPayment;
@@ -1746,21 +2222,185 @@ router.put('/:aircraftId/auto-schedule', async (req, res) => {
     await aircraft.update({ [updateField]: enabled });
 
     // If enabled, create auto-scheduled maintenance; if disabled, remove it
+    // Wrap in try-catch so preference save succeeds even if scheduling fails
+    let schedulingError = null;
     if (enabled) {
-      await createAutoScheduledMaintenance(aircraftId, [checkType], activeWorldId);
+      try {
+        await createAutoScheduledMaintenance(aircraftId, [checkType], activeWorldId);
+      } catch (schedError) {
+        console.error(`Error creating auto-scheduled maintenance for ${checkType}:`, schedError);
+        schedulingError = schedError.message;
+      }
     } else {
-      await removeAutoScheduledMaintenance(aircraftId, [checkType]);
+      try {
+        await removeAutoScheduledMaintenance(aircraftId, [checkType]);
+      } catch (removeError) {
+        console.error(`Error removing auto-scheduled maintenance for ${checkType}:`, removeError);
+        // Non-critical, don't report as error
+      }
     }
 
     res.json({
       message: `Auto-schedule for ${checkType} check ${enabled ? 'enabled' : 'disabled'}`,
       checkType,
       enabled,
-      aircraft: aircraft
+      aircraft: aircraft,
+      schedulingWarning: schedulingError
     });
   } catch (error) {
     console.error('Error updating auto-schedule:', error);
     res.status(500).json({ error: 'Failed to update auto-schedule preference' });
+  }
+});
+
+/**
+ * Batch update auto-schedule preferences for an aircraft (faster than individual updates)
+ */
+router.put('/:aircraftId/auto-schedule/batch', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { aircraftId } = req.params;
+    const { preferences } = req.body; // { daily: true, weekly: false, A: true, C: true, D: false }
+
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ error: 'preferences object required' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id }
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Get world time to check for expired checks
+    const world = await World.findByPk(activeWorldId);
+    const gameNow = world ? new Date(world.currentTime) : new Date();
+
+    // Build update object and track which checks to enable/disable
+    const fieldMap = {
+      'daily': 'autoScheduleDaily',
+      'weekly': 'autoScheduleWeekly',
+      'A': 'autoScheduleA',
+      'C': 'autoScheduleC',
+      'D': 'autoScheduleD'
+    };
+
+    // Check expiry helper function
+    const isCheckExpired = (checkType) => {
+      if (checkType === 'daily') {
+        if (!aircraft.lastDailyCheckDate) return true;
+        const expiry = new Date(aircraft.lastDailyCheckDate);
+        expiry.setDate(expiry.getDate() + 2); // Daily valid for 2 days
+        return expiry <= gameNow;
+      } else if (checkType === 'weekly') {
+        if (!aircraft.lastWeeklyCheckDate) return true;
+        const expiry = new Date(aircraft.lastWeeklyCheckDate);
+        expiry.setDate(expiry.getDate() + 8); // Weekly valid for ~8 days
+        return expiry <= gameNow;
+      } else if (checkType === 'A') {
+        // If no A check has ever been done, it's expired
+        if (!aircraft.lastACheckDate) return true;
+        const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
+        const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
+        const intervalHours = aircraft.aCheckIntervalHours || 800;
+        return (currentFlightHours - lastACheckHours) >= intervalHours;
+      } else if (checkType === 'C') {
+        if (!aircraft.lastCCheckDate) return true;
+        const expiry = new Date(aircraft.lastCCheckDate);
+        expiry.setDate(expiry.getDate() + (aircraft.cCheckIntervalDays || 730));
+        return expiry <= gameNow;
+      } else if (checkType === 'D') {
+        if (!aircraft.lastDCheckDate) return true;
+        const expiry = new Date(aircraft.lastDCheckDate);
+        expiry.setDate(expiry.getDate() + (aircraft.dCheckIntervalDays || 2190));
+        return expiry <= gameNow;
+      }
+      return false;
+    };
+
+    const updateFields = {};
+    const enabledChecks = [];
+    const disabledChecks = [];
+    const expiredChecks = []; // Checks that can't be enabled because they're expired
+
+    for (const [checkType, enabled] of Object.entries(preferences)) {
+      if (fieldMap[checkType] && typeof enabled === 'boolean') {
+        if (enabled && isCheckExpired(checkType)) {
+          // Can't enable auto-schedule for an expired check
+          expiredChecks.push(checkType);
+          // Don't add to updateFields - keep the existing value
+        } else {
+          updateFields[fieldMap[checkType]] = enabled;
+          if (enabled) {
+            enabledChecks.push(checkType);
+          } else {
+            disabledChecks.push(checkType);
+          }
+        }
+      }
+    }
+
+    // If any checks were rejected due to expiry, return error
+    if (expiredChecks.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot enable auto-schedule for expired checks',
+        expiredChecks,
+        message: `Perform ${expiredChecks.join(', ')} check(s) first before enabling auto-schedule`
+      });
+    }
+
+    // Single database update for all preferences
+    await aircraft.update(updateFields);
+
+    // Run scheduling synchronously so checks appear before modal closes
+    if (enabledChecks.length > 0) {
+      try {
+        await createAutoScheduledMaintenance(aircraftId, enabledChecks, activeWorldId);
+      } catch (schedError) {
+        console.error('Error creating auto-scheduled maintenance:', schedError);
+      }
+    }
+
+    if (disabledChecks.length > 0) {
+      try {
+        await removeAutoScheduledMaintenance(aircraftId, disabledChecks);
+      } catch (removeError) {
+        console.error('Error removing auto-scheduled maintenance:', removeError);
+      }
+    }
+
+    res.json({
+      message: 'Auto-schedule preferences updated',
+      preferences: updateFields,
+      enabledChecks,
+      disabledChecks
+    });
+  } catch (error) {
+    console.error('Error batch updating auto-schedule:', error);
+    res.status(500).json({ error: 'Failed to update auto-schedule preferences' });
   }
 });
 
@@ -2049,12 +2689,235 @@ async function optimizeMaintenanceForDates(aircraftId, dates) {
   return optimized;
 }
 
+/**
+ * POST /restagger-fleet-maintenance
+ * Re-stagger all maintenance checks across the fleet to spread them out
+ * Deletes current scheduled maintenance and re-creates with staggered times
+ */
+router.post('/restagger-fleet-maintenance', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Get all aircraft in the fleet
+    const fleetAircraft = await UserAircraft.findAll({
+      where: { worldMembershipId: membership.id, status: 'active' },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+
+    if (fleetAircraft.length === 0) {
+      return res.json({ message: 'No aircraft in fleet', staggered: 0 });
+    }
+
+    console.log(`[RESTAGGER] Starting fleet maintenance staggering for ${fleetAircraft.length} aircraft`);
+
+    // For each aircraft, delete existing scheduled maintenance and re-create with staggering
+    let totalRescheduled = 0;
+    const results = [];
+
+    for (const aircraft of fleetAircraft) {
+      // Get enabled check types
+      const enabledChecks = [];
+      if (aircraft.autoScheduleDaily) enabledChecks.push('daily');
+      if (aircraft.autoScheduleWeekly) enabledChecks.push('weekly');
+      if (aircraft.autoScheduleA) enabledChecks.push('A');
+      if (aircraft.autoScheduleC) enabledChecks.push('C');
+      if (aircraft.autoScheduleD) enabledChecks.push('D');
+
+      if (enabledChecks.length === 0) {
+        results.push({ registration: aircraft.registration, checks: 0, reason: 'No auto-schedule enabled' });
+        continue;
+      }
+
+      // Delete existing scheduled maintenance for this aircraft (only auto-scheduled ones)
+      const deleted = await RecurringMaintenance.destroy({
+        where: {
+          aircraftId: aircraft.id,
+          checkType: { [Op.in]: enabledChecks },
+          status: 'active'
+        }
+      });
+
+      // Re-create with staggering (the updated findAvailableSlotOnDate will spread them out)
+      const created = await createAutoScheduledMaintenance(aircraft.id, enabledChecks, activeWorldId);
+      totalRescheduled += created.length;
+
+      results.push({
+        registration: aircraft.registration,
+        deleted,
+        created: created.length,
+        checkTypes: enabledChecks
+      });
+
+      console.log(`[RESTAGGER] ${aircraft.registration}: deleted ${deleted}, created ${created.length} checks`);
+    }
+
+    res.json({
+      message: `Fleet maintenance staggered across ${fleetAircraft.length} aircraft`,
+      totalRescheduled,
+      results
+    });
+  } catch (error) {
+    console.error('Error restaggering fleet maintenance:', error);
+    res.status(500).json({ error: 'Failed to restagger fleet maintenance' });
+  }
+});
+
+/**
+ * POST /fix-maintenance-overlaps
+ * Find and fix maintenance checks that overlap with flights
+ * Either moves them to a non-conflicting time or removes them if no slot available
+ */
+router.post('/fix-maintenance-overlaps', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Get all aircraft in the fleet
+    const fleetAircraft = await UserAircraft.findAll({
+      where: { worldMembershipId: membership.id, status: 'active' },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+
+    const results = {
+      checked: 0,
+      overlaps: [],
+      fixed: 0,
+      removed: 0
+    };
+
+    for (const aircraft of fleetAircraft) {
+      // Get all scheduled maintenance for this aircraft
+      const maintenance = await RecurringMaintenance.findAll({
+        where: {
+          aircraftId: aircraft.id,
+          status: 'active',
+          scheduledDate: { [Op.ne]: null }
+        }
+      });
+
+      for (const maint of maintenance) {
+        results.checked++;
+        const dateStr = typeof maint.scheduledDate === 'string'
+          ? maint.scheduledDate
+          : maint.scheduledDate.toISOString().split('T')[0];
+
+        // Validate this maintenance slot
+        const validation = await validateMaintenanceSlot(
+          aircraft.id,
+          dateStr,
+          maint.startTime.substring(0, 5),
+          maint.duration,
+          maint.checkType
+        );
+
+        if (!validation.valid) {
+          results.overlaps.push({
+            registration: aircraft.registration,
+            checkType: maint.checkType,
+            date: dateStr,
+            time: maint.startTime,
+            reason: validation.reason
+          });
+
+          // Try to find a new slot
+          const newTime = await findAvailableSlotOnDate(
+            aircraft.id,
+            dateStr,
+            maint.duration,
+            maint.checkType,
+            aircraft.worldMembershipId
+          );
+
+          if (newTime) {
+            // Verify the new time is valid
+            const newValidation = await validateMaintenanceSlot(
+              aircraft.id,
+              dateStr,
+              newTime,
+              maint.duration,
+              maint.checkType
+            );
+
+            if (newValidation.valid) {
+              await maint.update({ startTime: newTime });
+              results.fixed++;
+              console.log(`[FIX-OVERLAP] ${aircraft.registration} ${maint.checkType} on ${dateStr}: moved from ${maint.startTime} to ${newTime}`);
+            } else {
+              // No valid slot - remove the maintenance
+              await maint.update({ status: 'inactive' });
+              results.removed++;
+              console.log(`[FIX-OVERLAP] ${aircraft.registration} ${maint.checkType} on ${dateStr}: removed (no valid slot)`);
+            }
+          } else {
+            // No slot available - remove the maintenance
+            await maint.update({ status: 'inactive' });
+            results.removed++;
+            console.log(`[FIX-OVERLAP] ${aircraft.registration} ${maint.checkType} on ${dateStr}: removed (no slot available)`);
+          }
+        }
+      }
+    }
+
+    res.json({
+      message: `Checked ${results.checked} maintenance records, found ${results.overlaps.length} overlaps`,
+      fixed: results.fixed,
+      removed: results.removed,
+      overlaps: results.overlaps
+    });
+  } catch (error) {
+    console.error('Error fixing maintenance overlaps:', error);
+    res.status(500).json({ error: 'Failed to fix maintenance overlaps' });
+  }
+});
+
 // Export router as default and helper functions
 module.exports = router;
 module.exports.checkMaintenanceConflict = checkMaintenanceConflict;
 module.exports.attemptMaintenanceReschedule = attemptMaintenanceReschedule;
 module.exports.findAvailableMaintenanceSlot = findAvailableMaintenanceSlot;
 module.exports.findAvailableSlotOnDate = findAvailableSlotOnDate;
+module.exports.validateMaintenanceSlot = validateMaintenanceSlot;
 module.exports.createAutoScheduledMaintenance = createAutoScheduledMaintenance;
 module.exports.refreshAutoScheduledMaintenance = refreshAutoScheduledMaintenance;
 module.exports.optimizeMaintenanceForDates = optimizeMaintenanceForDates;

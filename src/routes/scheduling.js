@@ -134,6 +134,148 @@ function calculateArrivalDateTime(departureDate, departureTime, route, cruiseSpe
 }
 
 /**
+ * GET /api/schedule/data
+ * Combined endpoint - returns fleet, routes, flights, and maintenance in a single request
+ * This is much faster than making 4 separate requests
+ */
+router.get('/data', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    // Get active world from session
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const worldMembershipId = membership.id;
+
+    // Run all queries in parallel for maximum speed
+    const [fleet, routes, flights, maintenancePatterns] = await Promise.all([
+      // Fleet query
+      UserAircraft.findAll({
+        where: { worldMembershipId },
+        include: [{ model: Aircraft, as: 'aircraft' }],
+        order: [['acquiredAt', 'DESC']]
+      }),
+
+      // Routes query
+      Route.findAll({
+        where: { worldMembershipId },
+        include: [
+          { model: Airport, as: 'departureAirport' },
+          { model: Airport, as: 'arrivalAirport' },
+          { model: Airport, as: 'techStopAirport' }
+        ]
+      }),
+
+      // Flights query (with date filter)
+      (async () => {
+        let whereClause = {};
+        if (startDate && endDate) {
+          whereClause = {
+            [Op.or]: [
+              { scheduledDate: { [Op.between]: [startDate, endDate] } },
+              { arrivalDate: { [Op.between]: [startDate, endDate] } },
+              {
+                [Op.and]: [
+                  { scheduledDate: { [Op.lt]: startDate } },
+                  { arrivalDate: { [Op.gt]: endDate } }
+                ]
+              }
+            ]
+          };
+        }
+
+        return ScheduledFlight.findAll({
+          where: whereClause,
+          include: [
+            {
+              model: Route,
+              as: 'route',
+              required: true,
+              where: { worldMembershipId },
+              include: [
+                { model: Airport, as: 'departureAirport' },
+                { model: Airport, as: 'arrivalAirport' },
+                { model: Airport, as: 'techStopAirport' }
+              ]
+            },
+            {
+              model: UserAircraft,
+              as: 'aircraft',
+              include: [{ model: Aircraft, as: 'aircraft' }]
+            }
+          ],
+          order: [['scheduledDate', 'ASC'], ['departureTime', 'ASC']]
+        });
+      })(),
+
+      // Maintenance patterns query - return ALL scheduled maintenance (no date filter)
+      // so modal can show "Next Scheduled" for far-future checks like A, C, D
+      (async () => {
+        const aircraftIds = await UserAircraft.findAll({
+          where: { worldMembershipId },
+          attributes: ['id'],
+          raw: true
+        }).then(rows => rows.map(r => r.id));
+
+        if (aircraftIds.length === 0) return [];
+
+        return RecurringMaintenance.findAll({
+          where: {
+            aircraftId: { [Op.in]: aircraftIds },
+            status: 'active'
+          }
+        });
+      })()
+    ]);
+
+    // Efficiently attach maintenance to fleet (O(n) instead of O(n*m))
+    const maintenanceByAircraft = {};
+    for (const m of maintenancePatterns) {
+      if (!maintenanceByAircraft[m.aircraftId]) {
+        maintenanceByAircraft[m.aircraftId] = [];
+      }
+      maintenanceByAircraft[m.aircraftId].push(m);
+    }
+
+    const fleetWithMaintenance = fleet.map(aircraft => {
+      const aircraftJson = aircraft.toJSON();
+      aircraftJson.recurringMaintenance = maintenanceByAircraft[aircraft.id] || [];
+      return aircraftJson;
+    });
+
+    res.json({
+      fleet: fleetWithMaintenance,
+      routes,
+      flights,
+      maintenance: maintenancePatterns
+    });
+  } catch (error) {
+    console.error('Error fetching schedule data:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/schedule/flights
  * Fetch all scheduled flights for the current user's active world
  */
@@ -1143,60 +1285,50 @@ router.get('/maintenance', async (req, res) => {
 
     const worldMembershipId = membership.id;
 
-    // Get game world time for cleanup logic (not real-world time!)
-    const worldTimeService = require('../services/worldTimeService');
-    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
-    const now = gameTime || new Date(); // Fallback to real time only if game time unavailable
+    // Get user's aircraft IDs first (single query)
+    const userAircraftIds = await UserAircraft.findAll({
+      where: { worldMembershipId },
+      attributes: ['id'],
+      raw: true
+    }).then(rows => rows.map(r => r.id));
 
-    // Cleanup: Mark old C/D checks as completed if their scheduledDate + duration has passed
-    // This prevents old maintenance records from causing conflicts with new scheduling
-    const activeHeavyMaintenance = await RecurringMaintenance.findAll({
-      where: {
-        status: 'active',
-        checkType: { [Op.in]: ['C', 'D'] },
-        scheduledDate: { [Op.ne]: null }
-      },
-      include: [{
-        model: UserAircraft,
-        as: 'aircraft',
-        required: true,
-        where: { worldMembershipId }
-      }]
-    });
-
-    for (const pattern of activeHeavyMaintenance) {
-      const scheduledDateStr = pattern.scheduledDate instanceof Date
-        ? pattern.scheduledDate.toISOString().split('T')[0]
-        : String(pattern.scheduledDate).split('T')[0];
-
-      // Calculate completion date
-      const startDate = new Date(scheduledDateStr + 'T00:00:00Z');
-      const daysSpan = Math.ceil((pattern.duration || 60) / 1440);
-      const completionDate = new Date(startDate);
-      completionDate.setUTCDate(completionDate.getUTCDate() + daysSpan);
-
-      // If completion date has passed (using game time, not real time!), mark as completed
-      if (now > completionDate) {
-        await pattern.update({ status: 'completed' });
-        console.log(`[MAINT CLEANUP] Marked old ${pattern.checkType} check as completed (scheduled: ${scheduledDateStr}, completed: ${completionDate.toISOString().split('T')[0]}, gameTime: ${now.toISOString().split('T')[0]})`);
-      }
+    if (userAircraftIds.length === 0) {
+      return res.json({ maintenance: [], debug: { aircraftCount: 0 } });
     }
 
-    // Fetch all active recurring maintenance patterns for user's aircraft
+    // Fetch all active maintenance for user's aircraft in a single optimized query
+    // Filter by date range at database level when possible
+    let dateFilter = {};
+    if (startDate && endDate) {
+      // For scheduled maintenance, we need records where:
+      // 1. scheduledDate is within range, OR
+      // 2. For multi-day maintenance, scheduledDate is before range but extends into it
+      // To be safe, fetch records from (startDate - 90 days) to cover long C/D checks
+      const extendedStartDate = new Date(startDate);
+      extendedStartDate.setDate(extendedStartDate.getDate() - 90);
+      const extendedStartStr = extendedStartDate.toISOString().split('T')[0];
+
+      dateFilter = {
+        [Op.or]: [
+          { scheduledDate: { [Op.between]: [extendedStartStr, endDate] } },
+          { scheduledDate: null } // Legacy day-of-week patterns
+        ]
+      };
+    }
+
     const recurringPatterns = await RecurringMaintenance.findAll({
       where: {
-        status: 'active'
+        aircraftId: { [Op.in]: userAircraftIds },
+        status: 'active',
+        ...dateFilter
       },
       include: [
         {
           model: UserAircraft,
           as: 'aircraft',
-          required: true,
-          where: {
-            worldMembershipId: worldMembershipId
-          },
+          attributes: ['id', 'registration', 'worldMembershipId'],
           include: [
-            { model: Aircraft, as: 'aircraft' }
+            { model: Aircraft, as: 'aircraft', attributes: ['id', 'manufacturer', 'model', 'variant'] }
           ]
         }
       ]

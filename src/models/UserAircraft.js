@@ -188,6 +188,18 @@ const UserAircraft = sequelize.define('UserAircraft', {
     defaultValue: false,
     field: 'auto_schedule_a',
     comment: 'Automatically schedule A checks'
+  },
+  autoScheduleC: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'auto_schedule_c',
+    comment: 'Automatically schedule C checks'
+  },
+  autoScheduleD: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'auto_schedule_d',
+    comment: 'Automatically schedule D checks'
   }
 }, {
   tableName: 'user_aircraft',

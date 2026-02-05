@@ -719,7 +719,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <span style="font-size: 0.8rem; color: var(--text-secondary);">Auto All</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 44px; height: 24px;">
-              <input type="checkbox" id="autoScheduleAll" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleAll" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 24px;"></span>
             </label>
           </div>
@@ -731,21 +731,21 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
             <span style="font-size: 0.85rem; color: #FFA500;">Daily</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 36px; height: 20px;">
-              <input type="checkbox" id="autoScheduleDaily" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 20px;"></span>
             </label>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
             <span style="font-size: 0.85rem; color: #8B5CF6;">Weekly</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 36px; height: 20px;">
-              <input type="checkbox" id="autoScheduleWeekly" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 20px;"></span>
             </label>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
             <span style="font-size: 0.85rem; color: #3B82F6;">A Check</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 36px; height: 20px;">
-              <input type="checkbox" id="autoScheduleA" style="opacity: 0; width: 0; height: 0;">
+              <input type="checkbox" id="autoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 20px;"></span>
             </label>
           </div>
@@ -1062,7 +1062,7 @@ function showLeaseConfirmationDialog() {
               <div style="display: flex; align-items: center; gap: 0.4rem;">
                 <span style="font-size: 0.75rem; color: var(--text-secondary);">Auto All</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 40px; height: 22px;">
-                  <input type="checkbox" id="leaseAutoScheduleAll" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleAll" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 22px;"></span>
                 </label>
               </div>
@@ -1074,21 +1074,21 @@ function showLeaseConfirmationDialog() {
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
                 <span style="font-size: 0.8rem; color: #FFA500;">Daily</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
-                  <input type="checkbox" id="leaseAutoScheduleDaily" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
                 <span style="font-size: 0.8rem; color: #8B5CF6;">Weekly</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
-                  <input type="checkbox" id="leaseAutoScheduleWeekly" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
                 <span style="font-size: 0.8rem; color: #3B82F6;">A Check</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
-                  <input type="checkbox" id="leaseAutoScheduleA" style="opacity: 0; width: 0; height: 0;">
+                  <input type="checkbox" id="leaseAutoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
                 </label>
               </div>
