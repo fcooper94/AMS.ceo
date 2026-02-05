@@ -6029,14 +6029,20 @@ async function loadUnassignedRoutes(aircraftId) {
   const currentAircraft = userFleet.find(a => a.id === aircraftId);
   const currentAircraftTypeId = currentAircraft?.aircraftId || currentAircraft?.aircraft?.id;
 
+  console.log('[ROUTES DEBUG] Loading routes for aircraft:', aircraftId);
+  console.log('[ROUTES DEBUG] Current aircraft:', currentAircraft?.registration, 'typeId:', currentAircraftTypeId, 'type:', typeof currentAircraftTypeId);
+  console.log('[ROUTES DEBUG] Total routes in array:', routes.length);
+
   // Filter routes by aircraft TYPE (not specific aircraft ID)
   // Routes should be available to any aircraft of the same type
   const availableRoutes = routes.filter(r => {
-    // Get the route's assigned aircraft type
-    const routeAircraftTypeId = r.assignedAircraft?.aircraftId || r.assignedAircraft?.aircraft?.id;
+    // Get the route's assigned aircraft TYPE ID (from the new API field or nested object)
+    const routeAircraftTypeId = r.assignedAircraftTypeId || r.assignedAircraft?.aircraft?.id;
 
     // Check if route matches by aircraft TYPE (same model), or is unassigned
     const aircraftMatch = routeAircraftTypeId === currentAircraftTypeId || r.assignedAircraftId === null;
+
+    console.log('[ROUTES DEBUG] Route:', r.routeNumber, 'routeTypeId:', routeAircraftTypeId, 'currentTypeId:', currentAircraftTypeId, 'match:', aircraftMatch);
 
     // Day matching logic differs between daily and weekly view
     let dayMatch = false;

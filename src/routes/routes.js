@@ -8,6 +8,7 @@ const airportSlotService = require('../services/airportSlotService');
  * Get all routes for the current user's airline
  */
 router.get('/', async (req, res) => {
+  console.log('[ROUTES API] GET /api/routes called');
   try {
     // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
@@ -67,6 +68,17 @@ router.get('/', async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
+    // Debug: log first route's data
+    if (routes.length > 0) {
+      const r = routes[0];
+      console.log('[ROUTES API] First route:', r.routeNumber, 'assignedAircraftId:', r.assignedAircraftId);
+      console.log('[ROUTES API] assignedAircraft exists:', !!r.assignedAircraft);
+      if (r.assignedAircraft) {
+        console.log('[ROUTES API] assignedAircraft.aircraft exists:', !!r.assignedAircraft.aircraft);
+        console.log('[ROUTES API] assignedAircraft.aircraft?.id:', r.assignedAircraft.aircraft?.id);
+      }
+    }
+
     // Calculate performance metrics for each route
     const routesWithMetrics = routes.map(route => {
       const profit = parseFloat(route.totalRevenue) - parseFloat(route.totalCosts);
@@ -82,10 +94,11 @@ router.get('/', async (req, res) => {
         arrivalAirport: route.arrivalAirport,
         techStopAirport: route.techStopAirport || null,
         assignedAircraftId: route.assignedAircraftId,
+        // Aircraft TYPE ID for matching routes to any aircraft of same type
+        assignedAircraftTypeId: route.assignedAircraft?.aircraft?.id || null,
         assignedAircraft: route.assignedAircraft ? {
           id: route.assignedAircraft.id,
           registration: route.assignedAircraft.registration,
-          aircraftId: route.assignedAircraft.aircraftId,
           aircraft: route.assignedAircraft.aircraft
         } : null,
         distance: parseFloat(route.distance),
@@ -388,10 +401,11 @@ router.post('/', async (req, res) => {
           model: UserAircraft,
           as: 'assignedAircraft',
           required: false,
+          attributes: ['id', 'registration', 'aircraftId'],
           include: [{
             model: Aircraft,
             as: 'aircraft',
-            attributes: ['manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
+            attributes: ['id', 'manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
           }]
         }
       ]
@@ -474,10 +488,11 @@ router.put('/:id', async (req, res) => {
           model: UserAircraft,
           as: 'assignedAircraft',
           required: false,
+          attributes: ['id', 'registration', 'aircraftId'],
           include: [{
             model: Aircraft,
             as: 'aircraft',
-            attributes: ['manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
+            attributes: ['id', 'manufacturer', 'model', 'variant', 'type', 'cruiseSpeed']
           }]
         }
       ]
