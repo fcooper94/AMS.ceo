@@ -20,10 +20,7 @@ let maintenanceDetailsUpdateInterval = null; // Interval for auto-updating maint
 let currentMaintenanceModalId = null; // Track which maintenance modal is open
 let aircraftStatusUpdateInterval = null; // Interval for updating GROUNDED/IN MAINT badges
 
-// Wind adjustment for realistic flight times
-// Jet stream flows west to east at mid-latitudes, making eastbound flights faster
-const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
-const ROUTE_VARIATION_FACTOR = 0.035; // ±3.5% for natural-looking times
+// Wind/timing constants and calculations now in shared flight-timing.js
 
 // Generate deterministic random interval for C and D checks based on aircraft ID
 // C check: 18-24 months (548-730 days)
@@ -152,43 +149,7 @@ function formatRouteNumber(routeNum) {
   return routeNum;
 }
 
-function getWindMultiplier(depLng, arrLng, depLat = 0, arrLat = 0) {
-  // Calculate longitude difference (handling date line crossing)
-  let lngDiff = arrLng - depLng;
-  if (lngDiff > 180) lngDiff -= 360;
-  else if (lngDiff < -180) lngDiff += 360;
-
-  // Scale effect based on latitude (strongest at mid-latitudes 30-60°)
-  const avgLat = Math.abs((depLat + arrLat) / 2);
-  let latitudeScale = 1.0;
-  if (avgLat < 20) latitudeScale = 0.2;
-  else if (avgLat < 30) latitudeScale = 0.5;
-  else if (avgLat > 60) latitudeScale = 0.6;
-
-  // Only apply wind effect for significant east-west travel
-  if (Math.abs(lngDiff) < 10) return 1.0;
-
-  // Eastbound (positive lngDiff) = faster, Westbound = slower
-  const direction = lngDiff > 0 ? -1 : 1;
-  const eastWestRatio = Math.min(1, Math.abs(lngDiff) / 90);
-  return 1 + (direction * WIND_ADJUSTMENT_FACTOR * latitudeScale * eastWestRatio);
-}
-
-// Deterministic route-specific variation for natural-looking times
-function getRouteVariation(depLat, depLng, arrLat, arrLng) {
-  const coordSum = (depLat * 7.3) + (depLng * 11.7) + (arrLat * 13.1) + (arrLng * 17.9);
-  const hash = Math.sin(coordSum) * 10000;
-  const normalized = hash - Math.floor(hash);
-  const variation = (normalized - 0.5) * 2 * ROUTE_VARIATION_FACTOR;
-  return 1 + variation;
-}
-
-function calculateFlightMinutes(distanceNm, cruiseSpeed, depLng, arrLng, depLat, arrLat) {
-  const baseMinutes = (distanceNm / cruiseSpeed) * 60;
-  const windMultiplier = getWindMultiplier(depLng, arrLng, depLat, arrLat);
-  const routeVariation = getRouteVariation(depLat, depLng, arrLat, arrLng);
-  return Math.round(baseMinutes * windMultiplier * routeVariation);
-}
+// getWindMultiplier, getRouteVariation, calculateFlightMinutes now in shared flight-timing.js
 
 // Check maintenance schedule for warnings
 // Returns array of { type: 'daily', message: string }
@@ -286,6 +247,52 @@ function getExpiredChecks(aircraft) {
   return expired;
 }
 
+// Check if maintenance covering the given check types is scheduled within the next N hours
+function hasUpcomingMaintenance(aircraftId, expiredCheckTypes, withinHours = 12) {
+  const worldTime = getCurrentWorldTime() || new Date();
+  const today = formatLocalDate(worldTime);
+  const currentMinutes = worldTime.getHours() * 60 + worldTime.getMinutes();
+  const cutoffMinutes = currentMinutes + withinHours * 60;
+
+  // Build set of check types that would cover any expired check (cascading)
+  const coveringTypes = new Set();
+  for (const ct of expiredCheckTypes) {
+    coveringTypes.add(ct);
+    // Higher checks cover lower ones
+    if (ct === 'daily') { coveringTypes.add('weekly'); coveringTypes.add('A'); coveringTypes.add('C'); coveringTypes.add('D'); }
+    else if (ct === 'weekly') { coveringTypes.add('A'); coveringTypes.add('C'); coveringTypes.add('D'); }
+    else if (ct === 'A') { coveringTypes.add('C'); coveringTypes.add('D'); }
+    else if (ct === 'C') { coveringTypes.add('D'); }
+  }
+
+  return scheduledMaintenance.some(m => {
+    const maintAircraftId = m.aircraftId || m.aircraft?.id;
+    if (maintAircraftId != aircraftId) return false;
+    if (m.status === 'completed' || m.status === 'inactive') return false;
+    if (m.isOngoing) return false;
+    if (!coveringTypes.has(m.checkType)) return false;
+
+    let scheduledDate;
+    if (m.scheduledDate instanceof Date) {
+      scheduledDate = formatLocalDate(m.scheduledDate);
+    } else if (m.scheduledDate) {
+      scheduledDate = m.scheduledDate.split('T')[0];
+    } else return false;
+
+    // Only check today's maintenance
+    if (scheduledDate !== today) return false;
+
+    const startTimeStr = m.startTime instanceof Date
+      ? m.startTime.toTimeString().split(' ')[0]
+      : String(m.startTime || '00:00:00');
+    const [startH, startM] = startTimeStr.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+
+    // Check starts within the window and hasn't completed yet
+    return startMinutes <= cutoffMinutes && startMinutes >= currentMinutes - (m.duration || 30);
+  });
+}
+
 // Check if aircraft has maintenance currently in progress
 function getInProgressMaintenance(aircraftId) {
   const worldTime = getCurrentWorldTime() || new Date();
@@ -345,6 +352,56 @@ function getInProgressMaintenance(aircraftId) {
   });
 }
 
+// Check if a maintenance check has completed for this aircraft (past its end time)
+// Returns true if any matching check (or cascading higher check) has completed
+function hasMaintenanceJustCompleted(aircraftId, checkType) {
+  const worldTime = getCurrentWorldTime() || new Date();
+  const today = formatLocalDate(worldTime);
+  const currentMinutes = worldTime.getHours() * 60 + worldTime.getMinutes();
+
+  // A higher check covers lower ones: D→C→A→weekly→daily
+  const coveringTypes = {
+    'daily': ['daily', 'weekly', 'A', 'C', 'D'],
+    'weekly': ['weekly', 'A', 'C', 'D'],
+    'A': ['A', 'C', 'D'],
+    'C': ['C', 'D'],
+    'D': ['D']
+  };
+  const validTypes = coveringTypes[checkType] || [checkType];
+
+  return scheduledMaintenance.some(m => {
+    const maintAircraftId = m.aircraftId || m.aircraft?.id;
+    if (maintAircraftId != aircraftId) return false;
+    if (m.status === 'completed' || m.status === 'inactive') return false;
+    if (m.isOngoing) return false;
+    if (!validTypes.includes(m.checkType)) return false;
+
+    let scheduledDate;
+    if (m.scheduledDate instanceof Date) {
+      scheduledDate = formatLocalDate(m.scheduledDate);
+    } else if (m.scheduledDate) {
+      scheduledDate = m.scheduledDate.split('T')[0];
+    } else return false;
+
+    const startTimeStr = m.startTime instanceof Date
+      ? m.startTime.toTimeString().split(' ')[0]
+      : String(m.startTime || '00:00:00');
+    const [startH, startM] = startTimeStr.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = startMinutes + (m.duration || 30);
+    const daysSpanned = Math.floor(endMinutes / 1440);
+    const endMinuteOfDay = endMinutes % 1440;
+
+    const startDate = new Date(scheduledDate + 'T12:00:00');
+    startDate.setDate(startDate.getDate() + daysSpanned);
+    const completionDateStr = formatLocalDate(startDate);
+
+    // Has the maintenance completed?
+    return today > completionDateStr ||
+      (today === completionDateStr && currentMinutes >= endMinuteOfDay);
+  });
+}
+
 // Simplified check status for expired detection (avoids circular dependency with full getCheckStatus)
 function getCheckStatusSimple(aircraft, checkType) {
   const worldTime = getCurrentWorldTime() || new Date();
@@ -357,35 +414,56 @@ function getCheckStatusSimple(aircraft, checkType) {
     const intervalHours = aircraft.aCheckIntervalHours || getCheckIntervalForAircraft(aircraft.id, 'A');
     const hoursSinceCheck = currentFlightHours - lastACheckHours;
     const hoursUntilDue = intervalHours - hoursSinceCheck;
-    return hoursUntilDue < 0 ? 'expired' : 'valid';
+    if (hoursUntilDue < 0) {
+      // Check if maintenance has just completed (DB updated but frontend cache stale)
+      if (hasMaintenanceJustCompleted(aircraft.id, checkType)) {
+        aircraft.lastACheckDate = worldTime;
+        aircraft.lastACheckHours = currentFlightHours;
+        return 'valid';
+      }
+      return 'expired';
+    }
+    return 'valid';
   }
 
   // Days-based checks
   let lastCheckDate;
   let intervalDays;
+  let lastCheckField;
 
   switch (checkType) {
     case 'daily':
       lastCheckDate = aircraft.lastDailyCheckDate;
-      intervalDays = 2;
+      lastCheckField = 'lastDailyCheckDate';
+      intervalDays = 1; // Valid check day + next day
       break;
     case 'weekly':
       lastCheckDate = aircraft.lastWeeklyCheckDate;
+      lastCheckField = 'lastWeeklyCheckDate';
       intervalDays = 8;
       break;
     case 'C':
       lastCheckDate = aircraft.lastCCheckDate;
+      lastCheckField = 'lastCCheckDate';
       intervalDays = aircraft.cCheckIntervalDays || 730;
       break;
     case 'D':
       lastCheckDate = aircraft.lastDCheckDate;
+      lastCheckField = 'lastDCheckDate';
       intervalDays = aircraft.dCheckIntervalDays || getCheckIntervalForAircraft(aircraft.id, 'D');
       break;
     default:
       return 'none';
   }
 
-  if (!lastCheckDate) return 'none';
+  if (!lastCheckDate) {
+    // No check date at all - check if maintenance has just completed
+    if (hasMaintenanceJustCompleted(aircraft.id, checkType)) {
+      aircraft[lastCheckField] = worldTime;
+      return 'valid';
+    }
+    return 'none';
+  }
 
   const lastCheck = new Date(lastCheckDate);
   const expiryDate = new Date(lastCheck);
@@ -393,7 +471,15 @@ function getCheckStatusSimple(aircraft, checkType) {
   expiryDate.setUTCHours(23, 59, 59, 999);
 
   const hoursUntilExpiry = (expiryDate - worldTime) / (1000 * 60 * 60);
-  return hoursUntilExpiry < 0 ? 'expired' : 'valid';
+  if (hoursUntilExpiry < 0) {
+    // Check if maintenance has just completed (DB updated but frontend cache stale)
+    if (hasMaintenanceJustCompleted(aircraft.id, checkType)) {
+      aircraft[lastCheckField] = worldTime;
+      return 'valid';
+    }
+    return 'expired';
+  }
+  return 'valid';
 }
 
 // Update GROUNDED/IN MAINT badges live as maintenance completes or starts
@@ -706,29 +792,19 @@ async function fetchAllScheduleData() {
     const today = new Date(worldTime);
     const currentDay = today.getDay();
 
-    let startDateStr, endDateStr;
-
-    if (viewMode === 'weekly') {
-      // For weekly view, use rolling week
-      const dayDates = [];
-      for (let dow = 0; dow < 7; dow++) {
-        const daysUntil = getDaysUntilTargetInWeek(currentDay, dow);
-        const targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + daysUntil);
-        dayDates.push(targetDate);
-      }
-      const minDate = new Date(Math.min(...dayDates.map(d => d.getTime())));
-      const maxDate = new Date(Math.max(...dayDates.map(d => d.getTime())));
-      startDateStr = formatLocalDate(minDate);
-      endDateStr = formatLocalDate(maxDate);
-    } else {
-      // For daily view, fetch just the selected day
-      const daysUntilTarget = getDaysUntilTargetInWeek(currentDay, selectedDayOfWeek);
+    // Always fetch the full rolling week range (both views need flights from across the week
+    // since a flight departing Saturday may arrive Monday, and the daily view for Monday needs it)
+    const dayDates = [];
+    for (let dow = 0; dow < 7; dow++) {
+      const daysUntil = getDaysUntilTargetInWeek(currentDay, dow);
       const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + daysUntilTarget);
-      startDateStr = formatLocalDate(targetDate);
-      endDateStr = startDateStr;
+      targetDate.setDate(today.getDate() + daysUntil);
+      dayDates.push(targetDate);
     }
+    const minDate = new Date(Math.min(...dayDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...dayDates.map(d => d.getTime())));
+    const startDateStr = formatLocalDate(minDate);
+    const endDateStr = formatLocalDate(maxDate);
 
     const response = await fetch(`/api/schedule/data?startDate=${startDateStr}&endDate=${endDateStr}`);
     if (response.ok) {
@@ -800,12 +876,14 @@ async function fetchScheduledFlights() {
       startDateStr = formatLocalDate(minDate);
       endDateStr = formatLocalDate(maxDate);
     } else {
-      // For daily view, fetch just the selected day
+      // For daily view, fetch the selected day PLUS the day before
       const daysUntilTarget = getDaysUntilTargetInWeek(currentDay, selectedDayOfWeek);
       const targetDate = new Date(today);
       targetDate.setDate(today.getDate() + daysUntilTarget);
-      startDateStr = formatLocalDate(targetDate);
-      endDateStr = startDateStr;
+      const dayBefore = new Date(targetDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      startDateStr = formatLocalDate(dayBefore);
+      endDateStr = formatLocalDate(targetDate);
     }
 
     console.log('Fetching flights for:', startDateStr, 'to', endDateStr);
@@ -846,12 +924,14 @@ async function fetchScheduledMaintenance() {
       startDateStr = formatLocalDate(startDay);
       endDateStr = formatLocalDate(endDay);
     } else {
-      // For daily view, fetch just the selected day
+      // For daily view, fetch the selected day PLUS the day before
       const daysUntilTarget = getDaysUntilTargetInWeek(currentDay, selectedDayOfWeek);
       const targetDate = new Date(today);
       targetDate.setDate(today.getDate() + daysUntilTarget);
-      startDateStr = formatLocalDate(targetDate);
-      endDateStr = startDateStr;
+      const dayBefore = new Date(targetDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      startDateStr = formatLocalDate(dayBefore);
+      endDateStr = formatLocalDate(targetDate);
     }
 
     const response = await fetch(`/api/schedule/maintenance?startDate=${startDateStr}&endDate=${endDateStr}`);
@@ -1038,40 +1118,44 @@ function getAircraftRoutes(aircraftId) {
 }
 
 // Get flights for a specific cell (aircraft + date + optional hour for daily view)
+// Uses day-of-week matching so flights from any week occurrence are found
+// (e.g. a flight departing Saturday arriving Monday shows on Monday's daily view)
 function getFlightsForCell(aircraftId, date, hour = null) {
-  return scheduledFlights.filter(flight => {
-    if (flight.aircraftId != aircraftId) { // Use != for type-coercive comparison
-      return false;
+  const dateStr = typeof date === 'string' ? date.substring(0, 10) : '';
+  const viewDow = new Date(dateStr + 'T00:00:00').getDay();
+
+  // Use getFlightsForDay for day-of-week matching, then apply hour filter
+  const dayFlights = getFlightsForDay(aircraftId, viewDow);
+
+  if (hour === null) return dayFlights;
+
+  return dayFlights.filter(flight => {
+    // Determine what role this day-of-week plays for the flight
+    const route = flight.route;
+    const aircraft = flight.aircraft;
+    const acType = aircraft?.aircraft?.type || 'Narrowbody';
+    const paxCapacity = aircraft?.aircraft?.passengerCapacity || 150;
+    const routeDistance = route?.distance || 0;
+    const preFlightDur = calculatePreFlightTotal(routeDistance, paxCapacity, acType).total;
+
+    const depTimeStr = flight.departureTime?.substring(0, 5) || '00:00';
+    const [depH, depM] = depTimeStr.split(':').map(Number);
+    let depMinutes = depH * 60 + depM - preFlightDur;
+    let opStartDate = new Date(flight.scheduledDate + 'T00:00:00');
+    if (depMinutes < 0) {
+      depMinutes += 1440;
+      opStartDate.setDate(opStartDate.getDate() - 1);
     }
+    const opStartDow = opStartDate.getDay();
 
-    // Check if flight departs on this date
-    const departuresOnDate = flight.scheduledDate === date;
-    // Check if flight arrives on this date (overnight flight)
-    const arrivesOnDate = flight.arrivalDate === date && flight.scheduledDate !== date;
-    // Check if flight is "in transit" on this date (departed before, arrives after)
-    // Use Date objects for reliable comparison
-    const flightStart = new Date(flight.scheduledDate);
-    const flightEnd = new Date(flight.arrivalDate);
-    const viewDate = new Date(date);
-    const inTransitOnDate = flightStart < viewDate && flightEnd > viewDate;
-
-    if (!departuresOnDate && !arrivesOnDate && !inTransitOnDate) {
-      return false;
+    if (opStartDow === viewDow) {
+      // Flight operation starts on this day - show in the pre-flight/departure hour cell
+      const flightHour = parseInt(flight.departureTime.split(':')[0]);
+      return flightHour === hour;
+    } else {
+      // Arrives or in transit - show in hour 0 cell
+      return hour === 0;
     }
-
-    // For daily view, determine which hour cell this flight belongs to
-    if (hour !== null) {
-      if (departuresOnDate) {
-        // Flight departs on this date - show in departure hour cell
-        const flightHour = parseInt(flight.departureTime.split(':')[0]);
-        return flightHour === hour;
-      } else if (arrivesOnDate || inTransitOnDate) {
-        // Flight arrives or is in transit - show in hour 0 cell
-        return hour === 0;
-      }
-    }
-
-    return true;
   });
 }
 
@@ -1180,7 +1264,7 @@ function renderFlightSegments(params) {
 
   // Check if daily check is needed at turnaround (only if no home base check covers this flight)
   const dailyCheckDue = flight.aircraft && flight.scheduledDate
-    ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.scheduledDate, depTime)
+    ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.scheduledDate, depTime, flight.scheduledDate?.substring(0, 10))
     : false;
   const dailyCheckDuration = 30; // Daily check takes 30 minutes
 
@@ -1333,16 +1417,30 @@ function renderFlightSegments(params) {
 // Render overnight arrival block (flight that departed yesterday, arriving today)
 // Shows segmented display for the portion of the round-trip after midnight
 function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, segmentDurations = null) {
-  // Use calculated time if provided, otherwise fall back to stored time
-  const arrTime = calculatedArrTime || (flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : '??:??');
+  // Prefer stored arrival time, fall back to calculated, then to '??:??'
+  const storedArr = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : null;
+  const arrTime = storedArr || calculatedArrTime || '??:??';
   const depTime = flight.departureTime ? flight.departureTime.substring(0, 5) : '??:??';
   const [arrHours, arrMinutes] = arrTime.split(':').map(Number);
   const [depHours, depMinutes] = depTime.split(':').map(Number);
 
+  // Guard against NaN parsed values
+  const safeArrHours = isFinite(arrHours) ? arrHours : 0;
+  const safeArrMinutes = isFinite(arrMinutes) ? arrMinutes : 0;
+  const safeDepHours = isFinite(depHours) ? depHours : 0;
+  const safeDepMinutes = isFinite(depMinutes) ? depMinutes : 0;
+
   // Calculate timing
-  const arrivalMinutesFromMidnight = (arrHours * 60) + arrMinutes;
-  const departureMinutesFromMidnight = (depHours * 60) + depMinutes;
-  const minutesFromDepToMidnight = (24 * 60) - departureMinutesFromMidnight;
+  const arrivalMinutesFromMidnight = (safeArrHours * 60) + safeArrMinutes;
+  const departureMinutesFromMidnight = (safeDepHours * 60) + safeDepMinutes;
+
+  // Account for multi-day flights: calculate minutes from departure to the ARRIVAL DAY's midnight
+  // For a flight departing Wed 12:00 arriving Fri 02:15, we need Wed 12:00 → Fri 00:00 = 2160 min
+  // Not just Wed 12:00 → Thu 00:00 = 720 min (which is what (24*60)-dep gives)
+  const normDepDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : '';
+  const normArrDateForCalc = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : new Date(flight.arrivalDate).toISOString().split('T')[0]) : normDepDate;
+  const daysBetweenDepArr = Math.round((new Date(normArrDateForCalc) - new Date(normDepDate)) / (1000 * 60 * 60 * 24));
+  const minutesFromDepToMidnight = (daysBetweenDepArr * 1440) - departureMinutesFromMidnight;
 
   // Get airport codes
   const depAirport = route.departureAirport.iataCode || route.departureAirport.icaoCode;
@@ -1373,13 +1471,15 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
   ` : '';
 
   // Get segment durations (passed from caller or use defaults)
-  const outboundMins = segmentDurations?.outbound || 120;
-  const turnaroundMins = segmentDurations?.turnaround || (route.turnaroundTime || 45);
-  const returnMins = segmentDurations?.return || 120;
+  // Use nullish coalescing (??) instead of || to avoid treating 0 as falsy
+  const outboundMins = segmentDurations?.outbound ?? 120;
+  const turnaroundMins = segmentDurations?.turnaround ?? (route.turnaroundTime || 45);
+  const returnMins = segmentDurations?.return ?? 120;
 
   // Check if daily check is needed at turnaround (only if no home base check covers this flight)
+  // Pass scheduledDate as departureDate to filter out downroute checks from covering check search
   const dailyCheckDue = flight.aircraft && flight.arrivalDate
-    ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.arrivalDate, depTime)
+    ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.arrivalDate, depTime, flight.scheduledDate?.substring(0, 10))
     : false;
   const dailyCheckDuration = 30;
 
@@ -1515,47 +1615,159 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
   `;
 }
 
-// Render "continues" block for multi-day flights (aircraft in transit all day)
-function renderContinuesBlock(flight, route) {
+// Render segmented transit day block for multi-day flights
+// Shows which segments (outbound, turnaround, return) fall on this transit day
+function renderTransitDayBlock(flight, route, viewingDate) {
   const depAirport = route.departureAirport.iataCode || route.departureAirport.icaoCode;
   const arrAirport = route.arrivalAirport.iataCode || route.arrivalAirport.icaoCode;
-  const techStopAirport = route.techStopAirport ? (route.techStopAirport.iataCode || route.techStopAirport.icaoCode) : null;
+  const hasTechStop = !!route.techStopAirport;
+  const turnaroundMins = route.turnaroundTime || 45;
+  const techStopMinutes = 30;
 
-  return `
-    <div
-      class="flight-block continues"
-      style="
-        position: absolute;
-        top: 0;
-        left: -0.4rem;
-        width: calc(2400% + 1.5rem);
-        height: 100%;
-        min-height: 50px;
-        background: var(--accent-color);
-        border-radius: 0;
-        color: white;
-        font-size: 0.7rem;
-        font-weight: 600;
-        padding: 0.25rem 0.5rem;
-        cursor: pointer;
-        z-index: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: visible;
-        box-sizing: border-box;
-      "
-      onclick="viewFlightDetails('${flight.id}')"
-      title="${route.routeNumber}/${route.returnRouteNumber}: ${techStopAirport ? `${depAirport}→${techStopAirport}→${arrAirport}→${techStopAirport}→${depAirport}` : `${depAirport}→${arrAirport}→${depAirport}`} | In transit"
-    >
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2;">
-        ${techStopAirport ? `<div style="font-size: 0.6rem; font-weight: 700; color: #10b981;">via ${techStopAirport}</div>` : ''}
-        <div>${formatRouteNumber(route.routeNumber)}</div>
-        <div>${formatRouteNumber(route.returnRouteNumber)}</div>
-        ${techStopAirport ? `<div style="font-size: 0.6rem; font-weight: 700; color: #10b981;">via ${techStopAirport}</div>` : ''}
-      </div>
-    </div>
-  `;
+  // Calculate flight segment durations
+  let outboundMins = 0, returnMins = 0;
+
+  if (flight.aircraft?.aircraft?.cruiseSpeed) {
+    const cruiseSpeed = flight.aircraft.aircraft.cruiseSpeed;
+    const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+    const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+    const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+    const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+    if (hasTechStop) {
+      const techLat = parseFloat(route.techStopAirport?.latitude) || 0;
+      const techLng = parseFloat(route.techStopAirport?.longitude) || 0;
+      const leg1Dist = route.legOneDistance || Math.round(route.distance * 0.4);
+      const leg2Dist = route.legTwoDistance || Math.round(route.distance * 0.6);
+      const leg1 = calculateFlightMinutes(leg1Dist, cruiseSpeed, depLng, techLng, depLat, techLat);
+      const leg2 = calculateFlightMinutes(leg2Dist, cruiseSpeed, techLng, arrLng, techLat, arrLat);
+      outboundMins = leg1 + techStopMinutes + leg2;
+      const leg3 = calculateFlightMinutes(leg2Dist, cruiseSpeed, arrLng, techLng, arrLat, techLat);
+      const leg4 = calculateFlightMinutes(leg1Dist, cruiseSpeed, techLng, depLng, techLat, depLat);
+      returnMins = leg3 + techStopMinutes + leg4;
+    } else {
+      outboundMins = calculateFlightMinutes(route.distance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
+      returnMins = calculateFlightMinutes(route.distance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
+    }
+  }
+
+  // NaN guard - fall back to estimates from stored times
+  if (!isFinite(outboundMins) || !isFinite(returnMins)) {
+    const storedArr = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : null;
+    const depTimeStr = flight.departureTime ? flight.departureTime.substring(0, 5) : '00:00';
+    const [dH, dM] = depTimeStr.split(':').map(Number);
+    if (storedArr) {
+      const [saH, saM] = storedArr.split(':').map(Number);
+      const nDepDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : '';
+      const nArrDate = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : new Date(flight.arrivalDate).toISOString().split('T')[0]) : nDepDate;
+      const daysDiff = Math.round((new Date(nArrDate) - new Date(nDepDate)) / 86400000);
+      const totalStored = (saH * 60 + saM) - (dH * 60 + dM) + daysDiff * 1440;
+      const flightOnly = Math.max(0, totalStored - turnaroundMins);
+      outboundMins = Math.round(flightOnly / 2);
+      returnMins = flightOnly - outboundMins;
+    } else {
+      outboundMins = 120;
+      returnMins = 120;
+    }
+  }
+
+  // Calculate departure time in minutes from its day's midnight
+  const depTimeStr = flight.departureTime ? flight.departureTime.substring(0, 5) : '00:00';
+  const [depH, depM] = depTimeStr.split(':').map(Number);
+  const depMinsFromMidnight = depH * 60 + depM;
+
+  // Days from departure date to this transit day
+  const normDepDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : '';
+  const normViewDate = typeof viewingDate === 'string' ? viewingDate.substring(0, 10) : '';
+  const daysFromDep = Math.round((new Date(normViewDate) - new Date(normDepDate)) / (1000 * 60 * 60 * 24));
+
+  // Minutes from departure to the start of this transit day (its midnight)
+  const dayStartFromDep = (daysFromDep * 1440) - depMinsFromMidnight;
+
+  // Build segment list (minutes from departure)
+  const segments = [
+    { type: 'outbound', start: 0, end: outboundMins, routeNum: route.routeNumber || '', label: `${depAirport}-${arrAirport}` },
+    { type: 'turnaround', start: outboundMins, end: outboundMins + turnaroundMins, routeNum: '', label: arrAirport },
+    { type: 'return', start: outboundMins + turnaroundMins, end: outboundMins + turnaroundMins + returnMins, routeNum: route.returnRouteNumber || '', label: `${arrAirport}-${depAirport}` }
+  ];
+
+  // Helper to format minutes as HH:MM
+  const minsToTime = (mins) => {
+    const h = Math.floor(mins / 60) % 24;
+    const m = Math.round(mins % 60 / 5) * 5;
+    const finalH = m === 60 ? (h + 1) % 24 : h;
+    const finalM = m === 60 ? 0 : m;
+    return `${String(finalH).padStart(2, '0')}:${String(finalM).padStart(2, '0')}`;
+  };
+
+  let segmentsHtml = '';
+
+  for (const seg of segments) {
+    // Calculate overlap with this day [0, 1440] minutes from this day's midnight
+    const overlapStart = Math.max(seg.start - dayStartFromDep, 0);
+    const overlapEnd = Math.min(seg.end - dayStartFromDep, 1440);
+
+    if (overlapStart >= overlapEnd) continue; // No overlap with this day
+
+    const durationOnDay = overlapEnd - overlapStart;
+    const leftPercent = (overlapStart / 60) * 100;
+    const widthPercent = (durationOnDay / 60) * 100;
+
+    const startsBeforeDay = seg.start < dayStartFromDep;
+    const continuesAfterDay = seg.end > dayStartFromDep + 1440;
+    const isCompact = durationOnDay < 90;
+
+    // Border radius: flat edges where segment crosses day boundary
+    let borderRadius = '';
+    if (startsBeforeDay && continuesAfterDay) borderRadius = 'border-radius: 0;';
+    else if (startsBeforeDay) borderRadius = 'border-radius: 0 3px 3px 0;';
+    else if (continuesAfterDay) borderRadius = 'border-radius: 3px 0 0 3px;';
+
+    // Left position: use -0.4rem for segments continuing from previous day
+    const leftStyle = startsBeforeDay ? '-0.4rem' : `${leftPercent}%`;
+    const widthStyle = startsBeforeDay ? `calc(${widthPercent}% + 0.4rem)` : `${widthPercent}%`;
+
+    // Calculate display times for this segment on this day
+    const segStartTime = minsToTime(overlapStart);
+    const segEndTime = minsToTime(overlapEnd);
+
+    const cssClass = seg.type === 'outbound' ? 'segment-outbound' :
+                     seg.type === 'turnaround' ? 'segment-turnaround' :
+                     'segment-return';
+
+    if (seg.type === 'turnaround') {
+      // Check daily check for turnaround - pass scheduledDate as departureDate to exclude downroute checks
+      const dailyCheckDue = flight.aircraft && flight.arrivalDate
+        ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.arrivalDate, depTimeStr, flight.scheduledDate?.substring(0, 10))
+        : false;
+
+      segmentsHtml += `
+        <div class="flight-segment ${cssClass} ${isCompact ? 'compact' : ''} ${dailyCheckDue ? 'has-daily-check' : ''}"
+             style="left: ${leftStyle}; width: ${widthStyle}; ${borderRadius}"
+             onclick="viewFlightDetails('${flight.id}')"
+             title="Turnaround at ${arrAirport} (${turnaroundMins}m)${dailyCheckDue ? ' - DAILY CHECK (30m)' : ''} | ${segStartTime}-${segEndTime}">
+          <span class="segment-label">${arrAirport}</span>
+          ${dailyCheckDue
+            ? `<span class="segment-time" style="color: #fbbf24;">Daily 30m</span>`
+            : `<span class="segment-time">${turnaroundMins}m</span>`
+          }
+        </div>
+      `;
+    } else {
+      segmentsHtml += `
+        <div class="flight-segment ${cssClass} ${isCompact ? 'compact' : ''}"
+             style="left: ${leftStyle}; width: ${widthStyle}; ${borderRadius}"
+             onclick="viewFlightDetails('${flight.id}')"
+             title="${seg.routeNum}: ${seg.label}${startsBeforeDay ? ' (continuing)' : ''}${continuesAfterDay ? ' (continues tomorrow)' : ''} | ${segStartTime}-${segEndTime}">
+          <span class="segment-flight-num">${seg.routeNum}</span>
+          <span class="segment-route">${seg.label}</span>
+          ${!isCompact ? `<span class="segment-time">${segStartTime}-${segEndTime}</span>` : ''}
+        </div>
+      `;
+    }
+  }
+
+  return segmentsHtml;
 }
 
 // Render flight blocks within a cell (daily view only)
@@ -1568,21 +1780,45 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
   return flights.map(flight => {
     const route = flight.route;
 
-    // Debug logging
-    console.log('Flight:', route.routeNumber, 'scheduledDate:', flight.scheduledDate, 'arrivalDate:', flight.arrivalDate, 'viewingDate:', viewingDate);
+    // Normalize dates to YYYY-MM-DD for reliable comparison
+    const normSchedDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : '';
+    const normArrDate = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : new Date(flight.arrivalDate).toISOString().split('T')[0]) : normSchedDate;
+    const rawViewDate = typeof viewingDate === 'string' ? viewingDate.substring(0, 10) : '';
+
+    // The viewing date may not align with the flight's actual dates (weekly recurring schedule).
+    // Compute an effective viewing date within the flight's actual date range that matches
+    // the viewing day-of-week, so all date-based comparisons work correctly.
+    const viewDow = new Date(rawViewDate + 'T12:00:00').getDay();
+    const schedDateObj = new Date(normSchedDate + 'T12:00:00');
+    const arrDateObj = new Date(normArrDate + 'T12:00:00');
+    const daysBetweenDepArr = Math.round((arrDateObj - schedDateObj) / 86400000);
+
+    let normViewDate = rawViewDate;
+    if (normSchedDate !== rawViewDate && normArrDate !== rawViewDate) {
+      // Dates don't match directly - find the matching DOW within the flight's span
+      // Also check one day before scheduledDate (pre-flight may start prev day)
+      for (let i = -1; i <= daysBetweenDepArr + 1; i++) {
+        const d = new Date(schedDateObj);
+        d.setDate(d.getDate() + i);
+        if (d.getDay() === viewDow) {
+          normViewDate = d.toISOString().substring(0, 10);
+          break;
+        }
+      }
+    }
 
     // Use Date objects for reliable comparison
-    const flightStart = new Date(flight.scheduledDate);
-    const flightEnd = new Date(flight.arrivalDate);
-    const viewDate = new Date(viewingDate);
+    const flightStart = new Date(normSchedDate);
+    const flightEnd = new Date(normArrDate);
+    const viewDate = new Date(normViewDate);
 
     // Check if this is an "in transit" day (departed before, arrives after)
     const isInTransit = flightStart < viewDate && flightEnd > viewDate;
-    console.log('isInTransit:', isInTransit, 'flightStart < viewDate:', flightStart < viewDate, 'flightEnd > viewDate:', flightEnd > viewDate);
 
     if (isInTransit) {
-      // Render continues block - full day with centered flight numbers
-      const content = renderContinuesBlock(flight, route);
+      // Render segmented transit day block showing outbound/turnaround/return
+      // Pass effective normViewDate (DOW-aligned to flight's actual dates)
+      const content = renderTransitDayBlock(flight, route, normViewDate);
       return blurStyle ? `<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; ${blurStyle}">${content}</div>` : content;
     }
 
@@ -1636,26 +1872,68 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
       }
     }
 
+    // Guard against NaN flight times - fall back to estimates from stored data
+    if (!isFinite(outboundFlightMinutes) || !isFinite(returnFlightMinutes)) {
+      // Calculate total from stored departure/arrival times
+      const storedArr = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : null;
+      if (storedArr) {
+        const [saH, saM] = storedArr.split(':').map(Number);
+        let totalStored = (saH * 60 + saM) - (hours * 60 + minutes);
+        if (flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate) {
+          const daysDiff = Math.round((new Date(flight.arrivalDate) - new Date(flight.scheduledDate)) / 86400000);
+          totalStored += daysDiff * 1440;
+        }
+        const flightOnly = Math.max(0, totalStored - turnaroundMinutes);
+        outboundFlightMinutes = Math.round(flightOnly / 2);
+        returnFlightMinutes = flightOnly - outboundFlightMinutes;
+      } else {
+        outboundFlightMinutes = 120;
+        returnFlightMinutes = 120;
+      }
+    }
+
+    // Calculate ACTUAL turnaround from stored times (not just route minimum)
+    // actualTurnaround = total trip - outbound - return
+    const storedArrForTurnaround = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : null;
+    let actualTurnaroundMinutes = turnaroundMinutes; // default to route minimum
+    if (storedArrForTurnaround) {
+      const [saH2, saM2] = storedArrForTurnaround.split(':').map(Number);
+      const nsd = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : '';
+      const nad = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : new Date(flight.arrivalDate).toISOString().split('T')[0]) : nsd;
+      const dd = Math.round((new Date(nad) - new Date(nsd)) / 86400000);
+      const totalTrip = (saH2 * 60 + saM2) - (hours * 60 + minutes) + dd * 1440;
+      const computed = totalTrip - outboundFlightMinutes - returnFlightMinutes;
+      if (computed > 0) actualTurnaroundMinutes = computed;
+    }
+
     // Calculate total duration (outbound + turnaround + return)
-    const totalDurationMinutes = outboundFlightMinutes + turnaroundMinutes + returnFlightMinutes;
+    const totalDurationMinutes = outboundFlightMinutes + actualTurnaroundMinutes + returnFlightMinutes;
 
-    // Calculate the arrival time with wind effects (for overnight arrival check)
-    const calcDepDate = new Date(`2000-01-01T${flight.departureTime}`);
-    const calcReturnArrDate = new Date(calcDepDate.getTime() + totalDurationMinutes * 60000);
-    const calculatedArrHours = calcReturnArrDate.getHours() % 24;
-    const calculatedArrMins = calcReturnArrDate.getMinutes();
-    const roundedMins = Math.round(calculatedArrMins / 5) * 5;
-    const finalArrHours = roundedMins === 60 ? (calculatedArrHours + 1) % 24 : calculatedArrHours;
-    const finalArrMins = roundedMins === 60 ? 0 : roundedMins;
-    const calculatedArrTime = `${String(finalArrHours).padStart(2, '0')}:${String(finalArrMins).padStart(2, '0')}`;
+    // Use stored arrival time as primary source, fall back to calculated
+    const storedArrivalTime = flight.arrivalTime ? flight.arrivalTime.substring(0, 5) : null;
+    let calculatedArrTime;
+    if (storedArrivalTime) {
+      calculatedArrTime = storedArrivalTime;
+    } else {
+      const calcDepDate = new Date(`2000-01-01T${flight.departureTime}`);
+      const calcReturnArrDate = new Date(calcDepDate.getTime() + totalDurationMinutes * 60000);
+      const calculatedArrHours = calcReturnArrDate.getHours() % 24;
+      const calculatedArrMins = calcReturnArrDate.getMinutes();
+      const roundedMins = Math.round(calculatedArrMins / 5) * 5;
+      const finalArrHours = roundedMins === 60 ? (calculatedArrHours + 1) % 24 : calculatedArrHours;
+      const finalArrMins = roundedMins === 60 ? 0 : roundedMins;
+      calculatedArrTime = `${String(finalArrHours).padStart(2, '0')}:${String(finalArrMins).padStart(2, '0')}`;
+    }
 
-    // Check if this is an overnight arrival (flight departed before, arrives today)
-    const isOvernightArrival = flight.arrivalDate === viewingDate && flight.scheduledDate !== viewingDate;
+    // Check if this is an overnight arrival (flight departed before, arrives on this day)
+    // Uses effective normViewDate (already DOW-aligned above)
+    const isOvernightArrival = normArrDate === normViewDate && normSchedDate !== normViewDate;
     if (isOvernightArrival) {
-      // Render overnight arrival block with calculated arrival time and segment durations
+      // calculatedArrTime already prefers stored flight.arrivalTime (set above)
+      // Segment durations are already NaN-guarded (line 1729 fallback)
       const content = renderOvernightArrivalBlock(flight, route, calculatedArrTime, {
         outbound: outboundFlightMinutes,
-        turnaround: turnaroundMinutes,
+        turnaround: actualTurnaroundMinutes,
         return: returnFlightMinutes
       });
       return blurStyle ? `<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; ${blurStyle}">${content}</div>` : content;
@@ -1887,25 +2165,10 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
       const [arrH, arrM] = arrTimeStr.split(':').map(Number);
       let arrMins = arrH * 60 + arrM;
 
-      // Calculate post-flight duration
+      // Calculate post-flight duration using shared library
       const acType = aircraft.aircraft?.type || 'Narrowbody';
       const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-      let deboardDur = 0;
-      if (acType !== 'Cargo') {
-        if (paxCapacity < 50) deboardDur = 5;
-        else if (paxCapacity < 100) deboardDur = 8;
-        else if (paxCapacity < 200) deboardDur = 12;
-        else if (paxCapacity < 300) deboardDur = 15;
-        else deboardDur = 20;
-      }
-      let cleanDur;
-      if (paxCapacity < 50) cleanDur = 5;
-      else if (paxCapacity < 100) cleanDur = 10;
-      else if (paxCapacity < 200) cleanDur = 15;
-      else if (paxCapacity < 300) cleanDur = 20;
-      else cleanDur = 25;
-
-      const postFlightEnd = arrMins + deboardDur + cleanDur;
+      const postFlightEnd = arrMins + calculatePostFlightTotal(paxCapacity, acType).total;
       // Get the minute within the hour where post-flight ends
       const endMinuteInHour = postFlightEnd % 60;
       if (endMinuteInHour > flightEndMinuteInHour) {
@@ -1915,6 +2178,23 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
   }
 
   return maintenance.map(check => {
+    // Skip daily checks that overlap with a flight turnaround - the turnaround segment
+    // already shows the daily check visually with the purple/orange gradient
+    if (check.checkType === 'daily') {
+      const checkDate = check.displayDate || check.scheduledDate;
+      const normCheckDate = typeof checkDate === 'string' ? checkDate.substring(0, 10) : '';
+      const hasOverlappingFlight = scheduledFlights.some(f => {
+        if (f.aircraftId != check.aircraftId) return false;
+        const fSchedDate = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
+        const fArrDate = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : new Date(f.arrivalDate).toISOString().split('T')[0]) : fSchedDate;
+        // Flight is in transit or arrives on this date (turnaround happens downroute)
+        const inTransit = fSchedDate < normCheckDate && fArrDate > normCheckDate;
+        const arrivesToday = fArrDate === normCheckDate && fSchedDate !== normCheckDate;
+        return inTransit || arrivesToday;
+      });
+      if (hasOverlappingFlight) return '';
+    }
+
     const startTime = check.startTime.substring(0, 5); // HH:MM
     const [hours, minutes] = startTime.split(':').map(Number);
 
@@ -2089,98 +2369,21 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
   }).join('');
 }
 
-// Calculate pre-flight turnaround duration (catering + boarding + fuelling before departure)
-// Returns duration in minutes
-// Boarding can't start until catering is complete, fuelling happens in parallel
+// Scheduling wrapper for pre-flight calculation using shared library
 function calculatePreFlightDuration(aircraft, route) {
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-
-  // Pre-flight catering (5-15 mins for 50+ pax)
-  let cateringDuration = 0;
-  if (paxCapacity >= 50 && acType !== 'Cargo') {
-    if (paxCapacity < 100) {
-      cateringDuration = 5;
-    } else if (paxCapacity < 200) {
-      cateringDuration = 10;
-    } else {
-      cateringDuration = 15;
-    }
-  }
-
-  // Boarding duration (10-35 mins based on capacity) - starts after catering
-  let boardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) {
-      boardingDuration = 10;
-    } else if (paxCapacity < 100) {
-      boardingDuration = 15;
-    } else if (paxCapacity < 200) {
-      boardingDuration = 20;
-    } else if (paxCapacity < 300) {
-      boardingDuration = 25;
-    } else {
-      boardingDuration = 35;
-    }
-  }
-
-  // Catering + boarding happen in sequence
-  const cateringBoardingDuration = cateringDuration + boardingDuration;
-
-  // Pre-flight fuelling based on the route distance (10-25 mins) - happens in parallel
   const distance = route?.distance || 0;
-  let fuellingDuration = 0;
-  if (distance < 500) {
-    fuellingDuration = 10;
-  } else if (distance < 1500) {
-    fuellingDuration = 15;
-  } else if (distance < 3000) {
-    fuellingDuration = 20;
-  } else {
-    fuellingDuration = 25;
-  }
-
-  // Total is the max of (catering + boarding) vs fuelling
-  return Math.max(cateringBoardingDuration, fuellingDuration);
+  return calculatePreFlightTotal(distance, paxCapacity, acType).total;
 }
 
-// Calculate post-flight turnaround duration (deboarding + cleaning)
+// Scheduling wrapper for post-flight calculation using shared library
 // Returns { duration: number, hasHeavyCheck: boolean, checkType: 'C'|'D'|null }
 function calculatePostFlightDuration(aircraft, scheduledDate) {
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
 
-  // Calculate deboarding time (5-20 mins based on capacity)
-  let deboardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) {
-      deboardingDuration = 5;
-    } else if (paxCapacity < 100) {
-      deboardingDuration = 8;
-    } else if (paxCapacity < 200) {
-      deboardingDuration = 12;
-    } else if (paxCapacity < 300) {
-      deboardingDuration = 15;
-    } else {
-      deboardingDuration = 20;
-    }
-  }
-
-  // Calculate cleaning duration (5-25 mins based on size) - starts after deboarding
-  let cleaningDuration;
-  if (paxCapacity < 50) {
-    cleaningDuration = 5;
-  } else if (paxCapacity < 100) {
-    cleaningDuration = 10;
-  } else if (paxCapacity < 200) {
-    cleaningDuration = 15;
-  } else if (paxCapacity < 300) {
-    cleaningDuration = 20;
-  } else {
-    cleaningDuration = 25;
-  }
-
-  const totalDuration = deboardingDuration + cleaningDuration;
+  const totalDuration = calculatePostFlightTotal(paxCapacity, acType).total;
 
   // Check for scheduled heavy maintenance (C/D check)
   let hasHeavyCheck = false;
@@ -2204,54 +2407,19 @@ function calculatePostFlightDuration(aircraft, scheduledDate) {
 function buildPostFlightHtml(aircraft, flight, arrHomeMins, formatTime, allFlights) {
   const scheduledDate = flight.scheduledDate;
 
-  // Get aircraft details for cleaning/catering duration
+  // Get aircraft details using shared library functions
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
 
-  // Calculate deboarding time (5-20 mins based on capacity)
-  // Cleaning and catering can't start until deboarding is complete
-  let deboardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) {
-      deboardingDuration = 5;
-    } else if (paxCapacity < 100) {
-      deboardingDuration = 8;
-    } else if (paxCapacity < 200) {
-      deboardingDuration = 12;
-    } else if (paxCapacity < 300) {
-      deboardingDuration = 15;
-    } else {
-      deboardingDuration = 20;
-    }
-  }
+  const deboardingDuration = calculateDeboardingDuration(paxCapacity, acType);
   const deboardingEndMins = arrHomeMins + deboardingDuration;
 
-  // Calculate cleaning duration (5-25 mins based on size) - starts after deboarding
-  let cleaningDuration;
-  if (paxCapacity < 50) {
-    cleaningDuration = 5;
-  } else if (paxCapacity < 100) {
-    cleaningDuration = 10;
-  } else if (paxCapacity < 200) {
-    cleaningDuration = 15;
-  } else if (paxCapacity < 300) {
-    cleaningDuration = 20;
-  } else {
-    cleaningDuration = 25;
-  }
+  const cleaningDuration = calculateCleaningDuration(paxCapacity);
   const cleaningEndMins = deboardingEndMins + cleaningDuration;
 
-  // Calculate catering duration (5-15 mins for 50+ pax aircraft) - starts after deboarding
-  let cateringDuration = 0;
+  const cateringDuration = calculateCateringDuration(paxCapacity, acType);
   let cateringEndMins = deboardingEndMins;
-  if (paxCapacity >= 50 && acType !== 'Cargo') {
-    if (paxCapacity < 100) {
-      cateringDuration = 5;
-    } else if (paxCapacity < 200) {
-      cateringDuration = 10;
-    } else {
-      cateringDuration = 15;
-    }
+  if (cateringDuration > 0) {
     cateringEndMins = deboardingEndMins + cateringDuration;
   }
 
@@ -2291,17 +2459,9 @@ function buildPostFlightHtml(aircraft, flight, arrHomeMins, formatTime, allFligh
       })[0];
 
     if (nextFlight) {
-      // Calculate fuelling duration based on next flight's distance (10-25 mins)
+      // Calculate fuelling duration based on next flight's distance using shared library
       const nextDistance = nextFlight.route?.distance || 0;
-      if (nextDistance < 500) {
-        fuellingDuration = 10;
-      } else if (nextDistance < 1500) {
-        fuellingDuration = 15;
-      } else if (nextDistance < 3000) {
-        fuellingDuration = 20;
-      } else {
-        fuellingDuration = 25;
-      }
+      fuellingDuration = calculateFuellingDuration(nextDistance);
       fuellingEndMins = arrHomeMins + fuellingDuration;
 
       // Get the sector for display
@@ -2467,17 +2627,17 @@ function isDailyCheckDue(aircraft, flightDate) {
  * The preference is always to do daily checks at home base. Only do downroute
  * checks if the flying schedule doesn't allow for a home base check.
  */
-function isDailyCheckDueAtTurnaround(aircraft, flightDate, departureTime = null) {
-  // First check if a daily check is even due
-  if (!isDailyCheckDue(aircraft, flightDate)) {
+function isDailyCheckDueAtTurnaround(aircraft, turnaroundDate, departureTime = null, departureDate = null) {
+  // First check if a daily check is even due by the turnaround date
+  if (!isDailyCheckDue(aircraft, turnaroundDate)) {
     return false; // No daily check needed at all
   }
 
-  // Check if there's a scheduled daily check that would cover this flight
+  // Check if there's a scheduled daily check at home base that would cover this flight
   const aircraftId = aircraft.id;
-  const flightDateObj = new Date(flightDate + 'T00:00:00');
+  const turnaroundDateObj = new Date(turnaroundDate + 'T00:00:00');
 
-  // Look for scheduled daily checks on this date or the day before (within 2-day validity)
+  // Look for scheduled daily checks on the turnaround date or the day before (within 2-day validity)
   const coveringCheck = scheduledMaintenance.find(m => {
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
     if (maintAircraftId != aircraftId) return false;
@@ -2486,6 +2646,11 @@ function isDailyCheckDueAtTurnaround(aircraft, flightDate, departureTime = null)
 
     const checkDate = m.scheduledDate;
     if (!checkDate) return false;
+
+    // Only consider checks scheduled at home base (on or before departure date)
+    // Downroute checks (scheduled after departure) are the turnaround checks themselves
+    // and should not cancel out the need for a turnaround check
+    if (departureDate && checkDate > departureDate) return false;
 
     // Check completes after startTime + duration
     const checkDateObj = new Date(checkDate + 'T00:00:00');
@@ -2496,7 +2661,7 @@ function isDailyCheckDueAtTurnaround(aircraft, flightDate, departureTime = null)
     // A daily check covers the flight if:
     // 1. It's on the same date AND completes before departure, OR
     // 2. It's on the previous date (still within 2-day validity window)
-    const daysDiff = Math.floor((flightDateObj - checkDateObj) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.floor((turnaroundDateObj - checkDateObj) / (1000 * 60 * 60 * 24));
 
     if (daysDiff === 0) {
       // Same day - check must complete before flight departure
@@ -2549,32 +2714,11 @@ function showPreFlightModal(flightId) {
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
 
-  // Calculate pre-flight durations
-  let cateringDuration = 0;
-  if (paxCapacity >= 50 && acType !== 'Cargo') {
-    if (paxCapacity < 100) cateringDuration = 5;
-    else if (paxCapacity < 200) cateringDuration = 10;
-    else cateringDuration = 15;
-  }
-
-  // Boarding duration (10-35 mins based on capacity) - starts after catering
-  let boardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) boardingDuration = 10;
-    else if (paxCapacity < 100) boardingDuration = 15;
-    else if (paxCapacity < 200) boardingDuration = 20;
-    else if (paxCapacity < 300) boardingDuration = 25;
-    else boardingDuration = 35;
-  }
-
+  // Calculate pre-flight durations using shared library
   const distance = route?.distance || 0;
-  let fuellingDuration = 0;
-  if (distance < 500) fuellingDuration = 10;
-  else if (distance < 1500) fuellingDuration = 15;
-  else if (distance < 3000) fuellingDuration = 20;
-  else fuellingDuration = 25;
-
-  // Catering + boarding happen in sequence, fuelling in parallel
+  const cateringDuration = calculateCateringDuration(paxCapacity, acType);
+  const boardingDuration = calculateBoardingDuration(paxCapacity, acType);
+  const fuellingDuration = calculateFuellingDuration(distance);
   const cateringBoardingDuration = cateringDuration + boardingDuration;
   const totalDuration = Math.max(cateringBoardingDuration, fuellingDuration);
 
@@ -2688,24 +2832,9 @@ function showPostFlightModal(flightId) {
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
   const scheduledDate = flight.scheduledDate;
 
-  // Calculate deboarding duration
-  let deboardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) deboardingDuration = 5;
-    else if (paxCapacity < 100) deboardingDuration = 8;
-    else if (paxCapacity < 200) deboardingDuration = 12;
-    else if (paxCapacity < 300) deboardingDuration = 15;
-    else deboardingDuration = 20;
-  }
-
-  // Calculate cleaning duration
-  let cleaningDuration;
-  if (paxCapacity < 50) cleaningDuration = 5;
-  else if (paxCapacity < 100) cleaningDuration = 10;
-  else if (paxCapacity < 200) cleaningDuration = 15;
-  else if (paxCapacity < 300) cleaningDuration = 20;
-  else cleaningDuration = 25;
-
+  // Calculate post-flight durations using shared library
+  const deboardingDuration = calculateDeboardingDuration(paxCapacity, acType);
+  const cleaningDuration = calculateCleaningDuration(paxCapacity);
   const totalDuration = deboardingDuration + cleaningDuration;
 
   // Check for heavy maintenance
@@ -3128,23 +3257,9 @@ async function viewFlightDetailsLegacy(flightId) {
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
   const scheduledDate = flight.scheduledDate;
 
-  // Calculate post-flight duration (deboarding + cleaning)
-  let deboardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) deboardingDuration = 5;
-    else if (paxCapacity < 100) deboardingDuration = 8;
-    else if (paxCapacity < 200) deboardingDuration = 12;
-    else if (paxCapacity < 300) deboardingDuration = 15;
-    else deboardingDuration = 20;
-  }
-
-  let cleaningDuration;
-  if (paxCapacity < 50) cleaningDuration = 5;
-  else if (paxCapacity < 100) cleaningDuration = 10;
-  else if (paxCapacity < 200) cleaningDuration = 15;
-  else if (paxCapacity < 300) cleaningDuration = 20;
-  else cleaningDuration = 25;
-
+  // Calculate post-flight duration using shared library
+  const deboardingDuration = calculateDeboardingDuration(paxCapacity, acType);
+  const cleaningDuration = calculateCleaningDuration(paxCapacity);
   const postFlightDuration = deboardingDuration + cleaningDuration;
   const availableMins = arrHomeMins + postFlightDuration;
 
@@ -3423,51 +3538,16 @@ async function viewFlightDetailsWeekly(flightId) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
-  // Calculate pre-flight durations (same for both sectors)
-  let cateringDuration = 0;
-  if (paxCapacity >= 50 && acType !== 'Cargo') {
-    if (paxCapacity < 100) cateringDuration = 5;
-    else if (paxCapacity < 200) cateringDuration = 10;
-    else cateringDuration = 15;
-  }
-
-  // Boarding duration (10-35 mins based on capacity) - starts after catering
-  let boardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) boardingDuration = 10;
-    else if (paxCapacity < 100) boardingDuration = 15;
-    else if (paxCapacity < 200) boardingDuration = 20;
-    else if (paxCapacity < 300) boardingDuration = 25;
-    else boardingDuration = 35;
-  }
-
+  // Calculate pre-flight durations using shared library (same for both sectors)
   const distance = route?.distance || 0;
-  let fuellingDuration = 0;
-  if (distance < 500) fuellingDuration = 10;
-  else if (distance < 1500) fuellingDuration = 15;
-  else if (distance < 3000) fuellingDuration = 20;
-  else fuellingDuration = 25;
-
-  // Catering + boarding in sequence, fuelling in parallel
+  const cateringDuration = calculateCateringDuration(paxCapacity, acType);
+  const boardingDuration = calculateBoardingDuration(paxCapacity, acType);
+  const fuellingDuration = calculateFuellingDuration(distance);
   const preFlightTotal = Math.max(cateringDuration + boardingDuration, fuellingDuration);
 
-  // Calculate post-flight durations (same for both sectors)
-  let deboardingDuration = 0;
-  if (acType !== 'Cargo') {
-    if (paxCapacity < 50) deboardingDuration = 5;
-    else if (paxCapacity < 100) deboardingDuration = 8;
-    else if (paxCapacity < 200) deboardingDuration = 12;
-    else if (paxCapacity < 300) deboardingDuration = 15;
-    else deboardingDuration = 20;
-  }
-
-  let cleaningDuration;
-  if (paxCapacity < 50) cleaningDuration = 5;
-  else if (paxCapacity < 100) cleaningDuration = 10;
-  else if (paxCapacity < 200) cleaningDuration = 15;
-  else if (paxCapacity < 300) cleaningDuration = 20;
-  else cleaningDuration = 25;
-
+  // Calculate post-flight durations using shared library (same for both sectors)
+  const deboardingDuration = calculateDeboardingDuration(paxCapacity, acType);
+  const cleaningDuration = calculateCleaningDuration(paxCapacity);
   const postFlightTotal = deboardingDuration + cleaningDuration;
 
   // Check for heavy maintenance
@@ -3475,8 +3555,23 @@ async function viewFlightDetailsWeekly(flightId) {
   const dCheckDue = isHeavyCheckDue(aircraft, 'D', scheduledDate);
 
   // Check if daily check is due during turnaround (only if no home base check covers)
-  const dailyCheckDue = isDailyCheckDueAtTurnaround(aircraft, scheduledDate, depTime);
+  // For multi-day flights, the turnaround happens on a later date than departure
+  const turnaroundDaysAfterDep = Math.floor(arrAtDestMins / 1440);
+  const turnaroundDate = turnaroundDaysAfterDep > 0 ? addDaysToDate(scheduledDate, turnaroundDaysAfterDep) : scheduledDate;
+  let dailyCheckDue = isDailyCheckDueAtTurnaround(aircraft, turnaroundDate, depTime, scheduledDate);
   const dailyCheckDuration = 30; // Daily check takes 30 minutes
+
+  // Fallback: if a downroute daily check is actually scheduled, show it regardless of expiry calc
+  if (!dailyCheckDue) {
+    dailyCheckDue = scheduledMaintenance.some(m => {
+      const maintAircraftId = m.aircraftId || m.aircraft?.id;
+      if (maintAircraftId != aircraft.id) return false;
+      if (m.checkType !== 'daily') return false;
+      if (m.status !== 'active') return false;
+      const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
+      return checkDate === turnaroundDate && checkDate > scheduledDate;
+    });
+  }
 
   // Calculate all phase times - MUST match display times for consistency
   const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
@@ -4900,6 +4995,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     let cellContent = '';
 
     // Render flight blocks as positioned time bars
+    let hasMultiDayOverflow = false; // Track if any flight extends past cell edge
     if (dayFlights.length > 0) {
       dayFlights.forEach(flight => {
         const route = flight.route;
@@ -4919,83 +5015,21 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         // Use stored arrival time (this is when aircraft returns home after round-trip)
         let arrMinutes = arrH * 60 + arrM;
 
-        // Calculate pre-flight and post-flight duration to extend the visual strip
+        // Calculate pre-flight and post-flight durations using shared library
         const acType = aircraft.aircraft?.type || 'Narrowbody';
         const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-
-        // Calculate pre-flight duration (catering + boarding vs fuelling, whichever is longer)
-        let cateringDur = 0;
-        if (paxCapacity >= 50 && acType !== 'Cargo') {
-          if (paxCapacity < 100) cateringDur = 5;
-          else if (paxCapacity < 200) cateringDur = 10;
-          else cateringDur = 15;
-        }
-        let boardingDur = 0;
-        if (acType !== 'Cargo') {
-          if (paxCapacity < 50) boardingDur = 10;
-          else if (paxCapacity < 100) boardingDur = 15;
-          else if (paxCapacity < 200) boardingDur = 20;
-          else if (paxCapacity < 300) boardingDur = 25;
-          else boardingDur = 35;
-        }
         const routeDistance = route?.distance || 0;
-        let fuelDur = 0;
-        if (routeDistance < 500) fuelDur = 10;
-        else if (routeDistance < 1500) fuelDur = 15;
-        else if (routeDistance < 3000) fuelDur = 20;
-        else fuelDur = 25;
-        const preFlightDur = Math.max(cateringDur + boardingDur, fuelDur);
+        const preFlightDur = calculatePreFlightTotal(routeDistance, paxCapacity, acType).total;
+        const postFlightDur = calculatePostFlightTotal(paxCapacity, acType).total;
 
         // Subtract pre-flight time from departure to get true operation start
         depMinutes -= preFlightDur;
 
-        // Post-flight duration
-        let deboardDur = 0;
-        if (acType !== 'Cargo') {
-          if (paxCapacity < 50) deboardDur = 5;
-          else if (paxCapacity < 100) deboardDur = 8;
-          else if (paxCapacity < 200) deboardDur = 12;
-          else if (paxCapacity < 300) deboardDur = 15;
-          else deboardDur = 20;
-        }
-        let cleanDur;
-        if (paxCapacity < 50) cleanDur = 5;
-        else if (paxCapacity < 100) cleanDur = 10;
-        else if (paxCapacity < 200) cleanDur = 15;
-        else if (paxCapacity < 300) cleanDur = 20;
-        else cleanDur = 25;
-        const postFlightDur = deboardDur + cleanDur;
-
         // Add post-flight time to arrival to get true operation end
         arrMinutes += postFlightDur;
 
-        // Calculate total operation time from route data to properly detect multi-day flights
-        // This is necessary because arrivalTime only stores time-of-day, not which day
-        const cruiseSpeed = aircraft.aircraft?.cruiseSpeed || 450;
-        const depAirport = route?.departureAirport;
-        const arrAirport2 = route?.arrivalAirport;
-        const depLng = depAirport?.longitude || 0;
-        const depLat = depAirport?.latitude || 0;
-        const arrLng = arrAirport2?.longitude || 0;
-        const arrLat = arrAirport2?.latitude || 0;
-
-        // Calculate outbound and return flight times
-        let outboundMins = 0, returnMins = 0;
-        if (routeDistance > 0 && cruiseSpeed > 0) {
-          outboundMins = calculateFlightMinutes(routeDistance, cruiseSpeed, depLng, arrLng, depLat, arrLat);
-          returnMins = calculateFlightMinutes(routeDistance, cruiseSpeed, arrLng, depLng, arrLat, depLat);
-        }
-
-        // Calculate turnaround time (same logic as flight details modal)
-        let turnaroundMins = 45; // Default minimum
-        if (routeDistance > 3000) turnaroundMins = 60;
-        if (routeDistance > 6000) turnaroundMins = 75;
-        if (paxCapacity > 300) turnaroundMins = Math.max(turnaroundMins, 60);
-
-        // Calculate actual arrival minutes from departure
-        // depMinutes already has pre-flight subtracted, so we add back pre-flight then add total flight time
-        const actualDepMins = depMinutes + preFlightDur; // Original departure time
-        arrMinutes = actualDepMins + outboundMins + turnaroundMins + returnMins + postFlightDur;
+        // Use stored arrivalDate for multi-day detection (consistent with getFlightsForDay)
+        // arrMinutes already has post-flight added from stored arrivalTime above
 
         // Get day of week for operation start (including pre-flight)
         let opStartDate = new Date(flight.scheduledDate + 'T00:00:00');
@@ -5006,9 +5040,8 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         }
         const opStartDayOfWeek = opStartDate.getDay();
 
-        // Calculate operation end date based on total minutes from scheduled date midnight
-        // arrMinutes is calculated from departure time, so we need to account for days it spans
-        let arrDate = new Date(flight.scheduledDate + 'T00:00:00');
+        // Calculate operation end date from stored arrivalDate + arrivalTime + post-flight
+        let arrDate = new Date((flight.arrivalDate || flight.scheduledDate) + 'T00:00:00');
         let normalizedArrMinutes = arrMinutes;
         while (normalizedArrMinutes >= 1440) {
           normalizedArrMinutes -= 1440;
@@ -5043,22 +5076,23 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           widthPct = ((arrMinutes - depMinutes) / 1440) * 100;
           borderRadius = '3px';
         } else if (col.dayOfWeek === opStartDayOfWeek) {
-          // Operation start day - starts at pre-flight time, extends to end of day
+          // Operation start day - extends to end of day
           leftPct = (depMinutes / 1440) * 100;
           widthPct = 100 - leftPct;
-          borderRadius = hasTransitDays ? '3px 0 0 3px' : '3px 0 0 3px';
+          borderRadius = '3px 0 0 3px';
         } else if (col.dayOfWeek === arrDayOfWeek) {
-          // Arrival day - starts at 0, ends at arrival time
+          // Arrival day - starts at cell edge
           leftPct = 0;
           widthPct = (arrMinutes / 1440) * 100;
           borderRadius = '0 3px 3px 0';
+          hasMultiDayOverflow = true; // Remove left border on this cell
         } else if (isTransitDay) {
           // Transit day (full day in flight)
           leftPct = 0;
           widthPct = 100;
           borderRadius = '0';
+          hasMultiDayOverflow = true; // Remove left border on this cell
         } else {
-          // Shouldn't reach here, but fallback
           leftPct = 0;
           widthPct = 100;
           borderRadius = '0';
@@ -5138,6 +5172,24 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           }
         }
 
+        // Check if this multi-day non-start day has a downroute daily check to embed in the strip
+        let flightBg = 'var(--accent-color)';
+        if (isMultiDay && isTransitDay && col.dayOfWeek !== opStartDayOfWeek) {
+          const downrouteDaily = dayMaintenance.find(m => m.checkType === 'daily');
+          if (downrouteDaily) {
+            const mStartStr = downrouteDaily.startTime?.substring(0, 5) || '00:00';
+            const [mH, mM] = mStartStr.split(':').map(Number);
+            const maintStartMin = mH * 60 + mM;
+            const maintDur = downrouteDaily.duration || 30;
+            const maintEndMin = Math.min(maintStartMin + maintDur, 1440);
+
+            // On transit days the strip covers the full day (1440 mins), so gradient works
+            const checkStartPct = Math.max(0, Math.min(100, (maintStartMin / 1440) * 100));
+            const checkEndPct = Math.max(0, Math.min(100, (maintEndMin / 1440) * 100));
+            flightBg = `linear-gradient(to right, var(--accent-color) ${checkStartPct}%, #FFA500 ${checkStartPct}%, #FFA500 ${checkEndPct}%, var(--accent-color) ${checkEndPct}%)`;
+          }
+        }
+
         // Main flight block - covers the full flight time (no separate pre/post-flight slivers in weekly view)
         // Apply blur if aircraft has expired checks (grounded)
         const flightBlockBlur = hasExpiredChecks ? 'filter: blur(2px); opacity: 0.4;' : '';
@@ -5145,7 +5197,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           <div
             onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
             title="${routeNum}: ${depTimeStr}→${arrTimeStr}${techStopAirport ? ' via ' + techStopAirport : ''}"
-            style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: var(--accent-color); border-radius: ${finalBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; ${flightBlockBlur}"
+            style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${flightBg}; border-radius: ${finalBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; ${flightBlockBlur}"
           >
             ${labelContent}
           </div>
@@ -5173,6 +5225,24 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         // This prevents duplicate full-week blocks from rendering on multiple days
         if (isHeavyMaintenance && maint.isOngoing && colIndex !== 0) {
           return; // Skip - already rendered from Monday or start day
+        }
+
+        // Daily checks that overlap with a flight turnaround downroute:
+        // Render as integrated gradient within the flight strip instead of separate orange block
+        let isDownrouteDaily = false;
+        if (maint.checkType === 'daily' && col.targetDate) {
+          const normMaintDate = col.targetDate.substring(0, 10);
+          const hasTransitFlight = scheduledFlights.some(f => {
+            if (f.aircraftId != aircraft.id && f.aircraft?.id !== aircraft.id) return false;
+            const fSchedDate = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
+            const fArrDate = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : new Date(f.arrivalDate).toISOString().split('T')[0]) : fSchedDate;
+            // Only skip separate block for true transit days where the strip covers the full day
+            // On arrival days the maintenance falls outside the flight strip's time range
+            return fSchedDate < normMaintDate && fArrDate > normMaintDate;
+          });
+          if (hasTransitFlight) {
+            return; // Skip separate block - embedded as gradient in flight strip
+          }
         }
 
         // Parse maintenance time
@@ -5216,25 +5286,9 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         const flightEndsPct = dayFlights.length > 0 ? Math.max(...dayFlights.map(f => {
           const arrStr = f.arrivalTime?.substring(0, 5) || '23:59';
           const [aH, aM] = arrStr.split(':').map(Number);
-          let arrMins = aH * 60 + aM;
-          // Add post-flight time
           const acT = aircraft.aircraft?.type || 'Narrowbody';
           const paxCap = aircraft.aircraft?.passengerCapacity || 150;
-          let dbDur = 0;
-          if (acT !== 'Cargo') {
-            if (paxCap < 50) dbDur = 5;
-            else if (paxCap < 100) dbDur = 8;
-            else if (paxCap < 200) dbDur = 12;
-            else if (paxCap < 300) dbDur = 15;
-            else dbDur = 20;
-          }
-          let clDur;
-          if (paxCap < 50) clDur = 5;
-          else if (paxCap < 100) clDur = 10;
-          else if (paxCap < 200) clDur = 15;
-          else if (paxCap < 300) clDur = 20;
-          else clDur = 25;
-          arrMins += dbDur + clDur;
+          let arrMins = aH * 60 + aM + calculatePostFlightTotal(paxCap, acT).total;
           if (arrMins >= 1440) arrMins -= 1440;
           return (arrMins / 1440) * 100;
         })) : 0;
@@ -5333,18 +5387,22 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             let widthPct = ((endMinutes - startMinutes) / 1440) * 100;
             if (widthPct < 5) widthPct = 5;
 
-            const maintBorderRadius = isAdjacentToFlight ? '0 3px 3px 0' : '3px';
+            // Downroute daily checks blend into the flight strip with no border-radius and higher z-index
+            const maintBorderRadius = isDownrouteDaily ? '0' : (isAdjacentToFlight ? '0 3px 3px 0' : '3px');
+            const maintZIndex = isDownrouteDaily ? 'z-index: 2;' : '';
             const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">${maintLabels[maint.checkType] || maint.checkType}</span>`;
 
             // Build tooltip with completion time
             const checkName = maint.checkType === 'daily' ? 'Daily' : (maint.checkType === 'weekly' ? 'Weekly' : maint.checkType);
-            const maintTooltip = `${checkName} Check\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
+            const maintTooltip = isDownrouteDaily
+              ? `${checkName} Check (downroute)\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`
+              : `${checkName} Check\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
 
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
                 title="${maintTooltip}"
-                style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter};"
+                style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; ${maintZIndex}"
               >
                 ${content}
               </div>
@@ -5356,15 +5414,10 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
 
     const hasContent = dayFlights.length > 0 || dayMaintenance.length > 0;
 
-    // Check if there's any scheduled maintenance for this aircraft
-    // If so, don't show PERFORM NOW - maintenance is already being handled
-    const hasScheduledMaintenance = scheduledMaintenance.some(m => {
-      const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      return maintAircraftId == aircraft.id && ['daily', 'weekly', 'A', 'C', 'D'].includes(m.checkType);
-    });
-
-    // Only show PERFORM NOW if there's no maintenance scheduled
-    const showPerformNow = actuallyExpired.length > 0 && !hasScheduledMaintenance;
+    // Show PERFORM NOW if there are expired checks not currently being handled
+    // Hide if a covering check is scheduled within the next 12 hours
+    const expiredTypes = actuallyExpired.map(c => c.type);
+    const showPerformNow = actuallyExpired.length > 0 && !hasUpcomingMaintenance(aircraft.id, expiredTypes, 12);
     const expiredCheckList = actuallyExpired.map(c => c.name).join(', ');
 
     const expiredOverlay = (showPerformNow && colIndex === 0) ? `
@@ -5404,7 +5457,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         class="schedule-cell weekly-cell"
         data-day="${col.dayOfWeek}"
         data-aircraft-id="${aircraft.id}"
-        style="position: relative; height: 36px; border-left: 1px solid var(--border-color); background: ${bgColor}; ${hasExpiredChecks ? 'overflow: visible;' : ''}"
+        style="position: relative; height: 36px; ${hasMultiDayOverflow ? '' : 'border-left: 1px solid var(--border-color);'} background: ${bgColor}; ${hasExpiredChecks ? 'overflow: visible;' : ''}"
         ondragover="${hasExpiredChecks ? '' : `handleWeeklyDragOver(event, ${col.dayOfWeek})`}"
         ondragleave="${hasExpiredChecks ? '' : 'handleWeeklyDragLeave(event)'}"
         ondrop="${hasExpiredChecks ? '' : `handleWeeklyDrop(event, '${aircraft.id}', ${col.dayOfWeek})`}"
@@ -5499,108 +5552,46 @@ function getFlightsForDay(aircraftId, dayOfWeek) {
     if (f.aircraft?.id !== aircraftId) return false;
     if (!f.scheduledDate) return false;
 
-    // Calculate pre-flight duration to determine operation start
+    // Use stored arrivalDate from server (calculated with wind effects)
+    // instead of recalculating locally with simplified formulas
     const aircraft = f.aircraft;
     const route = f.route;
     const acType = aircraft?.aircraft?.type || 'Narrowbody';
     const paxCapacity = aircraft?.aircraft?.passengerCapacity || 150;
-
-    // Calculate pre-flight duration
-    let cateringDur = 0;
-    if (paxCapacity >= 50 && acType !== 'Cargo') {
-      if (paxCapacity < 100) cateringDur = 5;
-      else if (paxCapacity < 200) cateringDur = 10;
-      else cateringDur = 15;
-    }
-    let boardingDur = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) boardingDur = 10;
-      else if (paxCapacity < 100) boardingDur = 15;
-      else if (paxCapacity < 200) boardingDur = 20;
-      else if (paxCapacity < 300) boardingDur = 25;
-      else boardingDur = 35;
-    }
     const routeDistance = route?.distance || 0;
-    let fuelDur = 0;
-    if (routeDistance < 500) fuelDur = 10;
-    else if (routeDistance < 1500) fuelDur = 15;
-    else if (routeDistance < 3000) fuelDur = 20;
-    else fuelDur = 25;
-    const preFlightDur = Math.max(cateringDur + boardingDur, fuelDur);
 
-    // Parse departure time
+    // Calculate pre-flight and post-flight durations using shared library
+    const preFlightDur = calculatePreFlightTotal(routeDistance, paxCapacity, acType).total;
+    const postFlightDur = calculatePostFlightTotal(paxCapacity, acType).total;
+
+    // Operation start: departure minus pre-flight
     const depTimeStr = f.departureTime?.substring(0, 5) || '00:00';
     const [depH, depM] = depTimeStr.split(':').map(Number);
-    let depMinutes = depH * 60 + depM;
-
-    // Calculate operation start (departure minus pre-flight)
+    let depMinutes = depH * 60 + depM - preFlightDur;
     let opStartDate = new Date(f.scheduledDate + 'T00:00:00');
-    depMinutes -= preFlightDur;
     if (depMinutes < 0) {
       depMinutes += 1440;
       opStartDate.setDate(opStartDate.getDate() - 1);
     }
     const opStartDayOfWeek = opStartDate.getDay();
-
-    // Check operation start day (pre-flight start)
     if (opStartDayOfWeek === dayOfWeek) return true;
 
-    // Calculate full round-trip flight duration
-    const cruiseSpeed = aircraft?.aircraft?.cruiseSpeed || 450;
-    const turnaroundMinutes = route?.turnaroundTime || 45;
-    const techStopMinutes = route?.techStopAirport ? 30 : 0;
-
-    // Calculate one-way flight time
-    let oneWayFlightMins;
-    if (route?.techStopAirport) {
-      const leg1Dist = route.legOneDistance || Math.round(routeDistance * 0.4);
-      const leg2Dist = route.legTwoDistance || Math.round(routeDistance * 0.6);
-      oneWayFlightMins = Math.round((leg1Dist / cruiseSpeed) * 60) + techStopMinutes + Math.round((leg2Dist / cruiseSpeed) * 60);
-    } else {
-      oneWayFlightMins = Math.round((routeDistance / cruiseSpeed) * 60);
-    }
-
-    // Total flight time = outbound + turnaround + return
-    const totalFlightMins = oneWayFlightMins + turnaroundMinutes + oneWayFlightMins;
-
-    // Calculate return home arrival time (departure + total flight time)
-    let arrMinutes = (depH * 60 + depM) + totalFlightMins;
-
-    // Calculate post-flight duration
-    let deboardDur = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) deboardDur = 5;
-      else if (paxCapacity < 100) deboardDur = 8;
-      else if (paxCapacity < 200) deboardDur = 12;
-      else if (paxCapacity < 300) deboardDur = 15;
-      else deboardDur = 20;
-    }
-    let cleanDur;
-    if (paxCapacity < 50) cleanDur = 5;
-    else if (paxCapacity < 100) cleanDur = 10;
-    else if (paxCapacity < 200) cleanDur = 15;
-    else if (paxCapacity < 300) cleanDur = 20;
-    else cleanDur = 25;
-    const postFlightDur = deboardDur + cleanDur;
-
-    // Add post-flight to get operation end
-    arrMinutes += postFlightDur;
-
-    // Calculate operation end date (can span multiple days)
-    let opEndDate = new Date(f.scheduledDate + 'T00:00:00');
+    // Operation end: use stored arrivalDate + arrivalTime + post-flight
+    const arrDate = f.arrivalDate || f.scheduledDate;
+    const arrTimeStr = f.arrivalTime?.substring(0, 5) || '23:59';
+    const [arrH, arrM] = arrTimeStr.split(':').map(Number);
+    let arrMinutes = arrH * 60 + arrM + postFlightDur;
+    let opEndDate = new Date(arrDate + 'T00:00:00');
     while (arrMinutes >= 1440) {
       arrMinutes -= 1440;
       opEndDate.setDate(opEndDate.getDate() + 1);
     }
     const opEndDayOfWeek = opEndDate.getDay();
-
-    // Check operation end day (post-flight end)
     if (opEndDayOfWeek === dayOfWeek) return true;
 
     // Check transit days (days between operation start and operation end)
     const daysDiff = Math.round((opEndDate - opStartDate) / (1000 * 60 * 60 * 24));
     if (daysDiff > 1) {
-      // There are transit days - check if dayOfWeek falls between start and end
       for (let i = 1; i < daysDiff; i++) {
         const transitDayOfWeek = (opStartDayOfWeek + i) % 7;
         if (transitDayOfWeek === dayOfWeek) return true;
@@ -5764,15 +5755,10 @@ function generateAircraftRow(aircraft, timeColumns) {
     const cellFlights = getFlightsForCell(aircraft.id, dateStr, col.hour);
     const cellMaintenance = getMaintenanceForCell(aircraft.id, dateStr, col.hour);
 
-    // Check if there's any scheduled maintenance for this aircraft
-    // If so, don't show PERFORM NOW - maintenance is already being handled
-    const hasScheduledMaintenanceDaily = scheduledMaintenance.some(m => {
-      const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      return maintAircraftId == aircraft.id && ['daily', 'weekly', 'A', 'C', 'D'].includes(m.checkType);
-    });
-
-    // Only show PERFORM NOW if there's no maintenance scheduled
-    const showPerformNowDaily = actuallyExpired.length > 0 && !hasScheduledMaintenanceDaily;
+    // Show PERFORM NOW if there are expired checks not currently being handled
+    // Hide if a covering check is scheduled within the next 12 hours
+    const expiredTypes = actuallyExpired.map(c => c.type);
+    const showPerformNowDaily = actuallyExpired.length > 0 && !hasUpcomingMaintenance(aircraft.id, expiredTypes, 12);
     const expiredCheckList = actuallyExpired.map(c => c.name).join(', ');
 
     const expiredOverlay = (showPerformNowDaily && index === 0) ? `
@@ -6029,20 +6015,19 @@ async function loadUnassignedRoutes(aircraftId) {
   const currentAircraft = userFleet.find(a => a.id === aircraftId);
   const currentAircraftTypeId = currentAircraft?.aircraftId || currentAircraft?.aircraft?.id;
 
-  console.log('[ROUTES DEBUG] Loading routes for aircraft:', aircraftId);
-  console.log('[ROUTES DEBUG] Current aircraft:', currentAircraft?.registration, 'typeId:', currentAircraftTypeId, 'type:', typeof currentAircraftTypeId);
-  console.log('[ROUTES DEBUG] Total routes in array:', routes.length);
-
   // Filter routes by aircraft TYPE (not specific aircraft ID)
   // Routes should be available to any aircraft of the same type
   const availableRoutes = routes.filter(r => {
-    // Get the route's assigned aircraft TYPE ID (from the new API field or nested object)
-    const routeAircraftTypeId = r.assignedAircraftTypeId || r.assignedAircraft?.aircraft?.id;
-
-    // Check if route matches by aircraft TYPE (same model), or is unassigned
-    const aircraftMatch = routeAircraftTypeId === currentAircraftTypeId || r.assignedAircraftId === null;
-
-    console.log('[ROUTES DEBUG] Route:', r.routeNumber, 'routeTypeId:', routeAircraftTypeId, 'currentTypeId:', currentAircraftTypeId, 'match:', aircraftMatch);
+    let aircraftMatch = false;
+    if (r.assignedAircraftId === null) {
+      // Unassigned route - available to all
+      aircraftMatch = true;
+    } else {
+      // Look up the route's assigned aircraft in fleet to get its TYPE
+      const routeAircraft = userFleet.find(a => a.id === r.assignedAircraftId);
+      const routeAircraftTypeId = routeAircraft?.aircraftId || routeAircraft?.aircraft?.id;
+      aircraftMatch = routeAircraftTypeId === currentAircraftTypeId;
+    }
 
     // Day matching logic differs between daily and weekly view
     let dayMatch = false;
@@ -6088,6 +6073,17 @@ async function loadUnassignedRoutes(aircraftId) {
   }
 
   const html = availableRoutes.map(route => {
+    // Enrich route with aircraft type data from fleet if missing
+    if (route.assignedAircraftId && (!route.assignedAircraft || !route.assignedAircraft.aircraft)) {
+      const fleetAircraft = userFleet.find(a => a.id === route.assignedAircraftId);
+      if (fleetAircraft && fleetAircraft.aircraft) {
+        route.assignedAircraft = route.assignedAircraft || {};
+        route.assignedAircraft.aircraft = fleetAircraft.aircraft;
+        route.assignedAircraft.id = fleetAircraft.id;
+        route.assignedAircraft.registration = fleetAircraft.registration;
+      }
+    }
+
     // Calculate estimated flight time with wind adjustment
     let outboundFlightMinutes = 0;
     let returnFlightMinutes = 0;
@@ -6602,7 +6598,7 @@ function getCheckStatus(aircraft, checkType) {
   switch (checkType) {
     case 'daily':
       lastCheckDate = aircraft.lastDailyCheckDate;
-      intervalDays = 2;
+      intervalDays = 1; // Valid check day + next day
       break;
     case 'weekly':
       lastCheckDate = aircraft.lastWeeklyCheckDate;
@@ -7789,7 +7785,7 @@ async function clearDaySchedule(aircraftId) {
 
   // Get maintenance for this aircraft on the selected day
   const dayMaint = scheduledMaintenance.filter(m => {
-    if (m.aircraft?.id !== aircraftId) return false;
+    if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
     if (!m.scheduledDate) return false;
     const maintDate = new Date(m.scheduledDate + 'T00:00:00');
     return maintDate.getDay() === selectedDayOfWeek;
@@ -7814,15 +7810,11 @@ async function clearDaySchedule(aircraftId) {
   try {
     showLoadingModal('Clearing Schedule', `Removing ${totalItems} item(s)...`);
 
-    // Delete flights
-    for (const flight of dayFlights) {
-      await fetch(`/api/schedule/flight/${flight.id}`, { method: 'DELETE' });
-    }
-
-    // Delete maintenance
-    for (const maint of dayMaint) {
-      await fetch(`/api/schedule/maintenance/${maint.id}`, { method: 'DELETE' });
-    }
+    // Delete all flights and maintenance in parallel
+    await Promise.all([
+      ...dayFlights.map(f => fetch(`/api/schedule/flight/${f.id}`, { method: 'DELETE' })),
+      ...dayMaint.map(m => fetch(`/api/schedule/maintenance/${m.id}`, { method: 'DELETE' }))
+    ]);
 
     await loadSchedule();
     closeLoadingModal();
@@ -7842,7 +7834,7 @@ async function clearWeekSchedule(aircraftId) {
   const weekFlights = scheduledFlights.filter(f => f.aircraft?.id == aircraftId); // Use == for type-coercive comparison
 
   // Get all maintenance for this aircraft in the current week data
-  const weekMaint = scheduledMaintenance.filter(m => m.aircraft?.id == aircraftId); // Use == for type-coercive comparison
+  const weekMaint = scheduledMaintenance.filter(m => (m.aircraftId || m.aircraft?.id) == aircraftId);
 
   const totalItems = weekFlights.length + weekMaint.length;
 
@@ -7861,15 +7853,11 @@ async function clearWeekSchedule(aircraftId) {
   try {
     showLoadingModal('Clearing Week Schedule', `Removing ${totalItems} item(s)...`);
 
-    // Delete flights
-    for (const flight of weekFlights) {
-      await fetch(`/api/schedule/flight/${flight.id}`, { method: 'DELETE' });
-    }
-
-    // Delete maintenance
-    for (const maint of weekMaint) {
-      await fetch(`/api/schedule/maintenance/${maint.id}`, { method: 'DELETE' });
-    }
+    // Delete all flights and maintenance in parallel
+    await Promise.all([
+      ...weekFlights.map(f => fetch(`/api/schedule/flight/${f.id}`, { method: 'DELETE' })),
+      ...weekMaint.map(m => fetch(`/api/schedule/maintenance/${m.id}`, { method: 'DELETE' }))
+    ]);
 
     await loadSchedule();
     closeLoadingModal();

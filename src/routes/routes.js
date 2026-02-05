@@ -8,7 +8,6 @@ const airportSlotService = require('../services/airportSlotService');
  * Get all routes for the current user's airline
  */
 router.get('/', async (req, res) => {
-  console.log('[ROUTES API] GET /api/routes called');
   try {
     // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
@@ -67,17 +66,6 @@ router.get('/', async (req, res) => {
       ],
       order: [['createdAt', 'DESC']]
     });
-
-    // Debug: log first route's data
-    if (routes.length > 0) {
-      const r = routes[0];
-      console.log('[ROUTES API] First route:', r.routeNumber, 'assignedAircraftId:', r.assignedAircraftId);
-      console.log('[ROUTES API] assignedAircraft exists:', !!r.assignedAircraft);
-      if (r.assignedAircraft) {
-        console.log('[ROUTES API] assignedAircraft.aircraft exists:', !!r.assignedAircraft.aircraft);
-        console.log('[ROUTES API] assignedAircraft.aircraft?.id:', r.assignedAircraft.aircraft?.id);
-      }
-    }
 
     // Calculate performance metrics for each route
     const routesWithMetrics = routes.map(route => {

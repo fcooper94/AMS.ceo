@@ -1471,142 +1471,7 @@ function updateDayButtonStates() {
   });
 }
 
-// Calculate flight time based on distance (using average cruise speed)
-function calculateFlightTime(distanceNM) {
-  // Assume average cruise speed of 450 knots (typical for medium-range aircraft)
-  const cruiseSpeedKnots = 450;
-  const flightTimeHours = distanceNM / cruiseSpeedKnots;
-  const flightTimeMinutes = Math.round(flightTimeHours * 60 / 5) * 5;
-  return flightTimeMinutes;
-}
-
-// Calculate fuelling duration based on route distance
-function calculateFuellingDuration(distanceNM) {
-  // Fuelling time scales with distance:
-  // Short-haul (<500nm): 15 mins
-  // Medium-haul (500-2000nm): 20 mins
-  // Long-haul (2000-5000nm): 30 mins
-  // Ultra long-haul (>5000nm): 45 mins
-  if (distanceNM < 500) return 15;
-  if (distanceNM < 2000) return 20;
-  if (distanceNM < 5000) return 30;
-  return 45;
-}
-
-// Calculate catering duration based on passenger capacity
-function calculateCateringDuration(passengerCapacity) {
-  // Catering time scales with aircraft size:
-  // Small (<100 pax): 15 mins
-  // Medium (100-200 pax): 20 mins
-  // Large (200-350 pax): 25 mins
-  // Very Large (>350 pax): 30 mins
-  if (!passengerCapacity) return 15;
-  if (passengerCapacity < 100) return 15;
-  if (passengerCapacity < 200) return 20;
-  if (passengerCapacity < 350) return 25;
-  return 30;
-}
-
-// Calculate boarding duration based on passenger capacity
-function calculateBoardingDuration(passengerCapacity) {
-  // Boarding time scales with aircraft size:
-  // Small (<100 pax): 20 mins
-  // Medium (100-200 pax): 25 mins
-  // Large (200-350 pax): 35 mins
-  // Very Large (>350 pax): 45 mins
-  if (!passengerCapacity) return 20;
-  if (passengerCapacity < 100) return 20;
-  if (passengerCapacity < 200) return 25;
-  if (passengerCapacity < 350) return 35;
-  return 45;
-}
-
-// Calculate deboarding duration based on passenger capacity
-function calculateDeboardingDuration(passengerCapacity) {
-  // Deboarding is typically faster than boarding:
-  // Small (<100 pax): 10 mins
-  // Medium (100-200 pax): 15 mins
-  // Large (200-350 pax): 20 mins
-  // Very Large (>350 pax): 25 mins
-  if (!passengerCapacity) return 10;
-  if (passengerCapacity < 100) return 10;
-  if (passengerCapacity < 200) return 15;
-  if (passengerCapacity < 350) return 20;
-  return 25;
-}
-
-// Calculate cleaning duration based on passenger capacity
-function calculateCleaningDuration(passengerCapacity) {
-  // Cleaning time scales with aircraft size:
-  // Small (<100 pax): 10 mins
-  // Medium (100-200 pax): 15 mins
-  // Large (200-350 pax): 20 mins
-  // Very Large (>350 pax): 25 mins
-  if (!passengerCapacity) return 10;
-  if (passengerCapacity < 100) return 10;
-  if (passengerCapacity < 200) return 15;
-  if (passengerCapacity < 350) return 20;
-  return 25;
-}
-
-// Calculate total pre-flight duration
-// Fuelling runs in PARALLEL with catering
-// Boarding starts when catering is complete
-// Pre-flight total = MAX(fuelling, catering + boarding)
-function calculatePreFlightDuration(distanceNM, passengerCapacity) {
-  const fuelling = calculateFuellingDuration(distanceNM);
-  const catering = calculateCateringDuration(passengerCapacity);
-  const boarding = calculateBoardingDuration(passengerCapacity);
-  const total = Math.max(fuelling, catering + boarding);
-  return { fuelling, catering, boarding, total };
-}
-
-// Calculate total post-flight duration
-function calculatePostFlightDuration(passengerCapacity) {
-  const deboarding = calculateDeboardingDuration(passengerCapacity);
-  const cleaning = calculateCleaningDuration(passengerCapacity);
-  return { deboarding, cleaning, total: deboarding + cleaning };
-}
-
-// Calculate turnaround duration with detailed breakdown
-// Operations at turnaround:
-// - Fuelling starts IMMEDIATELY at landing (parallel with everything)
-// - Deboarding happens after landing
-// - Catering and Cleaning run in PARALLEL after deboarding
-// - Boarding can start when BOTH catering AND cleaning are complete
-// Formula: MAX(fuelling, deboarding + MAX(cleaning, catering) + boarding)
-function calculateTurnaroundDuration(distanceNM, passengerCapacity) {
-  const fuelling = calculateFuellingDuration(distanceNM);
-  const deboarding = calculateDeboardingDuration(passengerCapacity);
-  const catering = calculateCateringDuration(passengerCapacity);
-  const cleaning = calculateCleaningDuration(passengerCapacity);
-  const boarding = calculateBoardingDuration(passengerCapacity);
-
-  // Catering and cleaning run in parallel after deboarding
-  const parallelCateringCleaning = Math.max(catering, cleaning);
-
-  // Sequential path: deboarding → max(catering, cleaning) → boarding
-  const sequentialPath = deboarding + parallelCateringCleaning + boarding;
-
-  // Fuelling runs parallel to everything, starting at landing
-  const total = Math.max(fuelling, sequentialPath);
-
-  return {
-    fuelling,
-    deboarding,
-    catering,
-    cleaning,
-    boarding,
-    parallelCateringCleaning,
-    sequentialPath,
-    total
-  };
-}
-
-// Calculate minimum turnaround time
-function calculateMinimumTurnaround(distanceNM, passengerCapacity) {
-  return calculateTurnaroundDuration(distanceNM, passengerCapacity).total;
-}
+// All timing calculations now use shared flight-timing.js library
 
 // Handle turnaround time change - enforce minimum
 function onTurnaroundTimeChange() {
@@ -1636,7 +1501,8 @@ function onTurnaroundTimeChange() {
     : selectedDestinationAirport.distance;
 
   const passengerCapacity = aircraftData.passengerCapacity || 0;
-  const minTurnaround = calculateMinimumTurnaround(distance, passengerCapacity);
+  const acType = aircraftData.type || 'Narrowbody';
+  const minTurnaround = calculateMinTurnaround(distance, passengerCapacity, acType);
 
   const currentValue = parseInt(turnaroundInput.value) || 0;
 
@@ -1652,17 +1518,10 @@ function onTurnaroundTimeChange() {
   calculateFlightTiming();
 }
 
-// Calculate flight time based on aircraft speed and distance
-function calculateFlightTimeWithAircraft(distanceNM, aircraftData) {
-  if (!aircraftData || !aircraftData.cruiseSpeed) {
-    // Default speed if no aircraft selected
-    return calculateFlightTime(distanceNM);
-  }
-
-  const cruiseSpeedKnots = aircraftData.cruiseSpeed;
-  const flightTimeHours = distanceNM / cruiseSpeedKnots;
-  const flightTimeMinutes = Math.round(flightTimeHours * 60 / 5) * 5;
-  return flightTimeMinutes;
+// Calculate flight time using shared library with wind effects
+function calculateFlightTimeForLeg(distanceNM, aircraftData, depLat, depLng, arrLat, arrLng) {
+  const cruiseSpeed = aircraftData?.cruiseSpeed || 450;
+  return calculateFlightMinutes(distanceNM, cruiseSpeed, depLng, arrLng, depLat, arrLat);
 }
 
 // Calculate and display detailed flight timing
@@ -1726,13 +1585,20 @@ function calculateFlightTiming() {
     : selectedDestinationAirport.distance;
 
   const passengerCapacity = aircraftData.passengerCapacity || 0;
+  const acType = aircraftData.type || 'Narrowbody';
 
-  // Calculate pre-flight and post-flight durations for departure/arrival
-  const outboundPreFlight = calculatePreFlightDuration(effectiveDistance, passengerCapacity);
-  const returnPostFlight = calculatePostFlightDuration(passengerCapacity);
+  // Get airport coordinates for wind calculations
+  const baseLat = parseFloat(baseAirport.latitude) || 0;
+  const baseLng = parseFloat(baseAirport.longitude) || 0;
+  const destLat = parseFloat(selectedDestinationAirport.latitude) || 0;
+  const destLng = parseFloat(selectedDestinationAirport.longitude) || 0;
 
-  // Calculate turnaround duration (includes all ground ops at destination)
-  const turnaround = calculateTurnaroundDuration(effectiveDistance, passengerCapacity);
+  // Calculate pre-flight and post-flight durations using shared library
+  const outboundPreFlight = calculatePreFlightTotal(effectiveDistance, passengerCapacity, acType);
+  const returnPostFlight = calculatePostFlightTotal(passengerCapacity, acType);
+
+  // Calculate turnaround breakdown (includes 30min daily check always)
+  const turnaround = calculateTurnaroundBreakdown(effectiveDistance, passengerCapacity, acType);
   const minTurnaround = turnaround.total;
 
   // Update minimum turnaround display
@@ -1747,40 +1613,28 @@ function calculateFlightTiming() {
     turnaroundInput.value = minTurnaround;
   }
 
-  const flightTimeMinutes = calculateFlightTimeWithAircraft(effectiveDistance, aircraftData);
+  // Calculate asymmetric flight times (wind affects outbound vs return differently)
+  const outboundFlightMinutes = calculateFlightTimeForLeg(effectiveDistance, aircraftData, baseLat, baseLng, destLat, destLng);
+  const returnFlightMinutes = calculateFlightTimeForLeg(effectiveDistance, aircraftData, destLat, destLng, baseLat, baseLng);
 
-  // Taxi time: normal route has 2 taxi operations per leg (out + in)
-  // Tech stop route has 4 taxi operations per leg (out at A, in at B, out at B, in at C)
-  const BASE_TAXI_TIME_PER_LEG = 15;
-  const taxiTimePerLeg = selectedTechStopAirport ? BASE_TAXI_TIME_PER_LEG * 2 : BASE_TAXI_TIME_PER_LEG;
-
-  // Refueling time at tech stop (20 minutes per leg)
+  // Tech stop refueling time (20 minutes per leg)
   const refuelingTimePerLeg = selectedTechStopAirport ? 20 : 0;
 
-  const blockTimeMinutes = flightTimeMinutes + taxiTimePerLeg + refuelingTimePerLeg;
+  const outboundBlockMinutes = outboundFlightMinutes + refuelingTimePerLeg;
+  const returnBlockMinutes = returnFlightMinutes + refuelingTimePerLeg;
 
   // Parse schedule time (this is when pre-flight actions begin)
   const [hours, minutes] = scheduleTime.split(':').map(Number);
 
   // Calculate all timing points
-  // Schedule time = pre-flight start, Off-blocks = schedule time + pre-flight duration
   const preFlightStart = hours * 60 + minutes;
   const offBlocksOutbound = preFlightStart + outboundPreFlight.total;
-  const onBlocksDestination = offBlocksOutbound + blockTimeMinutes;
+  const onBlocksDestination = offBlocksOutbound + outboundBlockMinutes;
 
-  // Turnaround happens at destination (all ground ops between landing and return departure)
-  // Turnaround ends when boarding is complete → ready for off-blocks return
-  const offBlocksReturn = onBlocksDestination + turnaroundMinutes;
-  const onBlocksBase = offBlocksReturn + blockTimeMinutes;
-  const postFlightReturnEnd = onBlocksBase + returnPostFlight.total;
-
-  // Calculate timing with any additional buffer
+  // Turnaround at destination
   const actualOffBlocksReturn = onBlocksDestination + turnaroundMinutes;
-  const actualOnBlocksBase = actualOffBlocksReturn + blockTimeMinutes;
+  const actualOnBlocksBase = actualOffBlocksReturn + returnBlockMinutes;
   const actualPostFlightReturnEnd = actualOnBlocksBase + returnPostFlight.total;
-
-  // Turnaround end time (when boarding is complete)
-  const turnaroundEndTime = onBlocksDestination + turnaroundMinutes;
 
   // Format times
   const formatTime = (totalMinutes) => {
@@ -1835,15 +1689,23 @@ function calculateFlightTiming() {
       <div id="flightTimingContent" style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.75rem; height: 100%; box-sizing: border-box;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <span style="font-weight: 600; color: var(--text-primary); font-size: 0.8rem;">FLIGHT TIMING</span>
-          <span style="color: var(--text-muted); font-size: 0.7rem;">${Math.round(effectiveDistance)} NM</span>
+          <span style="color: var(--text-muted); font-size: 0.7rem;">${Math.round(effectiveDistance)} NM${hasTechStop ? ' (via ' + techCode + ')' : ''}</span>
         </div>
+        ${hasTechStop ? `
+        <div style="background: #f59e0b15; border: 1px solid #f59e0b30; border-radius: 4px; padding: 0.4rem 0.5rem; margin-bottom: 0.4rem; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 0.3rem;">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background: #f59e0b;"></div>
+            <span style="font-size: 0.7rem; color: #f59e0b; font-weight: 600;">TECH STOP ${techCode}</span>
+          </div>
+          <span style="font-size: 0.65rem; color: var(--text-muted);">${Math.round(selectedTechStopAirport.distanceFromDeparture)} NM + ${Math.round(selectedTechStopAirport.distanceToDestination)} NM • 20m refuel/leg</span>
+        </div>` : ''}
 
         <!-- OUTBOUND Timeline -->
         <div style="background: var(--surface); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.4rem;">
           <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
             <div style="width: 8px; height: 8px; border-radius: 2px; background: #3b82f6;"></div>
             <span style="font-weight: 600; color: #3b82f6; font-size: 0.7rem;">OUTBOUND</span>
-            <span style="color: var(--text-muted); font-size: 0.65rem;">${depCode} → ${destCode}</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">${depCode} ${hasTechStop ? '→ ' + techCode + ' ' : ''}→ ${destCode} • ${formatDuration(outboundFlightMinutes)} flight${hasTechStop ? ' + 20m refuel' : ''}</span>
           </div>
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center;">
             ${timeBlock('Pre-flight', preFlightStart, 'var(--text-secondary)')}
@@ -1871,9 +1733,10 @@ function calculateFlightTiming() {
                 ${actionRow('Boarding', turnaround.boarding, '#3b82f6')}
               </div>
               <div>
-                <div style="font-size: 0.6rem; color: #ef4444; font-weight: 600; margin-bottom: 0.3rem;">PARALLEL</div>
+                <div style="font-size: 0.6rem; color: #ef4444; font-weight: 600; margin-bottom: 0.3rem;">PARALLEL / CHECKS</div>
                 ${actionRow('Fuelling', turnaround.fuelling, '#ef4444')}
-                <div style="margin-top: 0.4rem; padding: 0.3rem; background: var(--surface); border-radius: 4px; text-align: center;">
+                ${actionRow('Daily Check (if req\'d)', turnaround.dailyCheck, '#f97316')}
+                <div style="margin-top: 0.3rem; padding: 0.3rem; background: var(--surface); border-radius: 4px; text-align: center;">
                   <div style="font-size: 0.55rem; color: var(--text-muted);">MIN REQUIRED</div>
                   <div style="font-size: 0.9rem; font-weight: 700; color: #a855f7;">${formatDuration(minTurnaround)}</div>
                 </div>
@@ -1887,7 +1750,7 @@ function calculateFlightTiming() {
           <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
             <div style="width: 8px; height: 8px; border-radius: 2px; background: #60a5fa;"></div>
             <span style="font-weight: 600; color: #60a5fa; font-size: 0.7rem;">RETURN</span>
-            <span style="color: var(--text-muted); font-size: 0.65rem;">${destCode} → ${depCode}</span>
+            <span style="color: var(--text-muted); font-size: 0.65rem;">${destCode} ${hasTechStop ? '→ ' + techCode + ' ' : ''}→ ${depCode} • ${formatDuration(returnFlightMinutes)} flight${hasTechStop ? ' + 20m refuel' : ''}</span>
           </div>
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; text-align: center;">
             ${timeBlock('Off Blocks', actualOffBlocksReturn, 'var(--accent-color)')}

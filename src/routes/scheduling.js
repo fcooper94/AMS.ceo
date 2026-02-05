@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const { ScheduledFlight, RecurringMaintenance, Route, UserAircraft, Airport, Aircraft, WorldMembership, User, World } = require('../models');
-const { checkMaintenanceConflict, attemptMaintenanceReschedule, optimizeMaintenanceForDates } = require('./fleet');
+const { checkMaintenanceConflict, attemptMaintenanceReschedule, optimizeMaintenanceForDates, createAutoScheduledMaintenance } = require('./fleet');
 
 // Wind and route variation constants (must match frontend scheduling-v3.js)
 const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
@@ -262,6 +262,34 @@ router.get('/data', async (req, res) => {
       aircraftJson.recurringMaintenance = maintenanceByAircraft[aircraft.id] || [];
       return aircraftJson;
     });
+
+    // Background: detect and fix maintenance scheduled on transit days
+    // This catches existing conflicts that predate the transit day fix
+    (async () => {
+      try {
+        for (const maint of maintenancePatterns) {
+          if (maint.status !== 'active') continue;
+          const maintDate = typeof maint.scheduledDate === 'string'
+            ? maint.scheduledDate.substring(0, 10) : maint.scheduledDate;
+          if (!maintDate) continue;
+
+          // Check if any flight has this aircraft in transit on this date
+          const transitFlight = flights.find(f => {
+            if (f.aircraftId !== maint.aircraftId) return false;
+            const fDep = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
+            const fArr = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : '') : fDep;
+            return fDep < maintDate && fArr > maintDate;
+          });
+
+          if (transitFlight) {
+            console.log(`[MAINT-FIX] ${maint.checkType} check on ${maintDate} conflicts with transit day - rescheduling`);
+            await attemptMaintenanceReschedule(maint.id, maint.aircraftId, 0, 1440);
+          }
+        }
+      } catch (err) {
+        console.error('[MAINT-FIX] Error fixing transit day conflicts:', err.message);
+      }
+    })();
 
     res.json({
       fleet: fleetWithMaintenance,
@@ -637,10 +665,19 @@ router.post('/flight', async (req, res) => {
     }
 
     // Check for overlapping maintenance and attempt to reschedule
-    // Query maintenance for both departure date AND arrival date (for multi-day flights)
+    // Query maintenance for departure date, arrival date, AND transit days (multi-day flights)
     const datesToCheck = [scheduledDate];
     if (arrivalDate && arrivalDate !== scheduledDate) {
       datesToCheck.push(arrivalDate);
+      // Add transit days between departure and arrival
+      const depDateObj = new Date(scheduledDate + 'T00:00:00');
+      const arrDateObj = new Date(arrivalDate + 'T00:00:00');
+      const transitDate = new Date(depDateObj);
+      transitDate.setDate(transitDate.getDate() + 1);
+      while (transitDate < arrDateObj) {
+        datesToCheck.push(transitDate.toISOString().split('T')[0]);
+        transitDate.setDate(transitDate.getDate() + 1);
+      }
     }
 
     const maintenancePatterns = await RecurringMaintenance.findAll({
@@ -657,7 +694,7 @@ router.post('/flight', async (req, res) => {
       const [maintH, maintM] = maint.startTime.split(':').map(Number);
       const maintStartMinutes = maintH * 60 + maintM;
       const maintEndMinutes = maintStartMinutes + maint.duration;
-      const maintDate = maint.scheduledDate;
+      const maintDate = typeof maint.scheduledDate === 'string' ? maint.scheduledDate.substring(0, 10) : maint.scheduledDate;
 
       // Calculate overlap based on which date this maintenance is on
       let maintOverlaps = false;
@@ -669,6 +706,9 @@ router.post('/flight', async (req, res) => {
       } else if (maintDate === arrivalDate) {
         // Maintenance is on arrival date - check from midnight to post-flight end
         maintOverlaps = 0 < maintEndMinutes && postFlightEndMinutes > maintStartMinutes;
+      } else if (maintDate > scheduledDate && maintDate < arrivalDate) {
+        // Maintenance is on a transit day - aircraft is flying/downroute, always overlaps
+        maintOverlaps = true;
       }
 
       if (maintOverlaps) {
@@ -680,9 +720,13 @@ router.post('/flight', async (req, res) => {
         if (maintDate === scheduledDate) {
           blockedStart = preFlightStartMinutes;
           blockedEnd = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440;
-        } else {
+        } else if (maintDate === arrivalDate) {
           blockedStart = 0;
           blockedEnd = postFlightEndMinutes;
+        } else {
+          // Transit day - aircraft busy all day
+          blockedStart = 0;
+          blockedEnd = 1440;
         }
 
         // Try to reschedule the maintenance
@@ -757,6 +801,16 @@ router.post('/flight', async (req, res) => {
       datesToOptimize.push(arrivalDate);
     }
     const optimizedMaintenance = await optimizeMaintenanceForDates(aircraftId, datesToOptimize);
+
+    // Re-run auto-scheduler to fill any gaps from rescheduled/deleted maintenance
+    if (rescheduledMaintenance.length > 0) {
+      try {
+        const activeWorldId = req.session?.activeWorldId;
+        await createAutoScheduledMaintenance(aircraftId, ['daily'], activeWorldId);
+      } catch (e) {
+        console.log('[SCHEDULE] Auto-scheduler re-run failed:', e.message);
+      }
+    }
 
     // Include rescheduled and optimized maintenance info in response
     const response = completeFlightData.toJSON();
@@ -1055,6 +1109,99 @@ router.post('/flights/batch', async (req, res) => {
       });
     }
 
+    // Check for maintenance conflicts and attempt to reschedule
+    const allAffectedDates = new Set();
+    for (const flight of flightsToCreate) {
+      allAffectedDates.add(flight.scheduledDate);
+      if (flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate) {
+        allAffectedDates.add(flight.arrivalDate);
+        // Add transit days between departure and arrival
+        const depDateObj = new Date(flight.scheduledDate + 'T00:00:00');
+        const arrDateObj = new Date(flight.arrivalDate + 'T00:00:00');
+        const transitDate = new Date(depDateObj);
+        transitDate.setDate(transitDate.getDate() + 1);
+        while (transitDate < arrDateObj) {
+          allAffectedDates.add(transitDate.toISOString().split('T')[0]);
+          transitDate.setDate(transitDate.getDate() + 1);
+        }
+      }
+    }
+
+    const conflictingMaint = await RecurringMaintenance.findAll({
+      where: {
+        aircraftId,
+        status: 'active',
+        scheduledDate: { [Op.in]: [...allAffectedDates] }
+      }
+    });
+
+    const rescheduledMaintenance = [];
+    for (const maint of conflictingMaint) {
+      const [maintH, maintM] = maint.startTime.split(':').map(Number);
+      const maintStartMinutes = maintH * 60 + maintM;
+      const maintEndMinutes = maintStartMinutes + maint.duration;
+      const maintDate = String(maint.scheduledDate).split('T')[0];
+
+      // Check if this maintenance overlaps with any of the new flights
+      let overlappingFlight = null;
+      for (const flight of flightsToCreate) {
+        const [fDepH, fDepM] = flight.departureTime.split(':').map(Number);
+        const fDepMinutes = fDepH * 60 + fDepM;
+        const fPreStart = fDepMinutes - preFlightDuration;
+        const [fArrH, fArrM] = flight.arrivalTime.split(':').map(Number);
+        const fArrMinutes = fArrH * 60 + fArrM;
+        const fPostEnd = fArrMinutes + postFlightDuration;
+
+        let overlaps = false;
+        if (maintDate === flight.scheduledDate) {
+          const opEnd = (flight.arrivalDate === flight.scheduledDate) ? fPostEnd : 1440;
+          overlaps = fPreStart < maintEndMinutes && opEnd > maintStartMinutes;
+        } else if (maintDate === flight.arrivalDate) {
+          overlaps = 0 < maintEndMinutes && fPostEnd > maintStartMinutes;
+        } else if (maintDate > flight.scheduledDate && maintDate < flight.arrivalDate) {
+          // Transit day - aircraft busy all day
+          overlaps = true;
+        }
+
+        if (overlaps) {
+          overlappingFlight = flight;
+          break;
+        }
+      }
+
+      if (overlappingFlight) {
+        let blockedStart, blockedEnd;
+        const isTransitDay = maintDate > overlappingFlight.scheduledDate && maintDate < overlappingFlight.arrivalDate;
+        if (isTransitDay) {
+          // Transit day - aircraft busy all day
+          blockedStart = 0;
+          blockedEnd = 1440;
+        } else {
+          const [fDepH, fDepM] = overlappingFlight.departureTime.split(':').map(Number);
+          const fDepMinutes = fDepH * 60 + fDepM;
+          blockedStart = fDepMinutes - preFlightDuration;
+          const [fArrH, fArrM] = overlappingFlight.arrivalTime.split(':').map(Number);
+          const fArrMinutes = fArrH * 60 + fArrM;
+          blockedEnd = (maintDate === overlappingFlight.scheduledDate && overlappingFlight.arrivalDate !== overlappingFlight.scheduledDate)
+            ? 1440
+            : fArrMinutes + postFlightDuration;
+        }
+
+        const result = await attemptMaintenanceReschedule(maint.id, aircraftId, blockedStart, blockedEnd);
+        if (result.success) {
+          rescheduledMaintenance.push({
+            checkType: maint.checkType,
+            originalTime: maint.startTime.substring(0, 5),
+            newSlot: result.newSlot
+          });
+        }
+        // If rescheduling fails, log but still create the flight (don't block batch)
+        else {
+          console.log(`[BATCH] Could not reschedule ${maint.checkType} on ${maintDate}: ${result.error}`);
+        }
+      }
+    }
+
     // Bulk create all flights at once
     const createdFlights = await ScheduledFlight.bulkCreate(flightsToCreate);
 
@@ -1093,9 +1240,19 @@ router.post('/flights/batch', async (req, res) => {
     }
     await optimizeMaintenanceForDates(aircraftId, [...allDates]);
 
+    // Re-run auto-scheduler to fill any gaps from rescheduled/deleted maintenance
+    if (rescheduledMaintenance.length > 0) {
+      try {
+        await createAutoScheduledMaintenance(aircraftId, ['daily'], activeWorldId);
+      } catch (e) {
+        console.log('[BATCH] Auto-scheduler re-run failed:', e.message);
+      }
+    }
+
     res.status(201).json({
       created: completeFlightData,
-      conflicts: conflicts.length > 0 ? conflicts : undefined
+      conflicts: conflicts.length > 0 ? conflicts : undefined,
+      rescheduledMaintenance: rescheduledMaintenance.length > 0 ? rescheduledMaintenance : undefined
     });
   } catch (error) {
     console.error('Error batch creating scheduled flights:', error);
@@ -1963,14 +2120,11 @@ router.delete('/maintenance/:id', async (req, res) => {
   try {
     let { id } = req.params;
 
-    // If ID is composite (pattern-date format), extract pattern ID
-    if (id.includes('-')) {
-      const parts = id.split('-');
-      // Check if last parts look like a date (YYYY-MM-DD)
-      if (parts.length >= 4 && parts[parts.length - 3].match(/^\d{4}$/)) {
-        // Extract everything before the date
-        id = parts.slice(0, parts.length - 3).join('-');
-      }
+    // If ID is composite (uuid-YYYY-MM-DD format), extract the UUID
+    // Use regex to safely detect a trailing date without corrupting valid UUIDs
+    const dateSuffix = id.match(/-\d{4}-\d{2}-\d{2}$/);
+    if (dateSuffix) {
+      id = id.slice(0, id.length - dateSuffix[0].length);
     }
 
     // Get active world from session
