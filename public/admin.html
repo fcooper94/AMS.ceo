@@ -23,6 +23,9 @@
     <button class="admin-tab" onclick="switchTab('worlds')" id="worldsTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
       WORLDS
     </button>
+    <button class="admin-tab" onclick="switchTab('airlines')" id="airlinesTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
+      AIRLINES
+    </button>
     <button class="admin-tab" onclick="switchTab('settings')" id="settingsTab" style="padding: 0.6rem 1.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer;">
       SETTINGS
     </button>
@@ -161,6 +164,47 @@
           <tbody id="worldsTableBody">
             <tr>
               <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading worlds...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Airlines Tab -->
+  <div id="airlinesSection" class="admin-section" style="display: none;">
+    <div class="worlds-section">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem; gap: 1rem;">
+        <div class="form-group" style="margin: 0; min-width: 200px;">
+          <label for="airlinesWorldSelect">SELECT WORLD</label>
+          <select id="airlinesWorldSelect" onchange="loadAirlines()">
+            <option value="">-- Select a World --</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label for="searchAirlineInput">SEARCH AIRLINE</label>
+          <input type="text" id="searchAirlineInput" placeholder="Search by name, code, or owner..." onkeyup="searchAirlines()">
+        </div>
+      </div>
+
+      <h2 class="section-title">AIRLINES IN WORLD</h2>
+      <div id="airlinesTable">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRLINE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CODES</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OWNER</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">BASE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">BALANCE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">FLEET</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">REPUTATION</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="airlinesTableBody">
+            <tr>
+              <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">Select a world to view airlines</td>
             </tr>
           </tbody>
         </table>
@@ -666,6 +710,169 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeDeleteWorldModal()">Cancel</button>
       <button class="btn btn-primary" style="background: var(--warning-color); border-color: var(--warning-color);" onclick="confirmDeleteWorld()">Delete World</button>
+    </div>
+  </div>
+</div>
+
+<!-- Airline Modals -->
+<!-- Edit Airline Balance Modal -->
+<div id="editAirlineBalanceModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>ADJUST AIRLINE BALANCE</h2>
+      <button class="modal-close" onclick="closeEditAirlineBalanceModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>AIRLINE</label>
+        <div id="editAirlineName" class="form-value"></div>
+      </div>
+
+      <div class="form-group">
+        <label>CURRENT BALANCE</label>
+        <div id="editCurrentBalance" class="form-value"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="newBalance">NEW BALANCE (USD)</label>
+        <input type="number" id="newBalance" placeholder="Enter new balance" step="0.01">
+      </div>
+
+      <div class="form-info">
+        <p>Enter the new total balance for this airline.</p>
+        <p>This will directly set the airline's funds.</p>
+      </div>
+
+      <div id="editBalanceError" class="error-message" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEditAirlineBalanceModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmEditBalance()">Update Balance</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Airline Fleet Modal -->
+<div id="editAirlineFleetModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+    <div class="modal-header">
+      <h2>MANAGE AIRLINE FLEET</h2>
+      <button class="modal-close" onclick="closeEditAirlineFleetModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="overflow-y: auto; flex: 1;">
+      <div class="form-group">
+        <label>AIRLINE</label>
+        <div id="fleetAirlineName" class="form-value"></div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="color: var(--text-primary); margin: 0;">CURRENT FLEET</h3>
+        <button class="btn btn-primary" onclick="openAddAircraftToFleetModal()">+ ADD AIRCRAFT</button>
+      </div>
+
+      <div id="airlineFleetTable">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">REGISTRATION</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRCRAFT</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AGE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">FLIGHT HOURS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="airlineFleetTableBody">
+            <tr>
+              <td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading fleet...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="fleetError" class="error-message" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEditAirlineFleetModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Aircraft to Fleet Modal -->
+<div id="addAircraftToFleetModal" class="modal" style="display: none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>ADD AIRCRAFT TO FLEET</h2>
+      <button class="modal-close" onclick="closeAddAircraftToFleetModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="newAircraftType">AIRCRAFT TYPE *</label>
+        <select id="newAircraftType">
+          <option value="">-- Select Aircraft --</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="newAircraftRegistration">REGISTRATION *</label>
+        <input type="text" id="newAircraftRegistration" placeholder="e.g., G-ABCD" style="text-transform: uppercase;">
+      </div>
+
+      <div class="form-group">
+        <label for="newAircraftAge">AGE (YEARS)</label>
+        <input type="number" id="newAircraftAge" value="0" min="0" max="50">
+      </div>
+
+      <div class="form-group">
+        <label for="newAircraftFlightHours">FLIGHT HOURS</label>
+        <input type="number" id="newAircraftFlightHours" value="0" min="0" step="0.1">
+      </div>
+
+      <div class="form-info">
+        <p>Add a new aircraft to this airline's fleet.</p>
+        <p>The aircraft will be immediately available for scheduling.</p>
+      </div>
+
+      <div id="addAircraftError" class="error-message" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddAircraftToFleetModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddAircraftToFleet()">Add Aircraft</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Aircraft from Fleet Modal -->
+<div id="deleteFleetAircraftModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>REMOVE AIRCRAFT</h2>
+      <button class="modal-close" onclick="closeDeleteFleetAircraftModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>AIRCRAFT</label>
+        <div id="deleteFleetAircraftName" class="form-value"></div>
+      </div>
+
+      <div class="form-group" style="margin-top: 1rem;">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" id="addToUsedMarketCheckbox" style="margin-right: 0.75rem; width: 18px; height: 18px; cursor: pointer;">
+          <div>
+            <div style="font-weight: 600; color: var(--text-primary);">Add to Used Aircraft Market</div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">List this aircraft for sale with a random seller company name</div>
+          </div>
+        </label>
+      </div>
+
+      <div class="form-info" style="background: rgba(217, 119, 6, 0.15); border-color: var(--warning-color);">
+        <p style="color: var(--warning-color); font-weight: 600;">WARNING: This action cannot be undone.</p>
+        <p>Removing this aircraft will delete it from the fleet and cancel any scheduled flights.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDeleteFleetAircraftModal()">Cancel</button>
+      <button class="btn btn-primary" style="background: var(--warning-color); border-color: var(--warning-color);" onclick="confirmDeleteFleetAircraft()">Remove Aircraft</button>
     </div>
   </div>
 </div>

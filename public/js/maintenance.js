@@ -1043,6 +1043,47 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('typeFilter').addEventListener('change', onFilterChange);
   document.getElementById('statusFilter').addEventListener('change', onFilterChange);
 
+  // Refresh All button
+  const refreshAllBtn = document.getElementById('refreshAllBtn');
+  if (refreshAllBtn) {
+    refreshAllBtn.addEventListener('click', async () => {
+      refreshAllBtn.disabled = true;
+      refreshAllBtn.textContent = 'Refreshing...';
+
+      try {
+        const response = await fetch('/api/fleet/refresh-all-maintenance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          refreshAllBtn.textContent = `Done! (${data.success} updated)`;
+          // Reload maintenance data to show new schedules
+          await loadMaintenanceData();
+          setTimeout(() => {
+            refreshAllBtn.textContent = 'Refresh All Schedules';
+            refreshAllBtn.disabled = false;
+          }, 2000);
+        } else {
+          refreshAllBtn.textContent = 'Error';
+          console.error('Refresh error:', data.error);
+          setTimeout(() => {
+            refreshAllBtn.textContent = 'Refresh All Schedules';
+            refreshAllBtn.disabled = false;
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Refresh failed:', err);
+        refreshAllBtn.textContent = 'Failed';
+        setTimeout(() => {
+          refreshAllBtn.textContent = 'Refresh All Schedules';
+          refreshAllBtn.disabled = false;
+        }, 2000);
+      }
+    });
+  }
+
   // Close modal on Escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

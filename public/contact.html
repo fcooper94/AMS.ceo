@@ -1,0 +1,58 @@
+<!-- TITLE: Contact Us - Airline Manager -->
+<!-- SUBTITLE: Get in Touch -->
+<!-- SCRIPTS: /js/contact.js -->
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>CONTACT US</h1>
+      <p class="subtitle">HAVE A QUESTION OR FEEDBACK? WE'D LOVE TO HEAR FROM YOU</p>
+    </div>
+
+    <div class="worlds-section" style="max-width: 600px; margin: 0 auto;">
+      <form id="contactForm" onsubmit="submitContactForm(event)">
+        <div class="form-group">
+          <label for="contactName">YOUR NAME *</label>
+          <input type="text" id="contactName" placeholder="Enter your name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="contactEmail">YOUR EMAIL *</label>
+          <input type="email" id="contactEmail" placeholder="Enter your email address" required>
+        </div>
+
+        <div class="form-group">
+          <label for="contactSubject">SUBJECT *</label>
+          <select id="contactSubject" required>
+            <option value="">-- Select a subject --</option>
+            <option value="General Inquiry">General Inquiry</option>
+            <option value="Bug Report">Bug Report</option>
+            <option value="Feature Request">Feature Request</option>
+            <option value="Account Issue">Account Issue</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="contactMessage">MESSAGE *</label>
+          <textarea id="contactMessage" rows="6" placeholder="Type your message here..." required style="resize: vertical;"></textarea>
+        </div>
+
+        <div id="contactError" class="error-message" style="display: none;"></div>
+        <div id="contactSuccess" style="display: none; background: rgba(34, 197, 94, 0.15); border: 1px solid var(--success-color); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+          <p style="color: var(--success-color); font-weight: 600; margin: 0;">Message sent successfully!</p>
+          <p style="color: var(--text-secondary); margin: 0.5rem 0 0 0; font-size: 0.9rem;">We'll get back to you as soon as possible.</p>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn btn-primary btn-full-width" style="padding: 0.75rem;">
+          SEND MESSAGE
+        </button>
+      </form>
+
+      <div class="form-info" style="margin-top: 1.5rem;">
+        <p>We aim to respond to all inquiries within 24-48 hours.</p>
+        <p>For urgent matters, please include "URGENT" in your subject.</p>
+      </div>
+    </div>
+  </main>
+</div>

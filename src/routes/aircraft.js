@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Aircraft, World, WorldMembership, User } = require('../models');
+const { Aircraft, World, WorldMembership, User, UsedAircraftForSale } = require('../models');
 const { Op } = require('sequelize');
 const { getRandomLessor, getUsedAircraftSeller, getManufacturer } = require('../data/aircraftSellers');
 
@@ -73,6 +73,83 @@ router.get('/', async (req, res) => {
 
       // Generate used aircraft based on variants
       const usedAircraft = generateUsedAircraft(variants, currentYear);
+
+      // Also fetch persistent used aircraft listings for this world
+      if (req.session?.activeWorldId) {
+        const persistentListings = await UsedAircraftForSale.findAll({
+          where: {
+            worldId: req.session.activeWorldId,
+            status: 'available'
+          },
+          include: [{
+            model: Aircraft,
+            as: 'aircraft'
+          }]
+        });
+
+        console.log(`Found ${persistentListings.length} persistent used aircraft listings`);
+
+        // Convert persistent listings to same format as generated used aircraft
+        for (const listing of persistentListings) {
+          const variant = listing.aircraft;
+          if (!variant) continue;
+
+          const usedAc = {
+            id: `persistent-${listing.id}`,
+            persistentId: listing.id,
+            variantId: variant.id,
+            manufacturer: variant.manufacturer,
+            model: variant.model,
+            variant: variant.variant,
+            icaoCode: variant.icaoCode,
+            type: variant.type,
+            rangeCategory: variant.rangeCategory,
+            rangeNm: variant.rangeNm,
+            cruiseSpeed: variant.cruiseSpeed,
+            passengerCapacity: variant.passengerCapacity,
+            cargoCapacityKg: variant.cargoCapacityKg,
+            fuelCapacityLiters: variant.fuelCapacityLiters,
+            purchasePrice: parseFloat(listing.purchasePrice),
+            leasePrice: listing.leasePrice ? parseFloat(listing.leasePrice) : null,
+            maintenanceCostPerHour: parseFloat(variant.maintenanceCostPerHour),
+            maintenanceCostPerMonth: variant.maintenanceCostPerMonth ? parseFloat(variant.maintenanceCostPerMonth) : null,
+            fuelBurnPerHour: parseFloat(variant.fuelBurnPerHour),
+            firstIntroduced: variant.firstIntroduced,
+            availableFrom: variant.availableFrom,
+            availableUntil: variant.availableUntil,
+            requiredPilots: variant.requiredPilots,
+            requiredCabinCrew: variant.requiredCabinCrew,
+            isActive: variant.isActive,
+            description: `${variant.manufacturer} ${variant.model} - ${listing.condition} condition`,
+
+            // Used aircraft specific properties
+            age: listing.ageYears,
+            condition: listing.condition,
+            conditionPercentage: listing.conditionPercentage,
+            category: 'used',
+            isPersistent: true,
+
+            // Check validity
+            cCheckRemainingDays: listing.cCheckRemainingDays,
+            dCheckRemainingDays: listing.dCheckRemainingDays,
+            cCheckRemaining: listing.cCheckRemainingDays ? formatDaysRemaining(listing.cCheckRemainingDays) : 'Unknown',
+            dCheckRemaining: listing.dCheckRemainingDays ? formatDaysRemaining(listing.dCheckRemainingDays) : 'Unknown',
+
+            // Seller info
+            seller: {
+              type: listing.sellerType,
+              name: listing.sellerName,
+              shortName: listing.sellerName,
+              country: listing.sellerCountry,
+              reason: listing.sellerReason
+            },
+            lessor: getRandomLessor(variant.type)
+          };
+
+          usedAircraft.push(usedAc);
+        }
+      }
+
       res.json(usedAircraft);
     } else {
       // Return new aircraft (active variants)

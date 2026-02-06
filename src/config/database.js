@@ -12,13 +12,31 @@ if (process.env.DATABASE_URL) {
       ssl: {
         require: true,
         rejectUnauthorized: false
-      }
+      },
+      // Keep connection alive
+      keepAlive: true,
+      statement_timeout: 30000,
+      idle_in_transaction_session_timeout: 60000
     },
     pool: {
-      max: 10,
+      max: 5,  // Reduced from 10 to prevent exhaustion
       min: 0,
       acquire: 60000,
-      idle: 10000
+      idle: 10000,
+      evict: 1000  // Check for stale connections every second
+    },
+    retry: {
+      max: 3,  // Retry failed queries up to 3 times
+      match: [
+        /SequelizeConnectionError/,
+        /SequelizeConnectionRefusedError/,
+        /SequelizeHostNotFoundError/,
+        /SequelizeHostNotReachableError/,
+        /SequelizeInvalidConnectionError/,
+        /SequelizeConnectionTimedOutError/,
+        /Connection terminated/,
+        /ECONNRESET/
+      ]
     }
   });
 } else {
@@ -33,10 +51,20 @@ if (process.env.DATABASE_URL) {
       dialect: 'postgres',
       logging: false, // Disable all SQL query logging
       pool: {
-        max: 10,
+        max: 5,
         min: 0,
         acquire: 60000,
-        idle: 10000
+        idle: 10000,
+        evict: 1000
+      },
+      retry: {
+        max: 3,
+        match: [
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /Connection terminated/,
+          /ECONNRESET/
+        ]
       }
     }
   );

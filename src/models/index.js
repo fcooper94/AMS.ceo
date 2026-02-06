@@ -11,6 +11,7 @@ const RecurringMaintenance = require('./RecurringMaintenance');
 const PricingDefault = require('./PricingDefault');
 const AirportRouteDemand = require('./AirportRouteDemand');
 const SystemSettings = require('./SystemSettings');
+const UsedAircraftForSale = require('./UsedAircraftForSale');
 
 // Define associations
 User.belongsToMany(World, {
@@ -72,6 +73,12 @@ Airport.hasMany(AirportRouteDemand, { foreignKey: 'to_airport_id', as: 'demandTo
 AirportRouteDemand.belongsTo(Airport, { foreignKey: 'from_airport_id', as: 'fromAirport' });
 AirportRouteDemand.belongsTo(Airport, { foreignKey: 'to_airport_id', as: 'toAirport' });
 
+// UsedAircraftForSale associations
+World.hasMany(UsedAircraftForSale, { foreignKey: 'world_id', as: 'usedAircraftForSale' });
+UsedAircraftForSale.belongsTo(World, { foreignKey: 'world_id', as: 'world' });
+Aircraft.hasMany(UsedAircraftForSale, { foreignKey: 'aircraft_id', as: 'usedListings' });
+UsedAircraftForSale.belongsTo(Aircraft, { foreignKey: 'aircraft_id', as: 'aircraft' });
+
 module.exports = {
   User,
   World,
@@ -85,5 +92,6 @@ module.exports = {
   RecurringMaintenance,
   PricingDefault,
   AirportRouteDemand,
-  SystemSettings
+  SystemSettings,
+  UsedAircraftForSale
 };

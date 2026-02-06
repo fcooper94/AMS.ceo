@@ -114,6 +114,7 @@ const financesRoutes = require('./routes/finances');
 const routesRoutes = require('./routes/routes');
 const schedulingRoutes = require('./routes/scheduling');
 const pricingRoutes = require('./routes/pricing');
+const contactRoutes = require('./routes/contact');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -124,8 +125,9 @@ async function renderPage(pagePath, requestPath) {
 
   try {
     // Determine which sidebar to use based on the request path
-    const adminPages = ['/admin', '/world-selection'];
-    const sidebarPath = adminPages.includes(requestPath)
+    // Use simplified sidebar for admin, world selection, and public pages
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/faqs'];
+    const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
 
@@ -205,6 +207,14 @@ async function renderPage(pagePath, requestPath) {
       );
     }
 
+    // Hide world info container for simplified sidebar pages (prevents flash)
+    if (simplifiedSidebarPages.includes(requestPath)) {
+      result = result.replace(
+        '<div class="nav-world-info" id="worldInfoContainer">',
+        '<div class="nav-world-info" id="worldInfoContainer" style="display: none;">'
+      );
+    }
+
     // Process page content - inject sidebar into dashboard-container
     let processedPageHtml = pageHtml;
 
@@ -253,6 +263,7 @@ app.use('/api/routes', requireWorld, routesRoutes);
 app.use('/api/schedule', requireWorld, schedulingRoutes);
 app.use('/api/pricing', requireWorld, pricingRoutes);
 app.use('/api/admin', requireAuth, adminRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -371,6 +382,24 @@ app.get('/pricing', requireWorld, async (req, res) => {
 app.get('/routes/edit', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/routes-edit.html'), '/routes/edit');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/contact', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/contact.html'), '/contact');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/faqs', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/faqs.html'), '/faqs');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');

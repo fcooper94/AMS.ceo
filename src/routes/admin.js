@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { User, WorldMembership, World, Aircraft, Airport, SystemSettings } = require('../models');
+const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale } = require('../models');
 const airportCacheService = require('../services/airportCacheService');
+const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
 
 /**
  * Get all users with their credit information
@@ -814,6 +815,297 @@ router.post('/settings/:key', async (req, res) => {
       console.error('Error updating setting:', error);
     }
     res.status(500).json({ error: 'Failed to update setting' });
+  }
+});
+
+// ==================== AIRLINES MANAGEMENT ====================
+
+/**
+ * Get all airlines in a world
+ */
+router.get('/airlines', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { worldId } = req.query;
+
+    if (!worldId) {
+      return res.status(400).json({ error: 'World ID is required' });
+    }
+
+    const airlines = await WorldMembership.findAll({
+      where: { worldId, isActive: true },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'vatsimId', 'firstName', 'lastName']
+        },
+        {
+          model: Airport,
+          as: 'baseAirport',
+          attributes: ['id', 'icaoCode', 'name', 'city']
+        }
+      ],
+      order: [['airlineName', 'ASC']]
+    });
+
+    // Get fleet counts for each airline
+    const airlinesWithFleet = await Promise.all(airlines.map(async (airline) => {
+      const fleetCount = await UserAircraft.count({
+        where: { worldMembershipId: airline.id }
+      });
+
+      return {
+        ...airline.toJSON(),
+        fleetCount
+      };
+    }));
+
+    res.json(airlinesWithFleet);
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching airlines:', error);
+    }
+    res.status(500).json({ error: 'Failed to fetch airlines' });
+  }
+});
+
+/**
+ * Update airline balance
+ */
+router.post('/airlines/:airlineId/balance', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { airlineId } = req.params;
+    const { balance } = req.body;
+
+    if (typeof balance !== 'number') {
+      return res.status(400).json({ error: 'Balance must be a number' });
+    }
+
+    const airline = await WorldMembership.findByPk(airlineId);
+
+    if (!airline) {
+      return res.status(404).json({ error: 'Airline not found' });
+    }
+
+    airline.balance = balance;
+    await airline.save();
+
+    res.json({
+      message: 'Balance updated successfully',
+      airline: {
+        id: airline.id,
+        airlineName: airline.airlineName,
+        balance: airline.balance
+      }
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error updating airline balance:', error);
+    }
+    res.status(500).json({ error: 'Failed to update balance' });
+  }
+});
+
+/**
+ * Get airline fleet
+ */
+router.get('/airlines/:airlineId/fleet', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { airlineId } = req.params;
+
+    const fleet = await UserAircraft.findAll({
+      where: { worldMembershipId: airlineId },
+      include: [
+        {
+          model: Aircraft,
+          as: 'aircraft',
+          attributes: ['id', 'manufacturer', 'model', 'variant', 'type']
+        }
+      ],
+      order: [['registration', 'ASC']]
+    });
+
+    res.json(fleet);
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching fleet:', error);
+    }
+    res.status(500).json({ error: 'Failed to fetch fleet' });
+  }
+});
+
+/**
+ * Add aircraft to airline fleet
+ */
+router.post('/airlines/:airlineId/fleet', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { airlineId } = req.params;
+    const { aircraftId, registration, ageYears, totalFlightHours } = req.body;
+
+    if (!aircraftId || !registration) {
+      return res.status(400).json({ error: 'Aircraft ID and registration are required' });
+    }
+
+    // Verify airline exists
+    const airline = await WorldMembership.findByPk(airlineId);
+    if (!airline) {
+      return res.status(404).json({ error: 'Airline not found' });
+    }
+
+    // Verify aircraft type exists
+    const aircraftType = await Aircraft.findByPk(aircraftId);
+    if (!aircraftType) {
+      return res.status(404).json({ error: 'Aircraft type not found' });
+    }
+
+    // Check if registration already exists in this world
+    const existingAircraft = await UserAircraft.findOne({
+      where: { registration: registration.toUpperCase() },
+      include: [{
+        model: WorldMembership,
+        as: 'membership',
+        where: { worldId: airline.worldId }
+      }]
+    });
+
+    if (existingAircraft) {
+      return res.status(400).json({ error: 'Registration already exists in this world' });
+    }
+
+    const newAircraft = await UserAircraft.create({
+      worldMembershipId: airlineId,
+      aircraftId,
+      registration: registration.toUpperCase(),
+      ageYears: ageYears || 0,
+      totalFlightHours: totalFlightHours || 0,
+      status: 'active'
+    });
+
+    res.json({
+      message: 'Aircraft added successfully',
+      aircraft: newAircraft
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error adding aircraft to fleet:', error);
+    }
+    res.status(500).json({ error: 'Failed to add aircraft' });
+  }
+});
+
+/**
+ * Remove aircraft from fleet
+ * Optionally add to used aircraft market
+ */
+router.delete('/airlines/fleet/:aircraftId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { aircraftId } = req.params;
+    const { addToMarket } = req.query;
+
+    const userAircraft = await UserAircraft.findByPk(aircraftId, {
+      include: [
+        { model: Aircraft, as: 'aircraft' },
+        { model: WorldMembership, as: 'membership' }
+      ]
+    });
+
+    if (!userAircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // If adding to market, create a UsedAircraftForSale listing
+    if (addToMarket === 'true' && userAircraft.aircraft && userAircraft.membership) {
+      // Generate random seller from the combined list
+      const allSellers = [
+        ...sellingAirlines.map(s => ({ ...s, type: 'airline' })),
+        ...leasingCompanies.map(s => ({ ...s, type: 'lessor', reason: 'Off-Lease' })),
+        ...aircraftBrokers.map(s => ({ ...s, type: 'broker', reason: 'Remarketing' }))
+      ];
+      const randomSeller = allSellers[Math.floor(Math.random() * allSellers.length)];
+
+      // Calculate used price based on age and condition
+      const basePrice = parseFloat(userAircraft.aircraft.purchasePrice) || 50000000;
+      const age = userAircraft.ageYears || 0;
+      const conditionPct = userAircraft.conditionPercentage || 70;
+
+      // Depreciation factor based on age
+      let depreciationFactor;
+      if (age <= 5) depreciationFactor = 0.70 - (age * 0.05);
+      else if (age <= 10) depreciationFactor = 0.45 - ((age - 5) * 0.04);
+      else if (age <= 15) depreciationFactor = 0.25 - ((age - 10) * 0.03);
+      else depreciationFactor = Math.max(0.10 - ((age - 15) * 0.01), 0.05);
+
+      depreciationFactor *= (conditionPct / 100);
+      depreciationFactor = Math.max(depreciationFactor, 0.03);
+
+      const usedPrice = basePrice * depreciationFactor;
+      const leasePrice = usedPrice * (0.003 + Math.random() * 0.002);
+
+      // Calculate check validity (randomized)
+      const cCheckRemainingDays = 180 + Math.floor(Math.random() * 365);
+      const dCheckRemainingDays = 365 + Math.floor(Math.random() * 1460);
+
+      // Determine condition string
+      let conditionStr;
+      if (conditionPct >= 85) conditionStr = 'Excellent';
+      else if (conditionPct >= 70) conditionStr = 'Very Good';
+      else if (conditionPct >= 55) conditionStr = 'Good';
+      else if (conditionPct >= 40) conditionStr = 'Fair';
+      else conditionStr = 'Poor';
+
+      await UsedAircraftForSale.create({
+        worldId: userAircraft.membership.worldId,
+        aircraftId: userAircraft.aircraftId,
+        sellerName: randomSeller.name,
+        sellerType: randomSeller.type,
+        sellerCountry: randomSeller.country,
+        sellerReason: randomSeller.reason || 'Fleet Restructuring',
+        condition: conditionStr,
+        conditionPercentage: conditionPct,
+        ageYears: age,
+        totalFlightHours: parseFloat(userAircraft.totalFlightHours) || 0,
+        purchasePrice: usedPrice.toFixed(2),
+        leasePrice: leasePrice.toFixed(2),
+        cCheckRemainingDays,
+        dCheckRemainingDays,
+        status: 'available'
+      });
+
+      console.log(`[ADMIN] Aircraft ${userAircraft.registration} added to used market. Seller: ${randomSeller.name}`);
+    }
+
+    await userAircraft.destroy();
+
+    res.json({
+      message: addToMarket === 'true'
+        ? 'Aircraft removed and added to used market'
+        : 'Aircraft removed successfully'
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error removing aircraft:', error);
+    }
+    res.status(500).json({ error: 'Failed to remove aircraft' });
   }
 });
 

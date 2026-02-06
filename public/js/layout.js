@@ -187,9 +187,9 @@ async function loadUserInfo() {
       loadWorldInfo();
     } else {
       // Redirect to login if not authenticated (only on protected pages)
-      if (window.location.pathname !== '/' &&
-          window.location.pathname !== '/auth/login' &&
-          window.location.pathname !== '/auth/vatsim/callback') {
+      // Public pages that don't require authentication
+      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/faqs'];
+      if (!publicPages.includes(window.location.pathname)) {
         window.location.href = '/';
       }
     }
@@ -207,12 +207,14 @@ async function loadWorldInfo() {
 
   try {
     // Don't show world info on world selection or admin pages
-    if (window.location.pathname === '/world-selection' || window.location.pathname === '/admin') {
+    // Pages that don't need world info displayed
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/faqs'];
+    if (noWorldInfoPages.includes(window.location.pathname)) {
       const worldInfoContainer = document.getElementById('worldInfoContainer');
       if (worldInfoContainer) {
         worldInfoContainer.style.display = 'none';
       }
-      // Hide navigation menu on world selection page
+      // Hide navigation menu on world selection page only
       if (window.location.pathname === '/world-selection') {
         const navMenu = document.querySelector('.nav-menu');
         if (navMenu) {

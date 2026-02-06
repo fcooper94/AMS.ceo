@@ -23,7 +23,8 @@
       "Bash(taskkill //F //PID 49004 //PID 37124)",
       "Bash(taskkill:*)",
       "Bash(powershell -Command:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

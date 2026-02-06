@@ -250,10 +250,11 @@ function switchTab(tab) {
   const aircraftTab = document.getElementById('aircraftTab');
   const airportsTab = document.getElementById('airportsTab');
   const worldsTab = document.getElementById('worldsTab');
+  const airlinesTab = document.getElementById('airlinesTab');
   const settingsTab = document.getElementById('settingsTab');
 
   // Remove active state from all tabs
-  [usersTab, aircraftTab, airportsTab, worldsTab, settingsTab].forEach(t => {
+  [usersTab, aircraftTab, airportsTab, worldsTab, airlinesTab, settingsTab].forEach(t => {
     if (t) {
       t.classList.remove('active');
       t.style.borderBottom = '3px solid transparent';
@@ -266,6 +267,7 @@ function switchTab(tab) {
   document.getElementById('aircraftSection').style.display = 'none';
   document.getElementById('airportsSection').style.display = 'none';
   document.getElementById('worldsSection').style.display = 'none';
+  document.getElementById('airlinesSection').style.display = 'none';
   document.getElementById('settingsSection').style.display = 'none';
 
   if (tab === 'users') {
@@ -303,6 +305,14 @@ function switchTab(tab) {
     if (typeof allWorlds === 'undefined' || allWorlds.length === 0) {
       loadWorlds();
     }
+  } else if (tab === 'airlines') {
+    airlinesTab.classList.add('active');
+    airlinesTab.style.borderBottom = '3px solid var(--primary-color)';
+    airlinesTab.style.color = 'var(--primary-color)';
+    document.getElementById('airlinesSection').style.display = 'block';
+
+    // Load worlds dropdown if not already loaded
+    loadAirlinesWorldDropdown();
   } else if (tab === 'settings') {
     settingsTab.classList.add('active');
     settingsTab.style.borderBottom = '3px solid var(--primary-color)';
@@ -1299,4 +1309,397 @@ function showSettingNotification(title, message, isSuccess) {
     notification.style.animation = 'slideOut 0.3s ease-in';
     setTimeout(() => notification.remove(), 300);
   }, 4000);
+}
+
+// ==================== AIRLINES MANAGEMENT ====================
+
+let allAirlines = [];
+let selectedAirlineId = null;
+let selectedAirlineData = null;
+let selectedFleetAircraftId = null;
+let airlinesWorldsLoaded = false;
+
+// Load worlds dropdown for airlines tab
+async function loadAirlinesWorldDropdown() {
+  if (airlinesWorldsLoaded) return;
+
+  try {
+    const response = await fetch('/api/admin/worlds');
+    const worlds = await response.json();
+
+    const select = document.getElementById('airlinesWorldSelect');
+    select.innerHTML = '<option value="">-- Select a World --</option>';
+
+    worlds.forEach(world => {
+      const option = document.createElement('option');
+      option.value = world.id;
+      option.textContent = `${world.name} (${world.era})`;
+      select.appendChild(option);
+    });
+
+    airlinesWorldsLoaded = true;
+  } catch (error) {
+    console.error('Error loading worlds for airlines dropdown:', error);
+  }
+}
+
+// Load airlines for selected world
+async function loadAirlines() {
+  const worldId = document.getElementById('airlinesWorldSelect').value;
+  const tbody = document.getElementById('airlinesTableBody');
+
+  if (!worldId) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">Select a world to view airlines</td>
+      </tr>
+    `;
+    allAirlines = [];
+    return;
+  }
+
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading airlines...</td>
+    </tr>
+  `;
+
+  try {
+    const response = await fetch(`/api/admin/airlines?worldId=${worldId}`);
+    const airlines = await response.json();
+    allAirlines = airlines;
+
+    renderAirlinesTable(airlines);
+  } catch (error) {
+    console.error('Error loading airlines:', error);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading airlines</td>
+      </tr>
+    `;
+  }
+}
+
+// Render airlines table
+function renderAirlinesTable(airlines) {
+  const tbody = document.getElementById('airlinesTableBody');
+
+  if (airlines.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">No airlines found in this world</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = airlines.map(airline => {
+    const codes = airline.iataCode
+      ? `${airline.airlineCode || 'N/A'} / ${airline.iataCode}`
+      : airline.airlineCode || 'N/A';
+
+    const balanceColor = parseFloat(airline.balance) < 0 ? 'var(--warning-color)' : 'var(--success-color)';
+    const balance = parseFloat(airline.balance || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 });
+
+    const ownerName = airline.user ? `${airline.user.firstName} ${airline.user.lastName}` : 'Unknown';
+    const baseAirport = airline.baseAirport ? airline.baseAirport.icaoCode : 'N/A';
+
+    return `
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 0.5rem; font-weight: 600;">${airline.airlineName || 'Unnamed Airline'}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${codes}</td>
+        <td style="padding: 0.5rem;">${ownerName}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${baseAirport}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${balanceColor}; font-weight: 600;">${balance}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${airline.fleetCount || 0}</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="width: 60px; height: 8px; background: var(--surface); border-radius: 4px; overflow: hidden; margin: 0 auto;">
+            <div style="width: ${airline.reputation || 50}%; height: 100%; background: var(--primary-color);"></div>
+          </div>
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">${airline.reputation || 50}%</span>
+        </td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineBalanceModal(${JSON.stringify(airline).replace(/'/g, "\\'")})'>Edit Balance</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineFleetModal(${JSON.stringify(airline).replace(/'/g, "\\'")})'>Manage Fleet</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Search airlines
+function searchAirlines() {
+  const searchTerm = document.getElementById('searchAirlineInput').value.toLowerCase();
+
+  if (!searchTerm) {
+    renderAirlinesTable(allAirlines);
+    return;
+  }
+
+  const filteredAirlines = allAirlines.filter(airline => {
+    const airlineName = (airline.airlineName || '').toLowerCase();
+    const airlineCode = (airline.airlineCode || '').toLowerCase();
+    const iataCode = (airline.iataCode || '').toLowerCase();
+    const ownerName = airline.user ? `${airline.user.firstName} ${airline.user.lastName}`.toLowerCase() : '';
+
+    return airlineName.includes(searchTerm) ||
+           airlineCode.includes(searchTerm) ||
+           iataCode.includes(searchTerm) ||
+           ownerName.includes(searchTerm);
+  });
+
+  renderAirlinesTable(filteredAirlines);
+}
+
+// ==================== AIRLINE BALANCE MODAL ====================
+
+function openEditAirlineBalanceModal(airline) {
+  selectedAirlineId = airline.id;
+  selectedAirlineData = airline;
+
+  document.getElementById('editAirlineName').textContent = `${airline.airlineName || 'Unnamed'} (${airline.airlineCode || 'N/A'})`;
+  document.getElementById('editCurrentBalance').textContent = parseFloat(airline.balance || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  document.getElementById('newBalance').value = parseFloat(airline.balance || 0).toFixed(2);
+  document.getElementById('editBalanceError').style.display = 'none';
+  document.getElementById('editAirlineBalanceModal').style.display = 'flex';
+}
+
+function closeEditAirlineBalanceModal() {
+  document.getElementById('editAirlineBalanceModal').style.display = 'none';
+  selectedAirlineId = null;
+  selectedAirlineData = null;
+}
+
+async function confirmEditBalance() {
+  const newBalance = parseFloat(document.getElementById('newBalance').value);
+  const errorDiv = document.getElementById('editBalanceError');
+
+  if (isNaN(newBalance)) {
+    errorDiv.textContent = 'Please enter a valid number';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/airlines/${selectedAirlineId}/balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ balance: newBalance })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      closeEditAirlineBalanceModal();
+      loadAirlines();
+      showSettingNotification('Balance Updated', `Airline balance set to ${newBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, true);
+    } else {
+      errorDiv.textContent = data.error || 'Failed to update balance';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error updating balance:', error);
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
+  }
+}
+
+// ==================== AIRLINE FLEET MODAL ====================
+
+let currentFleetAirlineId = null;
+
+function openEditAirlineFleetModal(airline) {
+  currentFleetAirlineId = airline.id;
+  document.getElementById('fleetAirlineName').textContent = `${airline.airlineName || 'Unnamed'} (${airline.airlineCode || 'N/A'})`;
+  document.getElementById('fleetError').style.display = 'none';
+  document.getElementById('editAirlineFleetModal').style.display = 'flex';
+
+  loadAirlineFleet(airline.id);
+}
+
+function closeEditAirlineFleetModal() {
+  document.getElementById('editAirlineFleetModal').style.display = 'none';
+  currentFleetAirlineId = null;
+}
+
+async function loadAirlineFleet(airlineId) {
+  const tbody = document.getElementById('airlineFleetTableBody');
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading fleet...</td>
+    </tr>
+  `;
+
+  try {
+    const response = await fetch(`/api/admin/airlines/${airlineId}/fleet`);
+    const fleet = await response.json();
+
+    if (fleet.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="padding: 1rem; text-align: center; color: var(--text-muted);">No aircraft in fleet</td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = fleet.map(ac => {
+      const aircraftName = ac.aircraft ? `${ac.aircraft.manufacturer} ${ac.aircraft.model}` : 'Unknown';
+      const statusColor = ac.status === 'active' ? 'var(--success-color)' : 'var(--warning-color)';
+      const flightHours = parseFloat(ac.totalFlightHours) || 0;
+
+      return `
+        <tr style="border-bottom: 1px solid var(--border-color);">
+          <td style="padding: 0.5rem; font-family: 'Courier New', monospace; font-weight: 600;">${ac.registration}</td>
+          <td style="padding: 0.5rem;">${aircraftName}</td>
+          <td style="padding: 0.5rem; text-align: center;">${ac.ageYears || 0} yrs</td>
+          <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${flightHours.toFixed(1)}</td>
+          <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${(ac.status || 'active').toUpperCase()}</td>
+          <td style="padding: 0.5rem; text-align: center;">
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteFleetAircraftModal("${ac.id}", "${ac.registration}")'>Remove</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading fleet:', error);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading fleet</td>
+      </tr>
+    `;
+  }
+}
+
+// ==================== ADD AIRCRAFT TO FLEET MODAL ====================
+
+async function openAddAircraftToFleetModal() {
+  document.getElementById('newAircraftRegistration').value = '';
+  document.getElementById('newAircraftAge').value = '0';
+  document.getElementById('newAircraftFlightHours').value = '0';
+  document.getElementById('addAircraftError').style.display = 'none';
+  document.getElementById('addAircraftToFleetModal').style.display = 'flex';
+
+  // Load aircraft types dropdown
+  const select = document.getElementById('newAircraftType');
+  select.innerHTML = '<option value="">-- Loading... --</option>';
+
+  try {
+    const response = await fetch('/api/admin/aircraft');
+    const aircraft = await response.json();
+
+    select.innerHTML = '<option value="">-- Select Aircraft --</option>';
+    aircraft.filter(ac => ac.isActive).forEach(ac => {
+      const option = document.createElement('option');
+      option.value = ac.id;
+      option.textContent = `${ac.manufacturer} ${ac.model}${ac.variant ? '-' + ac.variant : ''}`;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error('Error loading aircraft types:', error);
+    select.innerHTML = '<option value="">-- Error loading --</option>';
+  }
+}
+
+function closeAddAircraftToFleetModal() {
+  document.getElementById('addAircraftToFleetModal').style.display = 'none';
+}
+
+async function confirmAddAircraftToFleet() {
+  const errorDiv = document.getElementById('addAircraftError');
+
+  const aircraftTypeId = document.getElementById('newAircraftType').value;
+  const registration = document.getElementById('newAircraftRegistration').value.trim().toUpperCase();
+  const ageYears = parseInt(document.getElementById('newAircraftAge').value) || 0;
+  const flightHours = parseFloat(document.getElementById('newAircraftFlightHours').value) || 0;
+
+  if (!aircraftTypeId || !registration) {
+    errorDiv.textContent = 'Please select an aircraft type and enter a registration';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/airlines/${currentFleetAirlineId}/fleet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        aircraftId: aircraftTypeId,
+        registration,
+        ageYears,
+        totalFlightHours: flightHours
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      closeAddAircraftToFleetModal();
+      loadAirlineFleet(currentFleetAirlineId);
+      loadAirlines(); // Refresh fleet count
+      showSettingNotification('Aircraft Added', `${registration} added to fleet`, true);
+    } else {
+      errorDiv.textContent = data.error || 'Failed to add aircraft';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error adding aircraft:', error);
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
+  }
+}
+
+// ==================== DELETE FLEET AIRCRAFT MODAL ====================
+
+function openDeleteFleetAircraftModal(aircraftId, registration) {
+  selectedFleetAircraftId = aircraftId;
+  document.getElementById('deleteFleetAircraftName').textContent = registration;
+  // Reset checkbox when opening modal
+  const checkbox = document.getElementById('addToUsedMarketCheckbox');
+  if (checkbox) checkbox.checked = false;
+  document.getElementById('deleteFleetAircraftModal').style.display = 'flex';
+}
+
+function closeDeleteFleetAircraftModal() {
+  document.getElementById('deleteFleetAircraftModal').style.display = 'none';
+  selectedFleetAircraftId = null;
+  // Reset checkbox when closing
+  const checkbox = document.getElementById('addToUsedMarketCheckbox');
+  if (checkbox) checkbox.checked = false;
+}
+
+async function confirmDeleteFleetAircraft() {
+  if (!selectedFleetAircraftId) return;
+
+  // Check if we should add to used market
+  const addToMarketCheckbox = document.getElementById('addToUsedMarketCheckbox');
+  const addToMarket = addToMarketCheckbox ? addToMarketCheckbox.checked : false;
+
+  try {
+    const url = `/api/admin/airlines/fleet/${selectedFleetAircraftId}?addToMarket=${addToMarket}`;
+    const response = await fetch(url, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      closeDeleteFleetAircraftModal();
+      loadAirlineFleet(currentFleetAirlineId);
+      loadAirlines(); // Refresh fleet count
+
+      if (addToMarket) {
+        showSettingNotification('Aircraft Removed & Listed', 'Aircraft removed from fleet and added to used market', true);
+      } else {
+        showSettingNotification('Aircraft Removed', 'Aircraft removed from fleet', true);
+      }
+    } else {
+      const data = await response.json();
+      alert(data.error || 'Failed to remove aircraft');
+    }
+  } catch (error) {
+    console.error('Error removing aircraft:', error);
+    alert('Network error. Please try again.');
+  }
 }

@@ -15,12 +15,14 @@ class WorldTimeService {
     this.lastCreditCheck = 0; // Timestamp of last credit check
     this.lastFlightCheck = 0; // Timestamp of last flight check
     this.lastMaintenanceCheck = 0; // Timestamp of last maintenance check
+    this.lastMaintenanceRefresh = {}; // Map of worldId -> last game week refreshed
     this.creditCheckInterval = 30000; // Check credits every 30 seconds (real time)
     this.flightCheckInterval = 5000; // Check flights every 5 seconds (real time)
     this.maintenanceCheckInterval = 10000; // Check maintenance every 10 seconds (real time)
     this.isProcessingCredits = false; // Prevent overlapping credit queries
     this.isProcessingFlights = false; // Prevent overlapping flight queries
     this.isProcessingMaintenance = false; // Prevent overlapping maintenance queries
+    this.isRefreshingMaintenance = false; // Prevent overlapping maintenance refresh
   }
 
   /**
@@ -267,6 +269,18 @@ class WorldTimeService {
       this.processMaintenance(worldId, gameTime)
         .catch(err => console.error('Error processing maintenance:', err.message))
         .finally(() => { this.isProcessingMaintenance = false; });
+    }
+
+    // Refresh auto-scheduled maintenance once per game week
+    // This ensures daily/weekly checks are continuously scheduled ahead
+    const gameWeek = Math.floor(gameTime.getTime() / (7 * 24 * 60 * 60 * 1000));
+    const lastRefreshWeek = this.lastMaintenanceRefresh[worldId] || 0;
+    if (!this.isRefreshingMaintenance && gameWeek > lastRefreshWeek) {
+      this.lastMaintenanceRefresh[worldId] = gameWeek;
+      this.isRefreshingMaintenance = true;
+      this.refreshMaintenanceSchedules(worldId)
+        .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
+        .finally(() => { this.isRefreshingMaintenance = false; });
     }
   }
 
@@ -756,6 +770,90 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error processing automatic heavy maintenance:', error);
+    }
+  }
+
+  /**
+   * Refresh auto-scheduled maintenance for all aircraft in a world
+   * This runs once per game week to ensure daily/weekly checks stay scheduled ahead
+   */
+  async refreshMaintenanceSchedules(worldId) {
+    try {
+      // Import refreshAutoScheduledMaintenance from fleet routes
+      const { refreshAutoScheduledMaintenance } = require('../routes/fleet');
+
+      // Get all memberships for this world
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true },
+        attributes: ['id']
+      });
+
+      const membershipIds = memberships.map(m => m.id);
+      if (membershipIds.length === 0) return;
+
+      // Get all aircraft with auto-scheduling enabled
+      const aircraftToRefresh = await UserAircraft.findAll({
+        where: {
+          worldMembershipId: { [Op.in]: membershipIds },
+          [Op.or]: [
+            { autoScheduleDaily: true },
+            { autoScheduleWeekly: true },
+            { autoScheduleA: true },
+            { autoScheduleC: true },
+            { autoScheduleD: true }
+          ]
+        },
+        attributes: ['id', 'registration']
+      });
+
+      if (aircraftToRefresh.length === 0) return;
+
+      // Get game time once from memory to avoid repeated DB calls
+      const gameTime = this.getCurrentTime(worldId);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📅 Refreshing maintenance schedules for ${aircraftToRefresh.length} aircraft in world ${worldId} (gameTime: ${gameTime?.toISOString()})`);
+      }
+
+      // Refresh maintenance for each aircraft (with delay to avoid DB overload)
+      // Process in smaller batches with longer delays to prevent connection exhaustion
+      for (let i = 0; i < aircraftToRefresh.length; i++) {
+        const aircraft = aircraftToRefresh[i];
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            // Pass game time to avoid DB calls
+            await refreshAutoScheduledMaintenance(aircraft.id, worldId, gameTime);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`📅 Refreshed maintenance for ${aircraft.registration} (${i + 1}/${aircraftToRefresh.length})`);
+            }
+            break; // Success, exit retry loop
+          } catch (err) {
+            retries--;
+            const isConnectionError = err.message && (
+              err.message.includes('Connection terminated') ||
+              err.message.includes('ECONNRESET') ||
+              err.message.includes('timeout') ||
+              err.message.includes('ETIMEDOUT')
+            );
+            if (isConnectionError && retries > 0) {
+              console.log(`[MAINT REFRESH] Connection error for ${aircraft.registration}, retrying in 3s... (${retries} left)`);
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            } else {
+              console.error(`Error refreshing maintenance for ${aircraft.registration}:`, err.message);
+              break;
+            }
+          }
+        }
+        // 1.5 second delay between aircraft to let connection pool recover
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📅 Maintenance schedule refresh complete for world ${worldId}`);
+      }
+    } catch (error) {
+      console.error('Error refreshing maintenance schedules:', error);
     }
   }
 
