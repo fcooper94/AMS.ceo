@@ -1702,6 +1702,128 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * Get detailed aircraft info including routes and maintenance
+ */
+router.get('/:aircraftId/details', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    const { aircraftId } = req.params;
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Get aircraft with its routes
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Get routes assigned to this aircraft
+    const routes = await Route.findAll({
+      where: {
+        assignedAircraftId: aircraftId,
+        worldMembershipId: membership.id
+      },
+      include: [
+        { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'name'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'name'] }
+      ],
+      order: [['totalRevenue', 'DESC']]
+    });
+
+    // Calculate profit for each route
+    const routesWithProfit = routes.map(route => {
+      const totalRevenue = parseFloat(route.totalRevenue) || 0;
+      const totalCosts = parseFloat(route.totalCosts) || 0;
+      const profit = totalRevenue - totalCosts;
+      const totalFlights = route.totalFlights || 0;
+      const profitPerFlight = totalFlights > 0 ? profit / totalFlights : 0;
+
+      return {
+        id: route.id,
+        routeNumber: route.routeNumber,
+        origin: route.departureAirport?.icaoCode || 'N/A',
+        destination: route.arrivalAirport?.icaoCode || 'N/A',
+        totalRevenue,
+        totalCosts,
+        profit,
+        totalFlights,
+        profitPerFlight,
+        isActive: route.isActive
+      };
+    });
+
+    // Sort to find most and least profitable
+    const activeRoutes = routesWithProfit.filter(r => r.isActive && r.totalFlights > 0);
+    const sortedByProfit = [...activeRoutes].sort((a, b) => b.profit - a.profit);
+
+    const mostProfitable = sortedByProfit.length > 0 ? sortedByProfit[0] : null;
+    const leastProfitable = sortedByProfit.length > 0 ? sortedByProfit[sortedByProfit.length - 1] : null;
+
+    // Calculate next C and D check dates
+    const lastCCheck = aircraft.lastCCheckDate ? new Date(aircraft.lastCCheckDate) : null;
+    const lastDCheck = aircraft.lastDCheckDate ? new Date(aircraft.lastDCheckDate) : null;
+    const cCheckInterval = aircraft.cCheckIntervalDays || 730; // Default 2 years
+    const dCheckInterval = aircraft.dCheckIntervalDays || 2190; // Default 6 years
+
+    let nextCCheck = null;
+    let nextDCheck = null;
+
+    if (lastCCheck) {
+      nextCCheck = new Date(lastCCheck);
+      nextCCheck.setDate(nextCCheck.getDate() + cCheckInterval);
+    }
+
+    if (lastDCheck) {
+      nextDCheck = new Date(lastDCheck);
+      nextDCheck.setDate(nextDCheck.getDate() + dCheckInterval);
+    }
+
+    res.json({
+      routes: routesWithProfit,
+      routeCount: routes.length,
+      activeRouteCount: activeRoutes.length,
+      mostProfitable,
+      leastProfitable,
+      maintenance: {
+        lastCCheck: aircraft.lastCCheckDate,
+        lastDCheck: aircraft.lastDCheckDate,
+        nextCCheck: nextCCheck ? nextCCheck.toISOString() : null,
+        nextDCheck: nextDCheck ? nextDCheck.toISOString() : null,
+        cCheckIntervalDays: cCheckInterval,
+        dCheckIntervalDays: dCheckInterval
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching aircraft details:', error);
+    res.status(500).json({ error: 'Failed to fetch aircraft details', details: error.message });
+  }
+});
+
+/**
  * Purchase aircraft
  */
 router.post('/purchase', async (req, res) => {
