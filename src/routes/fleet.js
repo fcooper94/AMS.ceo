@@ -6,7 +6,6 @@ const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMainten
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
 
 // Check durations in minutes
-// daily=30-90min (avg 60), weekly=1.5-3hrs (avg 135), A=6-12hrs (avg 540), C=2-4 weeks (avg 21 days), D=2-3 months (avg 75 days)
 const CHECK_DURATIONS = {
   daily: 60,     // 1 hour
   weekly: 135,   // 2.25 hours
@@ -15,21 +14,20 @@ const CHECK_DURATIONS = {
   D: 108000      // 75 days
 };
 
-// Check intervals (how long until check expires)
-// daily/weekly: days, A: flight hours, C/D: days
+// Check intervals (how long until check expires) in days
 const CHECK_INTERVALS = {
   daily: 2,      // 2 days
   weekly: 8,     // 7-8 days
-  A: 900,        // 800-1000 flight hours (default 900)
+  A: 112,        // ~112 days (based on flight hours estimate)
   C: 730,        // 2 years
-  D: 2190        // 5-7 years (default 6 years)
+  D: 2190        // ~6 years
 };
 
-// How many days/hours before expiry to schedule each check type
+// How many days before expiry to schedule each check type
 const SCHEDULE_BEFORE_EXPIRY = {
-  daily: 7,      // Schedule daily checks proactively (up to 7 days ahead)
+  daily: 7,      // Schedule daily checks proactively
   weekly: 3,     // Schedule 3 days before expiry
-  A: 100,        // Schedule 100 flight hours before due (note: hours, not days)
+  A: 14,         // Schedule 2 weeks before expiry
   C: 30,         // Schedule 1 month before expiry
   D: 60          // Schedule 2 months before expiry
 };
@@ -900,6 +898,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
     // Get last check date and calculate expiry
     const lastCheckDate = aircraft[fieldInfo.lastCheck];
+    console.log(`[AUTO-SCHEDULE] ${checkType}: lastCheckDate=${lastCheckDate}, fieldName=${fieldInfo.lastCheck}`);
 
     // A checks are hours-based, others are days-based
     let expiryDate;
@@ -922,9 +921,11 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     }
 
     if (!expiryDate) {
-      console.log(`No last check date for ${checkType} on aircraft ${aircraft.registration}, skipping auto-schedule`);
+      console.log(`[AUTO-SCHEDULE] SKIP ${checkType}: No last check date (lastCheckDate=${lastCheckDate}, expiryDate=${expiryDate})`);
       continue;
     }
+    console.log(`[AUTO-SCHEDULE] ${checkType}: expiryDate=${expiryDate.toISOString()}, gameNow=${gameNow.toISOString()}`);
+
 
     // Delete any old patterns for this check type (cleanup legacy recurring entries)
     await RecurringMaintenance.destroy({
@@ -980,6 +981,10 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         }) || recordsToCreate.some(r => {
           return r.checkType === checkType && Math.abs(new Date(r.scheduledDate) - targetStartDate) < sevenDaysMs;
         });
+
+        if (alreadyScheduled) {
+          console.log(`[AUTO-SCHEDULE] ${checkType}: Already scheduled near ${targetDateStr}, skipping (existingScheduled=${existingScheduled.length})`);
+        }
 
         if (!alreadyScheduled) {
           let startTime = '02:00';
@@ -1154,10 +1159,13 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
   }
 
   // === BATCH INSERT ALL RECORDS AT ONCE ===
+  console.log(`[AUTO-SCHEDULE] ${aircraft.registration}: Creating ${recordsToCreate.length} maintenance records`);
   if (recordsToCreate.length > 0) {
+    console.log(`[AUTO-SCHEDULE] Records to create:`, recordsToCreate.map(r => `${r.checkType} on ${r.scheduledDate} at ${r.startTime}`));
     try {
       const created = await RecurringMaintenance.bulkCreate(recordsToCreate);
       createdRecords.push(...created);
+      console.log(`[AUTO-SCHEDULE] Successfully created ${created.length} records`);
     } catch (bulkError) {
       console.error(`[AUTO-SCHEDULE] Batch insert failed:`, bulkError.message);
       // Fallback to individual inserts
@@ -1170,6 +1178,8 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         }
       }
     }
+  } else {
+    console.log(`[AUTO-SCHEDULE] ${aircraft.registration}: No records to create - checks may not be due yet or no available slots`);
   }
 
   return createdRecords;
@@ -1181,7 +1191,18 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
  */
 async function refreshAutoScheduledMaintenance(aircraftId, worldId = null) {
   const aircraft = await UserAircraft.findByPk(aircraftId);
-  if (!aircraft) return [];
+  if (!aircraft) {
+    console.log(`[MAINT REFRESH] Aircraft ${aircraftId} not found`);
+    return [];
+  }
+
+  console.log(`[MAINT REFRESH] Aircraft ${aircraft.registration} auto-schedule flags:`, {
+    daily: aircraft.autoScheduleDaily,
+    weekly: aircraft.autoScheduleWeekly,
+    A: aircraft.autoScheduleA,
+    C: aircraft.autoScheduleC,
+    D: aircraft.autoScheduleD
+  });
 
   // Build list of check types that have auto-schedule enabled
   const enabledChecks = [];
@@ -1191,19 +1212,38 @@ async function refreshAutoScheduledMaintenance(aircraftId, worldId = null) {
   if (aircraft.autoScheduleC) enabledChecks.push('C');
   if (aircraft.autoScheduleD) enabledChecks.push('D');
 
-  if (enabledChecks.length === 0) return [];
+  console.log(`[MAINT REFRESH] Enabled checks for ${aircraft.registration}:`, enabledChecks);
+
+  if (enabledChecks.length === 0) {
+    console.log(`[MAINT REFRESH] No auto-schedule enabled for aircraft ${aircraftId}`);
+    return [];
+  }
 
   // Delete existing auto-scheduled maintenance so it can be recreated
   // with correct positioning based on current flight schedule
-  await RecurringMaintenance.destroy({
-    where: {
-      aircraftId,
-      checkType: { [Op.in]: enabledChecks },
-      status: 'active'
-    }
-  });
+  try {
+    const deleted = await RecurringMaintenance.destroy({
+      where: {
+        aircraftId,
+        checkType: { [Op.in]: enabledChecks },
+        status: 'active'
+      }
+    });
+    console.log(`[MAINT REFRESH] Deleted ${deleted} existing maintenance records`);
+  } catch (deleteErr) {
+    console.error(`[MAINT REFRESH] Error deleting maintenance:`, deleteErr.message);
+  }
 
-  return createAutoScheduledMaintenance(aircraftId, enabledChecks, worldId);
+  try {
+    console.log(`[MAINT REFRESH] Calling createAutoScheduledMaintenance...`);
+    const created = await createAutoScheduledMaintenance(aircraftId, enabledChecks, worldId);
+    console.log(`[MAINT REFRESH] Created ${created.length} new maintenance records`);
+    return created;
+  } catch (createErr) {
+    console.error(`[MAINT REFRESH] Error creating maintenance:`, createErr.message);
+    console.error(createErr.stack);
+    return [];
+  }
 }
 
 /**
@@ -2394,10 +2434,10 @@ router.put('/:aircraftId/auto-schedule/batch', async (req, res) => {
     // Single database update for all preferences
     await aircraft.update(updateFields);
 
-    // Run scheduling synchronously so checks appear before modal closes
+    // Run scheduling - use refresh which deletes then creates to avoid duplicates
     if (enabledChecks.length > 0) {
       try {
-        await createAutoScheduledMaintenance(aircraftId, enabledChecks, activeWorldId);
+        await refreshAutoScheduledMaintenance(aircraftId, activeWorldId);
       } catch (schedError) {
         console.error('Error creating auto-scheduled maintenance:', schedError);
       }
@@ -2927,6 +2967,61 @@ router.post('/fix-maintenance-overlaps', async (req, res) => {
   } catch (error) {
     console.error('Error fixing maintenance overlaps:', error);
     res.status(500).json({ error: 'Failed to fix maintenance overlaps' });
+  }
+});
+
+/**
+ * Refresh auto-scheduled maintenance for an aircraft
+ * Called after adding/removing flights to reschedule maintenance around flights
+ */
+router.post('/:aircraftId/refresh-maintenance', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { aircraftId } = req.params;
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    // Get user's membership
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Find the aircraft and verify ownership
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id }
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Refresh auto-scheduled maintenance
+    const results = await refreshAutoScheduledMaintenance(aircraftId, activeWorldId);
+
+    res.json({
+      message: 'Auto-maintenance refreshed',
+      aircraftId,
+      scheduledChecks: results.length,
+      checks: results.map(r => ({ checkType: r.checkType, scheduledDate: r.scheduledDate, startTime: r.startTime }))
+    });
+  } catch (error) {
+    console.error('Error refreshing maintenance:', error);
+    res.status(500).json({ error: 'Failed to refresh maintenance' });
   }
 });
 

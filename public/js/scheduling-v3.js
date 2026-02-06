@@ -806,14 +806,20 @@ async function fetchAllScheduleData() {
     const startDateStr = formatLocalDate(minDate);
     const endDateStr = formatLocalDate(maxDate);
 
-    const response = await fetch(`/api/schedule/data?startDate=${startDateStr}&endDate=${endDateStr}`);
+    // Add cache-buster to ensure fresh data
+    const cacheBuster = Date.now();
+    console.log('[DEBUG] Fetching schedule data with cache buster:', cacheBuster);
+    const response = await fetch(`/api/schedule/data?startDate=${startDateStr}&endDate=${endDateStr}&_=${cacheBuster}`);
     if (response.ok) {
       const data = await response.json();
+      console.log('[DEBUG] API returned maintenance count:', data.maintenance?.length || 0);
       userFleet = data.fleet || [];
       routes = data.routes || [];
       scheduledFlights = data.flights || [];
       scheduledMaintenance = data.maintenance || [];
       console.log(`Loaded: ${userFleet.length} aircraft, ${routes.length} routes, ${scheduledFlights.length} flights, ${scheduledMaintenance.length} maintenance`);
+    } else {
+      console.error('[DEBUG] API response not OK:', response.status, response.statusText);
     }
   } catch (error) {
     console.error('Error fetching schedule data:', error);
@@ -4139,6 +4145,10 @@ async function removeFlightFromModal(flightId) {
 // Delete scheduled flight
 async function deleteScheduledFlight(flightId) {
   try {
+    // Get the aircraft ID before deleting so we can refresh maintenance
+    const flight = scheduledFlights.find(f => f.id === flightId);
+    const aircraftId = flight?.aircraftId;
+
     const response = await fetch(`/api/schedule/flight/${flightId}`, {
       method: 'DELETE'
     });
@@ -4153,9 +4163,20 @@ async function deleteScheduledFlight(flightId) {
       scheduledFlights.splice(index, 1);
     }
 
+    // Refresh auto-maintenance for this aircraft after removing flight
+    if (aircraftId) {
+      try {
+        const refreshResp = await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' });
+        const refreshData = await refreshResp.json();
+        console.log('[MAINT] Refreshed:', refreshData.scheduledChecks, 'checks for', aircraftId);
+      } catch (e) {
+        console.error('Error refreshing maintenance:', e);
+      }
+    }
+
     await showAlertModal('Success', 'Flight deleted successfully');
-    // Just re-render without fetching
-    renderSchedule();
+    // Force fresh data fetch by reloading schedule
+    await loadSchedule();
   } catch (error) {
     console.error('Error deleting flight:', error);
     await showAlertModal('Error', error.message);
@@ -5670,6 +5691,17 @@ async function loadSchedule() {
     // Use combined endpoint for much faster loading (1 request instead of 4)
     await fetchAllScheduleData();
 
+    // Debug: log maintenance data before rendering
+    console.log('[DEBUG] Maintenance before render:', scheduledMaintenance.length, 'records');
+    if (scheduledMaintenance.length > 0) {
+      console.log('[DEBUG] First 3 maintenance records:', scheduledMaintenance.slice(0, 3).map(m => ({
+        id: m.id,
+        aircraftId: m.aircraftId,
+        checkType: m.checkType,
+        scheduledDate: m.scheduledDate
+      })));
+    }
+
     // Render the schedule
     renderSchedule();
   } catch (error) {
@@ -6322,7 +6354,9 @@ async function scheduleRouteForDay(routeId, dayOfWeek) {
   const route = routes.find(r => r.id === routeId);
   if (!route || !currentAircraftId) return;
 
-  const aircraft = userFleet.find(a => a.id === currentAircraftId);
+  // Capture aircraftId at start - don't rely on global which may change
+  const aircraftId = currentAircraftId;
+  const aircraft = userFleet.find(a => a.id === aircraftId);
   if (!aircraft) return;
 
   // Use the route's scheduled departure time
@@ -6353,13 +6387,24 @@ async function scheduleRouteForDay(routeId, dayOfWeek) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         routeId: route.id,
-        aircraftId: currentAircraftId,
+        aircraftId: aircraftId,
         scheduledDate: scheduleDate,
         departureTime: departureTime
       })
     });
 
     if (response.ok) {
+      // Refresh auto-maintenance for this aircraft after adding flight
+      if (aircraftId) {
+        try {
+          const refreshResp = await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' });
+          const refreshData = await refreshResp.json();
+          console.log('[MAINT] Refreshed:', refreshData.scheduledChecks, 'checks for', aircraftId);
+        } catch (e) {
+          console.error('Error refreshing maintenance:', e);
+        }
+      }
+      // Force fresh data fetch by reloading schedule
       await loadSchedule();
       closeLoadingModal();
       closeAddRouteModal();
@@ -8145,6 +8190,17 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
     });
 
     if (response.ok) {
+      // Refresh auto-maintenance for this aircraft after adding flight
+      if (aircraftId) {
+        try {
+          const refreshResp = await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' });
+          const refreshData = await refreshResp.json();
+          console.log('[MAINT] Refreshed:', refreshData.scheduledChecks, 'checks for', aircraftId);
+        } catch (e) {
+          console.error('Error refreshing maintenance:', e);
+        }
+      }
+      // Force fresh data fetch by reloading schedule
       await loadSchedule();
       closeLoadingModal();
       closeAddRouteModal();

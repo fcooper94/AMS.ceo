@@ -237,14 +237,18 @@ router.get('/data', async (req, res) => {
           raw: true
         }).then(rows => rows.map(r => r.id));
 
+        console.log('[MAINT-QUERY] worldMembershipId:', worldMembershipId, 'aircraftIds:', aircraftIds.length);
+
         if (aircraftIds.length === 0) return [];
 
-        return RecurringMaintenance.findAll({
+        const maint = await RecurringMaintenance.findAll({
           where: {
             aircraftId: { [Op.in]: aircraftIds },
             status: 'active'
           }
         });
+        console.log('[MAINT-QUERY] Found', maint.length, 'maintenance records');
+        return maint;
       })()
     ]);
 
@@ -263,32 +267,11 @@ router.get('/data', async (req, res) => {
       return aircraftJson;
     });
 
-    // Background: clean up auto-scheduled maintenance for aircraft with no flights
-    // Aircraft with no flights shouldn't have auto-scheduled maintenance cluttering the view
+    // Background: fix transit day conflicts for maintenance
+    // (Removed aggressive auto-schedule cleanup that was wiping user preferences)
     (async () => {
       try {
-        const aircraftWithFlights = new Set(flights.map(f => f.aircraftId));
-        for (const aircraft of fleet) {
-          if (!aircraftWithFlights.has(aircraft.id) && (
-            aircraft.autoScheduleDaily || aircraft.autoScheduleWeekly ||
-            aircraft.autoScheduleA || aircraft.autoScheduleC || aircraft.autoScheduleD
-          )) {
-            // Disable auto-scheduling for aircraft with no flights
-            await aircraft.update({
-              autoScheduleDaily: false,
-              autoScheduleWeekly: false,
-              autoScheduleA: false,
-              autoScheduleC: false,
-              autoScheduleD: false
-            });
-            // Remove their auto-scheduled maintenance
-            await RecurringMaintenance.destroy({
-              where: { aircraftId: aircraft.id, status: 'active' }
-            });
-          }
-        }
-
-        // Also fix transit day conflicts for remaining maintenance
+        // Fix transit day conflicts for maintenance (aircraft flying on multi-day routes)
         for (const maint of maintenancePatterns) {
           if (maint.status !== 'active') continue;
           const maintDate = typeof maint.scheduledDate === 'string'
@@ -308,7 +291,7 @@ router.get('/data', async (req, res) => {
           }
         }
       } catch (err) {
-        console.error('[MAINT-FIX] Error in background maintenance cleanup:', err.message);
+        console.error('[MAINT-FIX] Error in background maintenance fix:', err.message);
       }
     })();
 
