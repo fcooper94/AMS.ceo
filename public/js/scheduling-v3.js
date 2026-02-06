@@ -6222,6 +6222,9 @@ function getFlightsForDay(aircraftId, dayOfWeek) {
 // Get maintenance for a specific date for an aircraft
 // targetDate should be YYYY-MM-DD string for forward-looking match
 function getMaintenanceForDay(aircraftId, dayOfWeek, targetDate = null) {
+  const worldTime = getCurrentWorldTime() || new Date();
+  const todayStr = formatLocalDate(worldTime);
+
   const results = scheduledMaintenance.filter(m => {
     // Check aircraftId - backend stores it at top level, but also check nested aircraft.id for compatibility
     const maintAircraftId = m.aircraftId || m.aircraft?.id;
@@ -6241,6 +6244,22 @@ function getMaintenanceForDay(aircraftId, dayOfWeek, targetDate = null) {
       } else {
         maintDateStr = maintDateStr.split('T')[0];
       }
+
+      // For C/D checks, also include if currently in progress and targetDate falls within maintenance period
+      if (['C', 'D'].includes(m.checkType) && !m.isOngoing) {
+        const schedDateStr = m.scheduledDate?.split?.('T')?.[0] || m.scheduledDate;
+        const durationDays = Math.ceil((m.duration || 1440) / 1440);
+        const startDate = new Date(schedDateStr + 'T00:00:00');
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + durationDays);
+        const targetDateObj = new Date(targetDate + 'T00:00:00');
+
+        // Check if target date is within the maintenance period
+        if (targetDateObj >= startDate && targetDateObj < endDate) {
+          return true;
+        }
+      }
+
       return maintDateStr === targetDate;
     }
 

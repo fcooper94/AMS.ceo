@@ -321,19 +321,30 @@ router.get('/data', async (req, res) => {
         const daysSpan = Math.ceil((patternJson.duration || 60) / 1440);
         const patternStart = new Date(patternDateStr + 'T00:00:00Z');
 
+        // Always include the primary block (day 0) for C/D checks
+        // This ensures getInProgressMaintenance() can detect it even when viewing future weeks
+        // The frontend will determine if it's actually in progress based on game time
+        let includedPrimaryBlock = false;
+
         for (let dayOffset = 0; dayOffset < daysSpan; dayOffset++) {
           const displayDate = new Date(patternStart);
           displayDate.setUTCDate(displayDate.getUTCDate() + dayOffset);
           const displayDateStr = displayDate.toISOString().split('T')[0];
 
-          // Skip if outside requested date range
+          const isPrimaryBlock = dayOffset === 0;
+
+          // Skip if outside requested date range (but always include primary block for C/D checks)
           if (rangeStart && rangeEnd) {
             if (displayDate < rangeStart || displayDate > rangeEnd) {
-              continue;
+              // Exception: always include primary block for C/D checks so frontend can detect in-progress
+              if (!isPrimaryBlock) {
+                continue;
+              }
             }
           }
 
           const isOngoing = dayOffset > 0;
+          if (isPrimaryBlock) includedPrimaryBlock = true;
 
           maintenanceBlocks.push({
             id: `${patternJson.id}-${displayDateStr}`,
@@ -351,6 +362,14 @@ router.get('/data', async (req, res) => {
         }
       } else {
         // For daily/weekly/A checks, just add the pattern with displayDate = scheduledDate
+        // Only include if within date range (if range specified)
+        if (rangeStart && rangeEnd && patternDateStr) {
+          const checkDate = new Date(patternDateStr + 'T00:00:00Z');
+          if (checkDate < rangeStart || checkDate > rangeEnd) {
+            // Still include for maintenance status modal (far future checks)
+            // but mark as out of range so frontend can filter if needed
+          }
+        }
         maintenanceBlocks.push({
           ...patternJson,
           displayDate: patternDateStr || patternJson.scheduledDate
@@ -358,11 +377,24 @@ router.get('/data', async (req, res) => {
       }
     }
 
+    // Deduplicate blocks by composite key (patternId + displayDate)
+    // This prevents showing the same maintenance twice
+    const seen = new Set();
+    const deduplicatedBlocks = maintenanceBlocks.filter(block => {
+      const key = `${block.patternId || block.id}-${block.displayDate}-${block.checkType}`;
+      if (seen.has(key)) {
+        console.log(`[MAINT-DEDUP] Removing duplicate block: ${key}`);
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
     res.json({
       fleet: fleetWithMaintenance,
       routes,
       flights,
-      maintenance: maintenanceBlocks
+      maintenance: deduplicatedBlocks
     });
   } catch (error) {
     console.error('Error fetching schedule data:', error);
@@ -1825,6 +1857,18 @@ router.get('/maintenance', async (req, res) => {
       return a.startTime.localeCompare(b.startTime);
     });
 
+    // Deduplicate blocks by composite key (patternId + displayDate + checkType)
+    const seen = new Set();
+    const deduplicatedBlocks = updatedBlocks.filter(block => {
+      const key = `${block.patternId || block.id}-${block.displayDate}-${block.checkType}`;
+      if (seen.has(key)) {
+        console.log(`[MAINT-DEDUP] Removing duplicate block: ${key}`);
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
     // Include debug info in response
     const debugInfo = {
       requestedRange: { startDate, endDate },
@@ -1835,11 +1879,11 @@ router.get('/maintenance', async (req, res) => {
         scheduledDate: p.scheduledDate,
         dayOfWeek: p.dayOfWeek
       })),
-      blocksGenerated: updatedBlocks.length,
+      blocksGenerated: deduplicatedBlocks.length,
       optimized: true
     };
 
-    res.json({ maintenance: updatedBlocks, debug: debugInfo });
+    res.json({ maintenance: deduplicatedBlocks, debug: debugInfo });
   } catch (error) {
     console.error('Error fetching maintenance:', error);
     res.status(500).json({ error: error.message });

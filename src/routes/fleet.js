@@ -736,17 +736,43 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
   function findAvailableSlotCached(dateStr, duration, checkType) {
     const flightSlots = getFlightSlotsForDateCached(dateStr);
+    const targetDate = new Date(dateStr + 'T00:00:00');
 
-    // Get existing maintenance on this date
-    const existingMaintOnDate = allExistingMaint.filter(m =>
-      String(m.scheduledDate).split('T')[0] === dateStr
-    );
+    // Get existing maintenance on this date OR multi-day maintenance in progress
+    const existingMaintOnDate = allExistingMaint.filter(m => {
+      const schedDateStr = String(m.scheduledDate).split('T')[0];
+
+      // Direct match - maintenance starts on this date
+      if (schedDateStr === dateStr) return true;
+
+      // Multi-day check (C/D) that spans this date
+      if (['C', 'D'].includes(m.checkType)) {
+        const schedDate = new Date(schedDateStr + 'T00:00:00');
+        const durationDays = Math.ceil(m.duration / 1440);
+        const endDate = new Date(schedDate);
+        endDate.setDate(endDate.getDate() + durationDays);
+
+        // If targetDate is within the maintenance period (after start, before end)
+        if (targetDate > schedDate && targetDate < endDate) {
+          return true;
+        }
+      }
+      return false;
+    });
 
     const busyPeriods = [...flightSlots];
     for (const maint of existingMaintOnDate) {
-      const [h, m] = maint.startTime.split(':').map(Number);
-      const start = h * 60 + m;
-      busyPeriods.push({ start, end: start + maint.duration });
+      const schedDateStr = String(maint.scheduledDate).split('T')[0];
+
+      if (schedDateStr === dateStr) {
+        // Maintenance starts today - add from start time
+        const [h, m] = maint.startTime.split(':').map(Number);
+        const start = h * 60 + m;
+        busyPeriods.push({ start, end: start + maint.duration });
+      } else {
+        // Multi-day maintenance in progress - entire day is blocked
+        busyPeriods.push({ start: 0, end: 1440 });
+      }
     }
     busyPeriods.sort((a, b) => a.start - b.start);
 
@@ -959,6 +985,26 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
       // Use pre-fetched existing scheduled checks
       const existingScheduled = existingByCheckType[checkType] || [];
 
+      // For C/D checks, check if one is already IN PROGRESS
+      // (scheduled in the past but duration hasn't elapsed)
+      if (['C', 'D'].includes(checkType)) {
+        const inProgressCheck = existingScheduled.find(m => {
+          const schedDateStr = String(m.scheduledDate).split('T')[0];
+          const schedDate = new Date(schedDateStr + 'T00:00:00');
+          const checkDurationDays = Math.ceil(m.duration / 1440);
+          const endDate = new Date(schedDate);
+          endDate.setDate(endDate.getDate() + checkDurationDays);
+
+          return schedDate <= gameNow && gameNow < endDate;
+        });
+
+        if (inProgressCheck) {
+          const schedDateStr = String(inProgressCheck.scheduledDate).split('T')[0];
+          console.log(`[AUTO-SCHEDULE] ${checkType} check already IN PROGRESS (started ${schedDateStr}) - skipping`);
+          continue; // Skip to next check type
+        }
+      }
+
       // Check if this check is EXPIRED (needs immediate attention)
       const isExpired = expiryDate <= gameNow;
 
@@ -1111,11 +1157,24 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         ...(existingByCheckType['D'] || []),
         ...recordsToCreate.filter(r => ['weekly', 'A', 'C', 'D'].includes(r.checkType))
       ];
-      const heavierCheckDates = new Set(heavierChecks.map(m => {
+      // Build set of dates covered by heavier checks (including all days of C/D checks)
+      const heavierCheckDates = new Set();
+      for (const m of heavierChecks) {
         const d = m.scheduledDate;
-        if (d instanceof Date) return d.toISOString().split('T')[0];
-        return String(d).split('T')[0];
-      }));
+        const dateStr = d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
+        heavierCheckDates.add(dateStr);
+
+        // For C/D checks, add all days they span
+        if (['C', 'D'].includes(m.checkType)) {
+          const durationDays = Math.ceil((m.duration || 1440) / 1440);
+          const startDate = new Date(dateStr + 'T00:00:00');
+          for (let dayOffset = 1; dayOffset < durationDays; dayOffset++) {
+            const spanDate = new Date(startDate);
+            spanDate.setDate(spanDate.getDate() + dayOffset);
+            heavierCheckDates.add(spanDate.toISOString().split('T')[0]);
+          }
+        }
+      }
 
       // Check if daily check is EXPIRED (needs immediate attention)
       const lastDailyCheck = aircraft.lastDailyCheckDate;
@@ -1235,17 +1294,61 @@ async function refreshAutoScheduledMaintenance(aircraftId, worldId = null) {
     return [];
   }
 
+  // Get world time to determine what's in progress
+  let gameNow;
+  if (worldId) {
+    const world = await World.findByPk(worldId);
+    gameNow = world ? new Date(world.currentTime) : new Date();
+  } else {
+    const membership = await WorldMembership.findByPk(aircraft.worldMembershipId);
+    if (membership) {
+      const world = await World.findByPk(membership.worldId);
+      gameNow = world ? new Date(world.currentTime) : new Date();
+    } else {
+      gameNow = new Date();
+    }
+  }
+  const gameNowStr = gameNow.toISOString().split('T')[0];
+
   // Delete existing auto-scheduled maintenance so it can be recreated
   // with correct positioning based on current flight schedule
+  // BUT protect in-progress C/D checks (they span multiple days)
   try {
-    const deleted = await RecurringMaintenance.destroy({
+    const existingMaint = await RecurringMaintenance.findAll({
       where: {
         aircraftId,
         checkType: { [Op.in]: enabledChecks },
         status: 'active'
       }
     });
-    console.log(`[MAINT REFRESH] Deleted ${deleted} existing maintenance records`);
+
+    const toDelete = existingMaint.filter(m => {
+      // Protect in-progress C/D checks
+      if (['C', 'D'].includes(m.checkType)) {
+        const schedDateStr = String(m.scheduledDate).split('T')[0];
+        const schedDate = new Date(schedDateStr + 'T00:00:00');
+        const durationDays = Math.ceil(m.duration / 1440);
+        const endDate = new Date(schedDate);
+        endDate.setDate(endDate.getDate() + durationDays);
+
+        // If scheduled in the past and still within duration, it's in progress
+        if (schedDate <= gameNow && gameNow < endDate) {
+          console.log(`[MAINT REFRESH] Protecting in-progress ${m.checkType} check (started ${schedDateStr})`);
+          return false; // Don't delete
+        }
+      }
+      return true; // Delete
+    });
+
+    if (toDelete.length > 0) {
+      const deleteIds = toDelete.map(m => m.id);
+      await RecurringMaintenance.destroy({
+        where: { id: { [Op.in]: deleteIds } }
+      });
+      console.log(`[MAINT REFRESH] Deleted ${toDelete.length} existing maintenance records`);
+    } else {
+      console.log(`[MAINT REFRESH] No records to delete (all protected)`);
+    }
   } catch (deleteErr) {
     console.error(`[MAINT REFRESH] Error deleting maintenance:`, deleteErr.message);
   }
