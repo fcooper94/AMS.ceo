@@ -295,11 +295,74 @@ router.get('/data', async (req, res) => {
       }
     })();
 
+    // Generate display blocks for multi-day maintenance (C/D checks)
+    // This creates separate blocks with displayDate for each day of multi-day maintenance
+    const maintenanceBlocks = [];
+
+    // Parse start and end dates for range checking
+    const rangeStart = startDate ? new Date(startDate + 'T00:00:00Z') : null;
+    const rangeEnd = endDate ? new Date(endDate + 'T00:00:00Z') : null;
+
+    for (const pattern of maintenancePatterns) {
+      const patternJson = pattern.toJSON ? pattern.toJSON() : pattern;
+
+      // Normalize scheduledDate
+      let patternDateStr = null;
+      if (patternJson.scheduledDate) {
+        if (patternJson.scheduledDate instanceof Date) {
+          patternDateStr = patternJson.scheduledDate.toISOString().split('T')[0];
+        } else {
+          patternDateStr = String(patternJson.scheduledDate).split('T')[0];
+        }
+      }
+
+      // For multi-day maintenance (C, D checks), generate display blocks for each day
+      if (patternDateStr && ['C', 'D'].includes(patternJson.checkType)) {
+        const daysSpan = Math.ceil((patternJson.duration || 60) / 1440);
+        const patternStart = new Date(patternDateStr + 'T00:00:00Z');
+
+        for (let dayOffset = 0; dayOffset < daysSpan; dayOffset++) {
+          const displayDate = new Date(patternStart);
+          displayDate.setUTCDate(displayDate.getUTCDate() + dayOffset);
+          const displayDateStr = displayDate.toISOString().split('T')[0];
+
+          // Skip if outside requested date range
+          if (rangeStart && rangeEnd) {
+            if (displayDate < rangeStart || displayDate > rangeEnd) {
+              continue;
+            }
+          }
+
+          const isOngoing = dayOffset > 0;
+
+          maintenanceBlocks.push({
+            id: `${patternJson.id}-${displayDateStr}`,
+            patternId: patternJson.id,
+            aircraftId: patternJson.aircraftId,
+            checkType: patternJson.checkType,
+            scheduledDate: patternDateStr, // Original start date
+            displayDate: displayDateStr, // The date this block shows on
+            startTime: isOngoing ? '00:00:00' : patternJson.startTime,
+            duration: patternJson.duration,
+            displayDuration: isOngoing ? 1440 : patternJson.duration,
+            status: 'scheduled',
+            isOngoing: isOngoing
+          });
+        }
+      } else {
+        // For daily/weekly/A checks, just add the pattern with displayDate = scheduledDate
+        maintenanceBlocks.push({
+          ...patternJson,
+          displayDate: patternDateStr || patternJson.scheduledDate
+        });
+      }
+    }
+
     res.json({
       fleet: fleetWithMaintenance,
       routes,
       flights,
-      maintenance: maintenancePatterns
+      maintenance: maintenanceBlocks
     });
   } catch (error) {
     console.error('Error fetching schedule data:', error);

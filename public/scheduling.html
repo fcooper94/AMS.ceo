@@ -84,6 +84,26 @@
           </div>
 
           <div style="flex: 1;"></div>
+
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Bulk Actions</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <button
+                onclick="showGlobalMaintenanceModal()"
+                style="padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 0.85rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.4rem;"
+                title="Configure auto-maintenance for all aircraft"
+              >
+                <span style="font-size: 1rem;">🔧</span> Global Maintenance
+              </button>
+              <button
+                onclick="showClearAllSchedulesModal()"
+                style="padding: 0.5rem 0.75rem; background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 3px; color: #f85149; font-size: 0.85rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.4rem;"
+                title="Clear all flights and maintenance"
+              >
+                <span style="font-size: 1rem;">🗑</span> Clear All
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -92,9 +112,6 @@
     <div class="ops-panel full-width">
       <div class="panel-header">
         <h2>FLEET SCHEDULE</h2>
-        <button id="clearAllSchedulesBtn" onclick="showClearAllSchedulesModal()" class="btn-danger-outline" title="Clear all flights and maintenance from visible aircraft">
-          Clear All Schedules
-        </button>
       </div>
       <div class="panel-body" style="padding: 0; overflow-x: auto;">
         <div id="scheduleGrid" style="min-width: 100%;">

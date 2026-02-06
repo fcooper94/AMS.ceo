@@ -849,22 +849,31 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     const fi = checkFieldMap[ct];
     const lastCheck = aircraft[fi.lastCheck];
 
-    let expiry;
+    let isExpired = false;
     if (ct === 'A') {
-      const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
-      const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
-      const intervalHours = fi.intervalHours || 800;
-      const hoursUntilDue = intervalHours - (currentFlightHours - lastACheckHours);
-      if (hoursUntilDue <= 0) {
-        heaviestExpiredCheck = ct;
-        break;
+      // A check is expired if no lastACheckDate OR hours exceeded
+      if (!aircraft.lastACheckDate) {
+        isExpired = true;
+      } else {
+        const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
+        const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
+        const intervalHours = fi.intervalHours || 800;
+        const hoursUntilDue = intervalHours - (currentFlightHours - lastACheckHours);
+        isExpired = hoursUntilDue <= 0;
       }
     } else {
-      expiry = calculateCheckExpiry(lastCheck, fi.interval);
-      if (expiry && expiry <= gameNow) {
-        heaviestExpiredCheck = ct;
-        break;
+      // Other checks are expired if no lastCheckDate OR expiry date passed
+      if (!lastCheck) {
+        isExpired = true;
+      } else {
+        const expiry = calculateCheckExpiry(lastCheck, fi.interval);
+        isExpired = expiry && expiry <= gameNow;
       }
+    }
+
+    if (isExpired) {
+      heaviestExpiredCheck = ct;
+      break;
     }
   }
 
@@ -917,11 +926,18 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
       console.log(`[A CHECK] ${aircraft.registration}: ${hoursUntilDue.toFixed(0)} hrs until due, estimated ${estimatedDaysUntilDue} days`);
     } else {
-      expiryDate = calculateCheckExpiry(lastCheckDate, fieldInfo.interval);
+      // If no lastCheckDate, treat as immediately expired (set expiry to yesterday)
+      if (!lastCheckDate) {
+        expiryDate = new Date(gameNow);
+        expiryDate.setDate(expiryDate.getDate() - 1);
+        console.log(`[AUTO-SCHEDULE] ${checkType}: No last check date - treating as EXPIRED`);
+      } else {
+        expiryDate = calculateCheckExpiry(lastCheckDate, fieldInfo.interval);
+      }
     }
 
     if (!expiryDate) {
-      console.log(`[AUTO-SCHEDULE] SKIP ${checkType}: No last check date (lastCheckDate=${lastCheckDate}, expiryDate=${expiryDate})`);
+      console.log(`[AUTO-SCHEDULE] SKIP ${checkType}: Could not calculate expiry date`);
       continue;
     }
     console.log(`[AUTO-SCHEDULE] ${checkType}: expiryDate=${expiryDate.toISOString()}, gameNow=${gameNow.toISOString()}`);
@@ -2460,6 +2476,201 @@ router.put('/:aircraftId/auto-schedule/batch', async (req, res) => {
   } catch (error) {
     console.error('Error batch updating auto-schedule:', error);
     res.status(500).json({ error: 'Failed to update auto-schedule preferences' });
+  }
+});
+
+/**
+ * Global maintenance settings - Apply auto-schedule settings to ALL aircraft
+ */
+router.post('/global-maintenance-settings', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const {
+      autoScheduleDaily,
+      autoScheduleWeekly,
+      autoScheduleA,
+      autoScheduleC,
+      autoScheduleD
+    } = req.body;
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    // Get world time for expiry calculations
+    const world = await World.findByPk(activeWorldId);
+    const gameNow = world ? new Date(world.currentTime) : new Date();
+
+    // Get all aircraft for this membership
+    const allAircraft = await UserAircraft.findAll({
+      where: { worldMembershipId: membership.id }
+    });
+
+    if (allAircraft.length === 0) {
+      return res.status(404).json({ error: 'No aircraft found' });
+    }
+
+    // Check expiry helper function for an aircraft
+    const isCheckExpired = (aircraft, checkType) => {
+      if (checkType === 'daily') {
+        if (!aircraft.lastDailyCheckDate) return true;
+        const expiry = new Date(aircraft.lastDailyCheckDate);
+        expiry.setDate(expiry.getDate() + 1);
+        expiry.setUTCHours(23, 59, 59, 999);
+        return expiry <= gameNow;
+      } else if (checkType === 'weekly') {
+        if (!aircraft.lastWeeklyCheckDate) return true;
+        const expiry = new Date(aircraft.lastWeeklyCheckDate);
+        expiry.setDate(expiry.getDate() + 8);
+        return expiry <= gameNow;
+      } else if (checkType === 'A') {
+        if (!aircraft.lastACheckDate) return true;
+        const lastACheckHours = parseFloat(aircraft.lastACheckHours) || 0;
+        const currentFlightHours = parseFloat(aircraft.totalFlightHours) || 0;
+        const intervalHours = aircraft.aCheckIntervalHours || 800;
+        return (currentFlightHours - lastACheckHours) >= intervalHours;
+      } else if (checkType === 'C') {
+        if (!aircraft.lastCCheckDate) return true;
+        const expiry = new Date(aircraft.lastCCheckDate);
+        expiry.setDate(expiry.getDate() + (aircraft.cCheckIntervalDays || 730));
+        return expiry <= gameNow;
+      } else if (checkType === 'D') {
+        if (!aircraft.lastDCheckDate) return true;
+        const expiry = new Date(aircraft.lastDCheckDate);
+        expiry.setDate(expiry.getDate() + (aircraft.dCheckIntervalDays || 2190));
+        return expiry <= gameNow;
+      }
+      return false;
+    };
+
+    // Check hierarchy: D > C > A > weekly > daily (heavier checks include lighter ones)
+    const checkHierarchy = ['D', 'C', 'A', 'weekly', 'daily'];
+
+    // Map of which checks are being enabled
+    const enabledChecks = [];
+    if (autoScheduleDaily) enabledChecks.push('daily');
+    if (autoScheduleWeekly) enabledChecks.push('weekly');
+    if (autoScheduleA) enabledChecks.push('A');
+    if (autoScheduleC) enabledChecks.push('C');
+    if (autoScheduleD) enabledChecks.push('D');
+
+    // Update all aircraft with the new settings
+    const updateFields = {
+      autoScheduleDaily: !!autoScheduleDaily,
+      autoScheduleWeekly: !!autoScheduleWeekly,
+      autoScheduleA: !!autoScheduleA,
+      autoScheduleC: !!autoScheduleC,
+      autoScheduleD: !!autoScheduleD
+    };
+
+    await UserAircraft.update(updateFields, {
+      where: { worldMembershipId: membership.id }
+    });
+
+    // First, refresh auto-scheduled maintenance for all aircraft
+    // Then schedule immediate maintenance for expired checks (so it doesn't get deleted by refresh)
+    let maintenanceScheduled = 0;
+    let immediateMaintenanceScheduled = 0;
+    const batchSize = 5;
+
+    for (let i = 0; i < allAircraft.length; i += batchSize) {
+      const batch = allAircraft.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (aircraft) => {
+          try {
+            // First: Refresh auto-scheduled maintenance (this will schedule future checks)
+            const result = await refreshAutoScheduledMaintenance(aircraft.id, activeWorldId);
+            const refreshCount = Array.isArray(result) ? result.length : 0;
+
+            // Second: Find the heaviest expired check that is being enabled
+            let heaviestExpiredCheck = null;
+            for (const ct of checkHierarchy) {
+              if (!enabledChecks.includes(ct)) continue;
+              if (isCheckExpired(aircraft, ct)) {
+                heaviestExpiredCheck = ct;
+                break;
+              }
+            }
+
+            let immediateCount = 0;
+
+            // If there's an expired check, schedule it immediately (2 hours from now)
+            // This must happen AFTER refresh so it doesn't get deleted
+            if (heaviestExpiredCheck) {
+              const immediateStart = new Date(gameNow.getTime() + 2 * 60 * 60 * 1000);
+              const immediateStartTime = `${String(immediateStart.getUTCHours()).padStart(2, '0')}:${String(immediateStart.getUTCMinutes()).padStart(2, '0')}`;
+              const immediateDate = immediateStart.toISOString().split('T')[0];
+              const dayOfWeek = immediateStart.getUTCDay();
+              const duration = CHECK_DURATIONS[heaviestExpiredCheck];
+
+              // Check if there's already a maintenance scheduled for this check type within the next 7 days
+              const sevenDaysFromNow = new Date(gameNow);
+              sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+              const existingMaint = await RecurringMaintenance.findOne({
+                where: {
+                  aircraftId: aircraft.id,
+                  checkType: heaviestExpiredCheck,
+                  scheduledDate: {
+                    [Op.between]: [gameNow.toISOString().split('T')[0], sevenDaysFromNow.toISOString().split('T')[0]]
+                  },
+                  status: 'active'
+                }
+              });
+
+              if (!existingMaint) {
+                // Create immediate maintenance
+                await RecurringMaintenance.create({
+                  aircraftId: aircraft.id,
+                  checkType: heaviestExpiredCheck,
+                  dayOfWeek,
+                  scheduledDate: immediateDate,
+                  startTime: immediateStartTime,
+                  duration,
+                  status: 'active'
+                });
+                immediateCount = 1;
+                console.log(`[GLOBAL MAINT] Scheduled immediate ${heaviestExpiredCheck} check for ${aircraft.registration} at ${immediateStartTime} on ${immediateDate}`);
+              }
+            }
+
+            return { immediate: immediateCount, refresh: refreshCount };
+          } catch (err) {
+            console.error(`Error processing maintenance for aircraft ${aircraft.id}:`, err);
+            return { immediate: 0, refresh: 0 };
+          }
+        })
+      );
+      immediateMaintenanceScheduled += results.reduce((sum, r) => sum + r.immediate, 0);
+      maintenanceScheduled += results.reduce((sum, r) => sum + r.refresh, 0);
+    }
+
+    res.json({
+      message: 'Global maintenance settings applied',
+      updatedCount: allAircraft.length,
+      maintenanceScheduled: maintenanceScheduled + immediateMaintenanceScheduled,
+      immediateMaintenanceScheduled,
+      settings: updateFields
+    });
+  } catch (error) {
+    console.error('Error applying global maintenance settings:', error);
+    res.status(500).json({ error: 'Failed to apply global maintenance settings' });
   }
 });
 
