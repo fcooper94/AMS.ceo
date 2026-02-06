@@ -38,11 +38,21 @@ const createTransporter = () => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, email, subject, message } = req.body;
+    const { name, email, subject, message, captcha, captchaExpected } = req.body;
 
     // Validate required fields
     if (!name || !email || !subject || !message) {
       return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Validate captcha
+    if (!captcha || !captchaExpected) {
+      return res.status(400).json({ error: 'Human verification is required' });
+    }
+
+    // Server-side captcha validation
+    if (captcha.toString().trim() !== captchaExpected.toString().trim()) {
+      return res.status(400).json({ error: 'Human verification failed. Please try again.' });
     }
 
     // Validate email format
