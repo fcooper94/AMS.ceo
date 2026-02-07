@@ -427,6 +427,12 @@ function updateWorldClock() {
       const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
       worldDayEl.textContent = dayNames[currentWorldTime.getDay()];
     }
+
+    // Keep mobile expand panel in sync if open
+    const wiPanel = document.getElementById('worldInfoPanel');
+    if (wiPanel && wiPanel.classList.contains('visible')) {
+      updateWorldInfoPanel();
+    }
   }
 }
 
@@ -1012,6 +1018,83 @@ function updateSidebarBackdrop(isOpen) {
   }
 }
 
+// Mobile world info tap-to-expand
+function initWorldInfoExpand() {
+  const worldInfo = document.getElementById('worldInfoContainer');
+  const panel = document.getElementById('worldInfoPanel');
+  if (!worldInfo || !panel) return;
+
+  worldInfo.addEventListener('click', (e) => {
+    // Only handle on mobile (480px and below)
+    if (window.innerWidth > 480) return;
+
+    e.stopPropagation();
+    const isExpanded = worldInfo.classList.contains('wi-expanded');
+
+    if (isExpanded) {
+      worldInfo.classList.remove('wi-expanded');
+      panel.classList.remove('visible');
+    } else {
+      updateWorldInfoPanel();
+      worldInfo.classList.add('wi-expanded');
+      panel.classList.add('visible');
+    }
+  });
+
+  // Close panel when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!worldInfo.contains(e.target) && !panel.contains(e.target)) {
+      worldInfo.classList.remove('wi-expanded');
+      panel.classList.remove('visible');
+    }
+  });
+
+  // Close panel on resize above mobile
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 480) {
+      worldInfo.classList.remove('wi-expanded');
+      panel.classList.remove('visible');
+    }
+  });
+}
+
+// Update the expand panel content with current world data
+function updateWorldInfoPanel() {
+  const panel = document.getElementById('worldInfoPanel');
+  if (!panel) return;
+
+  const worldName = document.getElementById('worldName')?.textContent || '--';
+  const worldDate = document.getElementById('worldDate')?.textContent || '--';
+  const worldTime = document.getElementById('worldTime')?.textContent || '--:--';
+  const worldDay = document.getElementById('worldDay')?.textContent || '--';
+  const worldBalance = document.getElementById('worldBalance');
+  const balanceText = worldBalance?.textContent || '$--';
+  const balanceColor = worldBalance?.style.color || 'var(--text-primary)';
+
+  panel.innerHTML = `
+    <div class="wi-panel-row">
+      <span class="wi-panel-label">World</span>
+      <span class="wi-panel-value">${worldName}</span>
+    </div>
+    <div class="wi-panel-row">
+      <span class="wi-panel-label">Date</span>
+      <span class="wi-panel-value">${worldDate}</span>
+    </div>
+    <div class="wi-panel-row">
+      <span class="wi-panel-label">Time</span>
+      <span class="wi-panel-value wi-panel-time">${worldTime}</span>
+    </div>
+    <div class="wi-panel-row">
+      <span class="wi-panel-label">Day</span>
+      <span class="wi-panel-value">${worldDay}</span>
+    </div>
+    <div class="wi-panel-row">
+      <span class="wi-panel-label">Balance</span>
+      <span class="wi-panel-value wi-panel-balance" style="color: ${balanceColor}">${balanceText}</span>
+    </div>
+  `;
+}
+
 // Sidebar toggle functionality
 function initSidebarToggle() {
   const toggleBtn = document.getElementById('sidebarToggle');
@@ -1021,19 +1104,18 @@ function initSidebarToggle() {
   // Check if sidebar is disabled/hidden from admin panel
   const sidebarEnabled = localStorage.getItem('sidebarEnabled') !== 'false';
 
-  // Hide sidebar and burger menu on admin page
-  const isAdminPage = window.location.pathname === '/admin';
+  // Pages that use simplified sidebar (no nav-menu)
+  const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/faqs', '/credits'];
+  const isSimplifiedPage = simplifiedSidebarPages.includes(window.location.pathname);
 
-  if (isAdminPage) {
-    // Hide burger menu on admin page
+  // On admin page, always hide sidebar. On other simplified pages, hide on mobile only.
+  if (window.location.pathname === '/admin' || (isSimplifiedPage && isMobileViewport())) {
     if (toggleBtn) {
       toggleBtn.style.display = 'none';
     }
-    // Hide sidebar on admin page
     if (sidebar) {
       sidebar.style.display = 'none';
     }
-    // Remove sidebar spacing from container on admin page
     if (dashboardContainer) {
       dashboardContainer.classList.add('sidebar-collapsed');
     }
@@ -1111,6 +1193,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[Layout] DOMContentLoaded event fired');
   initializeLayout();
   initSidebarToggle();
+  initWorldInfoExpand();
 
   // Measure and set navbar height for fixed sidebar positioning
   const navbar = document.querySelector('.navbar');

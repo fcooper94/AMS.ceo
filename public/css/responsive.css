@@ -30,6 +30,11 @@
   opacity: 1;
 }
 
+/* Mobile world info expand panel - hidden by default on all viewports */
+.wi-expand-panel {
+  display: none;
+}
+
 /* ============================================================
    iPad Portrait & below (max-width: 768px)
    ============================================================ */
@@ -435,41 +440,112 @@
     display: none !important;
   }
 
-  /* World info - minimal */
+  /* World info - tap to expand on iPhone */
   .nav-world-info {
-    padding: 0.2rem 0.4rem;
+    padding: 0.15rem 0.4rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Hide everything except time */
+  .wi-world,
+  .wi-world + .wi-sep,
+  .wi-date,
+  .wi-day,
+  .wi-date-group + .wi-sep,
+  .wi-balance {
+    display: none !important;
   }
 
   .wi-date-group {
-    gap: 0.3rem;
-    padding: 0 0.4rem;
-  }
-
-  .wi-date {
-    display: none;
+    gap: 0;
+    padding: 0;
   }
 
   .wi-time {
     font-size: 0.85rem;
     padding: 0.1rem 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
   }
 
-  .wi-day {
+  /* Chevron indicator on time */
+  .wi-time::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-top: 4px solid currentColor;
+    opacity: 0.5;
+    transition: transform 0.2s ease;
+  }
+
+  .nav-world-info.wi-expanded .wi-time::after {
+    transform: rotate(180deg);
+  }
+
+  /* World info expand panel */
+  .wi-expand-panel {
     display: none;
+    position: fixed;
+    top: var(--navbar-height, 48px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0;
+    z-index: 130;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 
-  .wi-balance {
-    font-size: 0.75rem;
-    padding-left: 0.4rem;
+  .wi-expand-panel.visible {
+    display: block;
+    animation: wiPanelSlide 0.2s ease-out;
   }
 
-  .wi-balance + .wi-sep {
-    display: none;
+  @keyframes wiPanelSlide {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  /* Separator before balance */
-  .wi-date-group + .wi-sep {
-    margin: 0 0.1rem;
+  .wi-panel-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .wi-panel-row:last-child {
+    border-bottom: none;
+  }
+
+  .wi-panel-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+  }
+
+  .wi-panel-value {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'Courier New', Courier, monospace;
+  }
+
+  .wi-panel-value.wi-panel-time {
+    font-size: 0.9rem;
+    color: var(--accent-color);
+    font-weight: 700;
+  }
+
+  .wi-panel-value.wi-panel-balance {
+    font-weight: 700;
   }
 
   /* User section */
