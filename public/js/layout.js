@@ -986,6 +986,32 @@ async function loadCreditsOutgoings() {
   }
 }
 
+// Mobile detection helper
+function isMobileViewport() {
+  return window.innerWidth <= 768;
+}
+
+// Create sidebar backdrop for mobile overlay
+function createSidebarBackdrop() {
+  let backdrop = document.querySelector('.sidebar-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+  }
+  return backdrop;
+}
+
+// Show/hide sidebar backdrop
+function updateSidebarBackdrop(isOpen) {
+  const backdrop = createSidebarBackdrop();
+  if (isOpen && isMobileViewport()) {
+    backdrop.classList.add('visible');
+  } else {
+    backdrop.classList.remove('visible');
+  }
+}
+
 // Sidebar toggle functionality
 function initSidebarToggle() {
   const toggleBtn = document.getElementById('sidebarToggle');
@@ -1023,12 +1049,33 @@ function initSidebarToggle() {
       // Show burger menu
       toggleBtn.style.display = 'flex';
 
-      // Check localStorage for saved collapsed state
-      const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-      if (sidebarCollapsed && dashboardContainer) {
-        dashboardContainer.classList.add('sidebar-collapsed');
+      // On mobile, always start collapsed
+      if (isMobileViewport()) {
+        if (dashboardContainer) dashboardContainer.classList.add('sidebar-collapsed');
         document.body.classList.add('sidebar-collapsed');
+      } else {
+        // Desktop: check localStorage for saved collapsed state
+        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (sidebarCollapsed && dashboardContainer) {
+          dashboardContainer.classList.add('sidebar-collapsed');
+          document.body.classList.add('sidebar-collapsed');
+        }
       }
+
+      // Create backdrop for mobile
+      const backdrop = createSidebarBackdrop();
+
+      // Close sidebar when clicking backdrop
+      backdrop.addEventListener('click', () => {
+        if (dashboardContainer) {
+          dashboardContainer.classList.add('sidebar-collapsed');
+          document.body.classList.add('sidebar-collapsed');
+          if (!isMobileViewport()) {
+            localStorage.setItem('sidebarCollapsed', 'true');
+          }
+          updateSidebarBackdrop(false);
+        }
+      });
 
       // Add click handler for toggle
       toggleBtn.addEventListener('click', () => {
@@ -1036,7 +1083,23 @@ function initSidebarToggle() {
           dashboardContainer.classList.toggle('sidebar-collapsed');
           const isCollapsed = dashboardContainer.classList.contains('sidebar-collapsed');
           document.body.classList.toggle('sidebar-collapsed', isCollapsed);
-          localStorage.setItem('sidebarCollapsed', isCollapsed);
+
+          // Only save to localStorage on desktop
+          if (!isMobileViewport()) {
+            localStorage.setItem('sidebarCollapsed', isCollapsed);
+          }
+
+          // Show/hide backdrop on mobile
+          updateSidebarBackdrop(!isCollapsed);
+        }
+      });
+
+      // Handle resize: collapse sidebar when entering mobile viewport
+      window.addEventListener('resize', () => {
+        if (isMobileViewport() && dashboardContainer && !dashboardContainer.classList.contains('sidebar-collapsed')) {
+          dashboardContainer.classList.add('sidebar-collapsed');
+          document.body.classList.add('sidebar-collapsed');
+          updateSidebarBackdrop(false);
         }
       });
     }
