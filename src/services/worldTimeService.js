@@ -563,14 +563,20 @@ class WorldTimeService {
       const gameTimeStr = currentGameTime.toTimeString().split(' ')[0]; // HH:MM:SS
       const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
 
-      // Find all active recurring maintenance for today
-      // Match by dayOfWeek (recurring patterns) OR by scheduledDate (one-time scheduled checks)
+      // Find all active maintenance that should have completed by now
+      // Match by dayOfWeek (recurring patterns) OR by scheduledDate <= today (catches
+      // past-dated records that were missed due to server restart / time catch-up)
+      // Look back up to 90 game days to avoid scanning ancient records
+      const lookbackDate = new Date(currentGameTime);
+      lookbackDate.setDate(lookbackDate.getDate() - 90);
+      const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
+
       const maintenancePatterns = await RecurringMaintenance.findAll({
         where: {
           status: 'active',
           [Op.or]: [
             { dayOfWeek: gameDayOfWeek },
-            { scheduledDate: gameDate }
+            { scheduledDate: { [Op.between]: [lookbackDateStr, gameDate] } }
           ]
         },
         include: [{
@@ -650,7 +656,11 @@ class WorldTimeService {
             }
           }
 
-          if (!lastCheckDateStr || lastCheckDateStr !== gameDate) {
+          // Check if this maintenance has already been recorded
+          // Compare against the actual completion date, not just today
+          const alreadyRecorded = lastCheckDateStr && lastCheckDateStr >= completionDateStr;
+
+          if (!alreadyRecorded) {
             // Update the last check date with full datetime
             const updateData = {};
             updateData[lastCheckField] = currentGameTime; // Store full datetime
@@ -683,9 +693,9 @@ class WorldTimeService {
 
             await aircraft.update(updateData);
 
-            // Mark one-time scheduled maintenance (C, D checks with scheduledDate) as completed
-            // so they don't cause conflicts with future maintenance scheduling
-            if (['C', 'D'].includes(checkType) && pattern.scheduledDate) {
+            // Mark all one-time scheduled maintenance as completed
+            // so they don't keep being re-queried on every tick
+            if (pattern.scheduledDate) {
               await pattern.update({ status: 'completed' });
               if (process.env.NODE_ENV === 'development') {
                 console.log(`🔧 ${checkType} Check marked as completed for ${aircraft.registration}`);

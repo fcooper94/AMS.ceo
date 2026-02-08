@@ -9449,7 +9449,7 @@ function updateTimeline() {
       width: 2px;
       height: 100%;
       background: #ff0000;
-      z-index: 1000;
+      z-index: 50;
       pointer-events: none;
     `;
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { WorldMembership, UserAircraft, Aircraft, Route, ScheduledFlight, User, World } = require('../models');
+const { Op } = require('sequelize');
+const { WorldMembership, UserAircraft, Aircraft, Route, ScheduledFlight, User, World, RecurringMaintenance } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 
 router.get('/notifications', async (req, res) => {
@@ -38,7 +39,7 @@ router.get('/notifications', async (req, res) => {
 
     // --- Fleet checks ---
     const fleet = await UserAircraft.findAll({
-      where: { worldMembershipId: membership.id, status: 'active' },
+      where: { worldMembershipId: membership.id, status: ['active', 'maintenance'] },
       include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'variant'] }]
     });
 
@@ -52,12 +53,74 @@ router.get('/notifications', async (req, res) => {
         priority: 1
       });
     } else {
-      // Check for upcoming C/D checks
+      // Check for upcoming C/D checks and in-progress heavy maintenance
       const gameNow = new Date(currentTime);
-      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      const gameDateStr = gameNow.toISOString().split('T')[0];
+
+      // Get all C/D maintenance records for the fleet to detect in-progress checks
+      const allFleetIds = fleet.map(ac => ac.id);
+      const heavyMaint = await RecurringMaintenance.findAll({
+        where: {
+          aircraftId: { [Op.in]: allFleetIds },
+          checkType: ['C', 'D'],
+          status: 'active',
+          scheduledDate: { [Op.ne]: null }
+        },
+        order: [['scheduledDate', 'DESC']]
+      });
+
+      // Build map of aircraftId -> in-progress check info
+      // A check is "in progress" if scheduledDate <= today AND scheduledDate + duration > today
+      const inProgressMap = new Map();
+      for (const m of heavyMaint) {
+        const schedDate = new Date(String(m.scheduledDate).split('T')[0] + 'T00:00:00Z');
+        const durationDays = Math.ceil(m.duration / 1440);
+        const returnDate = new Date(schedDate);
+        returnDate.setUTCDate(returnDate.getUTCDate() + durationDays);
+
+        // Only count as in-progress if started and not yet complete
+        if (schedDate <= gameNow && returnDate > gameNow) {
+          if (inProgressMap.has(m.aircraftId)) continue; // take first match (most recent)
+          inProgressMap.set(m.aircraftId, {
+            checkType: m.checkType,
+            returnDate,
+            daysRemaining: Math.max(0, Math.ceil((returnDate - gameNow) / (24 * 60 * 60 * 1000)))
+          });
+        }
+      }
 
       for (const ac of fleet) {
         const acName = ac.registration || (ac.aircraft ? `${ac.aircraft.manufacturer} ${ac.aircraft.model}` : 'Unknown');
+
+        // Check if aircraft has a C/D check in progress (regardless of status field)
+        const progress = inProgressMap.get(ac.id);
+        if (progress) {
+          const returnStr = progress.returnDate.toLocaleDateString('en-GB', {
+            day: '2-digit', month: 'short', year: 'numeric'
+          });
+          notifications.push({
+            type: 'maintenance-progress',
+            icon: 'wrench',
+            title: `${progress.checkType}-Check In Progress: ${acName}`,
+            message: `Expected to return to service ${returnStr} (${progress.daysRemaining} day${progress.daysRemaining !== 1 ? 's' : ''} remaining).`,
+            link: '/maintenance',
+            priority: 6
+          });
+          continue; // Skip due/overdue checks - maintenance is already happening
+        }
+
+        // If aircraft status is 'maintenance' but no record found, show generic
+        if (ac.status === 'maintenance') {
+          notifications.push({
+            type: 'maintenance-progress',
+            icon: 'wrench',
+            title: `Heavy Maintenance: ${acName}`,
+            message: 'This aircraft is undergoing maintenance.',
+            link: '/maintenance',
+            priority: 6
+          });
+          continue;
+        }
 
         // C Check due
         if (ac.lastCCheckDate && ac.cCheckIntervalDays) {
@@ -110,14 +173,15 @@ router.get('/notifications', async (req, res) => {
         }
       }
 
-      // Check for idle aircraft (no scheduled flights)
-      const aircraftWithFlights = await ScheduledFlight.findAll({
-        where: { aircraft_id: fleet.map(a => a.id) },
+      // Check for idle aircraft (no scheduled flights) - only active aircraft
+      const activeFleet = fleet.filter(ac => ac.status === 'active');
+      const aircraftWithFlights = activeFleet.length > 0 ? await ScheduledFlight.findAll({
+        where: { aircraft_id: activeFleet.map(a => a.id) },
         attributes: ['aircraft_id'],
         group: ['aircraft_id']
-      });
+      }) : [];
       const busyIds = new Set(aircraftWithFlights.map(f => f.aircraft_id));
-      const idleAircraft = fleet.filter(ac => !busyIds.has(ac.id));
+      const idleAircraft = activeFleet.filter(ac => !busyIds.has(ac.id));
 
       if (idleAircraft.length > 0) {
         const names = idleAircraft.slice(0, 3).map(ac => ac.registration || 'Unregistered').join(', ');

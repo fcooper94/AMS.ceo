@@ -1098,7 +1098,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         }
 
         if (!alreadyScheduled) {
-          let startTime = '02:00';
+          let startTime = null;
 
           // If EXPIRED (first iteration), schedule NOW (current time + 30 min)
           // BUT skip if a heavier check is already handling immediate scheduling
@@ -1139,7 +1139,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
             }
 
             // If no conflict-free slot found, try expanding date range further
-            if (startTime === '02:00') {
+            if (!startTime) {
               for (let offset = 4; offset <= 14; offset++) {
                 const altDate = new Date(targetStartDate);
                 altDate.setDate(altDate.getDate() + offset);
@@ -1155,7 +1155,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
             }
 
             // Skip if still no slot found - don't place on top of flights
-            if (startTime === '02:00') {
+            if (!startTime) {
               console.log(`[MAINT] No available slot for ${checkType} check on ${targetDateStr} - skipping`);
               // Still advance the expiry date so the loop progresses
               const checkCompletionDate = new Date(targetStartDate);

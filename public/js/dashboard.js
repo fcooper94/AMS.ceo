@@ -11,6 +11,7 @@ const NOTIFICATION_ICONS = {
 
 const TYPE_COLORS = {
   maintenance: 'var(--warning-color)',
+  'maintenance-progress': 'var(--accent-color)',
   finance: '#f59e0b',
   operations: 'var(--accent-color)',
   info: 'var(--text-secondary)'
