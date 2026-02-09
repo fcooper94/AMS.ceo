@@ -1,25 +1,23 @@
 require('dotenv').config();
 const sequelize = require('../config/database');
-const { User, Flight, World, WorldMembership, Aircraft, UserAircraft, Airport, Route, UsedAircraftForSale } = require('../models');
+
+// Import ALL models via index.js so associations are registered
+const models = require('../models');
 
 async function syncDatabase() {
   try {
     console.log('Starting database synchronization...');
+    console.log(`Models loaded: ${Object.keys(models).join(', ')}`);
 
-    // Sync all models
+    // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 
-    console.log('✓ Database synchronized successfully');
+    console.log('\n✓ Database synchronized successfully');
     console.log('\nTables created/updated:');
-    console.log('  - users');
-    console.log('  - worlds');
-    console.log('  - world_memberships');
-    console.log('  - flights');
-    console.log('  - aircraft');
-    console.log('  - user_aircraft');
-    console.log('  - airports');
-    console.log('  - routes');
-    console.log('  - used_aircraft_for_sale');
+    const tableNames = Object.values(models)
+      .filter(m => m.tableName)
+      .map(m => `  - ${m.tableName}`);
+    tableNames.forEach(t => console.log(t));
 
     // Close connection
     await sequelize.close();

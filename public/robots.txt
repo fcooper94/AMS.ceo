@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+Allow: /contact
+Allow: /faqs
+
+Disallow: /dashboard
+Disallow: /world-selection
+Disallow: /admin
+Disallow: /credits
+Disallow: /fleet
+Disallow: /maintenance
+Disallow: /finances
+Disallow: /world-map
+Disallow: /routes
+Disallow: /scheduling
+Disallow: /pricing
+Disallow: /competition
+Disallow: /aircraft-marketplace
+Disallow: /auth/
+Disallow: /api/
+
+Sitemap: https://ams.ceo/sitemap.xml

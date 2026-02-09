@@ -27,6 +27,11 @@ class WorldTimeService {
     this.listingCheckInterval = 60000; // Check listings every 60 seconds (real time)
     this.isProcessingListings = false; // Prevent overlapping listing queries
     this.lastLeaseIncomeMonth = {}; // Map of worldId -> last game month processed for lease income
+    // AI decision processing
+    this.lastAICheck = 0;
+    this.aiCheckInterval = 30000; // Check AI decisions every 30 seconds (real time)
+    this.isProcessingAI = false;
+    // AI flight templates repeat weekly - no refresh needed
   }
 
   /**
@@ -275,12 +280,12 @@ class WorldTimeService {
         .finally(() => { this.isProcessingMaintenance = false; });
     }
 
-    // Refresh auto-scheduled maintenance once per game week
-    // This ensures daily/weekly checks are continuously scheduled ahead
-    const gameWeek = Math.floor(gameTime.getTime() / (7 * 24 * 60 * 60 * 1000));
-    const lastRefreshWeek = this.lastMaintenanceRefresh[worldId] || 0;
-    if (!this.isRefreshingMaintenance && gameWeek > lastRefreshWeek) {
-      this.lastMaintenanceRefresh[worldId] = gameWeek;
+    // Refresh auto-scheduled maintenance once per game day
+    // This ensures daily checks never expire (they have ~1-2 day validity)
+    const gameDay = Math.floor(gameTime.getTime() / (24 * 60 * 60 * 1000));
+    const lastRefreshDay = this.lastMaintenanceRefresh[worldId] || 0;
+    if (!this.isRefreshingMaintenance && gameDay > lastRefreshDay) {
+      this.lastMaintenanceRefresh[worldId] = gameDay;
       this.isRefreshingMaintenance = true;
       this.refreshMaintenanceSchedules(worldId)
         .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
@@ -295,6 +300,18 @@ class WorldTimeService {
         .catch(err => console.error('Error processing listings:', err.message))
         .finally(() => { this.isProcessingListings = false; });
     }
+
+    // Process AI airline decisions (SP worlds only)
+    if (!this.isProcessingAI && now - this.lastAICheck >= this.aiCheckInterval) {
+      this.lastAICheck = now;
+      this.isProcessingAI = true;
+      const aiDecisionService = require('./aiDecisionService');
+      aiDecisionService.processAIDecisions(worldId, gameTime)
+        .catch(err => console.error('Error processing AI decisions:', err.message))
+        .finally(() => { this.isProcessingAI = false; });
+    }
+
+    // AI flight schedules no longer need refresh - templates repeat weekly automatically
   }
 
   /**
@@ -391,16 +408,16 @@ class WorldTimeService {
   }
 
   /**
-   * Process flight status updates for a world
-   * - Scheduled flights that should have departed -> in_progress
-   * - In-progress flights that should have arrived -> completed
+   * Process flight revenue for weekly templates
+   * Templates repeat every week - no status transitions needed.
+   * Revenue is credited once per game day per route using lastRevenueGameDay tracking.
    */
   async processFlights(worldId, currentGameTime) {
     const worldState = this.worlds.get(worldId);
     if (!worldState) return;
 
     try {
-      // Get all memberships for this world to find their routes
+      // Get all memberships for this world
       const memberships = await WorldMembership.findAll({
         where: { worldId: worldId, isActive: true },
         attributes: ['id']
@@ -409,59 +426,29 @@ class WorldTimeService {
       const membershipIds = memberships.map(m => m.id);
       if (membershipIds.length === 0) return;
 
-      // Get current game date and time
       const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
-      const gameTimeStr = currentGameTime.toTimeString().split(' ')[0]; // HH:MM:SS
+      const gameDayOfWeek = currentGameTime.getDay(); // 0=Sun, 6=Sat
+      const gameHours = currentGameTime.getHours();
+      const gameMinutes = currentGameTime.getMinutes();
+      const currentMinutesOfDay = gameHours * 60 + gameMinutes;
 
-      // 1a. Find scheduled flights from TODAY that should now be in_progress
-      const flightsToStart = await ScheduledFlight.findAll({
+      // 1. Find same-day templates (depart today, complete today) whose round-trip has finished
+      const sameDayTemplates = await ScheduledFlight.findAll({
         where: {
-          status: 'scheduled',
-          scheduledDate: gameDate,
-          departureTime: { [Op.lte]: gameTimeStr }
+          dayOfWeek: gameDayOfWeek,
+          arrivalDayOffset: 0,
+          isActive: true
         },
         include: [{
           model: Route,
           as: 'route',
-          where: { worldMembershipId: { [Op.in]: membershipIds } }
-        }]
-      });
-
-      for (const flight of flightsToStart) {
-        await flight.update({ status: 'in_progress' });
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`✈ Flight ${flight.route.routeNumber} started (${flight.route.departureAirportId} -> ${flight.route.arrivalAirportId})`);
-        }
-      }
-
-      // 1b. Find scheduled flights from PAST dates - mark as completed (missed flights)
-      const missedFlights = await ScheduledFlight.findAll({
-        where: {
-          status: 'scheduled',
-          scheduledDate: { [Op.lt]: gameDate }
-        },
-        include: [{
-          model: Route,
-          as: 'route',
-          where: { worldMembershipId: { [Op.in]: membershipIds } }
-        }]
-      });
-
-      for (const flight of missedFlights) {
-        await flight.update({ status: 'completed' });
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`⚠ Missed flight ${flight.route.routeNumber} from ${flight.scheduledDate} marked as completed`);
-        }
-      }
-
-      // 2. Find in_progress flights that should now be completed
-      // Calculate arrival time based on departure + flight duration
-      const inProgressFlights = await ScheduledFlight.findAll({
-        where: { status: 'in_progress' },
-        include: [{
-          model: Route,
-          as: 'route',
-          where: { worldMembershipId: { [Op.in]: membershipIds } },
+          where: {
+            worldMembershipId: { [Op.in]: membershipIds },
+            [Op.or]: [
+              { lastRevenueGameDay: { [Op.ne]: gameDate } },
+              { lastRevenueGameDay: null }
+            ]
+          },
           include: [
             { model: require('../models/Airport'), as: 'departureAirport' },
             { model: require('../models/Airport'), as: 'arrivalAirport' },
@@ -474,82 +461,246 @@ class WorldTimeService {
         }]
       });
 
-      for (const flight of inProgressFlights) {
-        // Get airport coordinates for wind calculation
-        const depLat = parseFloat(flight.route.departureAirport?.latitude) || 0;
-        const depLng = parseFloat(flight.route.departureAirport?.longitude) || 0;
-        const arrLat = parseFloat(flight.route.arrivalAirport?.latitude) || 0;
-        const arrLng = parseFloat(flight.route.arrivalAirport?.longitude) || 0;
+      for (const template of sameDayTemplates) {
+        // Use cached totalDurationMinutes if available, otherwise compute
+        const [depH, depM] = template.departureTime.split(':').map(Number);
+        const depMinutes = depH * 60 + depM;
+        const totalDuration = template.totalDurationMinutes || this.computeTemplateDuration(template);
+        const completionMinutes = depMinutes + totalDuration;
 
-        // Calculate flight duration with wind adjustment
-        const distanceNm = parseFloat(flight.route.distance) || 500;
-        const cruiseSpeed = flight.aircraft?.aircraft?.cruiseSpeed || 450; // knots
-
-        // Get turnaround time (default 45 minutes)
-        const turnaroundMinutes = flight.route.turnaroundTime || 45;
-        const turnaroundMs = turnaroundMinutes * 60 * 1000;
-
-        let totalFlightMs;
-
-        // Check if route has a tech stop
-        if (flight.route.techStopAirport) {
-          const techLat = parseFloat(flight.route.techStopAirport.latitude) || 0;
-          const techLng = parseFloat(flight.route.techStopAirport.longitude) || 0;
-
-          // Calculate leg distances (approximate split)
-          const leg1Distance = flight.route.legOneDistance || Math.round(distanceNm * 0.4);
-          const leg2Distance = flight.route.legTwoDistance || Math.round(distanceNm * 0.6);
-
-          const techStopMs = 30 * 60 * 1000; // 30 min tech stop
-
-          // Leg 1: DEP → TECH
-          const leg1Ms = calculateFlightDurationMs(leg1Distance, depLng, techLng, depLat, techLat, cruiseSpeed);
-          // Leg 2: TECH → ARR
-          const leg2Ms = calculateFlightDurationMs(leg2Distance, techLng, arrLng, techLat, arrLat, cruiseSpeed);
-          // Leg 3: ARR → TECH (return)
-          const leg3Ms = calculateFlightDurationMs(leg2Distance, arrLng, techLng, arrLat, techLat, cruiseSpeed);
-          // Leg 4: TECH → DEP (return)
-          const leg4Ms = calculateFlightDurationMs(leg1Distance, techLng, depLng, techLat, depLat, cruiseSpeed);
-
-          // Total: leg1 + techStop + leg2 + turnaround + leg3 + techStop + leg4
-          totalFlightMs = leg1Ms + techStopMs + leg2Ms + turnaroundMs + leg3Ms + techStopMs + leg4Ms;
-        } else {
-          // Standard direct route
-          // Outbound: departure -> arrival (with wind effect)
-          const outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
-
-          // Return: arrival -> departure (opposite wind effect)
-          const returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, cruiseSpeed);
-
-          // Calculate total round-trip duration: outbound + turnaround + return
-          totalFlightMs = outboundFlightMs + turnaroundMs + returnFlightMs;
+        if (currentMinutesOfDay >= completionMinutes) {
+          await this.processTemplateRevenue(template, worldId, currentGameTime, gameDate);
         }
+      }
 
-        // Calculate expected completion time (after return leg)
-        const departureDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
-        const expectedCompletion = new Date(departureDateTime.getTime() + totalFlightMs);
+      // 2. Find multi-day templates that departed on previous days and complete today
+      for (let offset = 1; offset <= 3; offset++) {
+        const pastDow = (gameDayOfWeek - offset + 7) % 7;
 
-        // Check if flight should have completed the full round-trip
-        if (currentGameTime >= expectedCompletion) {
-          await flight.update({ status: 'completed' });
+        const multiDayTemplates = await ScheduledFlight.findAll({
+          where: {
+            dayOfWeek: pastDow,
+            arrivalDayOffset: offset,
+            isActive: true
+          },
+          include: [{
+            model: Route,
+            as: 'route',
+            where: {
+              worldMembershipId: { [Op.in]: membershipIds },
+              [Op.or]: [
+                { lastRevenueGameDay: { [Op.ne]: gameDate } },
+                { lastRevenueGameDay: null }
+              ]
+            },
+            include: [
+              { model: require('../models/Airport'), as: 'departureAirport' },
+              { model: require('../models/Airport'), as: 'arrivalAirport' },
+              { model: require('../models/Airport'), as: 'techStopAirport' }
+            ]
+          }, {
+            model: UserAircraft,
+            as: 'aircraft',
+            include: [{ model: Aircraft, as: 'aircraft' }]
+          }]
+        });
 
-          // Record transit check completion (automatic between flights)
-          if (flight.aircraft) {
-            await flight.aircraft.update({ lastTransitCheckDate: currentGameTime });
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 Transit check recorded for ${flight.aircraft.registration}`);
-            }
+        for (const template of multiDayTemplates) {
+          // Arrival time is the time on the arrival day
+          const [arrH, arrM] = (template.arrivalTime || '23:59:00').split(':').map(Number);
+          const arrMinutes = arrH * 60 + arrM;
+
+          if (currentMinutesOfDay >= arrMinutes) {
+            await this.processTemplateRevenue(template, worldId, currentGameTime, gameDate);
           }
-
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✓ Flight ${flight.route.routeNumber} completed (full round-trip)`);
-          }
-
-          // TODO: Process revenue, update route statistics, etc.
         }
       }
     } catch (error) {
       console.error('Error processing flights:', error);
+    }
+  }
+
+  /**
+   * Compute round-trip duration for a template (fallback when totalDurationMinutes not cached)
+   */
+  computeTemplateDuration(template) {
+    const route = template.route;
+    const distanceNm = parseFloat(route.distance) || 500;
+    const cruiseSpeed = template.aircraft?.aircraft?.cruiseSpeed || 450;
+    const turnaroundMinutes = route.turnaroundTime || 45;
+
+    const depLat = parseFloat(route.departureAirport?.latitude) || 0;
+    const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+    const arrLat = parseFloat(route.arrivalAirport?.latitude) || 0;
+    const arrLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+
+    let totalMs;
+
+    if (route.techStopAirport) {
+      const techLat = parseFloat(route.techStopAirport.latitude) || 0;
+      const techLng = parseFloat(route.techStopAirport.longitude) || 0;
+      const leg1Distance = route.legOneDistance || Math.round(distanceNm * 0.4);
+      const leg2Distance = route.legTwoDistance || Math.round(distanceNm * 0.6);
+      const techStopMs = 30 * 60 * 1000;
+      const turnaroundMs = turnaroundMinutes * 60 * 1000;
+
+      const leg1Ms = calculateFlightDurationMs(leg1Distance, depLng, techLng, depLat, techLat, cruiseSpeed);
+      const leg2Ms = calculateFlightDurationMs(leg2Distance, techLng, arrLng, techLat, arrLat, cruiseSpeed);
+      const leg3Ms = calculateFlightDurationMs(leg2Distance, arrLng, techLng, arrLat, techLat, cruiseSpeed);
+      const leg4Ms = calculateFlightDurationMs(leg1Distance, techLng, depLng, techLat, depLat, cruiseSpeed);
+
+      totalMs = leg1Ms + techStopMs + leg2Ms + turnaroundMs + leg3Ms + techStopMs + leg4Ms;
+    } else {
+      const outboundMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
+      const returnMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, cruiseSpeed);
+      const turnaroundMs = turnaroundMinutes * 60 * 1000;
+      totalMs = outboundMs + turnaroundMs + returnMs;
+    }
+
+    return Math.round(totalMs / 60000); // Convert ms to minutes
+  }
+
+  /**
+   * Process revenue for a completed template flight and update route statistics
+   */
+  async processTemplateRevenue(template, worldId, currentGameTime, gameDate) {
+    // Delegate to the existing processFlightRevenue logic
+    await this.processFlightRevenue(template, worldId, currentGameTime);
+
+    // Mark this route as having had revenue processed today
+    await template.route.update({ lastRevenueGameDay: gameDate });
+
+    // Record transit check on aircraft
+    if (template.aircraft) {
+      await template.aircraft.update({ lastTransitCheckDate: currentGameTime });
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✓ Template flight ${template.route.routeNumber} revenue processed for ${gameDate}`);
+    }
+  }
+
+  /**
+   * Process revenue for a completed flight
+   * Calculates passengers, revenue, costs, and updates route stats + airline balance
+   */
+  async processFlightRevenue(flight, worldId, currentGameTime) {
+    try {
+      const route = flight.route;
+      if (!route) return;
+
+      const eraEconomicService = require('./eraEconomicService');
+      const aircraft = flight.aircraft;
+      const paxCapacity = aircraft?.aircraft?.passengerCapacity || 150;
+      const distance = parseFloat(route.distance) || 500;
+      const worldYear = currentGameTime.getFullYear();
+
+      // Get competitive load factor
+      let loadFactor = 0.7; // Default
+      try {
+        // Count competing routes on this airport pair
+        const competingRoutes = await Route.count({
+          where: {
+            departureAirportId: route.departureAirportId,
+            arrivalAirportId: route.arrivalAirportId,
+            isActive: true,
+            worldMembershipId: { [Op.ne]: route.worldMembershipId }
+          }
+        });
+
+        // Also count reverse direction
+        const reverseCompeting = await Route.count({
+          where: {
+            departureAirportId: route.arrivalAirportId,
+            arrivalAirportId: route.departureAirportId,
+            isActive: true,
+            worldMembershipId: { [Op.ne]: route.worldMembershipId }
+          }
+        });
+
+        const totalCompetitors = competingRoutes + reverseCompeting;
+
+        // Base load factor from demand + era
+        const expectedLF = eraEconomicService.getExpectedLoadFactor(worldYear);
+        loadFactor = expectedLF;
+
+        // Reduce load factor based on competition
+        if (totalCompetitors > 0) {
+          // Each competitor reduces share (diminishing returns)
+          const competitionPenalty = Math.min(0.4, totalCompetitors * 0.08);
+          loadFactor *= (1 - competitionPenalty);
+        }
+
+        // Add some randomness (±10%)
+        loadFactor *= (0.9 + Math.random() * 0.2);
+        loadFactor = Math.max(0.2, Math.min(0.98, loadFactor));
+      } catch (err) {
+        // Competition check failed, use default
+      }
+
+      // Calculate passengers and revenue
+      const passengers = Math.round(paxCapacity * loadFactor);
+      const economyPrice = parseFloat(route.economyPrice) || 0;
+
+      // Revenue: weighted average across cabin classes
+      // Assume 80% economy, 12% economy+, 6% business, 2% first
+      const economyPlusPrice = parseFloat(route.economyPlusPrice) || economyPrice * 1.3;
+      const businessPrice = parseFloat(route.businessPrice) || economyPrice * 2.5;
+      const firstPrice = parseFloat(route.firstPrice) || economyPrice * 4;
+
+      const avgTicketPrice = (economyPrice * 0.80) + (economyPlusPrice * 0.12) +
+                             (businessPrice * 0.06) + (firstPrice * 0.02);
+      const ticketRevenue = Math.round(passengers * avgTicketPrice);
+
+      // Cargo revenue (simplified)
+      const cargoRevenue = Math.round(
+        (parseFloat(route.cargoStandardRate) || 0) * (distance / 1000) * 5 // ~5 tons avg
+      );
+
+      const totalRevenue = ticketRevenue + cargoRevenue;
+
+      // Calculate costs
+      const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
+      const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier); // $3.50/nm base, round trip
+      const crewCost = Math.round(distance * 2 * 0.8); // ~$0.80/nm crew cost
+      const maintenanceCost = Math.round(distance * 2 * 0.5); // ~$0.50/nm maint cost
+      const airportFees = Math.round(2000 + paxCapacity * 5); // Landing + handling fees
+      const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
+
+      const profit = totalRevenue - totalCosts;
+
+      // Update route statistics
+      const routeFlights = (parseInt(route.totalFlights) || 0) + 1;
+      const routeRevenue = (parseFloat(route.totalRevenue) || 0) + totalRevenue;
+      const routeCosts = (parseFloat(route.totalCosts) || 0) + totalCosts;
+      const routePax = (parseInt(route.totalPassengers) || 0) + passengers;
+      const routeAvgLF = routeFlights > 0
+        ? ((parseFloat(route.averageLoadFactor) || 0) * (routeFlights - 1) + loadFactor) / routeFlights
+        : loadFactor;
+
+      await route.update({
+        totalFlights: routeFlights,
+        totalRevenue: routeRevenue,
+        totalCosts: routeCosts,
+        totalPassengers: routePax,
+        averageLoadFactor: Math.round(routeAvgLF * 100) / 100
+      });
+
+      // Credit/debit airline balance
+      const membership = await WorldMembership.findByPk(route.worldMembershipId);
+      if (membership) {
+        membership.balance = (parseFloat(membership.balance) || 0) + profit;
+        await membership.save();
+      }
+
+      // Update aircraft flight hours
+      if (aircraft) {
+        const flightHours = (distance * 2 / (aircraft.aircraft?.cruiseSpeed || 450));
+        aircraft.totalFlightHours = (parseFloat(aircraft.totalFlightHours) || 0) + flightHours;
+        await aircraft.save();
+      }
+    } catch (error) {
+      console.error('Error processing flight revenue:', error.message);
     }
   }
 

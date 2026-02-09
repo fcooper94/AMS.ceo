@@ -115,6 +115,8 @@ router.get('/info', async (req, res) => {
       iataCode: membership?.iataCode,
       balance: membership?.balance || 0,
       reputation: membership?.reputation || 0,
+      worldType: world.worldType || 'multiplayer',
+      difficulty: world.difficulty || null,
       endDate: world.endDate || null,
       freeWeeks: world.freeWeeks || 0,
       weeklyCost: world.weeklyCost !== undefined ? world.weeklyCost : 1,
@@ -169,7 +171,11 @@ router.get('/time', async (req, res) => {
  */
 router.post('/pause', async (req, res) => {
   try {
-    await worldTimeService.pauseWorld();
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+    await worldTimeService.pauseWorld(activeWorldId);
     res.json({ message: 'World paused', status: 'paused' });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -184,7 +190,11 @@ router.post('/pause', async (req, res) => {
  */
 router.post('/resume', async (req, res) => {
   try {
-    await worldTimeService.resumeWorld();
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+    await worldTimeService.resumeWorld(activeWorldId);
     res.json({ message: 'World resumed', status: 'active' });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -199,13 +209,18 @@ router.post('/resume', async (req, res) => {
  */
 router.post('/acceleration', async (req, res) => {
   try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
     const { factor } = req.body;
 
     if (!factor || factor <= 0) {
       return res.status(400).json({ error: 'Invalid acceleration factor' });
     }
 
-    await worldTimeService.setTimeAcceleration(parseFloat(factor));
+    await worldTimeService.setTimeAcceleration(activeWorldId, parseFloat(factor));
 
     res.json({
       message: 'Time acceleration updated',
@@ -581,5 +596,168 @@ router.post('/bankruptcy', async (req, res) => {
     res.status(500).json({ error: 'Failed to declare bankruptcy', details: error.message });
   }
 });
+
+/**
+ * Get competition overview for SP worlds
+ * Returns top 20 airlines, airlines at player's base, and competitive routes
+ */
+router.get('/competition', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    const { Op } = require('sequelize');
+    const sequelize = require('../config/database');
+
+    // Get world info
+    const world = await World.findByPk(activeWorldId);
+    if (!world) {
+      return res.status(404).json({ error: 'World not found' });
+    }
+
+    // Get player membership
+    const playerMembership = await WorldMembership.findOne({
+      where: { worldId: activeWorldId, isAI: false, isActive: true }
+    });
+    if (!playerMembership) {
+      return res.status(404).json({ error: 'No active membership in this world' });
+    }
+
+    // Total AI count (cheap)
+    const totalAICount = await WorldMembership.count({
+      where: { worldId: activeWorldId, isAI: true, isActive: true }
+    });
+
+    // Use a single raw query to get airlines with stats efficiently
+    // Gets fleet count & route stats via subqueries instead of N+1
+    const [allRanked] = await sequelize.query(`
+      SELECT wm.id, wm.airline_name, wm.airline_code, wm.iata_code, wm.is_ai,
+             wm.balance, wm.reputation, wm.base_airport_id,
+             a.icao_code AS base_icao, a.name AS base_name, a.city AS base_city, a.country AS base_country,
+             COALESCE(fc.cnt, 0) AS fleet_count,
+             COALESCE(rs.route_count, 0) AS route_count,
+             COALESCE(rs.total_revenue, 0) AS total_revenue,
+             COALESCE(rs.total_costs, 0) AS total_costs,
+             COALESCE(rs.total_flights, 0) AS total_flights,
+             COALESCE(rs.total_passengers, 0) AS total_passengers,
+             ROW_NUMBER() OVER (ORDER BY COALESCE(rs.total_revenue, 0) DESC, wm.balance DESC) AS rank
+      FROM world_memberships wm
+      LEFT JOIN airports a ON a.id = wm.base_airport_id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS cnt FROM user_aircraft ua
+        WHERE ua.world_membership_id = wm.id AND ua.status != 'sold'
+      ) fc ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS route_count,
+               SUM(COALESCE(r.total_revenue, 0)) AS total_revenue,
+               SUM(COALESCE(r.total_costs, 0)) AS total_costs,
+               SUM(COALESCE(r.total_flights, 0)) AS total_flights,
+               SUM(COALESCE(r.total_passengers, 0)) AS total_passengers
+        FROM routes r WHERE r.world_membership_id = wm.id AND r.is_active = true
+      ) rs ON true
+      WHERE wm.world_id = :worldId AND wm.is_active = true
+      ORDER BY COALESCE(rs.total_revenue, 0) DESC, wm.balance DESC
+    `, { replacements: { worldId: activeWorldId } });
+
+    // Find player's rank
+    const playerRank = allRanked.findIndex(r => r.id === playerMembership.id) + 1;
+
+    // Build top 20 (always include the player even if outside top 20)
+    const top20Ids = new Set(allRanked.slice(0, 20).map(r => r.id));
+    top20Ids.add(playerMembership.id);
+    const topAirlines = allRanked
+      .filter(r => top20Ids.has(r.id))
+      .map(formatRankedAirline);
+
+    // Airlines at player's base airport
+    const baseAirportAirlines = allRanked
+      .filter(r => r.base_airport_id === playerMembership.baseAirportId && r.id !== playerMembership.id)
+      .map(formatRankedAirline);
+
+    // Find competitive routes
+    let competitiveRoutes = [];
+    const playerRoutes = await Route.findAll({
+      where: { worldMembershipId: playerMembership.id, isActive: true },
+      include: [
+        { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'name'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'name'] }
+      ]
+    });
+
+    for (const pRoute of playerRoutes) {
+      const competitors = await Route.findAll({
+        where: {
+          isActive: true,
+          worldMembershipId: { [Op.ne]: playerMembership.id },
+          [Op.or]: [
+            { departureAirportId: pRoute.departureAirportId, arrivalAirportId: pRoute.arrivalAirportId },
+            { departureAirportId: pRoute.arrivalAirportId, arrivalAirportId: pRoute.departureAirportId }
+          ]
+        },
+        include: [{ model: WorldMembership, as: 'membership', attributes: ['airlineName', 'airlineCode'] }]
+      });
+
+      if (competitors.length > 0) {
+        competitiveRoutes.push({
+          routeNumber: pRoute.routeNumber,
+          departure: pRoute.departureAirport?.icaoCode,
+          arrival: pRoute.arrivalAirport?.icaoCode,
+          playerPrice: parseFloat(pRoute.economyPrice) || 0,
+          playerLoadFactor: parseFloat(pRoute.averageLoadFactor) || 0,
+          competitors: competitors.map(c => ({
+            airline: c.membership?.airlineName,
+            code: c.membership?.airlineCode,
+            price: parseFloat(c.economyPrice) || 0,
+            loadFactor: parseFloat(c.averageLoadFactor) || 0
+          }))
+        });
+      }
+    }
+
+    res.json({
+      worldType: world.worldType,
+      difficulty: world.difficulty,
+      totalAICount,
+      playerRank,
+      totalAirlines: allRanked.length,
+      topAirlines,
+      baseAirportAirlines,
+      competitiveRoutes,
+      playerAirlineId: playerMembership.id,
+      playerBaseAirport: {
+        icaoCode: allRanked.find(r => r.id === playerMembership.id)?.base_icao,
+        name: allRanked.find(r => r.id === playerMembership.id)?.base_name
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching competition data:', error);
+    res.status(500).json({ error: 'Failed to fetch competition data' });
+  }
+});
+
+function formatRankedAirline(row) {
+  const totalRevenue = parseFloat(row.total_revenue) || 0;
+  const totalCosts = parseFloat(row.total_costs) || 0;
+  return {
+    id: row.id,
+    airlineName: row.airline_name,
+    airlineCode: row.airline_code,
+    iataCode: row.iata_code,
+    isAI: row.is_ai,
+    baseAirport: { icaoCode: row.base_icao, name: row.base_name, city: row.base_city, country: row.base_country },
+    balance: parseFloat(row.balance) || 0,
+    reputation: row.reputation,
+    fleetCount: parseInt(row.fleet_count) || 0,
+    routeCount: parseInt(row.route_count) || 0,
+    totalRevenue,
+    totalCosts,
+    profit: totalRevenue - totalCosts,
+    totalFlights: parseInt(row.total_flights) || 0,
+    totalPassengers: parseInt(row.total_passengers) || 0,
+    rank: parseInt(row.rank) || 0
+  };
+}
 
 module.exports = router;

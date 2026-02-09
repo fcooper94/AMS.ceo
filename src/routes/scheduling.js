@@ -186,47 +186,29 @@ router.get('/data', async (req, res) => {
         ]
       }),
 
-      // Flights query (with date filter)
-      (async () => {
-        let whereClause = {};
-        if (startDate && endDate) {
-          whereClause = {
-            [Op.or]: [
-              { scheduledDate: { [Op.between]: [startDate, endDate] } },
-              { arrivalDate: { [Op.between]: [startDate, endDate] } },
-              {
-                [Op.and]: [
-                  { scheduledDate: { [Op.lt]: startDate } },
-                  { arrivalDate: { [Op.gt]: endDate } }
-                ]
-              }
+      // Flight templates query (weekly templates - no date filtering needed)
+      ScheduledFlight.findAll({
+        where: { isActive: true },
+        include: [
+          {
+            model: Route,
+            as: 'route',
+            required: true,
+            where: { worldMembershipId },
+            include: [
+              { model: Airport, as: 'departureAirport' },
+              { model: Airport, as: 'arrivalAirport' },
+              { model: Airport, as: 'techStopAirport' }
             ]
-          };
-        }
-
-        return ScheduledFlight.findAll({
-          where: whereClause,
-          include: [
-            {
-              model: Route,
-              as: 'route',
-              required: true,
-              where: { worldMembershipId },
-              include: [
-                { model: Airport, as: 'departureAirport' },
-                { model: Airport, as: 'arrivalAirport' },
-                { model: Airport, as: 'techStopAirport' }
-              ]
-            },
-            {
-              model: UserAircraft,
-              as: 'aircraft',
-              include: [{ model: Aircraft, as: 'aircraft' }]
-            }
-          ],
-          order: [['scheduledDate', 'ASC'], ['departureTime', 'ASC']]
-        });
-      })(),
+          },
+          {
+            model: UserAircraft,
+            as: 'aircraft',
+            include: [{ model: Aircraft, as: 'aircraft' }]
+          }
+        ],
+        order: [['dayOfWeek', 'ASC'], ['departureTime', 'ASC']]
+      }),
 
       // Maintenance patterns query - return ALL scheduled maintenance (no date filter)
       // so modal can show "Next Scheduled" for far-future checks like A, C, D
@@ -267,31 +249,20 @@ router.get('/data', async (req, res) => {
       return aircraftJson;
     });
 
-    // Background: fix transit day conflicts for maintenance
-    // (Removed aggressive auto-schedule cleanup that was wiping user preferences)
+    // Background: refresh auto-scheduled maintenance on page load
+    // This keeps maintenance current as game time advances (prevents checks from expiring)
     (async () => {
       try {
-        // Fix transit day conflicts for maintenance (aircraft flying on multi-day routes)
-        for (const maint of maintenancePatterns) {
-          if (maint.status !== 'active') continue;
-          const maintDate = typeof maint.scheduledDate === 'string'
-            ? maint.scheduledDate.substring(0, 10) : maint.scheduledDate;
-          if (!maintDate) continue;
-
-          const transitFlight = flights.find(f => {
-            if (f.aircraftId !== maint.aircraftId) return false;
-            const fDep = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
-            const fArr = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : '') : fDep;
-            return fDep < maintDate && fArr > maintDate;
-          });
-
-          if (transitFlight) {
-            console.log(`[MAINT-FIX] ${maint.checkType} check on ${maintDate} conflicts with transit day - rescheduling`);
-            await attemptMaintenanceReschedule(maint.id, maint.aircraftId, 0, 1440);
+        const activeWorldId2 = req.session?.activeWorldId;
+        for (const aircraft of fleet) {
+          const hasAutoSchedule = aircraft.autoScheduleDaily || aircraft.autoScheduleWeekly ||
+            aircraft.autoScheduleA || aircraft.autoScheduleC || aircraft.autoScheduleD;
+          if (hasAutoSchedule) {
+            await refreshAutoScheduledMaintenance(aircraft.id, activeWorldId2);
           }
         }
       } catch (err) {
-        console.error('[MAINT-FIX] Error in background maintenance fix:', err.message);
+        console.error('[MAINT-REFRESH] Error refreshing maintenance on page load:', err.message);
       }
     })();
 
@@ -377,11 +348,11 @@ router.get('/data', async (req, res) => {
       }
     }
 
-    // Deduplicate blocks by composite key (patternId + displayDate)
-    // This prevents showing the same maintenance twice
+    // Deduplicate blocks by aircraft + date + checkType
+    // This prevents showing the same maintenance twice (e.g. duplicate DB records from race conditions)
     const seen = new Set();
     const deduplicatedBlocks = maintenanceBlocks.filter(block => {
-      const key = `${block.patternId || block.id}-${block.displayDate}-${block.checkType}`;
+      const key = `${block.aircraftId}-${block.displayDate}-${block.checkType}`;
       if (seen.has(key)) {
         console.log(`[MAINT-DEDUP] Removing duplicate block: ${key}`);
         return false;
@@ -408,15 +379,12 @@ router.get('/data', async (req, res) => {
  */
 router.get('/flights', async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-
     // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
     if (!activeWorldId) {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    // Get user's membership
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -435,55 +403,16 @@ router.get('/flights', async (req, res) => {
     }
 
     const worldMembershipId = membership.id;
-    const { Op } = require('sequelize');
 
-    // Build query - include flights that depart OR arrive within the date range
-    let whereClause = {};
-
-    if (startDate && endDate) {
-      // Include flights that depart, arrive, or are in-transit within the date range
-      whereClause = {
-        [Op.or]: [
-          // Flights departing in the range
-          { scheduledDate: { [Op.between]: [startDate, endDate] } },
-          // Flights arriving in the range (overnight flights)
-          { arrivalDate: { [Op.between]: [startDate, endDate] } },
-          // Flights in-transit (departed before range, arriving after range)
-          {
-            [Op.and]: [
-              { scheduledDate: { [Op.lt]: startDate } },
-              { arrivalDate: { [Op.gt]: endDate } }
-            ]
-          }
-        ]
-      };
-    } else if (startDate) {
-      whereClause = {
-        [Op.or]: [
-          { scheduledDate: { [Op.gte]: startDate } },
-          { arrivalDate: { [Op.gte]: startDate } },
-          // Flights in-transit on startDate
-          {
-            [Op.and]: [
-              { scheduledDate: { [Op.lt]: startDate } },
-              { arrivalDate: { [Op.gt]: startDate } }
-            ]
-          }
-        ]
-      };
-    }
-
-    // Fetch scheduled flights
+    // Weekly templates - return all active templates (no date filtering)
     const scheduledFlights = await ScheduledFlight.findAll({
-      where: whereClause,
+      where: { isActive: true },
       include: [
         {
           model: Route,
           as: 'route',
           required: true,
-          where: {
-            worldMembershipId: worldMembershipId
-          },
+          where: { worldMembershipId },
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' },
@@ -493,13 +422,11 @@ router.get('/flights', async (req, res) => {
         {
           model: UserAircraft,
           as: 'aircraft',
-          include: [
-            { model: Aircraft, as: 'aircraft' }
-          ]
+          include: [{ model: Aircraft, as: 'aircraft' }]
         }
       ],
       order: [
-        ['scheduledDate', 'ASC'],
+        ['dayOfWeek', 'ASC'],
         ['departureTime', 'ASC']
       ]
     });
@@ -512,12 +439,132 @@ router.get('/flights', async (req, res) => {
 });
 
 /**
+ * Get a reference date string (YYYY-MM-DD) for a given day of week (0=Sun, 6=Sat)
+ * Used to calculate arrival times via calculateArrivalDateTime
+ */
+function getReferenceDateForDow(dayOfWeek) {
+  // Jan 7, 2024 is a Sunday (dow=0)
+  const refDate = new Date('2024-01-07T00:00:00');
+  refDate.setDate(refDate.getDate() + dayOfWeek);
+  return refDate.toISOString().split('T')[0];
+}
+
+/**
+ * Calculate pre-flight and post-flight durations for an aircraft/route combination
+ */
+function calculateFlightDurations(acType, paxCapacity, routeDistance) {
+  let cateringDuration = 0;
+  if (paxCapacity >= 50 && acType !== 'Cargo') {
+    if (paxCapacity < 100) cateringDuration = 5;
+    else if (paxCapacity < 200) cateringDuration = 10;
+    else cateringDuration = 15;
+  }
+  let boardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) boardingDuration = 10;
+    else if (paxCapacity < 100) boardingDuration = 15;
+    else if (paxCapacity < 200) boardingDuration = 20;
+    else if (paxCapacity < 300) boardingDuration = 25;
+    else boardingDuration = 35;
+  }
+  let fuellingDuration = 0;
+  if (routeDistance < 500) fuellingDuration = 10;
+  else if (routeDistance < 1500) fuellingDuration = 15;
+  else if (routeDistance < 3000) fuellingDuration = 20;
+  else fuellingDuration = 25;
+  const preFlightDuration = Math.max(cateringDuration + boardingDuration, fuellingDuration);
+
+  let deboardingDuration = 0;
+  if (acType !== 'Cargo') {
+    if (paxCapacity < 50) deboardingDuration = 5;
+    else if (paxCapacity < 100) deboardingDuration = 8;
+    else if (paxCapacity < 200) deboardingDuration = 12;
+    else if (paxCapacity < 300) deboardingDuration = 15;
+    else deboardingDuration = 20;
+  }
+  let cleaningDuration;
+  if (paxCapacity < 50) cleaningDuration = 5;
+  else if (paxCapacity < 100) cleaningDuration = 10;
+  else if (paxCapacity < 200) cleaningDuration = 15;
+  else if (paxCapacity < 300) cleaningDuration = 20;
+  else cleaningDuration = 25;
+  const postFlightDuration = deboardingDuration + cleaningDuration;
+
+  return { preFlightDuration, postFlightDuration };
+}
+
+/**
+ * Check for template time overlap on the same day or adjacent days
+ * Returns conflicting template or null
+ */
+function checkTemplateOverlap(newDepMinutes, newPreFlight, newArrMinutes, newPostFlight, newDayOfWeek, newArrivalDayOffset, existingTemplates) {
+  const newPreStart = newDepMinutes - newPreFlight;
+  const newPostEnd = newArrMinutes + newPostFlight;
+
+  for (const ex of existingTemplates) {
+    const exDurations = calculateFlightDurations(
+      ex.aircraft?.aircraft?.type || 'Narrowbody',
+      ex.aircraft?.aircraft?.passengerCapacity || 150,
+      ex.route?.distance || 0
+    );
+
+    const [exDepH, exDepM] = ex.departureTime.split(':').map(Number);
+    const exDepMinutes = exDepH * 60 + exDepM;
+    const exPreStart = exDepMinutes - exDurations.preFlightDuration;
+
+    const [exArrH, exArrM] = (ex.arrivalTime || '23:59:00').split(':').map(Number);
+    const exArrMinutes = exArrH * 60 + exArrM;
+    const exPostEnd = exArrMinutes + exDurations.postFlightDuration;
+    const exArrDayOffset = ex.arrivalDayOffset || 0;
+
+    // Check overlap on the new flight's departure day
+    if (ex.dayOfWeek === newDayOfWeek) {
+      // Both depart same day - check time overlap
+      const exEndOnThisDay = exArrDayOffset === 0 ? exPostEnd : 1440;
+      const newEndOnThisDay = newArrivalDayOffset === 0 ? newPostEnd : 1440;
+      if (newPreStart < exEndOnThisDay && newEndOnThisDay > exPreStart) {
+        return ex;
+      }
+    }
+
+    // Check if existing flight from previous day spills into new flight's departure day
+    if (exArrDayOffset > 0) {
+      const exArrDow = (ex.dayOfWeek + exArrDayOffset) % 7;
+      if (exArrDow === newDayOfWeek) {
+        // Existing arrives on our departure day (0 to exPostEnd)
+        const newEndOnThisDay = newArrivalDayOffset === 0 ? newPostEnd : 1440;
+        if (newPreStart < exPostEnd && newEndOnThisDay > 0) {
+          return ex;
+        }
+      }
+    }
+
+    // Check if new flight's arrival day conflicts with existing departure day
+    if (newArrivalDayOffset > 0) {
+      const newArrDow = (newDayOfWeek + newArrivalDayOffset) % 7;
+      if (ex.dayOfWeek === newArrDow) {
+        // New arrives on existing's departure day
+        const exEndOnThisDay = exArrDayOffset === 0 ? exPostEnd : 1440;
+        if (0 < exEndOnThisDay && newPostEnd > exPreStart) {
+          return ex;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * POST /api/schedule/flight
- * Create a new scheduled flight
+ * Create a new weekly flight template
  */
 router.post('/flight', async (req, res) => {
   try {
-    const { routeId, aircraftId, scheduledDate, departureTime } = req.body;
+    const { routeId, aircraftId, dayOfWeek, departureTime } = req.body;
+
+    if (dayOfWeek === undefined || dayOfWeek === null || dayOfWeek < 0 || dayOfWeek > 6) {
+      return res.status(400).json({ error: 'Invalid dayOfWeek (must be 0-6)' });
+    }
 
     // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
@@ -525,7 +572,157 @@ router.post('/flight', async (req, res) => {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    // Get user's membership
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const worldMembershipId = membership.id;
+
+    const route = await Route.findOne({
+      where: { id: routeId, worldMembershipId },
+      include: [
+        { model: Airport, as: 'departureAirport' },
+        { model: Airport, as: 'arrivalAirport' },
+        { model: Airport, as: 'techStopAirport' }
+      ]
+    });
+
+    if (!route) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    const routeDistance = route.distance || 0;
+    const { preFlightDuration, postFlightDuration } = calculateFlightDurations(acType, paxCapacity, routeDistance);
+
+    // Calculate arrival time using a reference date for this day-of-week
+    const refDateStr = getReferenceDateForDow(dayOfWeek);
+    const { arrivalDate: refArrivalDate, arrivalTime } = calculateArrivalDateTime(
+      refDateStr, departureTime, route, aircraft.aircraft?.cruiseSpeed
+    );
+    const arrivalDayOffset = Math.round((new Date(refArrivalDate + 'T00:00:00') - new Date(refDateStr + 'T00:00:00')) / 86400000);
+
+    const [depH, depM] = departureTime.split(':').map(Number);
+    const depMinutes = depH * 60 + depM;
+    const [arrH, arrM] = arrivalTime.split(':').map(Number);
+    const arrMinutes = arrH * 60 + arrM;
+    const totalDurationMinutes = (arrivalDayOffset * 1440) + arrMinutes - depMinutes;
+
+    // Check for overlapping templates on same aircraft
+    const daysToCheck = new Set([dayOfWeek]);
+    if (arrivalDayOffset > 0) {
+      for (let d = 1; d <= arrivalDayOffset; d++) daysToCheck.add((dayOfWeek + d) % 7);
+    }
+    daysToCheck.add((dayOfWeek - 1 + 7) % 7);
+
+    const existingTemplates = await ScheduledFlight.findAll({
+      where: { aircraftId, isActive: true, dayOfWeek: { [Op.in]: [...daysToCheck] } },
+      include: [
+        { model: Route, as: 'route', include: [{ model: Airport, as: 'departureAirport' }, { model: Airport, as: 'arrivalAirport' }] },
+        { model: UserAircraft, as: 'aircraft', include: [{ model: Aircraft, as: 'aircraft' }] }
+      ]
+    });
+
+    const conflict = checkTemplateOverlap(depMinutes, preFlightDuration, arrMinutes, postFlightDuration, dayOfWeek, arrivalDayOffset, existingTemplates);
+
+    if (conflict) {
+      const depAirport = conflict.route?.departureAirport?.iataCode || '???';
+      const arrAirport = conflict.route?.arrivalAirport?.iataCode || '???';
+      const routeNum = conflict.route?.routeNumber || 'Unknown';
+      const returnNum = conflict.route?.returnRouteNumber || '';
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      return res.status(409).json({
+        error: 'Schedule conflict detected',
+        conflict: {
+          type: 'flight',
+          routeNumber: routeNum,
+          returnRouteNumber: returnNum,
+          departure: depAirport,
+          arrival: arrAirport,
+          dayOfWeek: conflict.dayOfWeek,
+          departureTime: conflict.departureTime.substring(0, 5),
+          arrivalTime: (conflict.arrivalTime || '').substring(0, 5),
+          message: `Conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${dayNames[conflict.dayOfWeek]} departing ${conflict.departureTime.substring(0, 5)}`
+        }
+      });
+    }
+
+    // Create flight template
+    const scheduledFlight = await ScheduledFlight.create({
+      routeId, aircraftId, dayOfWeek, departureTime, arrivalTime, arrivalDayOffset, totalDurationMinutes, isActive: true
+    });
+
+    const completeFlightData = await ScheduledFlight.findByPk(scheduledFlight.id, {
+      include: [
+        { model: Route, as: 'route', include: [{ model: Airport, as: 'departureAirport' }, { model: Airport, as: 'arrivalAirport' }, { model: Airport, as: 'techStopAirport' }] },
+        { model: UserAircraft, as: 'aircraft', include: [{ model: Aircraft, as: 'aircraft' }] }
+      ]
+    });
+
+    refreshAutoScheduledMaintenance(aircraftId, activeWorldId).catch(e =>
+      console.log('[SCHEDULE] Auto-scheduler re-run failed:', e.message)
+    );
+
+    res.status(201).json(completeFlightData);
+  } catch (error) {
+    console.error('Error creating scheduled flight:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/schedule/flights/batch
+ * Create multiple scheduled flights at once (for weekly scheduling)
+ * Much faster than making individual requests
+ */
+router.post('/flights/batch', async (req, res) => {
+  try {
+    const { routeId, aircraftId, flights } = req.body;
+    // flights is an array of { dayOfWeek, departureTime }
+
+    if (!flights || !Array.isArray(flights) || flights.length === 0) {
+      return res.status(400).json({ error: 'No flights provided' });
+    }
+
+    if (flights.length > 14) {
+      return res.status(400).json({ error: 'Maximum 14 flights per batch' });
+    }
+
+    // Validate all dayOfWeek values
+    for (const flight of flights) {
+      if (flight.dayOfWeek === undefined || flight.dayOfWeek === null || flight.dayOfWeek < 0 || flight.dayOfWeek > 6) {
+        return res.status(400).json({ error: 'Invalid dayOfWeek (must be 0-6)' });
+      }
+    }
+
+    // Get active world from session
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -547,444 +744,21 @@ router.post('/flight', async (req, res) => {
 
     // Validate route belongs to user's world
     const route = await Route.findOne({
-      where: {
-        id: routeId,
-        worldMembershipId: worldMembershipId
-      }
+      where: { id: routeId, worldMembershipId },
+      include: [
+        { model: Airport, as: 'departureAirport' },
+        { model: Airport, as: 'arrivalAirport' },
+        { model: Airport, as: 'techStopAirport' }
+      ]
     });
 
     if (!route) {
       return res.status(404).json({ error: 'Route not found' });
     }
 
-    // Validate aircraft belongs to user's world and get aircraft details
+    // Validate aircraft belongs to user's world
     const aircraft = await UserAircraft.findOne({
-      where: {
-        id: aircraftId,
-        worldMembershipId: worldMembershipId
-      },
-      include: [{ model: Aircraft, as: 'aircraft' }]
-    });
-
-    if (!aircraft) {
-      return res.status(404).json({ error: 'Aircraft not found' });
-    }
-
-    // Calculate pre-flight and post-flight durations based on aircraft type
-    const acType = aircraft.aircraft?.type || 'Narrowbody';
-    const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-    const routeDistance = route.distance || 0;
-
-    // Pre-flight: max(catering + boarding, fuelling)
-    let cateringDuration = 0;
-    if (paxCapacity >= 50 && acType !== 'Cargo') {
-      if (paxCapacity < 100) cateringDuration = 5;
-      else if (paxCapacity < 200) cateringDuration = 10;
-      else cateringDuration = 15;
-    }
-    let boardingDuration = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) boardingDuration = 10;
-      else if (paxCapacity < 100) boardingDuration = 15;
-      else if (paxCapacity < 200) boardingDuration = 20;
-      else if (paxCapacity < 300) boardingDuration = 25;
-      else boardingDuration = 35;
-    }
-    let fuellingDuration = 0;
-    if (routeDistance < 500) fuellingDuration = 10;
-    else if (routeDistance < 1500) fuellingDuration = 15;
-    else if (routeDistance < 3000) fuellingDuration = 20;
-    else fuellingDuration = 25;
-    const preFlightDuration = Math.max(cateringDuration + boardingDuration, fuellingDuration);
-
-    // Post-flight: deboarding + cleaning
-    let deboardingDuration = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) deboardingDuration = 5;
-      else if (paxCapacity < 100) deboardingDuration = 8;
-      else if (paxCapacity < 200) deboardingDuration = 12;
-      else if (paxCapacity < 300) deboardingDuration = 15;
-      else deboardingDuration = 20;
-    }
-    let cleaningDuration;
-    if (paxCapacity < 50) cleaningDuration = 5;
-    else if (paxCapacity < 100) cleaningDuration = 10;
-    else if (paxCapacity < 200) cleaningDuration = 15;
-    else if (paxCapacity < 300) cleaningDuration = 20;
-    else cleaningDuration = 25;
-    const postFlightDuration = deboardingDuration + cleaningDuration;
-
-    // Calculate arrival date and time (for full round-trip including tech stops)
-    const { arrivalDate, arrivalTime } = calculateArrivalDateTime(
-      scheduledDate,
-      departureTime,
-      route,
-      aircraft.aircraft?.cruiseSpeed
-    );
-
-    // Calculate full operation window (pre-flight start to post-flight end)
-    const [depH, depM] = departureTime.split(':').map(Number);
-    const depMinutes = depH * 60 + depM;
-    const preFlightStartMinutes = depMinutes - preFlightDuration;
-
-    const [arrH, arrM] = arrivalTime.split(':').map(Number);
-    const arrMinutes = arrH * 60 + arrM;
-    const postFlightEndMinutes = arrMinutes + postFlightDuration;
-
-    // Create datetime objects for the operation window
-    const opStartDateTime = new Date(`${scheduledDate}T00:00:00`);
-    opStartDateTime.setMinutes(opStartDateTime.getMinutes() + preFlightStartMinutes);
-
-    const opEndDateTime = new Date(`${arrivalDate}T00:00:00`);
-    opEndDateTime.setMinutes(opEndDateTime.getMinutes() + postFlightEndMinutes);
-
-    // Check for overlapping flights
-    const existingFlights = await ScheduledFlight.findAll({
-      where: {
-        aircraftId,
-        [Op.or]: [
-          // Flight departs or arrives on the same days as our operation
-          { scheduledDate: { [Op.between]: [scheduledDate, arrivalDate] } },
-          { arrivalDate: { [Op.between]: [scheduledDate, arrivalDate] } },
-          // Flight spans our operation dates
-          {
-            [Op.and]: [
-              { scheduledDate: { [Op.lte]: scheduledDate } },
-              { arrivalDate: { [Op.gte]: arrivalDate } }
-            ]
-          }
-        ]
-      },
-      include: [
-        {
-          model: Route,
-          as: 'route',
-          include: [
-            { model: Airport, as: 'departureAirport' },
-            { model: Airport, as: 'arrivalAirport' }
-          ]
-        },
-        {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [{ model: Aircraft, as: 'aircraft' }]
-        }
-      ]
-    });
-
-    // Check each existing flight for time overlap
-    for (const existingFlight of existingFlights) {
-      // Calculate existing flight's operation window
-      const existingAcType = existingFlight.aircraft?.aircraft?.type || 'Narrowbody';
-      const existingPax = existingFlight.aircraft?.aircraft?.passengerCapacity || 150;
-      const existingDist = existingFlight.route?.distance || 0;
-
-      // Calculate existing pre-flight duration
-      let exCatering = 0;
-      if (existingPax >= 50 && existingAcType !== 'Cargo') {
-        if (existingPax < 100) exCatering = 5;
-        else if (existingPax < 200) exCatering = 10;
-        else exCatering = 15;
-      }
-      let exBoarding = 0;
-      if (existingAcType !== 'Cargo') {
-        if (existingPax < 50) exBoarding = 10;
-        else if (existingPax < 100) exBoarding = 15;
-        else if (existingPax < 200) exBoarding = 20;
-        else if (existingPax < 300) exBoarding = 25;
-        else exBoarding = 35;
-      }
-      let exFuelling = 0;
-      if (existingDist < 500) exFuelling = 10;
-      else if (existingDist < 1500) exFuelling = 15;
-      else if (existingDist < 3000) exFuelling = 20;
-      else exFuelling = 25;
-      const exPreFlight = Math.max(exCatering + exBoarding, exFuelling);
-
-      // Calculate existing post-flight duration
-      let exDeboard = 0;
-      if (existingAcType !== 'Cargo') {
-        if (existingPax < 50) exDeboard = 5;
-        else if (existingPax < 100) exDeboard = 8;
-        else if (existingPax < 200) exDeboard = 12;
-        else if (existingPax < 300) exDeboard = 15;
-        else exDeboard = 20;
-      }
-      let exClean;
-      if (existingPax < 50) exClean = 5;
-      else if (existingPax < 100) exClean = 10;
-      else if (existingPax < 200) exClean = 15;
-      else if (existingPax < 300) exClean = 20;
-      else exClean = 25;
-      const exPostFlight = exDeboard + exClean;
-
-      // Calculate existing flight's operation window
-      const [exDepH, exDepM] = existingFlight.departureTime.split(':').map(Number);
-      const exDepMinutes = exDepH * 60 + exDepM;
-      const exPreStartMinutes = exDepMinutes - exPreFlight;
-
-      const [exArrH, exArrM] = existingFlight.arrivalTime.split(':').map(Number);
-      const exArrMinutes = exArrH * 60 + exArrM;
-      const exPostEndMinutes = exArrMinutes + exPostFlight;
-
-      const exOpStart = new Date(`${existingFlight.scheduledDate}T00:00:00`);
-      exOpStart.setMinutes(exOpStart.getMinutes() + exPreStartMinutes);
-
-      const exOpEnd = new Date(`${existingFlight.arrivalDate}T00:00:00`);
-      exOpEnd.setMinutes(exOpEnd.getMinutes() + exPostEndMinutes);
-
-      // Check for overlap: operations overlap if one starts before the other ends
-      const overlaps = opStartDateTime < exOpEnd && opEndDateTime > exOpStart;
-
-      if (overlaps) {
-        const depAirport = existingFlight.route?.departureAirport?.iataCode || existingFlight.route?.departureAirport?.icaoCode || '???';
-        const arrAirport = existingFlight.route?.arrivalAirport?.iataCode || existingFlight.route?.arrivalAirport?.icaoCode || '???';
-        const routeNum = existingFlight.route?.routeNumber || 'Unknown';
-        const returnNum = existingFlight.route?.returnRouteNumber || '';
-
-        // Format dates as DD/MM/YYYY
-        const exDateParts = existingFlight.scheduledDate.split('-');
-        const formattedExDate = `${exDateParts[2]}/${exDateParts[1]}/${exDateParts[0]}`;
-
-        return res.status(409).json({
-          error: 'Schedule conflict detected',
-          conflict: {
-            type: 'flight',
-            routeNumber: routeNum,
-            returnRouteNumber: returnNum,
-            departure: depAirport,
-            arrival: arrAirport,
-            date: formattedExDate,
-            departureTime: existingFlight.departureTime.substring(0, 5),
-            arrivalTime: existingFlight.arrivalTime.substring(0, 5),
-            message: `Conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${formattedExDate} departing ${existingFlight.departureTime.substring(0, 5)}`
-          }
-        });
-      }
-    }
-
-    // Check for overlapping maintenance and attempt to reschedule
-    // Query maintenance for departure date, arrival date, AND transit days (multi-day flights)
-    const datesToCheck = [scheduledDate];
-    if (arrivalDate && arrivalDate !== scheduledDate) {
-      datesToCheck.push(arrivalDate);
-      // Add transit days between departure and arrival
-      const depDateObj = new Date(scheduledDate + 'T00:00:00');
-      const arrDateObj = new Date(arrivalDate + 'T00:00:00');
-      const transitDate = new Date(depDateObj);
-      transitDate.setDate(transitDate.getDate() + 1);
-      while (transitDate < arrDateObj) {
-        datesToCheck.push(transitDate.toISOString().split('T')[0]);
-        transitDate.setDate(transitDate.getDate() + 1);
-      }
-    }
-
-    const maintenancePatterns = await RecurringMaintenance.findAll({
-      where: {
-        aircraftId,
-        status: 'active',
-        scheduledDate: { [Op.in]: datesToCheck }
-      }
-    });
-
-    const rescheduledMaintenance = [];
-
-    for (const maint of maintenancePatterns) {
-      const [maintH, maintM] = maint.startTime.split(':').map(Number);
-      const maintStartMinutes = maintH * 60 + maintM;
-      const maintEndMinutes = maintStartMinutes + maint.duration;
-      const maintDate = typeof maint.scheduledDate === 'string' ? maint.scheduledDate.substring(0, 10) : maint.scheduledDate;
-
-      // Calculate overlap based on which date this maintenance is on
-      let maintOverlaps = false;
-
-      if (maintDate === scheduledDate) {
-        // Maintenance is on departure date - check from pre-flight start to midnight (or arrival if same day)
-        const opEndOnDepDate = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440;
-        maintOverlaps = preFlightStartMinutes < maintEndMinutes && opEndOnDepDate > maintStartMinutes;
-      } else if (maintDate === arrivalDate) {
-        // Maintenance is on arrival date - check from midnight to post-flight end
-        maintOverlaps = 0 < maintEndMinutes && postFlightEndMinutes > maintStartMinutes;
-      } else if (maintDate > scheduledDate && maintDate < arrivalDate) {
-        // Maintenance is on a transit day - aircraft is flying/downroute, always overlaps
-        maintOverlaps = true;
-      }
-
-      if (maintOverlaps) {
-        const checkNames = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
-        const checkName = checkNames[maint.checkType] || `${maint.checkType} Check`;
-
-        // Calculate the blocked time window for this date
-        let blockedStart, blockedEnd;
-        if (maintDate === scheduledDate) {
-          blockedStart = preFlightStartMinutes;
-          blockedEnd = (arrivalDate === scheduledDate) ? postFlightEndMinutes : 1440;
-        } else if (maintDate === arrivalDate) {
-          blockedStart = 0;
-          blockedEnd = postFlightEndMinutes;
-        } else {
-          // Transit day - aircraft busy all day
-          blockedStart = 0;
-          blockedEnd = 1440;
-        }
-
-        // Try to reschedule the maintenance
-        const rescheduleResult = await attemptMaintenanceReschedule(
-          maint.id,
-          aircraftId,
-          blockedStart,
-          blockedEnd
-        );
-
-        if (rescheduleResult.success) {
-          // Maintenance was successfully rescheduled
-          rescheduledMaintenance.push({
-            checkType: maint.checkType,
-            checkName: checkName,
-            originalTime: maint.startTime.substring(0, 5),
-            newSlot: rescheduleResult.newSlot
-          });
-        } else {
-          // Cannot reschedule - return error
-          return res.status(409).json({
-            error: 'Cannot schedule flight - maintenance check would expire',
-            conflict: {
-              type: 'maintenance',
-              checkType: maint.checkType,
-              checkName: checkName,
-              startTime: maint.startTime.substring(0, 5),
-              duration: maint.duration,
-              message: rescheduleResult.error || `${checkName} cannot be moved without expiring. Clear some flights first.`
-            }
-          });
-        }
-      }
-    }
-
-    // Create scheduled flight
-    const scheduledFlight = await ScheduledFlight.create({
-      routeId,
-      aircraftId,
-      scheduledDate,
-      departureTime,
-      arrivalDate,
-      arrivalTime,
-      status: 'scheduled'
-    });
-
-    // Fetch complete flight data
-    const completeFlightData = await ScheduledFlight.findByPk(scheduledFlight.id, {
-      include: [
-        {
-          model: Route,
-          as: 'route',
-          include: [
-            { model: Airport, as: 'departureAirport' },
-            { model: Airport, as: 'arrivalAirport' },
-            { model: Airport, as: 'techStopAirport' }
-          ]
-        },
-        {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [
-            { model: Aircraft, as: 'aircraft' }
-          ]
-        }
-      ]
-    });
-
-    // Optimize maintenance positions on affected dates (reposition checks efficiently)
-    const datesToOptimize = [scheduledDate];
-    if (arrivalDate && arrivalDate !== scheduledDate) {
-      datesToOptimize.push(arrivalDate);
-    }
-    const optimizedMaintenance = await optimizeMaintenanceForDates(aircraftId, datesToOptimize);
-
-    // Re-run auto-scheduler in background (don't block the response)
-    const activeWorldId2 = req.session?.activeWorldId;
-    refreshAutoScheduledMaintenance(aircraftId, activeWorldId2).catch(e =>
-      console.log('[SCHEDULE] Auto-scheduler re-run failed:', e.message)
-    );
-
-    // Include rescheduled and optimized maintenance info in response
-    const response = completeFlightData.toJSON();
-    if (rescheduledMaintenance.length > 0) {
-      response.rescheduledMaintenance = rescheduledMaintenance;
-    }
-    if (optimizedMaintenance.length > 0) {
-      response.optimizedMaintenance = optimizedMaintenance;
-    }
-
-    res.status(201).json(response);
-  } catch (error) {
-    console.error('Error creating scheduled flight:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/schedule/flights/batch
- * Create multiple scheduled flights at once (for weekly scheduling)
- * Much faster than making individual requests
- */
-router.post('/flights/batch', async (req, res) => {
-  try {
-    const { routeId, aircraftId, flights } = req.body;
-    // flights is an array of { scheduledDate, departureTime }
-
-    if (!flights || !Array.isArray(flights) || flights.length === 0) {
-      return res.status(400).json({ error: 'No flights provided' });
-    }
-
-    if (flights.length > 14) {
-      return res.status(400).json({ error: 'Maximum 14 flights per batch' });
-    }
-
-    // Get active world from session
-    const activeWorldId = req.session?.activeWorldId;
-    if (!activeWorldId) {
-      return res.status(404).json({ error: 'No active world selected' });
-    }
-
-    // Get user's membership (validate once)
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const membership = await WorldMembership.findOne({
-      where: { userId: user.id, worldId: activeWorldId }
-    });
-
-    if (!membership) {
-      return res.status(404).json({ error: 'Not a member of this world' });
-    }
-
-    const worldMembershipId = membership.id;
-
-    // Validate route belongs to user's world (validate once)
-    const route = await Route.findOne({
-      where: {
-        id: routeId,
-        worldMembershipId: worldMembershipId
-      }
-    });
-
-    if (!route) {
-      return res.status(404).json({ error: 'Route not found' });
-    }
-
-    // Validate aircraft belongs to user's world (validate once)
-    const aircraft = await UserAircraft.findOne({
-      where: {
-        id: aircraftId,
-        worldMembershipId: worldMembershipId
-      },
+      where: { id: aircraftId, worldMembershipId },
       include: [{ model: Aircraft, as: 'aircraft' }]
     });
 
@@ -993,322 +767,101 @@ router.post('/flights/batch', async (req, res) => {
     }
 
     const cruiseSpeed = aircraft.aircraft?.cruiseSpeed;
-
-    // Calculate pre-flight and post-flight durations for this aircraft/route
     const acType = aircraft.aircraft?.type || 'Narrowbody';
     const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
     const routeDistance = route.distance || 0;
+    const { preFlightDuration, postFlightDuration } = calculateFlightDurations(acType, paxCapacity, routeDistance);
 
-    // Pre-flight: max(catering + boarding, fuelling)
-    let cateringDuration = 0;
-    if (paxCapacity >= 50 && acType !== 'Cargo') {
-      if (paxCapacity < 100) cateringDuration = 5;
-      else if (paxCapacity < 200) cateringDuration = 10;
-      else cateringDuration = 15;
-    }
-    let boardingDuration = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) boardingDuration = 10;
-      else if (paxCapacity < 100) boardingDuration = 15;
-      else if (paxCapacity < 200) boardingDuration = 20;
-      else if (paxCapacity < 300) boardingDuration = 25;
-      else boardingDuration = 35;
-    }
-    let fuellingDuration = 0;
-    if (routeDistance < 500) fuellingDuration = 10;
-    else if (routeDistance < 1500) fuellingDuration = 15;
-    else if (routeDistance < 3000) fuellingDuration = 20;
-    else fuellingDuration = 25;
-    const preFlightDuration = Math.max(cateringDuration + boardingDuration, fuellingDuration);
-
-    // Post-flight: deboarding + cleaning
-    let deboardingDuration = 0;
-    if (acType !== 'Cargo') {
-      if (paxCapacity < 50) deboardingDuration = 5;
-      else if (paxCapacity < 100) deboardingDuration = 8;
-      else if (paxCapacity < 200) deboardingDuration = 12;
-      else if (paxCapacity < 300) deboardingDuration = 15;
-      else deboardingDuration = 20;
-    }
-    let cleaningDuration;
-    if (paxCapacity < 50) cleaningDuration = 5;
-    else if (paxCapacity < 100) cleaningDuration = 10;
-    else if (paxCapacity < 200) cleaningDuration = 15;
-    else if (paxCapacity < 300) cleaningDuration = 20;
-    else cleaningDuration = 25;
-    const postFlightDuration = deboardingDuration + cleaningDuration;
-
-    // Get all dates that could be affected (include day before first and day after last)
-    const scheduleDates = flights.map(f => f.scheduledDate);
-    const minDate = new Date(Math.min(...scheduleDates.map(d => new Date(d))));
-    const maxDate = new Date(Math.max(...scheduleDates.map(d => new Date(d))));
-    minDate.setDate(minDate.getDate() - 1);
-    maxDate.setDate(maxDate.getDate() + 2); // +2 for multi-day flights
-
-    // Query all flights that could potentially overlap
-    const existingFlights = await ScheduledFlight.findAll({
-      where: {
-        aircraftId,
-        [Op.or]: [
-          { scheduledDate: { [Op.between]: [minDate.toISOString().split('T')[0], maxDate.toISOString().split('T')[0]] } },
-          { arrivalDate: { [Op.between]: [minDate.toISOString().split('T')[0], maxDate.toISOString().split('T')[0]] } }
-        ]
-      },
+    // Get all existing templates for this aircraft (for overlap checking)
+    const existingTemplates = await ScheduledFlight.findAll({
+      where: { aircraftId, isActive: true },
       include: [
         {
-          model: Route,
-          as: 'route',
+          model: Route, as: 'route',
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' }
           ]
         },
         {
-          model: UserAircraft,
-          as: 'aircraft',
+          model: UserAircraft, as: 'aircraft',
           include: [{ model: Aircraft, as: 'aircraft' }]
         }
       ]
     });
 
-    // Helper to calculate existing flight's operation window
-    const getExistingFlightWindow = (existingFlight) => {
-      const exAcType = existingFlight.aircraft?.aircraft?.type || 'Narrowbody';
-      const exPax = existingFlight.aircraft?.aircraft?.passengerCapacity || 150;
-      const exDist = existingFlight.route?.distance || 0;
-
-      // Pre-flight
-      let exCatering = 0;
-      if (exPax >= 50 && exAcType !== 'Cargo') {
-        if (exPax < 100) exCatering = 5;
-        else if (exPax < 200) exCatering = 10;
-        else exCatering = 15;
-      }
-      let exBoarding = 0;
-      if (exAcType !== 'Cargo') {
-        if (exPax < 50) exBoarding = 10;
-        else if (exPax < 100) exBoarding = 15;
-        else if (exPax < 200) exBoarding = 20;
-        else if (exPax < 300) exBoarding = 25;
-        else exBoarding = 35;
-      }
-      let exFuelling = 0;
-      if (exDist < 500) exFuelling = 10;
-      else if (exDist < 1500) exFuelling = 15;
-      else if (exDist < 3000) exFuelling = 20;
-      else exFuelling = 25;
-      const exPreFlight = Math.max(exCatering + exBoarding, exFuelling);
-
-      // Post-flight
-      let exDeboard = 0;
-      if (exAcType !== 'Cargo') {
-        if (exPax < 50) exDeboard = 5;
-        else if (exPax < 100) exDeboard = 8;
-        else if (exPax < 200) exDeboard = 12;
-        else if (exPax < 300) exDeboard = 15;
-        else exDeboard = 20;
-      }
-      let exClean;
-      if (exPax < 50) exClean = 5;
-      else if (exPax < 100) exClean = 10;
-      else if (exPax < 200) exClean = 15;
-      else if (exPax < 300) exClean = 20;
-      else exClean = 25;
-      const exPostFlight = exDeboard + exClean;
-
-      const [exDepH, exDepM] = existingFlight.departureTime.split(':').map(Number);
-      const exDepMinutes = exDepH * 60 + exDepM;
-      const exPreStartMinutes = exDepMinutes - exPreFlight;
-
-      const [exArrH, exArrM] = existingFlight.arrivalTime.split(':').map(Number);
-      const exArrMinutes = exArrH * 60 + exArrM;
-      const exPostEndMinutes = exArrMinutes + exPostFlight;
-
-      const exOpStart = new Date(`${existingFlight.scheduledDate}T00:00:00`);
-      exOpStart.setMinutes(exOpStart.getMinutes() + exPreStartMinutes);
-
-      const exOpEnd = new Date(`${existingFlight.arrivalDate || existingFlight.scheduledDate}T00:00:00`);
-      exOpEnd.setMinutes(exOpEnd.getMinutes() + exPostEndMinutes);
-
-      return { start: exOpStart, end: exOpEnd };
-    };
-
-    // Pre-calculate existing flight windows
-    const existingWindows = existingFlights.map(f => ({
-      flight: f,
-      window: getExistingFlightWindow(f)
-    }));
-
     // Filter out conflicting flights and prepare batch data
-    const flightsToCreate = [];
+    const templatesToCreate = [];
     const conflicts = [];
+    // Track templates we're adding in this batch for intra-batch overlap detection
+    const batchTemplates = [];
 
     for (const flight of flights) {
-      // Calculate this new flight's operation window
-      const { arrivalDate, arrivalTime } = calculateArrivalDateTime(
-        flight.scheduledDate,
-        flight.departureTime,
-        route,
-        cruiseSpeed
+      // Use a reference date for this day-of-week to calculate arrival
+      const refDate = getReferenceDateForDow(flight.dayOfWeek);
+      const { arrivalDate: refArrDate, arrivalTime } = calculateArrivalDateTime(
+        refDate, flight.departureTime, route, cruiseSpeed
       );
+      const arrivalDayOffset = Math.round((new Date(refArrDate + 'T00:00:00') - new Date(refDate + 'T00:00:00')) / 86400000);
 
       const [depH, depM] = flight.departureTime.split(':').map(Number);
       const depMinutes = depH * 60 + depM;
-      const preFlightStartMinutes = depMinutes - preFlightDuration;
-
       const [arrH, arrM] = arrivalTime.split(':').map(Number);
       const arrMinutes = arrH * 60 + arrM;
-      const postFlightEndMinutes = arrMinutes + postFlightDuration;
 
-      const opStartDateTime = new Date(`${flight.scheduledDate}T00:00:00`);
-      opStartDateTime.setMinutes(opStartDateTime.getMinutes() + preFlightStartMinutes);
+      // Calculate total duration
+      const totalDurationMinutes = arrivalDayOffset * 1440 + arrMinutes - depMinutes;
 
-      const opEndDateTime = new Date(`${arrivalDate}T00:00:00`);
-      opEndDateTime.setMinutes(opEndDateTime.getMinutes() + postFlightEndMinutes);
+      // Check overlap with existing templates AND already-added batch templates
+      const allTemplates = [...existingTemplates, ...batchTemplates];
+      const conflict = checkTemplateOverlap(
+        depMinutes, preFlightDuration, arrMinutes, postFlightDuration,
+        flight.dayOfWeek, arrivalDayOffset, allTemplates
+      );
 
-      // Check for overlap with existing flights
-      let hasConflict = false;
-      for (const { flight: existingFlight, window: exWindow } of existingWindows) {
-        const overlaps = opStartDateTime < exWindow.end && opEndDateTime > exWindow.start;
-        if (overlaps) {
-          hasConflict = true;
-          break;
-        }
-      }
-
-      if (hasConflict) {
-        conflicts.push(flight.scheduledDate);
+      if (conflict) {
+        conflicts.push(flight.dayOfWeek);
       } else {
-        flightsToCreate.push({
+        const templateData = {
           routeId,
           aircraftId,
-          scheduledDate: flight.scheduledDate,
+          dayOfWeek: flight.dayOfWeek,
           departureTime: flight.departureTime,
-          arrivalDate,
           arrivalTime,
-          status: 'scheduled'
-        });
+          arrivalDayOffset,
+          totalDurationMinutes,
+          isActive: true
+        };
+        templatesToCreate.push(templateData);
 
-        // Add this flight to existing windows for checking subsequent flights in batch
-        existingWindows.push({
-          flight: { scheduledDate: flight.scheduledDate, arrivalDate, departureTime: flight.departureTime, arrivalTime },
-          window: { start: opStartDateTime, end: opEndDateTime }
+        // Add to batch templates for intra-batch overlap checking
+        batchTemplates.push({
+          dayOfWeek: flight.dayOfWeek,
+          departureTime: flight.departureTime,
+          arrivalTime,
+          arrivalDayOffset,
+          aircraft: { aircraft: aircraft.aircraft },
+          route
         });
       }
     }
 
-    if (flightsToCreate.length === 0) {
+    if (templatesToCreate.length === 0) {
       return res.status(409).json({
         error: 'All flights conflict with existing schedule',
         conflicts
       });
     }
 
-    // Check for maintenance conflicts and attempt to reschedule
-    const allAffectedDates = new Set();
-    for (const flight of flightsToCreate) {
-      allAffectedDates.add(flight.scheduledDate);
-      if (flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate) {
-        allAffectedDates.add(flight.arrivalDate);
-        // Add transit days between departure and arrival
-        const depDateObj = new Date(flight.scheduledDate + 'T00:00:00');
-        const arrDateObj = new Date(flight.arrivalDate + 'T00:00:00');
-        const transitDate = new Date(depDateObj);
-        transitDate.setDate(transitDate.getDate() + 1);
-        while (transitDate < arrDateObj) {
-          allAffectedDates.add(transitDate.toISOString().split('T')[0]);
-          transitDate.setDate(transitDate.getDate() + 1);
-        }
-      }
-    }
+    // Bulk create all templates
+    const createdTemplates = await ScheduledFlight.bulkCreate(templatesToCreate);
 
-    const conflictingMaint = await RecurringMaintenance.findAll({
-      where: {
-        aircraftId,
-        status: 'active',
-        scheduledDate: { [Op.in]: [...allAffectedDates] }
-      }
-    });
-
-    const rescheduledMaintenance = [];
-    for (const maint of conflictingMaint) {
-      const [maintH, maintM] = maint.startTime.split(':').map(Number);
-      const maintStartMinutes = maintH * 60 + maintM;
-      const maintEndMinutes = maintStartMinutes + maint.duration;
-      const maintDate = String(maint.scheduledDate).split('T')[0];
-
-      // Check if this maintenance overlaps with any of the new flights
-      let overlappingFlight = null;
-      for (const flight of flightsToCreate) {
-        const [fDepH, fDepM] = flight.departureTime.split(':').map(Number);
-        const fDepMinutes = fDepH * 60 + fDepM;
-        const fPreStart = fDepMinutes - preFlightDuration;
-        const [fArrH, fArrM] = flight.arrivalTime.split(':').map(Number);
-        const fArrMinutes = fArrH * 60 + fArrM;
-        const fPostEnd = fArrMinutes + postFlightDuration;
-
-        let overlaps = false;
-        if (maintDate === flight.scheduledDate) {
-          const opEnd = (flight.arrivalDate === flight.scheduledDate) ? fPostEnd : 1440;
-          overlaps = fPreStart < maintEndMinutes && opEnd > maintStartMinutes;
-        } else if (maintDate === flight.arrivalDate) {
-          overlaps = 0 < maintEndMinutes && fPostEnd > maintStartMinutes;
-        } else if (maintDate > flight.scheduledDate && maintDate < flight.arrivalDate) {
-          // Transit day - aircraft busy all day
-          overlaps = true;
-        }
-
-        if (overlaps) {
-          overlappingFlight = flight;
-          break;
-        }
-      }
-
-      if (overlappingFlight) {
-        let blockedStart, blockedEnd;
-        const isTransitDay = maintDate > overlappingFlight.scheduledDate && maintDate < overlappingFlight.arrivalDate;
-        if (isTransitDay) {
-          // Transit day - aircraft busy all day
-          blockedStart = 0;
-          blockedEnd = 1440;
-        } else {
-          const [fDepH, fDepM] = overlappingFlight.departureTime.split(':').map(Number);
-          const fDepMinutes = fDepH * 60 + fDepM;
-          blockedStart = fDepMinutes - preFlightDuration;
-          const [fArrH, fArrM] = overlappingFlight.arrivalTime.split(':').map(Number);
-          const fArrMinutes = fArrH * 60 + fArrM;
-          blockedEnd = (maintDate === overlappingFlight.scheduledDate && overlappingFlight.arrivalDate !== overlappingFlight.scheduledDate)
-            ? 1440
-            : fArrMinutes + postFlightDuration;
-        }
-
-        const result = await attemptMaintenanceReschedule(maint.id, aircraftId, blockedStart, blockedEnd);
-        if (result.success) {
-          rescheduledMaintenance.push({
-            checkType: maint.checkType,
-            originalTime: maint.startTime.substring(0, 5),
-            newSlot: result.newSlot
-          });
-        }
-        // If rescheduling fails, log but still create the flight (don't block batch)
-        else {
-          console.log(`[BATCH] Could not reschedule ${maint.checkType} on ${maintDate}: ${result.error}`);
-        }
-      }
-    }
-
-    // Bulk create all flights at once
-    const createdFlights = await ScheduledFlight.bulkCreate(flightsToCreate);
-
-    // Fetch complete flight data for all created flights
-    const completeFlightData = await ScheduledFlight.findAll({
-      where: {
-        id: { [Op.in]: createdFlights.map(f => f.id) }
-      },
+    // Fetch complete data for all created templates
+    const completeData = await ScheduledFlight.findAll({
+      where: { id: { [Op.in]: createdTemplates.map(f => f.id) } },
       include: [
         {
-          model: Route,
-          as: 'route',
+          model: Route, as: 'route',
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' },
@@ -1316,37 +869,23 @@ router.post('/flights/batch', async (req, res) => {
           ]
         },
         {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [
-            { model: Aircraft, as: 'aircraft' }
-          ]
+          model: UserAircraft, as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
         }
       ]
     });
 
-    // Optimize maintenance positions on all affected dates
-    const allDates = new Set();
-    for (const flight of flightsToCreate) {
-      allDates.add(flight.scheduledDate);
-      if (flight.arrivalDate && flight.arrivalDate !== flight.scheduledDate) {
-        allDates.add(flight.arrivalDate);
-      }
-    }
-    await optimizeMaintenanceForDates(aircraftId, [...allDates]);
-
-    // Re-run auto-scheduler in background (don't block the response)
+    // Re-run auto-scheduler in background
     refreshAutoScheduledMaintenance(aircraftId, activeWorldId).catch(e =>
       console.log('[BATCH] Auto-scheduler re-run failed:', e.message)
     );
 
     res.status(201).json({
-      created: completeFlightData,
-      conflicts: conflicts.length > 0 ? conflicts : undefined,
-      rescheduledMaintenance: rescheduledMaintenance.length > 0 ? rescheduledMaintenance : undefined
+      created: completeData,
+      conflicts: conflicts.length > 0 ? conflicts : undefined
     });
   } catch (error) {
-    console.error('Error batch creating scheduled flights:', error);
+    console.error('Error batch creating flight templates:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1419,12 +958,12 @@ router.delete('/flight/:id', async (req, res) => {
 
 /**
  * PUT /api/schedule/flight/:id
- * Update a scheduled flight (status, time, etc.)
+ * Update a flight template (dayOfWeek, departureTime, isActive)
  */
 router.put('/flight/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { scheduledDate, departureTime, status } = req.body;
+    const { dayOfWeek, departureTime, isActive } = req.body;
 
     // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
@@ -1432,7 +971,6 @@ router.put('/flight/:id', async (req, res) => {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    // Get user's membership
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -1452,15 +990,21 @@ router.put('/flight/:id', async (req, res) => {
 
     const worldMembershipId = membership.id;
 
-    // Find the scheduled flight and verify ownership
+    // Find the template and verify ownership
     const scheduledFlight = await ScheduledFlight.findByPk(id, {
       include: [
         {
-          model: Route,
-          as: 'route',
-          where: {
-            worldMembershipId: worldMembershipId
-          }
+          model: Route, as: 'route',
+          where: { worldMembershipId },
+          include: [
+            { model: Airport, as: 'departureAirport' },
+            { model: Airport, as: 'arrivalAirport' },
+            { model: Airport, as: 'techStopAirport' }
+          ]
+        },
+        {
+          model: UserAircraft, as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
         }
       ]
     });
@@ -1469,10 +1013,35 @@ router.put('/flight/:id', async (req, res) => {
       return res.status(404).json({ error: 'Scheduled flight not found' });
     }
 
-    // Update fields
-    if (scheduledDate !== undefined) scheduledFlight.scheduledDate = scheduledDate;
-    if (departureTime !== undefined) scheduledFlight.departureTime = departureTime;
-    if (status !== undefined) scheduledFlight.status = status;
+    // Update simple fields
+    if (isActive !== undefined) scheduledFlight.isActive = isActive;
+
+    // If dayOfWeek or departureTime changed, recalculate arrival info
+    const newDow = dayOfWeek !== undefined ? dayOfWeek : scheduledFlight.dayOfWeek;
+    const newDepTime = departureTime !== undefined ? departureTime : scheduledFlight.departureTime;
+
+    if (dayOfWeek !== undefined || departureTime !== undefined) {
+      if (dayOfWeek !== undefined && (dayOfWeek < 0 || dayOfWeek > 6)) {
+        return res.status(400).json({ error: 'Invalid dayOfWeek (must be 0-6)' });
+      }
+
+      const refDateStr = getReferenceDateForDow(newDow);
+      const route = scheduledFlight.route;
+      const cruiseSpeed = scheduledFlight.aircraft?.aircraft?.cruiseSpeed;
+      const { arrivalDate: refArrDate, arrivalTime } = calculateArrivalDateTime(
+        refDateStr, newDepTime, route, cruiseSpeed
+      );
+      const arrivalDayOffset = Math.round((new Date(refArrDate + 'T00:00:00') - new Date(refDateStr + 'T00:00:00')) / 86400000);
+      const [depH, depM] = newDepTime.split(':').map(Number);
+      const [arrH, arrM] = arrivalTime.split(':').map(Number);
+      const totalDurationMinutes = arrivalDayOffset * 1440 + (arrH * 60 + arrM) - (depH * 60 + depM);
+
+      scheduledFlight.dayOfWeek = newDow;
+      scheduledFlight.departureTime = newDepTime;
+      scheduledFlight.arrivalTime = arrivalTime;
+      scheduledFlight.arrivalDayOffset = arrivalDayOffset;
+      scheduledFlight.totalDurationMinutes = totalDurationMinutes;
+    }
 
     await scheduledFlight.save();
 
@@ -1480,8 +1049,7 @@ router.put('/flight/:id', async (req, res) => {
     const updatedFlight = await ScheduledFlight.findByPk(scheduledFlight.id, {
       include: [
         {
-          model: Route,
-          as: 'route',
+          model: Route, as: 'route',
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' },
@@ -1489,23 +1057,20 @@ router.put('/flight/:id', async (req, res) => {
           ]
         },
         {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [
-            { model: Aircraft, as: 'aircraft' }
-          ]
+          model: UserAircraft, as: 'aircraft',
+          include: [{ model: Aircraft, as: 'aircraft' }]
         }
       ]
     });
 
-    // Re-optimize maintenance in background (don't block the response)
+    // Re-optimize maintenance in background
     refreshAutoScheduledMaintenance(scheduledFlight.aircraftId, activeWorldId).catch(e =>
       console.log('[UPDATE] Auto-scheduler re-run failed:', e.message)
     );
 
     res.json(updatedFlight);
   } catch (error) {
-    console.error('Error updating scheduled flight:', error);
+    console.error('Error updating flight template:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1978,12 +1543,13 @@ router.post('/maintenance', async (req, res) => {
     const maintStartMinutes = maintH * 60 + maintM;
     const maintEndMinutes = maintStartMinutes + duration;
 
-    // Check for conflicting flights on the scheduled date for each day
-    // We need to check the specific scheduledDate first
+    // Check for conflicting flight templates on this day-of-week
+    // Query templates that depart on this day OR whose arrival spills into this day
     const existingFlights = await ScheduledFlight.findAll({
       where: {
         aircraftId,
-        scheduledDate: scheduledDate
+        isActive: true,
+        dayOfWeek: dayOfWeek
       },
       include: [
         {
@@ -2055,10 +1621,10 @@ router.post('/maintenance', async (req, res) => {
 
       const [exArrH, exArrM] = existingFlight.arrivalTime.split(':').map(Number);
       const exArrMinutes = exArrH * 60 + exArrM;
-      // If flight spans overnight, add 24 hours to arrival
+      // If flight spans overnight, add 24 hours per offset day to arrival
       let flightOpEnd = exArrMinutes + exPostFlight;
-      if (existingFlight.arrivalDate !== existingFlight.scheduledDate) {
-        flightOpEnd += 1440; // Add 24 hours for overnight flights
+      if (existingFlight.arrivalDayOffset > 0) {
+        flightOpEnd += existingFlight.arrivalDayOffset * 1440;
       }
 
       // Check for overlap
@@ -2070,9 +1636,8 @@ router.post('/maintenance', async (req, res) => {
         const routeNum = existingFlight.route?.routeNumber || 'Unknown';
         const returnNum = existingFlight.route?.returnRouteNumber || '';
 
-        // Format date as DD/MM/YYYY
-        const exDateParts = existingFlight.scheduledDate.split('-');
-        const formattedExDate = `${exDateParts[2]}/${exDateParts[1]}/${exDateParts[0]}`;
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const flightDay = dayNames[existingFlight.dayOfWeek] || 'Unknown';
 
         const checkNames = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check' };
         const checkName = checkNames[checkType] || `${checkType} Check`;
@@ -2085,10 +1650,10 @@ router.post('/maintenance', async (req, res) => {
             returnRouteNumber: returnNum,
             departure: depAirport,
             arrival: arrAirport,
-            date: formattedExDate,
+            dayOfWeek: existingFlight.dayOfWeek,
             departureTime: existingFlight.departureTime.substring(0, 5),
             arrivalTime: existingFlight.arrivalTime.substring(0, 5),
-            message: `${checkName} conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${formattedExDate} departing ${existingFlight.departureTime.substring(0, 5)}`
+            message: `${checkName} conflicts with ${routeNum}/${returnNum} (${depAirport}→${arrAirport}) on ${flightDay} departing ${existingFlight.departureTime.substring(0, 5)}`
           }
         });
       }
@@ -2362,18 +1927,137 @@ router.delete('/maintenance/aircraft/:aircraftId/type/:checkType', async (req, r
 });
 
 /**
+ * Compute virtual scheduledDate and arrivalDate from a template's dayOfWeek + arrivalDayOffset
+ * relative to the current game date.
+ */
+function computeVirtualDates(template, worldTime) {
+  const gameDayOfWeek = worldTime.getDay();
+  const templateDow = template.dayOfWeek;
+
+  // Calculate how many days ago (or today) this template's departure day was
+  let daysAgo = (gameDayOfWeek - templateDow + 7) % 7;
+
+  // If it's the same day of week, check if it has departed yet
+  if (daysAgo === 0) {
+    const gameTimeStr = worldTime.toTimeString().split(' ')[0];
+    if (template.departureTime > gameTimeStr) {
+      // Hasn't departed yet this week - this is from last week (or not active)
+      daysAgo = 7;
+    }
+  }
+
+  // The virtual departure date
+  const depDate = new Date(worldTime);
+  depDate.setDate(depDate.getDate() - daysAgo);
+  const scheduledDate = depDate.toISOString().split('T')[0];
+
+  // The virtual arrival date
+  const arrDate = new Date(depDate);
+  arrDate.setDate(arrDate.getDate() + (template.arrivalDayOffset || 0));
+  const arrivalDate = arrDate.toISOString().split('T')[0];
+
+  return { scheduledDate, arrivalDate };
+}
+
+/**
+ * Find active flight templates for a given world time.
+ * Returns templates that have departed but not yet completed their round-trip.
+ */
+async function findActiveTemplates(worldTime, membershipFilter) {
+  const gameDayOfWeek = worldTime.getDay();
+  const gameTimeStr = worldTime.toTimeString().split(' ')[0];
+
+  // Build query conditions for active flights:
+  // 1. Departed today and not yet completed (same-day or multi-day)
+  // 2. Departed on previous days and arriving today or later (multi-day)
+  const dayConditions = [
+    // Departed today, still flying
+    { dayOfWeek: gameDayOfWeek, departureTime: { [Op.lte]: gameTimeStr } }
+  ];
+
+  // Multi-day flights that departed on previous days
+  for (let offset = 1; offset <= 3; offset++) {
+    const pastDow = (gameDayOfWeek - offset + 7) % 7;
+    dayConditions.push({
+      dayOfWeek: pastDow,
+      arrivalDayOffset: { [Op.gte]: offset }
+    });
+  }
+
+  const templates = await ScheduledFlight.findAll({
+    where: {
+      isActive: true,
+      [Op.or]: dayConditions
+    },
+    include: [
+      {
+        model: Route,
+        as: 'route',
+        required: true,
+        where: membershipFilter,
+        include: [
+          {
+            model: Airport,
+            as: 'departureAirport',
+            attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+          },
+          {
+            model: Airport,
+            as: 'arrivalAirport',
+            attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+          },
+          {
+            model: Airport,
+            as: 'techStopAirport',
+            attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
+          }
+        ]
+      },
+      {
+        model: UserAircraft,
+        as: 'aircraft',
+        include: [
+          {
+            model: Aircraft,
+            as: 'aircraft'
+          }
+        ]
+      }
+    ],
+    order: [
+      ['dayOfWeek', 'ASC'],
+      ['departureTime', 'ASC']
+    ]
+  });
+
+  // Filter out flights that have already completed their round-trip today
+  return templates.filter(template => {
+    const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+    const currentDate = worldTime.toISOString().split('T')[0];
+
+    // If arrival date is in the past, flight is completed
+    if (arrivalDate < currentDate) return false;
+
+    // If arrival date is today, check if arrival time has passed
+    if (arrivalDate === currentDate && template.arrivalTime) {
+      if (template.arrivalTime <= gameTimeStr) return false;
+    }
+
+    return true;
+  });
+}
+
+/**
  * GET /api/schedule/active
- * Fetch all currently active (in_progress) flights for the world map
+ * Fetch all currently active (in-flight) templates for the user's airline
  */
 router.get('/active', async (req, res) => {
   try {
-    // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
     if (!activeWorldId) {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    // Get user's membership
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -2391,98 +2075,43 @@ router.get('/active', async (req, res) => {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
 
-    const worldMembershipId = membership.id;
-
-    // Get current world time for including scheduled flights that are actually airborne
     const worldTimeService = require('../services/worldTimeService');
-    const worldTime = worldTimeService.getCurrentTime(activeWorldId);
-    const currentDate = worldTime ? worldTime.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-    const currentTimeStr = worldTime ? worldTime.toTimeString().split(' ')[0] : new Date().toTimeString().split(' ')[0];
+    const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
 
-    // Fetch flights that are either:
-    // 1. Already marked as 'in_progress', OR
-    // 2. Scheduled flights that have departed (scheduled date = today AND departure time <= now)
-    const activeFlights = await ScheduledFlight.findAll({
-      where: {
-        [Op.or]: [
-          { status: 'in_progress' },
-          {
-            status: 'scheduled',
-            scheduledDate: currentDate,
-            departureTime: { [Op.lte]: currentTimeStr }
-          }
-        ]
-      },
-      include: [
-        {
-          model: Route,
-          as: 'route',
-          required: true,
-          where: {
-            worldMembershipId: worldMembershipId
-          },
-          include: [
-            {
-              model: Airport,
-              as: 'departureAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            },
-            {
-              model: Airport,
-              as: 'arrivalAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            },
-            {
-              model: Airport,
-              as: 'techStopAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            }
-          ]
-        },
-        {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [
-            {
-              model: Aircraft,
-              as: 'aircraft'
-            }
-          ]
-        }
-      ],
-      order: [
-        ['scheduledDate', 'ASC'],
-        ['departureTime', 'ASC']
-      ]
+    const activeTemplates = await findActiveTemplates(worldTime, {
+      worldMembershipId: membership.id
     });
 
-    // Transform data for the map
-    const flights = activeFlights.map(flight => ({
-      id: flight.id,
-      scheduledDate: flight.scheduledDate,
-      departureTime: flight.departureTime,
-      arrivalTime: flight.arrivalTime,
-      arrivalDate: flight.arrivalDate,
-      status: flight.status,
-      route: {
-        id: flight.route.id,
-        routeNumber: flight.route.routeNumber,
-        returnRouteNumber: flight.route.returnRouteNumber,
-        distance: flight.route.distance,
-        turnaroundTime: flight.route.turnaroundTime || 45,
-        techStopAirport: flight.route.techStopAirport || null,
-        demand: flight.route.demand || 0,
-        averageLoadFactor: parseFloat(flight.route.averageLoadFactor) || 0
-      },
-      departureAirport: flight.route.departureAirport,
-      arrivalAirport: flight.route.arrivalAirport,
-      aircraft: flight.aircraft ? {
-        id: flight.aircraft.id,
-        registration: flight.aircraft.registration,
-        aircraftType: flight.aircraft.aircraft,
-        passengerCapacity: flight.aircraft.aircraft?.passengerCapacity || 0
-      } : null
-    }));
+    // Transform data for the map - compute virtual dates for compatibility
+    const flights = activeTemplates.map(template => {
+      const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+      return {
+        id: template.id,
+        scheduledDate,
+        departureTime: template.departureTime,
+        arrivalTime: template.arrivalTime,
+        arrivalDate,
+        status: 'in_progress',
+        route: {
+          id: template.route.id,
+          routeNumber: template.route.routeNumber,
+          returnRouteNumber: template.route.returnRouteNumber,
+          distance: template.route.distance,
+          turnaroundTime: template.route.turnaroundTime || 45,
+          techStopAirport: template.route.techStopAirport || null,
+          demand: template.route.demand || 0,
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+        },
+        departureAirport: template.route.departureAirport,
+        arrivalAirport: template.route.arrivalAirport,
+        aircraft: template.aircraft ? {
+          id: template.aircraft.id,
+          registration: template.aircraft.registration,
+          aircraftType: template.aircraft.aircraft,
+          passengerCapacity: template.aircraft.aircraft?.passengerCapacity || 0
+        } : null
+      };
+    });
 
     res.json({ flights });
   } catch (error) {
@@ -2493,17 +2122,15 @@ router.get('/active', async (req, res) => {
 
 /**
  * GET /api/schedule/active-all
- * Fetch all currently active (in_progress) flights for ALL airlines in the world
+ * Fetch all currently active (in-flight) templates for ALL airlines in the world
  */
 router.get('/active-all', async (req, res) => {
   try {
-    // Get active world from session
     const activeWorldId = req.session?.activeWorldId;
     if (!activeWorldId) {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    // Get user's membership to identify their own flights
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -2523,7 +2150,7 @@ router.get('/active-all', async (req, res) => {
 
     const userMembershipId = userMembership.id;
 
-    // Get all memberships in this world to filter flights
+    // Get all memberships in this world
     const allMemberships = await WorldMembership.findAll({
       where: { worldId: activeWorldId },
       attributes: ['id', 'airlineName', 'airlineCode']
@@ -2532,100 +2159,47 @@ router.get('/active-all', async (req, res) => {
     const membershipIds = allMemberships.map(m => m.id);
     const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode }]));
 
-    // Get current world time for including scheduled flights that are actually airborne
     const worldTimeService = require('../services/worldTimeService');
-    const worldTime = worldTimeService.getCurrentTime(activeWorldId);
-    const currentDate = worldTime ? worldTime.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-    const currentTimeStr = worldTime ? worldTime.toTimeString().split(' ')[0] : new Date().toTimeString().split(' ')[0];
+    const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
 
-    // Fetch all active flights in this world (including scheduled flights that have departed)
-    const activeFlights = await ScheduledFlight.findAll({
-      where: {
-        [Op.or]: [
-          { status: 'in_progress' },
-          {
-            status: 'scheduled',
-            scheduledDate: currentDate,
-            departureTime: { [Op.lte]: currentTimeStr }
-          }
-        ]
-      },
-      include: [
-        {
-          model: Route,
-          as: 'route',
-          required: true,
-          where: {
-            worldMembershipId: { [Op.in]: membershipIds }
-          },
-          include: [
-            {
-              model: Airport,
-              as: 'departureAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            },
-            {
-              model: Airport,
-              as: 'arrivalAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            },
-            {
-              model: Airport,
-              as: 'techStopAirport',
-              attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'latitude', 'longitude']
-            }
-          ]
-        },
-        {
-          model: UserAircraft,
-          as: 'aircraft',
-          include: [
-            {
-              model: Aircraft,
-              as: 'aircraft'
-            }
-          ]
-        }
-      ],
-      order: [
-        ['scheduledDate', 'ASC'],
-        ['departureTime', 'ASC']
-      ]
+    const activeTemplates = await findActiveTemplates(worldTime, {
+      worldMembershipId: { [Op.in]: membershipIds }
     });
 
     // Transform data for the map, including airline info
-    const flights = activeFlights.map(flight => {
-      const membershipId = flight.route.worldMembershipId;
+    const flights = activeTemplates.map(template => {
+      const membershipId = template.route.worldMembershipId;
       const airlineInfo = membershipMap.get(membershipId) || {};
       const isOwnFlight = membershipId === userMembershipId;
+      const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
 
       return {
-        id: flight.id,
-        scheduledDate: flight.scheduledDate,
-        departureTime: flight.departureTime,
-        arrivalTime: flight.arrivalTime,
-        arrivalDate: flight.arrivalDate,
-        status: flight.status,
+        id: template.id,
+        scheduledDate,
+        departureTime: template.departureTime,
+        arrivalTime: template.arrivalTime,
+        arrivalDate,
+        status: 'in_progress',
         isOwnFlight: isOwnFlight,
         airlineName: airlineInfo.airlineName || 'Unknown Airline',
         airlineCode: airlineInfo.airlineCode || '??',
         route: {
-          id: flight.route.id,
-          routeNumber: flight.route.routeNumber,
-          returnRouteNumber: flight.route.returnRouteNumber,
-          distance: flight.route.distance,
-          turnaroundTime: flight.route.turnaroundTime || 45,
-          techStopAirport: flight.route.techStopAirport || null,
-          demand: flight.route.demand || 0,
-          averageLoadFactor: parseFloat(flight.route.averageLoadFactor) || 0
+          id: template.route.id,
+          routeNumber: template.route.routeNumber,
+          returnRouteNumber: template.route.returnRouteNumber,
+          distance: template.route.distance,
+          turnaroundTime: template.route.turnaroundTime || 45,
+          techStopAirport: template.route.techStopAirport || null,
+          demand: template.route.demand || 0,
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
         },
-        departureAirport: flight.route.departureAirport,
-        arrivalAirport: flight.route.arrivalAirport,
-        aircraft: flight.aircraft ? {
-          id: flight.aircraft.id,
-          registration: flight.aircraft.registration,
-          aircraftType: flight.aircraft.aircraft,
-          passengerCapacity: flight.aircraft.aircraft?.passengerCapacity || 0
+        departureAirport: template.route.departureAirport,
+        arrivalAirport: template.route.arrivalAirport,
+        aircraft: template.aircraft ? {
+          id: template.aircraft.id,
+          registration: template.aircraft.registration,
+          aircraftType: template.aircraft.aircraft,
+          passengerCapacity: template.aircraft.aircraft?.passengerCapacity || 0
         } : null
       };
     });

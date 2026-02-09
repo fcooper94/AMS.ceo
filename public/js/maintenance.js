@@ -1,35 +1,5 @@
 let allAircraft = [];
 let aircraftTypes = [];
-let scheduledMaintenance = [];
-let gameTimeAvailable = false; // Track if game time has been received from socket
-
-// Check durations in minutes
-// Daily: 30-90 mins (avg 60)
-// Weekly: 1.5-3 hrs (avg 135 mins)
-// A: 6-12 hours (avg 540 mins)
-// C: 2-4 weeks (avg 21 days = 30240 mins)
-// D: 2-3 months (avg 75 days = 108000 mins)
-const CHECK_DURATIONS = {
-  daily: 60,           // 1 hour (30-90 mins avg)
-  weekly: 135,         // 2.25 hours (1.5-3 hrs avg)
-  A: 540,              // 9 hours (6-12 hours avg)
-  C: 30240,            // 21 days (2-4 weeks avg)
-  D: 108000            // 75 days (2-3 months avg)
-};
-
-// Check validity periods
-// Daily: 1-2 days
-// Weekly: 7-8 days
-// A: 800-1000 flight hours
-// C: 2 years (730 days)
-// D: 5-7 years (1825-2555 days)
-const CHECK_VALIDITY = {
-  daily: 2,            // days (can stretch to 2 if busy)
-  weekly: 8,           // days (normally 7, can stretch to 8)
-  A: 900,              // flight hours (800-1000)
-  C: 730,              // days (2 years)
-  D: 2190              // days (5-7 years, using 6 years as default)
-};
 
 // Generate deterministic random interval for A, C, and D checks based on aircraft ID
 function getCheckIntervalForAircraft(aircraftId, checkType) {
@@ -189,274 +159,12 @@ function getEngineerName(aircraftId, checkType, country) {
   return names[hash % names.length];
 }
 
-// Format date as YYYY-MM-DD (using UTC to match API)
-function formatDateStr(date) {
-  return date.toISOString().split('T')[0];
-}
-
-// Fetch scheduled maintenance data
-async function fetchScheduledMaintenance() {
-  try {
-    // Get game time - use the global function if available
-    const now = getGameTime();
-
-    // Create date range: 90 days back (for long C/D checks) to 7 days forward
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 90);
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 7);
-
-    const startDateStr = formatDateStr(startDate);
-    const endDateStr = formatDateStr(endDate);
-
-    const response = await fetch(`/api/schedule/maintenance?startDate=${startDateStr}&endDate=${endDateStr}`);
-    if (response.ok) {
-      const data = await response.json();
-      scheduledMaintenance = data.maintenance || [];
-    }
-  } catch (error) {
-    console.error('Error fetching scheduled maintenance:', error);
-    scheduledMaintenance = [];
-  }
-}
-
-// Check if a specific check type is in progress for an aircraft
-function isCheckInProgress(aircraftId, checkType) {
-  const now = getGameTime();
-  const todayStr = now.toISOString().split('T')[0];
-  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-
-  // Check for direct match first (use == for type coercion)
-  const directMatch = scheduledMaintenance.some(m => {
-    const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    if (maintAircraftId != aircraftId) return false; // Use != for type-coercive comparison
-    if (m.checkType !== checkType) return false;
-
-    return isMaintenanceInProgress(m, todayStr, currentMinutes);
-  });
-
-  if (directMatch) return true;
-
-  // Check for cascading - if a higher check is in progress, lower checks are covered
-  // D covers: C, A, weekly, daily
-  // C covers: A, weekly, daily
-  // A covers: weekly, daily
-  // weekly covers: daily
-  const cascadeMap = {
-    'C': ['D'],
-    'A': ['D', 'C'],
-    'weekly': ['D', 'C', 'A'],
-    'daily': ['D', 'C', 'A', 'weekly']
-  };
-
-  const higherChecks = cascadeMap[checkType] || [];
-  for (const higherCheck of higherChecks) {
-    const higherInProgress = scheduledMaintenance.some(m => {
-      const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      if (maintAircraftId != aircraftId) return false; // Use != for type-coercive comparison
-      if (m.checkType !== higherCheck) return false;
-
-      return isMaintenanceInProgress(m, todayStr, currentMinutes);
-    });
-
-    if (higherInProgress) return true;
-  }
-
-  return false;
-}
-
-// Helper to check if a specific maintenance record is in progress
-function isMaintenanceInProgress(m, todayStr, currentMinutes) {
-  // Skip "ongoing" display blocks - they're copies for multi-day display
-  // Only check the primary block (where scheduledDate matches displayDate or isOngoing is false)
-  if (m.isOngoing) return false;
-
-  // Get scheduled date
-  let scheduledDate = m.scheduledDate;
-  if (scheduledDate instanceof Date) {
-    scheduledDate = scheduledDate.toISOString().split('T')[0];
-  } else if (scheduledDate) {
-    scheduledDate = scheduledDate.split('T')[0];
-  } else {
-    return false;
-  }
-
-  // Parse start time
-  const startTimeStr = m.startTime || '00:00:00';
-  const [startH, startM] = startTimeStr.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-
-  // Calculate end date/time
-  const duration = m.duration || CHECK_DURATIONS[m.checkType] || 60;
-  const endMinutes = startMinutes + duration;
-  const daysSpanned = Math.floor(endMinutes / 1440);
-  const endMinuteOfDay = endMinutes % 1440;
-
-  // Calculate completion date (using UTC)
-  const completionDate = new Date(scheduledDate + 'T00:00:00Z');
-  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
-  const completionDateStr = completionDate.toISOString().split('T')[0];
-
-  // Check if maintenance has started
-  const hasStarted = todayStr > scheduledDate ||
-    (todayStr === scheduledDate && currentMinutes >= startMinutes);
-
-  // Check if maintenance has completed
-  const hasCompleted = todayStr > completionDateStr ||
-    (todayStr === completionDateStr && currentMinutes >= endMinuteOfDay);
-
-  return hasStarted && !hasCompleted;
-}
-
-// Check if ANY heavy maintenance (C/D) is scheduled and not yet complete for this aircraft
-// If so, all lower checks are covered by cascading
-function hasScheduledMaintenance(aircraftId, checkType) {
-  const now = getGameTime();
-  const todayStr = now.toISOString().split('T')[0];
-  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-
-  // Find all maintenance for this aircraft that is either in progress or scheduled for the future
-  const aircraftMaint = scheduledMaintenance.filter(m => {
-    const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    if (maintAircraftId != aircraftId) return false;
-
-    // Check if this maintenance is still active (in progress or not yet started)
-    return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
-  });
-
-  if (aircraftMaint.length === 0) return false;
-
-  // Check for direct match
-  if (aircraftMaint.some(m => m.checkType === checkType)) return true;
-
-  // Check for cascading from higher checks
-  // D covers: C, A, weekly, daily
-  // C covers: A, weekly, daily
-  const hasD = aircraftMaint.some(m => m.checkType === 'D');
-  const hasC = aircraftMaint.some(m => m.checkType === 'C');
-
-  if (hasD) {
-    // D check covers everything
-    return true;
-  }
-
-  if (hasC && ['A', 'weekly', 'daily'].includes(checkType)) {
-    // C check covers A, weekly, daily
-    return true;
-  }
-
-  return false;
-}
-
-// Helper to check if maintenance is active (in progress) or scheduled for the future
-function isMaintenanceActiveOrFuture(m, todayStr, currentMinutes) {
-  // Skip "ongoing" display blocks - they're copies for multi-day display
-  // Only check the primary block (where scheduledDate matches displayDate or isOngoing is false)
-  if (m.isOngoing) return false;
-
-  // Get scheduled date
-  let scheduledDate = m.scheduledDate;
-  if (scheduledDate instanceof Date) {
-    scheduledDate = scheduledDate.toISOString().split('T')[0];
-  } else if (scheduledDate) {
-    scheduledDate = scheduledDate.split('T')[0];
-  } else {
-    return false;
-  }
-
-  // Parse start time
-  const startTimeStr = m.startTime || '00:00:00';
-  const [startH, startM] = startTimeStr.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-
-  // Calculate end date/time
-  const duration = m.duration || CHECK_DURATIONS[m.checkType] || 60;
-  const endMinutes = startMinutes + duration;
-  const daysSpanned = Math.floor(endMinutes / 1440);
-  const endMinuteOfDay = endMinutes % 1440;
-
-  // Calculate completion date (using UTC)
-  const completionDate = new Date(scheduledDate + 'T00:00:00Z');
-  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
-  const completionDateStr = completionDate.toISOString().split('T')[0];
-
-  // Check if maintenance has completed
-  const hasCompleted = todayStr > completionDateStr ||
-    (todayStr === completionDateStr && currentMinutes >= endMinuteOfDay);
-
-  // Return true if NOT completed (either in progress or scheduled for future)
-  return !hasCompleted;
-}
-
-// Get the expected completion time for maintenance in progress
-function getMaintenanceCompletionTime(aircraftId, checkType) {
-  const now = getGameTime();
-  const todayStr = now.toISOString().split('T')[0];
-  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-
-  // Find the highest-level maintenance that's covering this check (only active ones)
-  const checkHierarchy = ['D', 'C', 'A', 'weekly', 'daily'];
-  let effectiveCheckType = checkType;
-
-  for (const higherCheck of checkHierarchy) {
-    const maint = scheduledMaintenance.find(m => {
-      const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      if (maintAircraftId != aircraftId || m.checkType !== higherCheck) return false;
-      // Only consider active maintenance
-      return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
-    });
-    if (maint) {
-      effectiveCheckType = higherCheck;
-      break;
-    }
-  }
-
-  // Find the maintenance record (only active ones)
-  const maint = scheduledMaintenance.find(m => {
-    const maintAircraftId = m.aircraftId || m.aircraft?.id;
-    if (maintAircraftId != aircraftId || m.checkType !== effectiveCheckType) return false;
-    return isMaintenanceActiveOrFuture(m, todayStr, currentMinutes);
-  });
-
-  if (!maint) return null;
-
-  // Get scheduled date and start time
-  let scheduledDate = maint.scheduledDate;
-  if (scheduledDate instanceof Date) {
-    scheduledDate = scheduledDate.toISOString().split('T')[0];
-  } else if (scheduledDate) {
-    scheduledDate = scheduledDate.split('T')[0];
-  } else {
-    return null;
-  }
-
-  const startTimeStr = maint.startTime || '00:00:00';
-  const [startH, startM] = startTimeStr.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-
-  // Calculate completion time
-  const duration = maint.duration || CHECK_DURATIONS[effectiveCheckType] || 60;
-  const endMinutes = startMinutes + duration;
-  const daysSpanned = Math.floor(endMinutes / 1440);
-  const endMinuteOfDay = endMinutes % 1440;
-
-  // Calculate completion date/time
-  const completionDate = new Date(scheduledDate + 'T00:00:00Z');
-  completionDate.setUTCDate(completionDate.getUTCDate() + daysSpanned);
-  completionDate.setUTCHours(Math.floor(endMinuteOfDay / 60), endMinuteOfDay % 60, 0, 0);
-
-  return formatDateTime(completionDate);
-}
+// (WIP detection and check status computation handled server-side in /api/fleet/maintenance)
 
 // Load maintenance data
 async function loadMaintenanceData() {
   try {
-    // Fetch both aircraft data and scheduled maintenance in parallel
-    const [fleetResponse] = await Promise.all([
-      fetch('/api/fleet/maintenance'),
-      fetchScheduledMaintenance()
-    ]);
-
+    const fleetResponse = await fetch('/api/fleet/maintenance');
     const data = await fleetResponse.json();
 
     if (!fleetResponse.ok) {
@@ -476,16 +184,7 @@ async function loadMaintenanceData() {
     aircraftTypes = Array.from(typeSet).sort();
     populateTypeFilter();
 
-    // If game time is already available, re-fetch scheduled maintenance with correct dates
-    // so WIP detection uses game time instead of real time
-    if (typeof window.getGlobalWorldTime === 'function' && window.getGlobalWorldTime()) {
-      gameTimeAvailable = true;
-      if (!hasRefetchedWithGameTime) {
-        hasRefetchedWithGameTime = true;
-        await fetchScheduledMaintenance();
-      }
-    }
-
+    // Statuses are pre-computed server-side - render immediately
     displayMaintenanceData(data);
     updateSummaryStats();
   } catch (error) {
@@ -510,172 +209,6 @@ function populateTypeFilter() {
   });
 }
 
-// Get current game time (falls back to real time if not available)
-function getGameTime() {
-  if (typeof window.getGlobalWorldTime === 'function') {
-    const gameTime = window.getGlobalWorldTime();
-    if (gameTime) return gameTime;
-  }
-  return new Date();
-}
-
-// Calculate check status for an aircraft
-// checkType: 'daily', 'weekly', 'A', 'C', 'D'
-function getCheckStatus(ac, checkType) {
-  // First check if this check is currently in progress
-  if (isCheckInProgress(ac.id, checkType)) {
-    return {
-      status: 'inprogress',
-      text: 'WIP',
-      expiryText: 'Check in progress',
-      lastCheckTime: null
-    };
-  }
-
-  // Also check if any heavy maintenance (C/D) is scheduled - treat as WIP
-  // This handles cases where the check hasn't technically "started" yet but is scheduled
-  if (hasScheduledMaintenance(ac.id, checkType)) {
-    return {
-      status: 'inprogress',
-      text: 'WIP',
-      expiryText: 'Maintenance scheduled',
-      lastCheckTime: null
-    };
-  }
-
-  let lastCheckDate;
-  let intervalDays;
-  let intervalHours; // For A check which is hours-based
-
-  // Get the appropriate last check date and interval
-  switch (checkType) {
-    case 'daily':
-      lastCheckDate = ac.lastDailyCheckDate;
-      intervalDays = 2; // Valid for 1-2 calendar days
-      break;
-    case 'weekly':
-      lastCheckDate = ac.lastWeeklyCheckDate;
-      intervalDays = 8; // Valid for 7-8 days
-      break;
-    case 'A':
-      lastCheckDate = ac.lastACheckDate;
-      intervalHours = ac.aCheckIntervalHours || getCheckIntervalForAircraft(ac.id, 'A'); // 800-1000 flight hours
-      break;
-    case 'C':
-      lastCheckDate = ac.lastCCheckDate;
-      intervalDays = ac.cCheckIntervalDays || 730; // 2 years
-      break;
-    case 'D':
-      lastCheckDate = ac.lastDCheckDate;
-      intervalDays = ac.dCheckIntervalDays || getCheckIntervalForAircraft(ac.id, 'D'); // 5-7 years
-      break;
-    default:
-      return { status: 'none', text: '--', expiryText: '', lastCheckTime: null };
-  }
-
-  if (!lastCheckDate) {
-    // Never performed = expired (aircraft can't fly without current checks)
-    return { status: 'expired', text: 'EXP', expiryText: 'Never performed', lastCheckTime: 'Never' };
-  }
-
-  const now = getGameTime();
-  const lastCheck = new Date(lastCheckDate);
-
-  // A check is hours-based, not date-based
-  if (checkType === 'A') {
-    const lastACheckHours = parseFloat(ac.lastACheckHours) || 0;
-    const currentFlightHours = parseFloat(ac.totalFlightHours) || 0;
-    const hoursSinceCheck = currentFlightHours - lastACheckHours;
-    const hoursUntilDue = intervalHours - hoursSinceCheck;
-
-    // Warning at 100 hours before due
-    const warningThreshold = 100;
-
-    if (hoursUntilDue < 0) {
-      return {
-        status: 'expired',
-        text: 'EXP',
-        expiryText: `Due at ${lastACheckHours + intervalHours} hrs`,
-        lastCheckTime: `${lastACheckHours.toFixed(0)} hrs`,
-        intervalHours: intervalHours,
-        hoursRemaining: hoursUntilDue
-      };
-    } else if (hoursUntilDue < warningThreshold) {
-      return {
-        status: 'warning',
-        text: 'DUE',
-        expiryText: `${hoursUntilDue.toFixed(0)} hrs left`,
-        lastCheckTime: `${lastACheckHours.toFixed(0)} hrs`,
-        intervalHours: intervalHours,
-        hoursRemaining: hoursUntilDue
-      };
-    } else {
-      return {
-        status: 'valid',
-        text: 'Valid',
-        expiryText: `${hoursUntilDue.toFixed(0)} hrs left`,
-        lastCheckTime: `${lastACheckHours.toFixed(0)} hrs`,
-        intervalHours: intervalHours,
-        hoursRemaining: hoursUntilDue
-      };
-    }
-  }
-
-  // Date-based checks (daily, weekly, C, D)
-  let expiryDate;
-
-  if (checkType === 'daily') {
-    // Daily check - valid for 2 calendar days until midnight UTC
-    expiryDate = new Date(lastCheck);
-    expiryDate.setUTCDate(expiryDate.getUTCDate() + 2);
-    expiryDate.setUTCHours(23, 59, 59, 999);
-  } else if (checkType === 'weekly') {
-    // Weekly check - valid for 8 days until midnight UTC
-    expiryDate = new Date(lastCheck);
-    expiryDate.setUTCDate(expiryDate.getUTCDate() + 8);
-    expiryDate.setUTCHours(23, 59, 59, 999);
-  } else {
-    // C/D checks - valid for intervalDays from check date
-    expiryDate = new Date(lastCheck);
-    expiryDate.setUTCDate(expiryDate.getUTCDate() + intervalDays);
-    expiryDate.setUTCHours(23, 59, 59, 999);
-  }
-
-  const hoursUntilExpiry = (expiryDate - now) / (1000 * 60 * 60);
-
-  // Warning threshold based on check type
-  let warningHours = 24;
-  if (checkType === 'weekly') warningHours = 24 * 2; // 2 days warning for weekly check
-  if (checkType === 'C') warningHours = 24 * 30; // 30 days warning for C check
-  if (checkType === 'D') warningHours = 24 * 60; // 60 days warning for D check
-
-  if (hoursUntilExpiry < 0) {
-    return {
-      status: 'expired',
-      text: 'EXP',
-      expiryText: formatDateTime(expiryDate),
-      lastCheckTime: formatDateTime(lastCheck),
-      intervalDays: intervalDays
-    };
-  } else if (hoursUntilExpiry < warningHours) {
-    return {
-      status: 'warning',
-      text: 'DUE',
-      expiryText: formatDateTime(expiryDate),
-      lastCheckTime: formatDateTime(lastCheck),
-      intervalDays: intervalDays
-    };
-  } else {
-    return {
-      status: 'valid',
-      text: 'Valid',
-      expiryText: formatDateTime(expiryDate),
-      lastCheckTime: formatDateTime(lastCheck),
-      intervalDays: intervalDays
-    };
-  }
-}
-
 // Format date and time for display (UTC)
 function formatDateTime(date) {
   const d = new Date(date);
@@ -683,22 +216,6 @@ function formatDateTime(date) {
   const hours = String(d.getUTCHours()).padStart(2, '0');
   const minutes = String(d.getUTCMinutes()).padStart(2, '0');
   return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} ${hours}:${minutes}z`;
-}
-
-// Get short expiry text for column display
-function getExpiryShort(checkStatus) {
-  if (checkStatus.status === 'none') return '--';
-  if (checkStatus.status === 'expired') return 'Expired';
-  if (!checkStatus.expiryText) return '--';
-
-  // Show just date and time for valid/warning
-  const d = new Date(checkStatus.expiryText.replace('z', ' UTC'));
-  if (isNaN(d.getTime())) return checkStatus.expiryText;
-
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const hours = String(d.getUTCHours()).padStart(2, '0');
-  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${hours}:${minutes}z`;
 }
 
 // Get aircraft type name
@@ -709,13 +226,9 @@ function getTypeName(ac) {
 
 // Get worst status for an aircraft (for filtering)
 function getWorstStatus(ac) {
-  const dailyCheck = getCheckStatus(ac, 'daily');
-  const weeklyCheck = getCheckStatus(ac, 'weekly');
-  const aCheck = getCheckStatus(ac, 'A');
-  const cCheck = getCheckStatus(ac, 'C');
-  const dCheck = getCheckStatus(ac, 'D');
-
-  const checks = [dailyCheck, weeklyCheck, aCheck, cCheck, dCheck];
+  const checks = ['daily', 'weekly', 'A', 'C', 'D'].map(type =>
+    ac.checkStatuses?.[type] || { status: 'none' }
+  );
 
   // expired includes never-performed checks
   if (checks.some(c => c.status === 'expired')) return 'expired';
@@ -773,8 +286,8 @@ function groupAircraftByType(aircraft) {
 function updateSummaryStats() {
   let overdueCount = 0;
   let allClearCount = 0;
-  const hangarItems = []; // { reg, checks: ['Daily','A'] }
-  const heavyItems = []; // { reg, check: 'C-Check', status: 'warning'|'expired', detail: '28 days' }
+  const hangarItems = [];
+  const heavyItems = [];
 
   allAircraft.forEach(ac => {
     const checks = ['daily', 'weekly', 'A', 'C', 'D'];
@@ -783,23 +296,26 @@ function updateSummaryStats() {
     const wipChecks = [];
 
     checks.forEach(type => {
-      const s = getCheckStatus(ac, type);
+      const s = ac.checkStatuses?.[type] || { status: 'none', text: '--' };
       if (s.status === 'inprogress') {
-        wipChecks.push(type === 'daily' ? 'Daily' : type === 'weekly' ? 'Weekly' : type + ' Check');
+        // Only show A/C/D checks in the hangar (daily/weekly are minor)
+        if (['A', 'C', 'D'].includes(type)) {
+          wipChecks.push(type + ' Check');
+        }
         hasAnyIssue = true;
       }
       if (s.status === 'expired') { hasOverdue = true; hasAnyIssue = true; }
       if (s.status === 'warning') { hasAnyIssue = true; }
     });
 
-    // Collect hangar items
+    // Collect hangar items (only A/C/D checks)
     if (wipChecks.length > 0) {
       hangarItems.push({ reg: ac.registration, checks: wipChecks });
     }
 
     // Heavy checks: C or D that are warning or expired
-    const cStatus = getCheckStatus(ac, 'C');
-    const dStatus = getCheckStatus(ac, 'D');
+    const cStatus = ac.checkStatuses?.C || { status: 'none', text: '--' };
+    const dStatus = ac.checkStatuses?.D || { status: 'none', text: '--' };
     if (['warning', 'expired'].includes(cStatus.status)) {
       heavyItems.push({
         reg: ac.registration,
@@ -889,52 +405,24 @@ function displayMaintenanceData(aircraft) {
     `;
 
     aircraftList.forEach(ac => {
-      const dailyCheck = getCheckStatus(ac, 'daily');
-      const weeklyCheck = getCheckStatus(ac, 'weekly');
-      const aCheck = getCheckStatus(ac, 'A');
-      const cCheck = getCheckStatus(ac, 'C');
-      const dCheck = getCheckStatus(ac, 'D');
+      const checks = ['daily', 'weekly', 'A', 'C', 'D'];
 
-      html += `
-        <div class="maintenance-row">
-          <span class="maintenance-reg">${ac.registration}</span>
-          <div class="maintenance-check-cell">
-            <span class="check-status check-${dailyCheck.status}"
-                  onclick="showCheckDetails('${ac.id}', 'daily')"
+      html += `<div class="maintenance-row">
+          <span class="maintenance-reg">${ac.registration}</span>`;
+
+      checks.forEach(type => {
+        // Use pre-computed status from server, fall back to client-side computation
+        const check = ac.checkStatuses?.[type] || { status: 'none', text: '--' };
+        html += `<div class="maintenance-check-cell">
+            <span class="check-status check-${check.status}"
+                  onclick="showCheckDetails('${ac.id}', '${type}')"
                   title="Click for details">
-              ${dailyCheck.text}
+              ${check.text}
             </span>
-          </div>
-          <div class="maintenance-check-cell">
-            <span class="check-status check-${weeklyCheck.status}"
-                  onclick="showCheckDetails('${ac.id}', 'weekly')"
-                  title="Click for details">
-              ${weeklyCheck.text}
-            </span>
-          </div>
-          <div class="maintenance-check-cell">
-            <span class="check-status check-${aCheck.status}"
-                  onclick="showCheckDetails('${ac.id}', 'A')"
-                  title="Click for details">
-              ${aCheck.text}
-            </span>
-          </div>
-          <div class="maintenance-check-cell">
-            <span class="check-status check-${cCheck.status}"
-                  onclick="showCheckDetails('${ac.id}', 'C')"
-                  title="Click for details">
-              ${cCheck.text}
-            </span>
-          </div>
-          <div class="maintenance-check-cell">
-            <span class="check-status check-${dCheck.status}"
-                  onclick="showCheckDetails('${ac.id}', 'D')"
-                  title="Click for details">
-              ${dCheck.text}
-            </span>
-          </div>
-        </div>
-      `;
+          </div>`;
+      });
+
+      html += `</div>`;
     });
   }
 
@@ -946,7 +434,8 @@ function showCheckDetails(aircraftId, checkType) {
   const ac = allAircraft.find(a => a.id === aircraftId);
   if (!ac) return;
 
-  const checkStatus = getCheckStatus(ac, checkType);
+  // Use pre-computed server status
+  const checkStatus = ac.checkStatuses?.[checkType] || { status: 'none', text: '--' };
 
   const checkNames = {
     'daily': 'Daily Check',
@@ -999,16 +488,15 @@ function showCheckDetails(aircraftId, checkType) {
   `;
 
   // If in progress, show expected completion time
-  if (checkStatus.status === 'inprogress') {
-    const completionInfo = getMaintenanceCompletionTime(aircraftId, checkType);
-    if (completionInfo) {
-      content += `
-        <div class="maint-modal-row">
-          <span class="maint-modal-label">Completes</span>
-          <span class="maint-modal-value">${completionInfo}</span>
-        </div>
-      `;
-    }
+  if (checkStatus.status === 'inprogress' && checkStatus.completionTime) {
+    const completionDate = new Date(checkStatus.completionTime);
+    const completionText = formatDateTime(completionDate);
+    content += `
+      <div class="maint-modal-row">
+        <span class="maint-modal-label">Completes</span>
+        <span class="maint-modal-value">${completionText}</span>
+      </div>
+    `;
   }
 
   if (checkStatus.lastCheckTime) {
@@ -1020,7 +508,7 @@ function showCheckDetails(aircraftId, checkType) {
     `;
   }
 
-  if (checkStatus.expiryText && checkStatus.status !== 'none') {
+  if (checkStatus.expiryText && checkStatus.status !== 'none' && checkStatus.status !== 'inprogress') {
     content += `
       <div class="maint-modal-row">
         <span class="maint-modal-label">${checkStatus.status === 'expired' ? 'Expired On' : 'Expires'}</span>
@@ -1031,7 +519,6 @@ function showCheckDetails(aircraftId, checkType) {
 
   // Show interval/validity info
   if (checkType === 'A') {
-    // A check is hours-based
     const interval = checkStatus.intervalHours || ac.aCheckIntervalHours || getCheckIntervalForAircraft(ac.id, 'A');
     content += `
       <div class="maint-modal-row">
@@ -1040,7 +527,6 @@ function showCheckDetails(aircraftId, checkType) {
       </div>
     `;
   } else if (['C', 'D'].includes(checkType)) {
-    // C and D checks are days-based
     const intervalField = `${checkType.toLowerCase()}CheckIntervalDays`;
     const interval = ac[intervalField] || checkStatus.intervalDays;
     if (interval) {
@@ -1077,20 +563,8 @@ function showCheckDetails(aircraftId, checkType) {
   if (checkStatus.status !== 'none') {
     const country = ac.homeBaseAirport?.country || ac.homeBase?.country || '';
 
-    // If this check is WIP due to a higher check, use that check's engineer name
-    let effectiveCheckType = checkType;
-    if (checkStatus.status === 'inprogress') {
-      // Find the highest level check that's actually being performed
-      // Check hierarchy: D > C > A > weekly > daily
-      const checkHierarchy = ['D', 'C', 'A', 'weekly', 'daily'];
-      for (const higherCheck of checkHierarchy) {
-        if (isCheckInProgress(aircraftId, higherCheck) || hasScheduledMaintenance(aircraftId, higherCheck)) {
-          // This is the actual check being performed
-          effectiveCheckType = higherCheck;
-          break;
-        }
-      }
-    }
+    // Use the effective check type from server for WIP cascading
+    const effectiveCheckType = checkStatus.effectiveCheckType || checkType;
 
     const engineer = getEngineerName(aircraftId, effectiveCheckType, country);
     const label = checkStatus.status === 'inprogress' ? 'Lead Engineer' : 'Signed Off By';
@@ -1177,26 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Re-render when game time becomes available or updates
-let lastGameTimeUpdate = 0;
-let hasRefetchedWithGameTime = false;
-window.addEventListener('worldTimeUpdated', async () => {
-  const now = Date.now();
-  if (now - lastGameTimeUpdate > 5000 && allAircraft.length > 0) {
-    lastGameTimeUpdate = now;
-
-    // Re-fetch scheduled maintenance once when game time becomes available
-    // This ensures we use the correct date range
-    if (!hasRefetchedWithGameTime) {
-      hasRefetchedWithGameTime = true;
-      await fetchScheduledMaintenance();
-      gameTimeAvailable = true; // Mark game time as available
-    }
-
-    updateSummaryStats();
-    onFilterChange();
-  }
-});
+// Statuses are server-computed - the 30-second auto-refresh handles keeping data current
 
 // Periodically refresh data from server (every 30 seconds)
 setInterval(() => {

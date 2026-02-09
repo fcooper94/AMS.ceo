@@ -206,10 +206,126 @@ async function dismissNotification(id, btnEl) {
   }
 }
 
+// Load competition summary for SP worlds
+async function loadCompetitionSummary() {
+  try {
+    const response = await fetch('/api/world/competition');
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data.worldType || data.worldType !== 'singleplayer') return;
+
+    const card = document.getElementById('competitionCard');
+    if (!card) return;
+
+    card.style.display = 'block';
+
+    // Player rank and AI count from new API
+    document.getElementById('compRank').textContent = data.playerRank ? `#${data.playerRank}` : '--';
+    document.getElementById('compAICount').textContent = data.totalAICount || 0;
+    document.getElementById('compContestedRoutes').textContent = data.competitiveRoutes?.length || 0;
+
+    const diffEl = document.getElementById('compDifficulty');
+    const colors = { easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444' };
+    diffEl.textContent = (data.difficulty || '--').toUpperCase();
+    diffEl.style.color = colors[data.difficulty] || 'var(--text-primary)';
+  } catch (err) {
+    // Not an SP world or endpoint not available - hide card
+  }
+}
+
+let worldIsPaused = false;
+
+async function loadSPControls() {
+  try {
+    const res = await fetch('/api/world/info');
+    if (!res.ok) return;
+
+    const world = await res.json();
+    if (world.worldType !== 'singleplayer') return;
+
+    const card = document.getElementById('spControlsCard');
+    if (!card) return;
+    card.style.display = 'block';
+
+    // Set current speed
+    const speedSelect = document.getElementById('spSpeedSelect');
+    if (speedSelect) {
+      const currentSpeed = world.timeAcceleration || 60;
+      // Try exact match first, otherwise add custom option
+      const optExists = [...speedSelect.options].some(o => parseInt(o.value) === currentSpeed);
+      if (optExists) {
+        speedSelect.value = String(currentSpeed);
+      } else {
+        const opt = document.createElement('option');
+        opt.value = String(currentSpeed);
+        opt.textContent = currentSpeed + 'x';
+        opt.selected = true;
+        speedSelect.appendChild(opt);
+      }
+    }
+
+    // Set pause/resume state
+    worldIsPaused = !!world.isPaused;
+    updatePauseResumeUI();
+  } catch (err) {
+    // SP controls not critical
+  }
+}
+
+function updatePauseResumeUI() {
+  const pauseIcon = document.getElementById('spPauseIcon');
+  const playIcon = document.getElementById('spPlayIcon');
+  const text = document.getElementById('spPauseResumeText');
+  const status = document.getElementById('spWorldStatus');
+
+  if (worldIsPaused) {
+    if (pauseIcon) pauseIcon.style.display = 'none';
+    if (playIcon) playIcon.style.display = '';
+    if (text) text.textContent = 'Resume';
+    if (status) { status.textContent = 'Paused'; status.style.color = 'var(--warning-color)'; }
+  } else {
+    if (pauseIcon) pauseIcon.style.display = '';
+    if (playIcon) playIcon.style.display = 'none';
+    if (text) text.textContent = 'Pause';
+    if (status) { status.textContent = 'Running'; status.style.color = 'var(--success-color)'; }
+  }
+}
+
+async function toggleWorldPause() {
+  try {
+    const endpoint = worldIsPaused ? '/api/world/resume' : '/api/world/pause';
+    const res = await fetch(endpoint, { method: 'POST' });
+    if (res.ok) {
+      worldIsPaused = !worldIsPaused;
+      updatePauseResumeUI();
+    }
+  } catch (err) {
+    console.error('Error toggling pause:', err);
+  }
+}
+
+async function changeWorldSpeed(factor) {
+  try {
+    const res = await fetch('/api/world/acceleration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ factor: parseInt(factor) })
+    });
+    if (!res.ok) {
+      console.error('Failed to change speed');
+    }
+  } catch (err) {
+    console.error('Error changing speed:', err);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadDashboardStats();
   loadPerformanceStats();
   loadNotifications();
+  loadCompetitionSummary();
+  loadSPControls();
 
   // Measure and set navbar height for fixed sidebar positioning
   const navbar = document.querySelector('.navbar');

@@ -9,6 +9,7 @@ let updateInterval = null;
 let activeFlights = []; // Store flight data for selection
 let airlineFilterMode = 'mine'; // 'mine' or 'all'
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
+let flightsListOpen = window.innerWidth > 768; // Expanded by default on desktop, collapsed on mobile
 
 // Smooth animation for aircraft markers
 const flightAnimations = new Map(); // Map of flight ID to animation state
@@ -301,6 +302,24 @@ function initMap() {
       deselectFlight();
     });
   }
+
+  // Flights list toggle button
+  const flightsToggle = document.getElementById('flightsListToggle');
+  if (flightsToggle) {
+    flightsToggle.addEventListener('click', toggleFlightsList);
+  }
+
+  // Set initial flights list state based on screen size
+  const flightsPanel = document.getElementById('flightsListPanel');
+  if (flightsPanel) {
+    if (flightsListOpen) {
+      flightsPanel.style.display = 'flex';
+      if (flightsToggle) flightsToggle.classList.add('active');
+    } else {
+      flightsPanel.style.display = 'none';
+      if (flightsToggle) flightsToggle.classList.remove('active');
+    }
+  }
 }
 
 // Handle airline filter change
@@ -370,11 +389,19 @@ async function loadActiveFlights() {
         }
         pendingAircraftSelect = null; // Clear so we don't try again on refresh
       }
+      // Update the flights list panel
+      if (flightsListOpen) updateFlightsList();
+      // Always update the toggle badge count
+      const countEl = document.getElementById('flightsListCount');
+      if (countEl) countEl.textContent = activeFlights.length;
     } else {
       activeFlights = [];
       clearMap();
       hideFlightInfo();
       hideMapLoadingOverlay();
+      if (flightsListOpen) updateFlightsList();
+      const countEl = document.getElementById('flightsListCount');
+      if (countEl) countEl.textContent = '0';
     }
   } catch (error) {
     console.error('[WorldMap] Error loading active flights:', error);
@@ -775,17 +802,16 @@ function createFlightMarker(flight, position) {
 
   const createIcon = () => L.divIcon({
     className: 'aircraft-marker',
-    html: `
-      <div class="aircraft-marker-wrapper">
+    html: isOtherAirline
+      ? `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="transform: rotate(${bearing}deg)">${aircraftSvg}</div></div>`
+      : `<div class="aircraft-marker-wrapper">
         <div class="${markerClass}" style="transform: rotate(${bearing}deg)">${aircraftSvg}</div>
         <div class="aircraft-label">
           ${flightNumber ? `<div class="flight-number-label">${flightNumber}</div>` : ''}
           ${registration ? `<div>${registration}</div>` : ''}
           ${aircraftModel ? `<div>${aircraftModel}</div>` : ''}
-          ${isOtherAirline && airlineName ? `<div class="airline-name-label">${airlineName}</div>` : ''}
         </div>
-      </div>
-    `,
+      </div>`,
     iconSize: [24, 24],
     iconAnchor: [12, 12]
   });
@@ -1295,6 +1321,20 @@ function hideFlightInfo() {
 
 // Clear route line and airport markers for previously selected flight
 function clearSelectedFlightElements() {
+  // Remove selected highlight from previous aircraft marker
+  if (selectedFlightId) {
+    const prevMarkers = flightMarkers.get(selectedFlightId);
+    if (prevMarkers) {
+      (Array.isArray(prevMarkers) ? prevMarkers : [prevMarkers]).forEach(m => {
+        const el = m.getElement();
+        if (el) {
+          const inner = el.querySelector('.aircraft-marker-inner');
+          if (inner) inner.classList.remove('selected');
+        }
+      });
+    }
+  }
+
   // Remove route lines (handle both single lines and arrays for tech stop routes)
   routeLines.forEach((line) => {
     if (Array.isArray(line)) {
@@ -1331,6 +1371,18 @@ function selectFlight(flightId) {
   createRouteLine(flight);
   createAirportMarkers(flight);
 
+  // Highlight the selected aircraft marker
+  const selectedMarkers = flightMarkers.get(flightId);
+  if (selectedMarkers) {
+    (Array.isArray(selectedMarkers) ? selectedMarkers : [selectedMarkers]).forEach(m => {
+      const el = m.getElement();
+      if (el) {
+        const inner = el.querySelector('.aircraft-marker-inner');
+        if (inner) inner.classList.add('selected');
+      }
+    });
+  }
+
   // Show flight info
   showFlightInfo(flight);
 
@@ -1349,6 +1401,9 @@ function selectFlight(flightId) {
     );
     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 });
   }
+
+  // Highlight in flights list
+  if (flightsListOpen) updateFlightsList();
 }
 
 // Deselect flight
@@ -1356,9 +1411,13 @@ function deselectFlight() {
   clearSelectedFlightElements();
   selectedFlightId = null;
   hideFlightInfo();
+
+  // Remove highlight from flights list
+  if (flightsListOpen) updateFlightsList();
 }
 
 // Update flight positions (called on world time update)
+// _tick counter used to throttle flights list refresh
 function updateFlightPositions() {
   // Recalculate positions for all flights
   activeFlights.forEach(flight => {
@@ -1402,7 +1461,14 @@ function updateFlightPositions() {
       showFlightInfo(flight);
     }
   }
+
+  // Refresh flights list phases (throttled - every 5th update)
+  if (flightsListOpen && ++updateFlightPositions._tick % 5 === 0) {
+    updateFlightsList();
+  }
 }
+
+updateFlightPositions._tick = 0;
 
 // Clear all map elements
 function clearMap() {
@@ -1427,6 +1493,113 @@ function clearMap() {
 
 // Expose selectFlight globally for onclick handlers
 window.selectFlight = selectFlight;
+
+// Toggle live flights list panel
+function toggleFlightsList() {
+  const panel = document.getElementById('flightsListPanel');
+  const toggle = document.getElementById('flightsListToggle');
+  if (!panel || !toggle) return;
+
+  flightsListOpen = !flightsListOpen;
+  panel.style.display = flightsListOpen ? 'flex' : 'none';
+  toggle.classList.toggle('active', flightsListOpen);
+
+  if (flightsListOpen) {
+    updateFlightsList();
+  }
+}
+
+// Update the live flights list with current flight data
+function updateFlightsList() {
+  const body = document.getElementById('flightsListBody');
+  const countEl = document.getElementById('flightsListCount');
+  const badgeEl = document.getElementById('flightsListBadge');
+  if (!body) return;
+
+  // Count only airborne flights (not turnaround/techstop)
+  const airborneFlights = activeFlights.filter(f => {
+    const pos = calculateFlightPosition(f);
+    return pos.phase === 'outbound' || pos.phase === 'return';
+  });
+
+  const totalCount = activeFlights.length;
+  if (countEl) countEl.textContent = totalCount;
+  if (badgeEl) badgeEl.textContent = totalCount;
+
+  if (totalCount === 0) {
+    body.innerHTML = '<div class="no-flights">No active flights</div>';
+    return;
+  }
+
+  // Sort: own flights first, then by route number
+  const sorted = [...activeFlights].sort((a, b) => {
+    // Own flights first
+    if (a.isOwnFlight !== false && b.isOwnFlight === false) return -1;
+    if (a.isOwnFlight === false && b.isOwnFlight !== false) return 1;
+    // Then by route number
+    const rA = a.route?.routeNumber || '';
+    const rB = b.route?.routeNumber || '';
+    return rA.localeCompare(rB);
+  });
+
+  let html = '';
+  for (const flight of sorted) {
+    const position = calculateFlightPosition(flight);
+    const phase = position.phase || 'outbound';
+    const isOther = flight.isOwnFlight === false;
+    const depCode = flight.departureAirport?.iataCode || flight.departureAirport?.icaoCode || '???';
+    const arrCode = flight.arrivalAirport?.iataCode || flight.arrivalAirport?.icaoCode || '???';
+    const routeNum = position.routeNumber || flight.route?.routeNumber || '';
+    const model = flight.aircraft?.aircraftType?.model || '';
+    const variant = flight.aircraft?.aircraftType?.variant || '';
+    const acType = variant ? `${model}-${variant}` : model;
+    const reg = flight.aircraft?.registration || '';
+    const isSelected = flight.id === selectedFlightId;
+
+    html += `<div class="fl-entry${isOther ? ' other-airline' : ''}${isSelected ? ' selected' : ''}" data-flight-id="${flight.id}" onclick="focusFlight('${flight.id}')">
+      <div class="fl-phase ${phase}"></div>
+      <div class="fl-info">
+        <div class="fl-row-top">
+          <span class="fl-route-num">${routeNum}</span>
+          <span class="fl-airports">${depCode}<span class="fl-arrow">${phase === 'return' ? ' ◂ ' : ' ▸ '}</span>${arrCode}</span>
+        </div>
+        <div class="fl-row-bottom">
+          <span class="fl-aircraft">${acType}</span>
+          <span class="fl-separator">·</span>
+          <span>${reg}</span>
+          ${isOther && flight.airlineName ? `<span class="fl-separator">·</span><span class="fl-airline-name">${flight.airlineName}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+// Focus map on a specific flight and select it
+function focusFlight(flightId) {
+  const flight = activeFlights.find(f => f.id === flightId);
+  if (!flight) return;
+
+  const position = calculateFlightPosition(flight);
+
+  // If on the ground (turnaround), center on the airport position
+  if (position.phase === 'turnaround') {
+    map.setView([parseFloat(flight.arrivalAirport.latitude), parseFloat(flight.arrivalAirport.longitude)], 6);
+  } else {
+    // Center on current aircraft position
+    map.setView([position.lat, position.lng], 5);
+  }
+
+  // Select the flight (shows route + details panel)
+  selectFlight(flightId);
+
+  // Update the list to highlight selected
+  updateFlightsList();
+}
+
+// Make focusFlight available globally for onclick
+window.focusFlight = focusFlight;
 
 // Initialize the world map
 async function initializeWorldMap() {

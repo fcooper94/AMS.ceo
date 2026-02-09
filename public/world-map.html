@@ -1,4 +1,4 @@
-<!-- TITLE: World Map - Airline Manager -->
+<!-- TITLE: World Map - AMS.ceo -->
 <!-- SUBTITLE: Live Flight Tracking -->
 <!-- SCRIPTS: /js/world-map.js -->
 <!-- STYLES: /css/world-map.css -->
@@ -20,6 +20,31 @@
         <button class="panel-close-btn" id="closePanelBtn" title="Close">&times;</button>
       </div>
       <div class="flight-list" id="flightList"></div>
+    </div>
+
+    <!-- Live Flights List Toggle Button -->
+    <button class="flights-list-toggle active" id="flightsListToggle" title="Live Flights">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="8" y1="6" x2="21" y2="6"></line>
+        <line x1="8" y1="12" x2="21" y2="12"></line>
+        <line x1="8" y1="18" x2="21" y2="18"></line>
+        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+      </svg>
+      <span class="flights-list-label">Live Flights</span>
+      <span id="flightsListCount">0</span>
+    </button>
+
+    <!-- Live Flights List Panel -->
+    <div class="flights-list-panel" id="flightsListPanel">
+      <div class="flights-list-header">
+        <span class="flights-list-title">LIVE FLIGHTS</span>
+        <span class="flights-list-badge" id="flightsListBadge">0</span>
+      </div>
+      <div class="flights-list-body" id="flightsListBody">
+        <div class="no-flights">No active flights</div>
+      </div>
     </div>
 
     <!-- Map Container -->

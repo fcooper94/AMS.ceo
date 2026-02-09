@@ -3,7 +3,8 @@ const sequelize = require('../config/database');
 
 /**
  * ScheduledFlight Model
- * Represents an individual scheduled flight operation
+ * Represents a weekly recurring flight template.
+ * Each record defines a flight that repeats every week on the specified day.
  */
 const ScheduledFlight = sequelize.define('ScheduledFlight', {
   id: {
@@ -29,11 +30,15 @@ const ScheduledFlight = sequelize.define('ScheduledFlight', {
       key: 'id'
     }
   },
-  scheduledDate: {
-    type: DataTypes.DATEONLY,
+  dayOfWeek: {
+    type: DataTypes.INTEGER,
     allowNull: false,
-    field: 'scheduled_date',
-    comment: 'Date of the scheduled flight (YYYY-MM-DD)'
+    field: 'day_of_week',
+    comment: 'Day of week this flight departs (0=Sunday, 1=Monday ... 6=Saturday)',
+    validate: {
+      min: 0,
+      max: 6
+    }
   },
   departureTime: {
     type: DataTypes.TIME,
@@ -41,23 +46,29 @@ const ScheduledFlight = sequelize.define('ScheduledFlight', {
     field: 'departure_time',
     comment: 'Scheduled departure time'
   },
-  arrivalDate: {
-    type: DataTypes.DATEONLY,
-    allowNull: true,
-    field: 'arrival_date',
-    comment: 'Date of arrival (may be different from departure date for overnight flights)'
-  },
   arrivalTime: {
     type: DataTypes.TIME,
     allowNull: true,
     field: 'arrival_time',
-    comment: 'Scheduled arrival time'
+    comment: 'Scheduled arrival time (when round-trip completes)'
   },
-  status: {
-    type: DataTypes.ENUM('scheduled', 'in_progress', 'completed', 'cancelled'),
-    defaultValue: 'scheduled',
-    allowNull: false,
-    comment: 'Current status of the flight'
+  arrivalDayOffset: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'arrival_day_offset',
+    comment: 'Days after departure when round-trip completes (0=same day, 1=next day, etc.)'
+  },
+  totalDurationMinutes: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'total_duration_minutes',
+    comment: 'Cached total round-trip duration in minutes'
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    field: 'is_active',
+    comment: 'Whether this flight template is active'
   }
 }, {
   tableName: 'scheduled_flights',
@@ -71,14 +82,11 @@ const ScheduledFlight = sequelize.define('ScheduledFlight', {
       fields: ['aircraft_id']
     },
     {
-      fields: ['scheduled_date']
-    },
-    {
-      fields: ['arrival_date']
+      fields: ['day_of_week']
     },
     {
       unique: true,
-      fields: ['aircraft_id', 'scheduled_date', 'departure_time']
+      fields: ['aircraft_id', 'day_of_week', 'departure_time']
     }
   ]
 });

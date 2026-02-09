@@ -176,7 +176,7 @@ router.get('/notifications', async (req, res) => {
       // Check for idle aircraft (no scheduled flights) - only active aircraft
       const activeFleet = fleet.filter(ac => ac.status === 'active');
       const aircraftWithFlights = activeFleet.length > 0 ? await ScheduledFlight.findAll({
-        where: { aircraft_id: activeFleet.map(a => a.id) },
+        where: { aircraft_id: activeFleet.map(a => a.id), is_active: true },
         attributes: ['aircraft_id'],
         group: ['aircraft_id']
       }) : [];

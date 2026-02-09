@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
 const { World, WorldMembership, User, Airport } = require('../models');
 const eraEconomicService = require('../services/eraEconomicService');
+const { getAICount } = require('../data/aiDifficultyConfig');
 
 /**
  * Get all available worlds for user to join
@@ -15,10 +17,17 @@ router.get('/available', async (req, res) => {
     // Find user in database
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
 
-    // Get all active worlds
+    // Get all active worlds (SP worlds only visible to their owner)
     const worlds = await World.findAll({
-      where: { status: 'active' },
-      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate'],
+      where: {
+        status: 'active',
+        [Op.or]: [
+          { worldType: 'multiplayer' },
+          { worldType: null },
+          { ownerUserId: user ? user.id : null }
+        ]
+      },
+      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate', 'worldType', 'difficulty'],
       order: [['createdAt', 'DESC']]
     });
 
@@ -35,7 +44,9 @@ router.get('/available', async (req, res) => {
 
     // Enhance worlds with membership status
     const worldsWithStatus = await Promise.all(worlds.map(async (world) => {
-      const memberCount = await WorldMembership.count({ where: { worldId: world.id } });
+      const isSP = world.worldType === 'singleplayer';
+      const humanCount = await WorldMembership.count({ where: { worldId: world.id, isAI: false } });
+      const aiCount = isSP ? await WorldMembership.count({ where: { worldId: world.id, isAI: true } }) : 0;
       const membership = membershipMap.get(world.id);
 
       // Calculate the decade from currentTime (e.g., 1995 -> "90's")
@@ -46,7 +57,8 @@ router.get('/available', async (req, res) => {
       return {
         ...world.toJSON(),
         era: decadeString,
-        memberCount,
+        memberCount: humanCount,
+        aiCount,
         isMember: !!membership,
         airlineName: membership?.airlineName,
         airlineCode: membership?.airlineCode,
@@ -406,6 +418,143 @@ router.post('/set-active', async (req, res) => {
       console.error('Error setting active world:', error);
     }
     res.status(500).json({ error: 'Failed to set active world' });
+  }
+});
+
+/**
+ * Create a single-player world with AI competitors
+ */
+router.post('/create-singleplayer', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode } = req.body;
+
+    // Validate required fields
+    if (!name || !era || !difficulty || !baseAirportId || !airlineName || !airlineCode || !iataCode) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!/^[A-Z]{3}$/.test(airlineCode)) {
+      return res.status(400).json({ error: 'ICAO code must be 3 uppercase letters' });
+    }
+    if (!/^[A-Z]{2}$/.test(iataCode)) {
+      return res.status(400).json({ error: 'IATA code must be 2 uppercase letters' });
+    }
+    if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+      return res.status(400).json({ error: 'Difficulty must be easy, medium, or hard' });
+    }
+
+    // Verify airport
+    const airport = await Airport.findByPk(baseAirportId);
+    if (!airport) {
+      return res.status(404).json({ error: 'Selected airport not found' });
+    }
+
+    // Find or create user
+    const [user] = await User.findOrCreate({
+      where: { vatsimId: req.user.vatsimId },
+      defaults: {
+        vatsimId: req.user.vatsimId,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        rating: req.user.rating,
+        pilotRating: req.user.pilotRating,
+        division: req.user.division,
+        subdivision: req.user.subdivision,
+        lastLogin: new Date()
+      }
+    });
+
+    // Calculate start date from era
+    const startYear = parseInt(era);
+    const startDate = new Date(`${startYear}-01-01T00:00:00Z`);
+    const acceleration = parseFloat(timeAcceleration) || 60;
+
+    // Create the world
+    const world = await World.create({
+      name,
+      description: `Single-player world (${difficulty}) - ${airlineName}`,
+      startDate,
+      currentTime: startDate,
+      timeAcceleration: acceleration,
+      era: startYear,
+      maxPlayers: 1,
+      status: 'active',
+      joinCost: 0,
+      weeklyCost: 0,
+      freeWeeks: 0,
+      worldType: 'singleplayer',
+      difficulty,
+      ownerUserId: user.id
+    });
+
+    // Calculate starting capital
+    const startingBalance = eraEconomicService.getStartingCapital(startYear);
+
+    // Create human player's membership
+    const membership = await WorldMembership.create({
+      userId: user.id,
+      worldId: world.id,
+      airlineName,
+      airlineCode,
+      iataCode,
+      region: airport.country,
+      baseAirportId,
+      balance: startingBalance,
+      reputation: 50,
+      isAI: false
+    });
+
+    // Calculate expected AI count (actual spawning happens via aiSpawningService)
+    const aiCount = getAICount(difficulty);
+
+    // Spawn AI airlines (lazy-load to avoid circular deps)
+    try {
+      const aiSpawningService = require('../services/aiSpawningService');
+      await aiSpawningService.spawnAIAirlines(world, difficulty, airport);
+    } catch (spawnErr) {
+      console.error('Error spawning AI airlines:', spawnErr.message);
+      console.error('Stack:', spawnErr.stack);
+      if (spawnErr.original) console.error('DB error:', spawnErr.original.message);
+      // World still created successfully, AI can be spawned later
+    }
+
+    // Start the world time service
+    try {
+      const worldTimeService = require('../services/worldTimeService');
+      await worldTimeService.startWorld(world.id);
+    } catch (startErr) {
+      console.error('Error starting world time:', startErr.message);
+    }
+
+    // Set as active world
+    req.session.activeWorldId = world.id;
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    res.json({
+      message: 'Single-player world created successfully',
+      worldId: world.id,
+      worldName: world.name,
+      aiCount,
+      startingBalance
+    });
+  } catch (error) {
+    console.error('Error creating SP world:', error);
+
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ error: 'A world with that name already exists' });
+    }
+
+    res.status(500).json({ error: 'Failed to create single-player world' });
   }
 });
 

@@ -5,6 +5,14 @@ let airportSearchTimeout = null;
 let allAirports = [];
 let filteredAirports = [];
 
+// SP modal state
+let spSelectedAirportId = null;
+let spAirportSearchTimeout = null;
+let airportBrowserContext = 'join'; // 'join' or 'sp'
+
+// AI count by difficulty (mirrors aiDifficultyConfig.js spawnTiers totals)
+const AI_TOTAL_COUNTS = { easy: 200, medium: 310, hard: 460 };
+
 // Airport loading overlay functions
 function showAirportLoadingOverlay(message = 'Loading...') {
   let overlay = document.getElementById('airportLoadingOverlay');
@@ -293,6 +301,7 @@ async function loadWorlds() {
 
 // Create world card element (returns DOM element)
 function createWorldCard(world, isMember, userCredits, userUnlimited) {
+  const isSP = world.worldType === 'singleplayer';
   const timeDate = new Date(world.currentTime);
   const formattedDate = timeDate.toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -308,6 +317,10 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   const joinCost = world.joinCost !== undefined ? world.joinCost : 10;
   const freeWeeks = world.freeWeeks || 0;
   const canAffordJoin = !isMember && (userUnlimited || (userCredits || 0) >= joinCost);
+
+  // Difficulty badge colors
+  const difficultyColors = { easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444' };
+  const difficultyColor = difficultyColors[world.difficulty] || '#f59e0b';
 
   // Check if world is ending within 6 game months
   let endingBannerHtml = '';
@@ -335,43 +348,37 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   card.className = `world-card ${isMember ? 'member' : ''}`;
   card.setAttribute('data-world-id', world.id);
 
-  card.innerHTML = `
-    <div class="world-card-header">
-      <span class="world-card-status">${isMember ? 'Joined' : 'Available'}</span>
-      <span class="world-card-era">ERA ${world.era || 2010}</span>
-    </div>
+  // Build the 4th stat column differently for SP vs MP
+  const fourthStat = isSP
+    ? `<div class="world-card-stat">
+        <div class="world-card-stat-label">AI Airlines</div>
+        <div class="world-card-stat-value">${world.aiCount || 0}</div>
+      </div>`
+    : `<div class="world-card-stat">
+        <div class="world-card-stat-label">Members</div>
+        <div class="world-card-stat-value">${world.memberCount || 0}/${world.maxPlayers || 100}</div>
+      </div>`;
 
-    ${endingBannerHtml}
+  // Build header badges
+  const statusBadge = isSP
+    ? `<span class="world-card-status" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">Single Player</span>`
+    : `<span class="world-card-status">${isMember ? 'Joined' : 'Available'}</span>`;
 
-    <div class="world-card-body">
-      <div class="world-card-name">${world.name || 'Unnamed World'}</div>
-      ${isMember && world.airlineName ? `
-        <div class="world-card-airline">${world.airlineName} (${world.airlineCode})</div>
-      ` : ''}
-      ${world.description ? `
-        <div class="world-card-description">${world.description}</div>
-      ` : ''}
-      <div class="world-card-stats">
-        <div class="world-card-stat">
-          <div class="world-card-stat-label">Date</div>
-          <div class="world-card-stat-value">${formattedDate}</div>
-        </div>
-        <div class="world-card-stat">
-          <div class="world-card-stat-label">Time</div>
-          <div class="world-card-stat-value world-current-time">${formattedTime}</div>
-        </div>
-        <div class="world-card-stat">
-          <div class="world-card-stat-label">Speed</div>
-          <div class="world-card-stat-value">${world.timeAcceleration || 60}x</div>
-        </div>
-        <div class="world-card-stat">
-          <div class="world-card-stat-label">Members</div>
-          <div class="world-card-stat-value">${world.memberCount || 0}/${world.maxPlayers || 100}</div>
-        </div>
+  const difficultyBadge = isSP && world.difficulty
+    ? `<span class="world-card-status" style="background: ${difficultyColor}22; color: ${difficultyColor}; text-transform: uppercase;">${world.difficulty}</span>`
+    : '';
+
+  // Build footer
+  let footerHtml;
+  if (isSP) {
+    footerHtml = `
+      <div class="world-card-costs">
+        <span class="cost-badge weekly" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">No credits required</span>
       </div>
-    </div>
-
-    <div class="world-card-footer">
+      <button class="btn btn-primary continue-game-btn">CONTINUE</button>
+    `;
+  } else {
+    footerHtml = `
       <div class="world-card-costs">
         <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
         ${!isMember ? `<span class="cost-badge join">${joinCost} to join</span>` : ''}
@@ -389,6 +396,45 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
           </svg>JOIN
         </button>
       `)}
+    `;
+  }
+
+  card.innerHTML = `
+    <div class="world-card-header">
+      ${statusBadge}
+      ${difficultyBadge}
+      <span class="world-card-era">ERA ${world.era || 2010}</span>
+    </div>
+
+    ${endingBannerHtml}
+
+    <div class="world-card-body">
+      <div class="world-card-name">${world.name || 'Unnamed World'}</div>
+      ${isMember && world.airlineName ? `
+        <div class="world-card-airline">${world.airlineName} (${world.airlineCode})</div>
+      ` : ''}
+      ${!isSP && world.description ? `
+        <div class="world-card-description">${world.description}</div>
+      ` : ''}
+      <div class="world-card-stats">
+        <div class="world-card-stat">
+          <div class="world-card-stat-label">Date</div>
+          <div class="world-card-stat-value">${formattedDate}</div>
+        </div>
+        <div class="world-card-stat">
+          <div class="world-card-stat-label">Time</div>
+          <div class="world-card-stat-value world-current-time">${formattedTime}</div>
+        </div>
+        <div class="world-card-stat">
+          <div class="world-card-stat-label">Speed</div>
+          <div class="world-card-stat-value">${world.timeAcceleration || 60}x</div>
+        </div>
+        ${fourthStat}
+      </div>
+    </div>
+
+    <div class="world-card-footer">
+      ${footerHtml}
     </div>
   `;
 
@@ -396,7 +442,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   const cardBody = card.querySelector('.world-card-body');
   if (cardBody) {
     cardBody.addEventListener('click', () => {
-      if (isMember) {
+      if (isMember || isSP) {
         enterWorld(world.id);
       } else {
         openJoinModal(world.id, world.name, world.joinCost, world.weeklyCost, world.freeWeeks);
@@ -854,7 +900,8 @@ function showErrorMessage(message) {
 }
 
 // Airport Browser Functions
-async function openAirportBrowser() {
+async function openAirportBrowser(context) {
+  airportBrowserContext = context || 'join';
   document.getElementById('airportBrowserModal').style.display = 'flex';
   await loadAllAirports();
 }
@@ -1117,7 +1164,7 @@ function renderAirportBrowser() {
   }
 
   listDiv.innerHTML = filteredAirports.map(airport => `
-    <div onclick="selectAirportFromBrowser('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1})" style="
+    <div onclick="selectAirportFromBrowser('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1}, '${(airport.type || 'Regional').replace(/'/g, "\\'")}')" style="
       padding: 1rem;
       margin-bottom: 0.75rem;
       background: var(--surface-elevated);
@@ -1221,12 +1268,223 @@ function generateCapacityScaleCompact(percentage) {
   `;
 }
 
-function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers) {
+function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType) {
   // Close the browser modal
   closeAirportBrowser();
 
-  // Select the airport in the join modal
-  selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers);
+  if (airportBrowserContext === 'sp') {
+    selectSPAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType);
+  } else {
+    selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers);
+  }
+}
+
+// ============================
+// Single-Player World Creation
+// ============================
+
+function openCreateSPModal() {
+  spSelectedAirportId = null;
+  document.getElementById('spWorldName').value = '';
+  document.getElementById('spAirlineName').value = '';
+  document.getElementById('spAirlineCode').value = '';
+  document.getElementById('spIataCode').value = '';
+  document.getElementById('spEra').value = '2010';
+  document.getElementById('spSpeed').value = '60';
+  document.querySelector('input[name="spDifficulty"][value="medium"]').checked = true;
+  document.getElementById('spBaseAirport').value = '';
+  document.getElementById('spBaseAirportType').value = '';
+  document.getElementById('spAirportSearch').value = '';
+  document.getElementById('spAirportSearch').style.display = 'block';
+  document.getElementById('spSelectedAirportDisplay').style.display = 'none';
+  document.getElementById('spAirportResults').style.display = 'none';
+  document.getElementById('spCreateError').style.display = 'none';
+  document.getElementById('spAICountPreview').textContent = 'AI Competitors: Select airport to calculate';
+  updateSPPreview();
+  document.getElementById('createSPModal').style.display = 'flex';
+}
+
+function closeCreateSPModal() {
+  document.getElementById('createSPModal').style.display = 'none';
+}
+
+function updateSPPreview() {
+  const era = parseInt(document.getElementById('spEra').value) || 2010;
+  const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value || 'medium';
+  const airportType = document.getElementById('spBaseAirportType').value;
+
+  // Update starting capital preview
+  // Simple era-based multiplier (mirrors eraEconomicService)
+  const eraMultipliers = {
+    1950: 0.10, 1960: 0.15, 1970: 0.25, 1980: 0.35,
+    1990: 0.50, 2000: 0.70, 2010: 0.85, 2020: 1.00
+  };
+  const decade = Math.floor(era / 10) * 10;
+  const mult = eraMultipliers[decade] || 1.0;
+  const baseCapital = 37500000;
+  const capital = Math.round(baseCapital * mult);
+  const capitalFormatted = capital >= 1000000
+    ? `$${(capital / 1000000).toFixed(1)}M`
+    : `$${(capital / 1000).toFixed(0)}K`;
+  document.getElementById('spStartingCapital').textContent = `Starting Capital: ${capitalFormatted}`;
+
+  // Update AI count preview
+  const aiCount = AI_TOTAL_COUNTS[difficulty] || AI_TOTAL_COUNTS['medium'];
+  document.getElementById('spAICountPreview').textContent = `AI Competitors: ~${aiCount} airlines`;
+}
+
+// SP Airport search
+async function searchSPAirports(query) {
+  if (!query || query.length < 2) {
+    document.getElementById('spAirportResults').style.display = 'none';
+    return;
+  }
+
+  try {
+    const era = document.getElementById('spEra').value;
+    const response = await fetch(`/api/world/airports?search=${encodeURIComponent(query)}&era=${era}`);
+    const resultsDiv = document.getElementById('spAirportResults');
+
+    if (!response.ok) {
+      resultsDiv.innerHTML = '<div style="padding: 1rem; color: var(--warning-color);">Error loading airports</div>';
+      resultsDiv.style.display = 'block';
+      return;
+    }
+
+    const data = await response.json();
+    const airports = data.airports || data;
+
+    if (!Array.isArray(airports) || airports.length === 0) {
+      resultsDiv.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary);">No airports found</div>';
+      resultsDiv.style.display = 'block';
+      return;
+    }
+
+    resultsDiv.innerHTML = airports.slice(0, 10).map(airport => `
+      <div class="airport-result-item" onclick="selectSPAirport('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1}, '${(airport.type || 'Regional').replace(/'/g, "\\'")}')" style="
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+      " onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='var(--surface-elevated)'">
+        <div style="font-weight: 600; color: var(--text-primary);">${airport.name} (${airport.icaoCode})</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">${airport.city}, ${airport.country} &bull; ${airport.type}</div>
+      </div>
+    `).join('');
+
+    resultsDiv.style.display = 'block';
+  } catch (error) {
+    console.error('Error searching airports:', error);
+  }
+}
+
+function selectSPAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType) {
+  spSelectedAirportId = id;
+  document.getElementById('spBaseAirport').value = id;
+  document.getElementById('spBaseAirportType').value = airportType || 'Regional';
+  document.getElementById('spSelectedAirportName').textContent = `${name} (${icao})`;
+  document.getElementById('spSelectedAirportLocation').textContent = `${city}, ${country}`;
+  document.getElementById('spSelectedAirportTraffic').innerHTML = generateLevelScale(trafficDemand || 5);
+
+  const paxText = annualPassengers >= 1
+    ? `${annualPassengers.toFixed(1)}M passengers/year`
+    : `${(annualPassengers * 1000).toFixed(0)}K passengers/year`;
+  document.getElementById('spSelectedAirportPassengers').textContent = paxText;
+  document.getElementById('spSelectedAirportInfrastructure').innerHTML = generateCapacityScale(spareCapacity || 0);
+
+  document.getElementById('spSelectedAirportDisplay').style.display = 'block';
+  document.getElementById('spAirportSearch').style.display = 'none';
+  document.getElementById('spAirportResults').style.display = 'none';
+  document.getElementById('spCreateError').style.display = 'none';
+
+  updateSPPreview();
+}
+
+function clearSPSelectedAirport() {
+  spSelectedAirportId = null;
+  document.getElementById('spBaseAirport').value = '';
+  document.getElementById('spBaseAirportType').value = '';
+  document.getElementById('spAirportSearch').value = '';
+  document.getElementById('spAirportSearch').style.display = 'block';
+  document.getElementById('spSelectedAirportDisplay').style.display = 'none';
+  document.getElementById('spAirportResults').style.display = 'none';
+  document.getElementById('spAICountPreview').textContent = 'AI Competitors: Select airport to calculate';
+}
+
+async function createSinglePlayerWorld() {
+  const name = document.getElementById('spWorldName').value.trim();
+  const era = document.getElementById('spEra').value;
+  const timeAcceleration = document.getElementById('spSpeed').value;
+  const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value;
+  const airlineName = document.getElementById('spAirlineName').value.trim();
+  const airlineCode = document.getElementById('spAirlineCode').value.trim().toUpperCase();
+  const iataCode = document.getElementById('spIataCode').value.trim().toUpperCase();
+  const baseAirportId = document.getElementById('spBaseAirport').value;
+  const errorDiv = document.getElementById('spCreateError');
+
+  // Validation
+  if (!name) {
+    errorDiv.textContent = 'Please enter a world name';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (!airlineName) {
+    errorDiv.textContent = 'Please enter an airline name';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (!/^[A-Z]{3}$/.test(airlineCode)) {
+    errorDiv.textContent = 'ICAO code must be exactly 3 uppercase letters';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (!/^[A-Z]{2}$/.test(iataCode)) {
+    errorDiv.textContent = 'IATA code must be exactly 2 uppercase letters';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (!baseAirportId) {
+    errorDiv.textContent = 'Please select a base airport';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (!difficulty) {
+    errorDiv.textContent = 'Please select a difficulty';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  // Show loading overlay
+  closeCreateSPModal();
+  showLoadingOverlay('Creating your world...<br><small style="opacity: 0.7;">Spawning AI competitors...</small>');
+
+  try {
+    const response = await fetch('/api/worlds/create-singleplayer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, era, timeAcceleration, difficulty,
+        baseAirportId, airlineName, airlineCode, iataCode
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      // Redirect to dashboard
+      window.location.href = '/dashboard';
+    } else {
+      hideLoadingOverlay();
+      openCreateSPModal();
+      errorDiv.textContent = data.error || 'Failed to create world';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error creating SP world:', error);
+    hideLoadingOverlay();
+    openCreateSPModal();
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
+  }
 }
 
 // Initialize
@@ -1247,6 +1505,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', (e) => {
       if (!airportSearchInput.contains(e.target) && !document.getElementById('airportResults').contains(e.target)) {
         document.getElementById('airportResults').style.display = 'none';
+      }
+    });
+  }
+
+  // Add SP airport search listener
+  const spAirportSearchInput = document.getElementById('spAirportSearch');
+  if (spAirportSearchInput) {
+    spAirportSearchInput.addEventListener('input', (e) => {
+      clearTimeout(spAirportSearchTimeout);
+      spAirportSearchTimeout = setTimeout(() => {
+        searchSPAirports(e.target.value);
+      }, 300);
+    });
+
+    document.addEventListener('click', (e) => {
+      const spResults = document.getElementById('spAirportResults');
+      if (spResults && !spAirportSearchInput.contains(e.target) && !spResults.contains(e.target)) {
+        spResults.style.display = 'none';
       }
     });
   }

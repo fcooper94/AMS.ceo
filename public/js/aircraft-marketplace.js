@@ -7,6 +7,10 @@ let baseCountry = null;
 // Contract signing animation
 function showContractSigningAnimation(type, aircraftName, registration, price) {
   return new Promise((resolve) => {
+    // Get CEO name and airline from DOM (populated by layout.js)
+    const ceoName = document.getElementById('userName')?.textContent?.trim() || 'Chief Executive';
+    const airlineName = document.getElementById('airlineName')?.textContent?.trim() || 'Airline';
+
     const overlay = document.createElement('div');
     overlay.id = 'contractOverlay';
     overlay.style.cssText = `
@@ -103,30 +107,41 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
           <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div style="flex: 1;">
               <div style="font-size: 0.75rem; color: #666; margin-bottom: 0.5rem;">AUTHORIZED SIGNATURE</div>
-              <div style="position: relative; height: 50px; border-bottom: 1px solid #2c2c2c; margin-right: 2rem;">
-                <!-- SVG Signature that will be animated -->
-                <svg id="signatureSvg" viewBox="0 0 200 50" style="position: absolute; bottom: 5px; left: 10px; width: 150px; height: 40px;">
-                  <path id="signaturePath"
-                    d="M5,35 Q15,10 30,30 T60,25 Q70,20 80,30 T110,20 Q130,35 150,25 Q160,20 175,30 L185,25"
-                    fill="none"
-                    stroke="#1a3a6e"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-dasharray="300"
-                    stroke-dashoffset="300"
-                  />
-                </svg>
-                <!-- Pen cursor -->
+              <div id="signatureArea" style="position: relative; height: 60px; border-bottom: 1px solid #2c2c2c; margin-right: 2rem; overflow: hidden;">
+                <!-- Signature text revealed progressively -->
+                <div id="signatureText" style="
+                  position: absolute;
+                  bottom: 16px;
+                  left: 8px;
+                  font-family: 'Segoe Script', 'Apple Chancery', 'Brush Script MT', 'Dancing Script', cursive;
+                  font-size: 1.55rem;
+                  color: #1a3a6e;
+                  white-space: nowrap;
+                  clip-path: inset(0 100% 0 0);
+                ">${ceoName}</div>
+                <!-- CEO title fades in after signature -->
+                <div id="signatureTitle" style="
+                  position: absolute;
+                  bottom: 1px;
+                  left: 10px;
+                  font-family: 'Times New Roman', serif;
+                  font-size: 0.6rem;
+                  color: #555;
+                  letter-spacing: 0.5px;
+                  opacity: 0;
+                  transition: opacity 0.4s ease;
+                ">CEO &mdash; ${airlineName}</div>
+                <!-- Pen that follows the writing -->
                 <div id="penCursor" style="
                   position: absolute;
-                  bottom: 10px;
-                  left: 5px;
-                  font-size: 1.5rem;
+                  bottom: 16px;
+                  left: 0;
+                  font-size: 1.2rem;
                   opacity: 0;
-                  transform: rotate(-30deg);
-                  transition: opacity 0.3s;
-                ">🖊️</div>
+                  transform: rotate(-30deg) scaleX(-1);
+                  pointer-events: none;
+                  z-index: 2;
+                ">&#9999;&#65039;</div>
               </div>
             </div>
             <div style="text-align: right;">
@@ -158,22 +173,13 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
           transition: all 0.3s ease;
         ">
           <div style="text-align: center;">
-            <div>✓</div>
+            <div>&#10003;</div>
             <div>APPROVED</div>
           </div>
         </div>
       </div>
 
       <style>
-        @keyframes signatureWrite {
-          to {
-            stroke-dashoffset: 0;
-          }
-        }
-        @keyframes penMove {
-          0% { left: 5px; bottom: 10px; opacity: 1; }
-          100% { left: 175px; bottom: 15px; opacity: 1; }
-        }
         @keyframes stampAppear {
           0% { transform: translate(-50%, -50%) rotate(-15deg) scale(0); opacity: 0; }
           50% { transform: translate(-50%, -50%) rotate(-15deg) scale(1.2); opacity: 0.8; }
@@ -194,26 +200,46 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
       // Start pen and signature animation after contract appears
       setTimeout(() => {
         const pen = document.getElementById('penCursor');
-        const signature = document.getElementById('signaturePath');
+        const sigText = document.getElementById('signatureText');
+        const sigTitle = document.getElementById('signatureTitle');
+        const writeDuration = 1.5; // seconds
 
+        // Measure signature text width for pen travel
+        const textWidth = sigText.scrollWidth;
+        const penEndX = Math.min(textWidth + 8, 280);
+
+        // Show pen and animate writing
         pen.style.opacity = '1';
-        pen.style.animation = 'penMove 1.5s ease-in-out forwards';
-        signature.style.animation = 'signatureWrite 1.5s ease-in-out forwards';
+        pen.style.transition = `left ${writeDuration}s ease-in-out`;
+        sigText.style.transition = `clip-path ${writeDuration}s ease-in-out`;
 
-        // Show approved stamp after signature
+        requestAnimationFrame(() => {
+          // Reveal text left-to-right and move pen across
+          sigText.style.clipPath = 'inset(0 0 0 0)';
+          pen.style.left = penEndX + 'px';
+        });
+
+        // After writing completes: hide pen, show title, then stamp
         setTimeout(() => {
-          const stamp = document.getElementById('approvedStamp');
-          stamp.style.animation = 'stampAppear 0.4s ease-out forwards';
+          pen.style.transition = 'opacity 0.3s ease';
+          pen.style.opacity = '0';
+          sigTitle.style.opacity = '1';
 
-          // Fade out and resolve (display stamp for 4.5 seconds)
+          // Show approved stamp
           setTimeout(() => {
-            overlay.style.opacity = '0';
+            const stamp = document.getElementById('approvedStamp');
+            stamp.style.animation = 'stampAppear 0.4s ease-out forwards';
+
+            // Fade out and resolve
             setTimeout(() => {
-              overlay.remove();
-              resolve();
-            }, 300);
-          }, 4500);
-        }, 1600);
+              overlay.style.opacity = '0';
+              setTimeout(() => {
+                overlay.remove();
+                resolve();
+              }, 300);
+            }, 4500);
+          }, 400);
+        }, (writeDuration * 1000) + 100);
       }, 500);
     });
   });

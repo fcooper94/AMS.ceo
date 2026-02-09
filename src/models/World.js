@@ -99,6 +99,28 @@ const World = sequelize.define('World', {
     defaultValue: 0,
     field: 'free_weeks',
     comment: 'Number of free game weeks for new airlines before weekly credit deductions start'
+  },
+  // Single-player world configuration
+  worldType: {
+    type: DataTypes.ENUM('multiplayer', 'singleplayer'),
+    defaultValue: 'multiplayer',
+    field: 'world_type',
+    comment: 'Whether this is a multiplayer or single-player (vs AI) world'
+  },
+  difficulty: {
+    type: DataTypes.ENUM('easy', 'medium', 'hard'),
+    allowNull: true,
+    comment: 'AI difficulty level for single-player worlds'
+  },
+  ownerUserId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'owner_user_id',
+    comment: 'User who created this SP world (null for multiplayer worlds)',
+    references: {
+      model: 'users',
+      key: 'id'
+    }
   }
 }, {
   tableName: 'worlds',

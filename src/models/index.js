@@ -33,6 +33,9 @@ World.hasMany(WorldMembership, { foreignKey: 'world_id', as: 'memberships' });
 WorldMembership.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 WorldMembership.belongsTo(World, { foreignKey: 'world_id', as: 'world' });
 
+// SP world ownership
+World.belongsTo(User, { foreignKey: 'owner_user_id', as: 'owner' });
+
 // Fleet associations
 WorldMembership.hasMany(UserAircraft, { foreignKey: 'world_membership_id', as: 'fleet' });
 UserAircraft.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });

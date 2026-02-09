@@ -1,0 +1,51 @@
+<!-- TITLE: Competition - AMS.ceo -->
+<!-- SUBTITLE: Market Intelligence -->
+<!-- SCRIPTS: /js/competition.js -->
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>COMPETITION</h1>
+      <p class="subtitle">MARKET INTELLIGENCE & AIRLINE RANKINGS</p>
+    </div>
+
+    <!-- Difficulty Badge -->
+    <div id="difficultyBadge" style="display: none; margin-bottom: 1rem;">
+      <span id="difficultyLabel" style="
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      "></span>
+      <span id="aiCountLabel" style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;"></span>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="data-section" style="margin-bottom: 1.5rem;">
+      <h2 class="section-title">TOP 20 AIRLINES</h2>
+      <div id="leaderboardTable" style="overflow-x: auto;">
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading competition data...</div>
+      </div>
+    </div>
+
+    <!-- Airlines at Base Airport -->
+    <div class="data-section" style="margin-bottom: 1.5rem;">
+      <h2 class="section-title" id="baseAirportLabel">AIRLINES AT YOUR BASE</h2>
+      <div id="baseAirportAirlines">
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Competitive Routes -->
+    <div class="data-section">
+      <h2 class="section-title">CONTESTED ROUTES</h2>
+      <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">Routes where you compete directly with AI airlines</p>
+      <div id="competitiveRoutes">
+        <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading...</div>
+      </div>
+    </div>
+  </main>
+</div>

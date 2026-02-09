@@ -198,6 +198,12 @@ const Route = sequelize.define('Route', {
     defaultValue: 0,
     field: 'average_load_factor',
     comment: 'Average load factor percentage'
+  },
+  lastRevenueGameDay: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'last_revenue_game_day',
+    comment: 'Last game date (YYYY-MM-DD) when revenue was processed for this route'
   }
 }, {
   tableName: 'routes',

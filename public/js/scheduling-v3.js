@@ -1225,48 +1225,64 @@ async function applyGlobalMaintenanceSettings() {
 // Fetch all schedule data in a single request (much faster than 4 separate requests)
 async function fetchAllScheduleData() {
   try {
-    // Calculate date range
     const worldTime = getCurrentWorldTime();
     if (!worldTime) {
       console.error('World time not available');
       return;
     }
 
-    const today = new Date(worldTime);
-    const currentDay = today.getDay();
-
-    // Always fetch the full rolling week range (both views need flights from across the week
-    // since a flight departing Saturday may arrive Monday, and the daily view for Monday needs it)
-    const dayDates = [];
-    for (let dow = 0; dow < 7; dow++) {
-      const daysUntil = getDaysUntilTargetInWeek(currentDay, dow);
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + daysUntil);
-      dayDates.push(targetDate);
-    }
-    const minDate = new Date(Math.min(...dayDates.map(d => d.getTime())));
-    const maxDate = new Date(Math.max(...dayDates.map(d => d.getTime())));
-    const startDateStr = formatLocalDate(minDate);
-    const endDateStr = formatLocalDate(maxDate);
-
     // Add cache-buster to ensure fresh data
     const cacheBuster = Date.now();
     console.log('[DEBUG] Fetching schedule data with cache buster:', cacheBuster);
-    const response = await fetch(`/api/schedule/data?startDate=${startDateStr}&endDate=${endDateStr}&_=${cacheBuster}`);
+    const response = await fetch(`/api/schedule/data?_=${cacheBuster}`);
     if (response.ok) {
       const data = await response.json();
       console.log('[DEBUG] API returned maintenance count:', data.maintenance?.length || 0);
       userFleet = (data.fleet || []).filter(ac => ac.status === 'active' || ac.status === 'maintenance');
       routes = data.routes || [];
-      scheduledFlights = data.flights || [];
+      // Templates come from server with dayOfWeek - compute virtual dates for rendering
+      scheduledFlights = computeVirtualDatesForTemplates(data.flights || [], worldTime);
       scheduledMaintenance = data.maintenance || [];
-      console.log(`Loaded: ${userFleet.length} aircraft (active/maintenance), ${routes.length} routes, ${scheduledFlights.length} flights, ${scheduledMaintenance.length} maintenance`);
+      console.log(`Loaded: ${userFleet.length} aircraft (active/maintenance), ${routes.length} routes, ${scheduledFlights.length} flight templates, ${scheduledMaintenance.length} maintenance`);
     } else {
       console.error('[DEBUG] API response not OK:', response.status, response.statusText);
     }
   } catch (error) {
     console.error('Error fetching schedule data:', error);
   }
+}
+
+/**
+ * Compute virtual scheduledDate and arrivalDate for flight templates
+ * based on the current game week. This allows existing rendering code to
+ * work with minimal changes.
+ */
+function computeVirtualDatesForTemplates(templates, worldTime) {
+  const today = new Date(worldTime);
+  const currentDow = today.getDay();
+
+  return templates.map(t => {
+    // Calculate days until this template's day-of-week
+    const dow = t.dayOfWeek ?? 0;
+    let daysUntil = dow - currentDow;
+    if (daysUntil < 0) daysUntil += 7;
+
+    const depDate = new Date(today);
+    depDate.setDate(today.getDate() + daysUntil);
+    const scheduledDate = formatLocalDate(depDate);
+
+    // Compute arrival date from offset
+    const arrOffset = t.arrivalDayOffset || 0;
+    const arrDate = new Date(depDate);
+    arrDate.setDate(arrDate.getDate() + arrOffset);
+    const arrivalDate = formatLocalDate(arrDate);
+
+    return {
+      ...t,
+      scheduledDate,
+      arrivalDate
+    };
+  });
 }
 
 // Fetch user's fleet
@@ -1294,54 +1310,20 @@ async function fetchRoutes() {
   }
 }
 
-// Fetch scheduled flights for the selected day of week
+// Fetch scheduled flight templates
 async function fetchScheduledFlights() {
   try {
-    // Get the next occurrence of the selected day of week using game world time
     const worldTime = getCurrentWorldTime();
     if (!worldTime) {
       console.error('World time not available for fetching flights');
       return;
     }
 
-    const today = new Date(worldTime);
-    const currentDay = today.getDay();
-
-    let startDateStr, endDateStr;
-
-    if (viewMode === 'weekly') {
-      // For weekly view, use rolling week (next occurrence of each day)
-      // Calculate the date range that covers all 7 "next occurrences"
-      const dayDates = [];
-      for (let dow = 0; dow < 7; dow++) {
-        const daysUntil = getDaysUntilTargetInWeek(currentDay, dow);
-        const targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + daysUntil);
-        dayDates.push(targetDate);
-      }
-      // Find min and max dates
-      const minDate = new Date(Math.min(...dayDates.map(d => d.getTime())));
-      const maxDate = new Date(Math.max(...dayDates.map(d => d.getTime())));
-
-      startDateStr = formatLocalDate(minDate);
-      endDateStr = formatLocalDate(maxDate);
-    } else {
-      // For daily view, fetch the selected day PLUS the day before
-      const daysUntilTarget = getDaysUntilTargetInWeek(currentDay, selectedDayOfWeek);
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + daysUntilTarget);
-      const dayBefore = new Date(targetDate);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      startDateStr = formatLocalDate(dayBefore);
-      endDateStr = formatLocalDate(targetDate);
-    }
-
-    console.log('Fetching flights for:', startDateStr, 'to', endDateStr);
-
-    const response = await fetch(`/api/schedule/flights?startDate=${startDateStr}&endDate=${endDateStr}`);
+    const response = await fetch('/api/schedule/flights');
     if (response.ok) {
-      scheduledFlights = await response.json();
-      console.log('Flights returned:', scheduledFlights.length);
+      const templates = await response.json();
+      scheduledFlights = computeVirtualDatesForTemplates(templates, worldTime);
+      console.log('Flight templates returned:', scheduledFlights.length);
     }
   } catch (error) {
     console.error('Error fetching scheduled flights:', error);
@@ -6223,52 +6205,46 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
 function getFlightsForDay(aircraftId, dayOfWeek) {
   return scheduledFlights.filter(f => {
     if (f.aircraft?.id !== aircraftId) return false;
-    if (!f.scheduledDate) return false;
+    const dow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
+    if (dow < 0) return false;
 
-    // Use stored arrivalDate from server (calculated with wind effects)
-    // instead of recalculating locally with simplified formulas
-    const aircraft = f.aircraft;
-    const route = f.route;
-    const acType = aircraft?.aircraft?.type || 'Narrowbody';
-    const paxCapacity = aircraft?.aircraft?.passengerCapacity || 150;
-    const routeDistance = route?.distance || 0;
+    // Template departs on this day
+    if (dow === dayOfWeek) return true;
 
-    // Calculate pre-flight and post-flight durations using shared library
-    const preFlightDur = calculatePreFlightTotal(routeDistance, paxCapacity, acType).total;
-    const postFlightDur = calculatePostFlightTotal(paxCapacity, acType).total;
+    // Check if template's arrival or post-flight spills into this day
+    const arrOffset = f.arrivalDayOffset || 0;
+    if (arrOffset > 0) {
+      // Arrival day
+      const arrDow = (dow + arrOffset) % 7;
+      if (arrDow === dayOfWeek) return true;
 
-    // Operation start: departure minus pre-flight
+      // Check for post-flight spill past arrival day
+      const acType = f.aircraft?.aircraft?.type || 'Narrowbody';
+      const paxCapacity = f.aircraft?.aircraft?.passengerCapacity || 150;
+      const postFlightDur = calculatePostFlightTotal(paxCapacity, acType).total;
+      const arrTimeStr = f.arrivalTime?.substring(0, 5) || '23:59';
+      const [arrH, arrM] = arrTimeStr.split(':').map(Number);
+      if (arrH * 60 + arrM + postFlightDur >= 1440) {
+        const postSpillDow = (arrDow + 1) % 7;
+        if (postSpillDow === dayOfWeek) return true;
+      }
+
+      // Transit days
+      for (let d = 1; d < arrOffset; d++) {
+        if ((dow + d) % 7 === dayOfWeek) return true;
+      }
+    }
+
+    // Check if pre-flight spills into previous day
+    const routeDistance = f.route?.distance || 0;
+    const acType2 = f.aircraft?.aircraft?.type || 'Narrowbody';
+    const paxCapacity2 = f.aircraft?.aircraft?.passengerCapacity || 150;
+    const preFlightDur = calculatePreFlightTotal(routeDistance, paxCapacity2, acType2).total;
     const depTimeStr = f.departureTime?.substring(0, 5) || '00:00';
     const [depH, depM] = depTimeStr.split(':').map(Number);
-    let depMinutes = depH * 60 + depM - preFlightDur;
-    let opStartDate = new Date(f.scheduledDate + 'T00:00:00');
-    if (depMinutes < 0) {
-      depMinutes += 1440;
-      opStartDate.setDate(opStartDate.getDate() - 1);
-    }
-    const opStartDayOfWeek = opStartDate.getDay();
-    if (opStartDayOfWeek === dayOfWeek) return true;
-
-    // Operation end: use stored arrivalDate + arrivalTime + post-flight
-    const arrDate = f.arrivalDate || f.scheduledDate;
-    const arrTimeStr = f.arrivalTime?.substring(0, 5) || '23:59';
-    const [arrH, arrM] = arrTimeStr.split(':').map(Number);
-    let arrMinutes = arrH * 60 + arrM + postFlightDur;
-    let opEndDate = new Date(arrDate + 'T00:00:00');
-    while (arrMinutes >= 1440) {
-      arrMinutes -= 1440;
-      opEndDate.setDate(opEndDate.getDate() + 1);
-    }
-    const opEndDayOfWeek = opEndDate.getDay();
-    if (opEndDayOfWeek === dayOfWeek) return true;
-
-    // Check transit days (days between operation start and operation end)
-    const daysDiff = Math.round((opEndDate - opStartDate) / (1000 * 60 * 60 * 24));
-    if (daysDiff > 1) {
-      for (let i = 1; i < daysDiff; i++) {
-        const transitDayOfWeek = (opStartDayOfWeek + i) % 7;
-        if (transitDayOfWeek === dayOfWeek) return true;
-      }
+    if (depH * 60 + depM - preFlightDur < 0) {
+      const prevDow = (dow - 1 + 7) % 7;
+      if (prevDow === dayOfWeek) return true;
     }
 
     return false;
@@ -7111,7 +7087,7 @@ async function scheduleRouteForDay(routeId, dayOfWeek) {
       body: JSON.stringify({
         routeId: route.id,
         aircraftId: aircraftId,
-        scheduledDate: scheduleDate,
+        dayOfWeek: dayOfWeek,
         departureTime: departureTime
       })
     });
@@ -8681,9 +8657,8 @@ async function clearDaySchedule(aircraftId) {
   // Get flights for this aircraft on the selected day
   const dayFlights = scheduledFlights.filter(f => {
     if (f.aircraft?.id !== aircraftId) return false;
-    if (!f.scheduledDate) return false;
-    const flightDate = new Date(f.scheduledDate + 'T00:00:00');
-    return flightDate.getDay() === selectedDayOfWeek;
+    const dow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
+    return dow === selectedDayOfWeek;
   });
 
   // Get maintenance for this aircraft on the selected day
@@ -9048,7 +9023,7 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
       body: JSON.stringify({
         routeId: draggedRoute.id,
         aircraftId: aircraftId,
-        scheduledDate: scheduleDate,
+        dayOfWeek: dayOfWeek,
         departureTime: departureTime
       })
     });
@@ -9191,15 +9166,11 @@ async function handleDrop(event, aircraftId, timeValue) {
       // Schedule for all 7 days using batch endpoint (much faster)
       showLoadingModal('Scheduling Flights', 'Adding route to weekly schedule...');
 
-      // Build array of flights to create
+      // Build array of templates to create (one per day-of-week)
       const flightsToCreate = [];
-      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-        const targetDateForDay = new Date(today);
-        targetDateForDay.setDate(today.getDate() + dayOffset);
-        const scheduleDateForDay = formatLocalDate(targetDateForDay);
-
+      for (let dow = 0; dow < 7; dow++) {
         flightsToCreate.push({
-          scheduledDate: scheduleDateForDay,
+          dayOfWeek: dow,
           departureTime: departureTime
         });
       }
@@ -9251,7 +9222,7 @@ async function handleDrop(event, aircraftId, timeValue) {
         body: JSON.stringify({
           routeId: draggedRoute.id,
           aircraftId: aircraftId,
-          scheduledDate: scheduleDate,
+          dayOfWeek: selectedDayOfWeek,
           departureTime: departureTime
         })
       });

@@ -399,6 +399,15 @@ app.get('/routes/edit', requireWorld, async (req, res) => {
   }
 });
 
+app.get('/competition', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/competition.html'), '/competition');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
 app.get('/contact', async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/contact.html'), '/contact');

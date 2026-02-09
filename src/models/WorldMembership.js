@@ -13,8 +13,9 @@ const WorldMembership = sequelize.define('WorldMembership', {
   },
   userId: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     field: 'user_id',
+    comment: 'Null for AI-controlled airlines',
     references: {
       model: 'users',
       key: 'id'
@@ -96,6 +97,25 @@ const WorldMembership = sequelize.define('WorldMembership', {
     allowNull: true,
     comment: 'Last time user entered this world',
     field: 'last_visited'
+  },
+  // AI airline fields
+  isAI: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'is_ai',
+    comment: 'Whether this membership represents an AI-controlled airline'
+  },
+  aiPersonality: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'ai_personality',
+    comment: 'AI behavior profile: aggressive, conservative, balanced'
+  },
+  aiLastDecisionTime: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'ai_last_decision_time',
+    comment: 'Game time of last AI decision cycle'
   }
 }, {
   tableName: 'world_memberships',
@@ -104,7 +124,10 @@ const WorldMembership = sequelize.define('WorldMembership', {
   indexes: [
     {
       unique: true,
-      fields: ['user_id', 'world_id']
+      fields: ['user_id', 'world_id'],
+      where: {
+        is_ai: false
+      }
     },
     {
       unique: true,
