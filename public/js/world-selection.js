@@ -253,13 +253,15 @@ async function loadWorlds() {
     });
     const availableWorlds = worlds.filter(w => !w.isMember);
 
-    // Store time references for all worlds
+    // Store time references for active worlds only (ended worlds don't tick)
     worlds.forEach(world => {
-      worldTimeReferences[world.id] = {
-        referenceTime: new Date(world.currentTime),
-        referenceTimestamp: Date.now(),
-        acceleration: world.timeAcceleration || 60
-      };
+      if (world.status !== 'completed') {
+        worldTimeReferences[world.id] = {
+          referenceTime: new Date(world.currentTime),
+          referenceTimestamp: Date.now(),
+          acceleration: world.timeAcceleration || 60
+        };
+      }
     });
 
     // Show my worlds section if user has any
@@ -302,6 +304,7 @@ async function loadWorlds() {
 // Create world card element (returns DOM element)
 function createWorldCard(world, isMember, userCredits, userUnlimited) {
   const isSP = world.worldType === 'singleplayer';
+  const isEnded = world.status === 'completed';
   const timeDate = new Date(world.currentTime);
   const formattedDate = timeDate.toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -316,7 +319,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   const weeklyCost = world.weeklyCost !== undefined ? world.weeklyCost : 1;
   const joinCost = world.joinCost !== undefined ? world.joinCost : 10;
   const freeWeeks = world.freeWeeks || 0;
-  const canAffordJoin = !isMember && (userUnlimited || (userCredits || 0) >= joinCost);
+  const canAffordJoin = !isMember && !isEnded && (userUnlimited || (userCredits || 0) >= joinCost);
 
   // Difficulty badge colors
   const difficultyColors = { easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444' };
@@ -330,7 +333,16 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     const sixMonthsMs = 6 * 30 * 24 * 60 * 60 * 1000; // ~6 months in ms
     const timeRemaining = endDate.getTime() - currentGameTime.getTime();
 
-    if (timeRemaining <= sixMonthsMs && timeRemaining > 0) {
+    if (isEnded) {
+      const endDateFormatted = new Date(world.endDate).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      });
+      endingBannerHtml = `
+        <div class="world-card-ending-banner ended-banner">
+          This world ended on ${endDateFormatted}
+        </div>
+      `;
+    } else if (timeRemaining <= sixMonthsMs && timeRemaining > 0) {
       const endDateFormatted = endDate.toLocaleDateString('en-GB', {
         day: '2-digit',
         month: 'short',
@@ -345,7 +357,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   }
 
   const card = document.createElement('div');
-  card.className = `world-card ${isMember ? 'member' : ''}`;
+  card.className = `world-card ${isMember ? 'member' : ''} ${isEnded ? 'ended' : ''}`;
   card.setAttribute('data-world-id', world.id);
 
   // Build the 4th stat column differently for SP vs MP
@@ -359,10 +371,21 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
         <div class="world-card-stat-value">${world.memberCount || 0}/${world.maxPlayers || 100}</div>
       </div>`;
 
-  // Build header badges
-  const statusBadge = isSP
-    ? `<span class="world-card-status" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">Single Player</span>`
-    : `<span class="world-card-status">${isMember ? 'Joined' : 'Available'}</span>`;
+  // Build header badges - type icon + label
+  const mpIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+  const spIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+
+  const typeBadge = isSP
+    ? `<span class="world-card-status" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">${spIcon}Single Player</span>`
+    : `<span class="world-card-status" style="background: rgba(37, 99, 235, 0.15); color: var(--accent-color);">${mpIcon}Multiplayer</span>`;
+
+  const memberStatusBadge = isEnded
+    ? `<span class="world-card-status" style="background: rgba(107, 114, 128, 0.2); color: #9ca3af;">Ended</span>`
+    : (isSP
+      ? ''
+      : (isMember
+        ? `<span class="world-card-status" style="background: rgba(5, 150, 105, 0.15); color: var(--success-color);">Joined</span>`
+        : `<span class="world-card-status">Available</span>`));
 
   const difficultyBadge = isSP && world.difficulty
     ? `<span class="world-card-status" style="background: ${difficultyColor}22; color: ${difficultyColor}; text-transform: uppercase;">${world.difficulty}</span>`
@@ -370,7 +393,20 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
 
   // Build footer
   let footerHtml;
-  if (isSP) {
+  if (isEnded && isMember) {
+    footerHtml = `
+      <div class="world-card-costs">
+        <span class="cost-badge weekly" style="background: rgba(107, 114, 128, 0.15); color: #9ca3af;">No longer active</span>
+      </div>
+      <button class="btn btn-primary continue-game-btn" style="background: #4b5563; border-color: #6b7280;">VIEW</button>
+    `;
+  } else if (isEnded) {
+    footerHtml = `
+      <div class="world-card-costs">
+        <span class="cost-badge weekly" style="background: rgba(107, 114, 128, 0.15); color: #9ca3af;">This world has ended</span>
+      </div>
+    `;
+  } else if (isSP) {
     footerHtml = `
       <div class="world-card-costs">
         <span class="cost-badge weekly" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">No credits required</span>
@@ -401,7 +437,8 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
 
   card.innerHTML = `
     <div class="world-card-header">
-      ${statusBadge}
+      ${typeBadge}
+      ${memberStatusBadge}
       ${difficultyBadge}
       <span class="world-card-era">ERA ${world.era || 2010}</span>
     </div>
@@ -417,6 +454,12 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
         <div class="world-card-description">${world.description}</div>
       ` : ''}
       <div class="world-card-stats">
+        ${isEnded ? `
+        <div class="world-card-stat" style="grid-column: 1 / 4; text-align: center;">
+          <div class="world-card-stat-label">Status</div>
+          <div class="world-card-stat-value" style="color: #9ca3af;">Ended</div>
+        </div>
+        ` : `
         <div class="world-card-stat">
           <div class="world-card-stat-label">Date</div>
           <div class="world-card-stat-value">${formattedDate}</div>
@@ -429,6 +472,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
           <div class="world-card-stat-label">Speed</div>
           <div class="world-card-stat-value">${world.timeAcceleration || 60}x</div>
         </div>
+        `}
         ${fourthStat}
       </div>
     </div>

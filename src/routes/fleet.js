@@ -1330,6 +1330,15 @@ async function refreshAutoScheduledMaintenance(aircraftId, worldId = null, provi
           return false; // Don't delete
         }
       }
+      // Protect past-dated daily/weekly checks that haven't been processed yet
+      // Let processMaintenance catch up on them before they're deleted
+      if (['daily', 'weekly'].includes(m.checkType) && m.scheduledDate) {
+        const schedDateStr = String(m.scheduledDate).split('T')[0];
+        if (schedDateStr < gameNowStr) {
+          console.log(`[MAINT REFRESH] Protecting unprocessed past ${m.checkType} check (${schedDateStr})`);
+          return false; // Don't delete - processMaintenance will handle
+        }
+      }
       return true; // Delete
     });
 

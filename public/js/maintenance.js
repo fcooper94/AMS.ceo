@@ -293,14 +293,14 @@ function updateSummaryStats() {
     const checks = ['daily', 'weekly', 'A', 'C', 'D'];
     let hasOverdue = false;
     let hasAnyIssue = false;
-    const wipChecks = [];
+    let heaviestWip = null;
 
     checks.forEach(type => {
       const s = ac.checkStatuses?.[type] || { status: 'none', text: '--' };
       if (s.status === 'inprogress') {
-        // Only show A/C/D checks in the hangar (daily/weekly are minor)
+        // Track only the most major in-progress check (D > C > A)
         if (['A', 'C', 'D'].includes(type)) {
-          wipChecks.push(type + ' Check');
+          heaviestWip = type; // checks are ordered daily,weekly,A,C,D so last wins
         }
         hasAnyIssue = true;
       }
@@ -308,9 +308,9 @@ function updateSummaryStats() {
       if (s.status === 'warning') { hasAnyIssue = true; }
     });
 
-    // Collect hangar items (only A/C/D checks)
-    if (wipChecks.length > 0) {
-      hangarItems.push({ reg: ac.registration, checks: wipChecks });
+    // Collect hangar items (show only the heaviest check)
+    if (heaviestWip) {
+      hangarItems.push({ reg: ac.registration, check: heaviestWip + ' Check' });
     }
 
     // Heavy checks: C or D that are warning or expired
@@ -344,7 +344,7 @@ function updateSummaryStats() {
     hangarList.innerHTML = '<li class="maint-list-empty">No aircraft in maintenance</li>';
   } else {
     hangarList.innerHTML = hangarItems.map(item =>
-      `<li><span class="maint-list-reg">${item.reg}</span><span class="maint-list-check">${item.checks.join(', ')}</span></li>`
+      `<li><span class="maint-list-reg">${item.reg}</span><span class="maint-list-check">${item.check}</span></li>`
     ).join('');
   }
 

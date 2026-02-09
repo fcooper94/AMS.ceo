@@ -105,7 +105,7 @@ const World = sequelize.define('World', {
     type: DataTypes.ENUM('multiplayer', 'singleplayer'),
     defaultValue: 'multiplayer',
     field: 'world_type',
-    comment: 'Whether this is a multiplayer or single-player (vs AI) world'
+    comment: 'Multiplayer or singleplayer world type'
   },
   difficulty: {
     type: DataTypes.ENUM('easy', 'medium', 'hard'),

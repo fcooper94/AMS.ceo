@@ -17,17 +17,37 @@ router.get('/available', async (req, res) => {
     // Find user in database
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
 
-    // Get all active worlds (SP worlds only visible to their owner)
+    // Get user's memberships first (needed to show completed worlds the user was in)
+    let userMemberWorldIds = [];
+    if (user) {
+      const memberships = await WorldMembership.findAll({
+        where: { userId: user.id },
+        attributes: ['worldId']
+      });
+      userMemberWorldIds = memberships.map(m => m.worldId);
+    }
+
+    // Get active worlds + completed worlds the user is a member of
     const worlds = await World.findAll({
       where: {
-        status: 'active',
         [Op.or]: [
-          { worldType: 'multiplayer' },
-          { worldType: null },
-          { ownerUserId: user ? user.id : null }
+          // Active worlds (MP visible to all, SP only to owner)
+          {
+            status: 'active',
+            [Op.or]: [
+              { worldType: 'multiplayer' },
+              { worldType: null },
+              { ownerUserId: user ? user.id : null }
+            ]
+          },
+          // Completed worlds the user was a member of
+          ...(userMemberWorldIds.length > 0 ? [{
+            status: 'completed',
+            id: { [Op.in]: userMemberWorldIds }
+          }] : [])
         ]
       },
-      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate', 'worldType', 'difficulty'],
+      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate', 'worldType', 'difficulty', 'status'],
       order: [['createdAt', 'DESC']]
     });
 

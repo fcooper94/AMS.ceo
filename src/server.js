@@ -54,6 +54,20 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Under construction check - must be before static middleware (which serves index.html for /)
+app.use(async (req, res, next) => {
+  if (req.path !== '/') return next();
+  try {
+    const underConstruction = await SystemSettings.get('underConstruction', false);
+    if (underConstruction === true || underConstruction === 'true') {
+      return res.sendFile(path.join(__dirname, '../public/coming-soon.html'));
+    }
+  } catch (e) {
+    // If DB fails, fall through to normal flow
+  }
+  next();
+});
+
 // Serve static files with cache control
 app.use(express.static(path.join(__dirname, '../public'), {
   setHeaders: (res, path) => {
@@ -102,6 +116,7 @@ global.io = io;
 
 // Import middleware
 const { requireAuth, redirectIfAuth, requireWorld } = require('./middleware/auth');
+const { SystemSettings } = require('./models');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -269,7 +284,6 @@ app.use('/api/dashboard', requireWorld, dashboardRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
-  // For the login page, we'll serve it normally since it has a different structure
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 

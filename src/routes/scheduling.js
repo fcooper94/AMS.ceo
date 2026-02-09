@@ -613,6 +613,8 @@ router.post('/flight', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
+    const acType = aircraft.aircraft?.type || 'Narrowbody';
+    const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
     const routeDistance = route.distance || 0;
     const { preFlightDuration, postFlightDuration } = calculateFlightDurations(acType, paxCapacity, routeDistance);
 

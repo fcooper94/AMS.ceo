@@ -9,26 +9,41 @@ let updateInterval = null;
 let activeFlights = []; // Store flight data for selection
 let airlineFilterMode = 'mine'; // 'mine' or 'all'
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
-let flightsListOpen = window.innerWidth > 768; // Expanded by default on desktop, collapsed on mobile
+let flightsListOpen = false; // Hidden by default, user can toggle open
 
-// Smooth animation for aircraft markers
-const flightAnimations = new Map(); // Map of flight ID to animation state
-const flightInitialized = new Set(); // Track which flights have had their initial position set
-const ANIMATION_DURATION = 1000; // 1 second to match tick interval
+// Synchronized position updates - all aircraft jump together on each tick
+let positionUpdateInterval = null;
+const worldOffsets = [0, 360, -360];
 
-// Animate a marker smoothly from current position to target position
-// On first update, sets position instantly (no animation from spawn point)
-function animateMarkerToPosition(flightId, markers, targetLat, targetLng, bearing) {
-  const markersArray = Array.isArray(markers) ? markers : [markers];
-  const worldOffsets = [0, 360, -360];
+// Update all marker positions in one synchronized batch
+function syncUpdateAllPositions() {
+  activeFlights.forEach(flight => {
+    const markers = flightMarkers.get(flight.id);
 
-  // First position update - set instantly, don't animate from spawn location
-  if (!flightInitialized.has(flightId)) {
-    flightInitialized.add(flightId);
+    const position = calculateFlightPosition(flight);
+
+    // Hide aircraft during turnaround or tech stop
+    if (position.phase === 'turnaround' || position.phase === 'techstop') {
+      if (markers) {
+        const markersArray = Array.isArray(markers) ? markers : [markers];
+        markersArray.forEach(m => map.removeLayer(m));
+        flightMarkers.delete(flight.id);
+      }
+      return;
+    }
+
+    // Re-create marker if it doesn't exist (e.g., exiting turnaround)
+    if (!markers) {
+      createFlightMarker(flight, position);
+      return;
+    }
+
+    const markersArray = Array.isArray(markers) ? markers : [markers];
+    const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
+
     markersArray.forEach((marker, idx) => {
       const offset = worldOffsets[idx] || 0;
-      marker.setLatLng([targetLat, targetLng + offset]);
-      // Update rotation
+      marker.setLatLng([position.lat, position.lng + offset]);
       const iconEl = marker.getElement();
       if (iconEl) {
         const inner = iconEl.querySelector('.aircraft-marker-inner');
@@ -37,67 +52,30 @@ function animateMarkerToPosition(flightId, markers, targetLat, targetLng, bearin
         }
       }
     });
-    return;
-  }
-  // Cancel any existing animation for this flight
-  if (flightAnimations.has(flightId)) {
-    cancelAnimationFrame(flightAnimations.get(flightId).frameId);
-  }
-
-  // Get current position from first marker
-  const currentLatLng = markersArray[0].getLatLng();
-  const startLat = currentLatLng.lat;
-  const startLng = currentLatLng.lng; // This includes the world offset, need base lng
-
-  // Calculate the base longitude (remove any world offset)
-  let baseLng = startLng;
-  if (baseLng > 180) baseLng -= 360;
-  if (baseLng < -180) baseLng += 360;
-
-  const startTime = performance.now();
-
-  // Handle longitude wrap-around for smooth animation across date line
-  let lngDiff = targetLng - baseLng;
-  if (lngDiff > 180) lngDiff -= 360;
-  if (lngDiff < -180) lngDiff += 360;
-  const effectiveTargetLng = baseLng + lngDiff;
-
-  function animate(currentTime) {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / ANIMATION_DURATION, 1);
-
-    // Linear interpolation for constant speed
-    const lat = startLat + (targetLat - startLat) * progress;
-    const lng = baseLng + (effectiveTargetLng - baseLng) * progress;
-
-    // Update all marker copies (for world wrap)
-    markersArray.forEach((marker, idx) => {
-      const offset = worldOffsets[idx] || 0;
-      marker.setLatLng([lat, lng + offset]);
-    });
-
-    // Continue animation if not complete
-    if (progress < 1) {
-      const frameId = requestAnimationFrame(animate);
-      flightAnimations.set(flightId, { frameId, targetLat, targetLng, bearing });
-    } else {
-      flightAnimations.delete(flightId);
-    }
-  }
-
-  // Update rotation immediately (bearing doesn't need interpolation)
-  markersArray.forEach(marker => {
-    const iconEl = marker.getElement();
-    if (iconEl) {
-      const inner = iconEl.querySelector('.aircraft-marker-inner');
-      if (inner) {
-        inner.style.transform = `rotate(${bearing}deg)`;
-      }
-    }
   });
 
-  const frameId = requestAnimationFrame(animate);
-  flightAnimations.set(flightId, { frameId, targetLat, targetLng, bearing });
+  // Update info panel if a flight is selected
+  if (selectedFlightId) {
+    const flight = activeFlights.find(f => f.id === selectedFlightId);
+    if (flight) showFlightInfo(flight);
+  }
+
+  // Refresh flights list
+  if (flightsListOpen) updateFlightsList();
+}
+
+// Start synchronized position updates (1 second interval)
+function startPositionUpdates() {
+  if (positionUpdateInterval) return;
+  positionUpdateInterval = setInterval(syncUpdateAllPositions, 1000);
+}
+
+// Stop position updates
+function stopPositionUpdates() {
+  if (positionUpdateInterval) {
+    clearInterval(positionUpdateInterval);
+    positionUpdateInterval = null;
+  }
 }
 
 // Aircraft icon SVG
@@ -280,13 +258,11 @@ function initMap() {
   // Load active flights
   loadActiveFlights();
 
-  // Set up auto-refresh every 10 seconds
+  // Set up auto-refresh every 10 seconds (for new/removed flights)
   updateInterval = setInterval(loadActiveFlights, 10000);
 
-  // Listen for world time updates to refresh positions
-  window.addEventListener('worldTimeUpdated', () => {
-    updateFlightPositions();
-  });
+  // Start synchronized position updates (all aircraft jump together)
+  startPositionUpdates();
 
   // Click on map to deselect flight
   map.on('click', (e) => {
@@ -441,13 +417,6 @@ function updateFlightsOnMap(flights) {
     // Hide aircraft during turnaround or tech stop (on the ground)
     if (position.phase === 'turnaround' || position.phase === 'techstop') {
       if (flightMarkers.has(flight.id)) {
-        // Cancel any ongoing animation and clear initialized state
-        if (flightAnimations.has(flight.id)) {
-          cancelAnimationFrame(flightAnimations.get(flight.id).frameId);
-          flightAnimations.delete(flight.id);
-        }
-        flightInitialized.delete(flight.id);
-        // Remove all markers during ground time
         const markers = flightMarkers.get(flight.id);
         if (Array.isArray(markers)) {
           markers.forEach(m => map.removeLayer(m));
@@ -459,20 +428,8 @@ function updateFlightsOnMap(flights) {
       return; // Skip to next flight
     }
 
-    if (flightMarkers.has(flight.id)) {
-      // Update existing marker positions with smooth animation
-      const markers = flightMarkers.get(flight.id);
-      const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
-
-      // Use smooth animation instead of instant position update
-      animateMarkerToPosition(flight.id, markers, position.lat, position.lng, bearing);
-
-      // Update route line if this is the selected flight
-      if (flight.id === selectedFlightId && routeLines.has(flight.id)) {
-        // Route line doesn't need position update, but we could update progress indicator here
-      }
-    } else {
-      // Create new marker (aircraft only, no route line yet)
+    if (!flightMarkers.has(flight.id)) {
+      // Create new marker - continuous animation loop handles position updates
       createFlightMarker(flight, position);
     }
   });
@@ -834,9 +791,6 @@ function createFlightMarker(flight, position) {
 
   // Store array of markers for this flight
   flightMarkers.set(flight.id, markers);
-
-  // Mark as initialized since we created it at the correct position
-  flightInitialized.add(flight.id);
 }
 
 // Create route line for selected flight
@@ -1416,69 +1370,9 @@ function deselectFlight() {
   if (flightsListOpen) updateFlightsList();
 }
 
-// Update flight positions (called on world time update)
-// _tick counter used to throttle flights list refresh
-function updateFlightPositions() {
-  // Recalculate positions for all flights
-  activeFlights.forEach(flight => {
-    const position = calculateFlightPosition(flight);
-    const markers = flightMarkers.get(flight.id);
-
-    // Hide aircraft during turnaround or tech stop (on the ground)
-    if (position.phase === 'turnaround' || position.phase === 'techstop') {
-      if (markers) {
-        // Cancel any ongoing animation and clear initialized state
-        if (flightAnimations.has(flight.id)) {
-          cancelAnimationFrame(flightAnimations.get(flight.id).frameId);
-          flightAnimations.delete(flight.id);
-        }
-        flightInitialized.delete(flight.id);
-        if (Array.isArray(markers)) {
-          markers.forEach(m => map.removeLayer(m));
-        } else {
-          map.removeLayer(markers);
-        }
-        flightMarkers.delete(flight.id);
-      }
-      return; // Skip to next flight
-    }
-
-    // If markers don't exist (e.g., returning from turnaround), create them
-    if (!markers) {
-      createFlightMarker(flight, position);
-      return;
-    }
-
-    // Update existing marker positions with smooth animation
-    const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
-    animateMarkerToPosition(flight.id, markers, position.lat, position.lng, bearing);
-  });
-
-  // Update info panel if a flight is selected
-  if (selectedFlightId) {
-    const flight = activeFlights.find(f => f.id === selectedFlightId);
-    if (flight) {
-      showFlightInfo(flight);
-    }
-  }
-
-  // Refresh flights list phases (throttled - every 5th update)
-  if (flightsListOpen && ++updateFlightPositions._tick % 5 === 0) {
-    updateFlightsList();
-  }
-}
-
-updateFlightPositions._tick = 0;
 
 // Clear all map elements
 function clearMap() {
-  // Cancel all ongoing animations and clear initialized tracking
-  flightAnimations.forEach(anim => {
-    if (anim.frameId) cancelAnimationFrame(anim.frameId);
-  });
-  flightAnimations.clear();
-  flightInitialized.clear();
-
   flightMarkers.forEach((markers) => {
     if (Array.isArray(markers)) {
       markers.forEach(m => map.removeLayer(m));

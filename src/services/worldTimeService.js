@@ -96,6 +96,30 @@ class WorldTimeService {
         }
       }
 
+      // Check if caught-up time has passed the end date
+      if (world.endDate) {
+        const endDate = new Date(world.endDate);
+        if (catchUpTime >= endDate) {
+          catchUpTime = endDate;
+          console.log(`World "${world.name}" ended while server was offline. Marking as completed.`);
+
+          await world.sequelize.query(
+            'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "status" = :status, "updated_at" = :updatedAt WHERE id = :worldId',
+            {
+              replacements: {
+                currentTime: catchUpTime,
+                lastTickAt: now,
+                status: 'completed',
+                updatedAt: now,
+                worldId: world.id
+              }
+            }
+          );
+          world.status = 'completed';
+          return false; // Don't start the tick loop
+        }
+      }
+
       // Update database with caught-up time
       await world.sequelize.query(
         'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt WHERE id = :worldId',
@@ -207,7 +231,40 @@ class WorldTimeService {
       const gameTimeAdvancement = realElapsedSeconds * world.timeAcceleration;
 
       // Update in-memory time
-      const newGameTime = new Date(inMemoryTime.getTime() + (gameTimeAdvancement * 1000));
+      let newGameTime = new Date(inMemoryTime.getTime() + (gameTimeAdvancement * 1000));
+
+      // Check if world has reached its end date
+      if (world.endDate) {
+        const endDate = new Date(world.endDate);
+        if (newGameTime >= endDate) {
+          // Clamp to end date and stop the world
+          newGameTime = endDate;
+          worldState.inMemoryTime = newGameTime;
+          worldState.lastTickAt = now;
+
+          console.log(`World "${world.name}" has reached its end date (${endDate.toISOString()}). Stopping.`);
+
+          // Update DB: set final time and mark as completed
+          await world.sequelize.query(
+            'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "status" = :status, "updated_at" = :updatedAt WHERE id = :worldId',
+            {
+              replacements: {
+                currentTime: newGameTime,
+                lastTickAt: now,
+                status: 'completed',
+                updatedAt: now,
+                worldId: world.id
+              }
+            }
+          );
+          world.status = 'completed';
+
+          // Stop the tick interval
+          this.stopWorld(worldId);
+          return;
+        }
+      }
+
       worldState.inMemoryTime = newGameTime;
       worldState.lastTickAt = now;
 
@@ -872,6 +929,49 @@ class WorldTimeService {
           }
         }
       }
+      // Catch-up: fix aircraft with expired daily/weekly checks after server gaps
+      // If maintenance records were deleted by refresh before processMaintenance could handle them,
+      // lastDailyCheckDate gets stuck in the past. Fix by updating any aircraft whose daily check
+      // is expired but has active daily check patterns (meaning checks ARE scheduled).
+      try {
+        const expiredAircraft = await UserAircraft.findAll({
+          where: {
+            worldMembershipId: { [Op.in]: membershipIds },
+            [Op.or]: [
+              { lastDailyCheckDate: null },
+              { lastDailyCheckDate: { [Op.lt]: new Date(currentGameTime.getTime() - 2 * 24 * 60 * 60 * 1000) } }
+            ]
+          }
+        });
+
+        for (const aircraft of expiredAircraft) {
+          // Check if this aircraft has any active daily maintenance scheduled
+          const hasDailyMaint = await RecurringMaintenance.findOne({
+            where: {
+              aircraftId: aircraft.id,
+              checkType: 'daily',
+              status: 'active'
+            }
+          });
+
+          if (hasDailyMaint) {
+            // Daily checks are scheduled but lastDailyCheckDate fell behind - catch up
+            // Set to yesterday so the next scheduled check completion will bring it current
+            const yesterday = new Date(currentGameTime);
+            yesterday.setDate(yesterday.getDate() - 1);
+            await aircraft.update({ lastDailyCheckDate: yesterday });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`🔧 Daily check catch-up for ${aircraft.registration}: set lastDailyCheckDate to ${yesterday.toISOString().split('T')[0]}`);
+            }
+          }
+        }
+      } catch (catchupErr) {
+        // Non-critical - don't break main maintenance processing
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Daily check catch-up error:', catchupErr.message);
+        }
+      }
+
       // Auto-schedule C and D checks the day before they expire
       await this.processAutomaticHeavyMaintenance(membershipIds, currentGameTime);
 

@@ -1190,8 +1190,9 @@ function loadSidebarSetting() {
     }
   }
 
-  // Also load dev bypass setting
+  // Also load other settings
   loadDevBypassSetting();
+  loadUnderConstructionSetting();
 }
 
 function toggleSidebar() {
@@ -1283,6 +1284,75 @@ async function toggleDevBypass() {
   } catch (error) {
     console.error('Error updating dev bypass setting:', error);
     // Revert checkbox
+    toggleCheckbox.checked = !isEnabled;
+    alert('Failed to update setting. Please try again.');
+  }
+}
+
+// Under Construction Settings
+async function loadUnderConstructionSetting() {
+  try {
+    const response = await fetch('/api/admin/settings/underConstruction');
+    const data = await response.json();
+    const isEnabled = data.value === true || data.value === 'true';
+
+    const toggleCheckbox = document.getElementById('underConstructionToggle');
+    const statusDiv = document.getElementById('underConstructionStatus');
+
+    if (toggleCheckbox) {
+      toggleCheckbox.checked = isEnabled;
+    }
+
+    if (statusDiv) {
+      if (isEnabled) {
+        statusDiv.textContent = 'ENABLED';
+        statusDiv.style.background = 'var(--warning-color)';
+      } else {
+        statusDiv.textContent = 'DISABLED';
+        statusDiv.style.background = 'var(--text-muted)';
+      }
+    }
+  } catch (error) {
+    console.error('Error loading under construction setting:', error);
+  }
+}
+
+async function toggleUnderConstruction() {
+  const toggleCheckbox = document.getElementById('underConstructionToggle');
+  const statusDiv = document.getElementById('underConstructionStatus');
+  const isEnabled = toggleCheckbox.checked;
+
+  try {
+    const response = await fetch('/api/admin/settings/underConstruction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        value: isEnabled,
+        description: 'Show Coming Soon page instead of login page'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update setting');
+    }
+
+    if (statusDiv) {
+      if (isEnabled) {
+        statusDiv.textContent = 'ENABLED';
+        statusDiv.style.background = 'var(--warning-color)';
+      } else {
+        statusDiv.textContent = 'DISABLED';
+        statusDiv.style.background = 'var(--text-muted)';
+      }
+    }
+
+    showSettingNotification(
+      `Under Construction ${isEnabled ? 'Enabled' : 'Disabled'}`,
+      isEnabled ? 'Home page now shows Coming Soon. Use the bottom-right corner to bypass.' : 'Home page restored to normal login.',
+      !isEnabled
+    );
+  } catch (error) {
+    console.error('Error updating under construction setting:', error);
     toggleCheckbox.checked = !isEnabled;
     alert('Failed to update setting. Please try again.');
   }
