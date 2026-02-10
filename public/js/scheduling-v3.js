@@ -1771,7 +1771,10 @@ function renderFlightSegments(params) {
       if (m.checkType !== 'daily') return false;
       if (m.status === 'completed' || m.status === 'inactive') return false;
       const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
-      if (checkDate !== turnaroundDate) return false;
+      // Use DOW matching - virtual flight dates may be offset from actual maintenance dates
+      const checkDow = new Date(checkDate + 'T00:00:00').getDay();
+      const turnaroundDow = new Date(turnaroundDate + 'T00:00:00').getDay();
+      if (checkDow !== turnaroundDow) return false;
       const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
       const maintMins = mH * 60 + mM;
       if (turnaroundStartInDay <= turnaroundEndInDay) {
@@ -2025,7 +2028,10 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
       if (m.checkType !== 'daily') return false;
       if (m.status === 'completed' || m.status === 'inactive') return false;
       const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
-      if (checkDate !== turnaroundDateStr) return false;
+      // Use DOW matching - virtual flight dates may be offset from actual maintenance dates
+      const checkDow = new Date(checkDate + 'T00:00:00').getDay();
+      const turnaroundDow = new Date(turnaroundDateStr + 'T00:00:00').getDay();
+      if (checkDow !== turnaroundDow) return false;
       const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
       const maintMins = mH * 60 + mM;
       if (turnaroundStartInDay <= turnaroundEndInDay) {
@@ -2316,7 +2322,10 @@ function renderTransitDayBlock(flight, route, viewingDate) {
           if (m.checkType !== 'daily') return false;
           if (m.status === 'completed' || m.status === 'inactive') return false;
           const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
-          if (checkDate !== turnaroundDateStr) return false;
+          // Use DOW matching - virtual flight dates may be offset from actual maintenance dates
+          const checkDow = new Date(checkDate + 'T00:00:00').getDay();
+          const turnaroundDow = new Date(turnaroundDateStr + 'T00:00:00').getDay();
+          if (checkDow !== turnaroundDow) return false;
           const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
           const maintMins = mH * 60 + mM;
           if (turnaroundStartInDay <= turnaroundEndInDay) {
@@ -2774,18 +2783,41 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
 
   return maintenance.map(check => {
     // Skip daily checks that overlap with a flight turnaround - the turnaround segment
-    // already shows the daily check visually with the purple/orange gradient
+    // already shows the daily check visually with the purple/orange gradient.
+    // Use DOW-based matching since flight virtual dates may not align with actual maintenance dates.
     if (check.checkType === 'daily') {
       const checkDate = check.displayDate || check.scheduledDate;
       const normCheckDate = typeof checkDate === 'string' ? checkDate.substring(0, 10) : '';
+      const checkDow = new Date(normCheckDate + 'T00:00:00').getDay();
+      const [checkH, checkM] = (check.startTime || '00:00').substring(0, 5).split(':').map(Number);
+      const checkMins = checkH * 60 + checkM;
       const hasOverlappingFlight = scheduledFlights.some(f => {
-        if (f.aircraftId != check.aircraftId) return false;
-        const fSchedDate = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
-        const fArrDate = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : new Date(f.arrivalDate).toISOString().split('T')[0]) : fSchedDate;
-        // Flight is in transit or arrives on this date (turnaround happens downroute)
-        const inTransit = fSchedDate < normCheckDate && fArrDate > normCheckDate;
-        const arrivesToday = fArrDate === normCheckDate && fSchedDate !== normCheckDate;
-        return inTransit || arrivesToday;
+        if (f.aircraftId != check.aircraftId && f.aircraft?.id != check.aircraftId) return false;
+        const depDow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
+        if (depDow < 0) return false;
+        const arrOffset = f.arrivalDayOffset || 0;
+        // Same-day flight: check if daily check time falls during the flight (i.e. turnaround)
+        if (depDow === checkDow) {
+          if (arrOffset > 0) return false; // Multi-day departing today, check is at home base
+          const depTimeStr = f.departureTime?.substring(0, 5) || '00:00';
+          const [depH, depM] = depTimeStr.split(':').map(Number);
+          const depMins = depH * 60 + depM;
+          const arrTimeStr = f.arrivalTime?.substring(0, 5);
+          if (!arrTimeStr) return false;
+          const [arrH, arrM] = arrTimeStr.split(':').map(Number);
+          const arrMins = arrH * 60 + arrM;
+          // Daily check time falls between departure and arrival = during turnaround
+          return checkMins > depMins && checkMins < arrMins;
+        }
+        // Multi-day flight: DOW-based matching for turnaround/transit days
+        if (arrOffset === 0) return false;
+        // For arrOffset=1: turnaround is on dep+1 (the only non-departure day)
+        // For arrOffset>=2: turnaround is on transit days dep+1..dep+arrOffset-1 (not arrival day)
+        const lastTurnaroundDay = arrOffset === 1 ? arrOffset : arrOffset - 1;
+        for (let d = 1; d <= lastTurnaroundDay; d++) {
+          if ((depDow + d) % 7 === checkDow) return true;
+        }
+        return false;
       });
       if (hasOverlappingFlight) return '';
     }
@@ -6024,13 +6056,33 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         let isDownrouteDaily = false;
         if (maint.checkType === 'daily' && col.targetDate) {
           const normMaintDate = col.targetDate.substring(0, 10);
+          const maintDow = new Date(normMaintDate + 'T00:00:00').getDay();
+          const [maintH, maintM] = (maint.startTime || '00:00').substring(0, 5).split(':').map(Number);
+          const maintMins = maintH * 60 + maintM;
           const hasTransitFlight = scheduledFlights.some(f => {
             if (f.aircraftId != aircraft.id && f.aircraft?.id !== aircraft.id) return false;
-            const fSchedDate = typeof f.scheduledDate === 'string' ? f.scheduledDate.substring(0, 10) : '';
-            const fArrDate = f.arrivalDate ? (typeof f.arrivalDate === 'string' ? f.arrivalDate.substring(0, 10) : new Date(f.arrivalDate).toISOString().split('T')[0]) : fSchedDate;
-            // Only skip separate block for true transit days where the strip covers the full day
-            // On arrival days the maintenance falls outside the flight strip's time range
-            return fSchedDate < normMaintDate && fArrDate > normMaintDate;
+            const depDow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
+            if (depDow < 0) return false;
+            const arrOffset = f.arrivalDayOffset || 0;
+            // Same-day flight: check if daily check time falls during the flight (turnaround)
+            if (depDow === maintDow) {
+              if (arrOffset > 0) return false; // Multi-day departing today, check at home
+              const depTimeStr = f.departureTime?.substring(0, 5) || '00:00';
+              const [depH2, depM2] = depTimeStr.split(':').map(Number);
+              const depMins = depH2 * 60 + depM2;
+              const arrTimeStr = f.arrivalTime?.substring(0, 5);
+              if (!arrTimeStr) return false;
+              const [arrH2, arrM2] = arrTimeStr.split(':').map(Number);
+              const arrMins = arrH2 * 60 + arrM2;
+              return maintMins > depMins && maintMins < arrMins;
+            }
+            // Multi-day: DOW-based matching for turnaround/transit days
+            if (arrOffset === 0) return false;
+            const lastTurnaroundDay = arrOffset === 1 ? arrOffset : arrOffset - 1;
+            for (let d = 1; d <= lastTurnaroundDay; d++) {
+              if ((depDow + d) % 7 === maintDow) return true;
+            }
+            return false;
           });
           if (hasTransitFlight) {
             return; // Skip separate block - embedded as gradient in flight strip
