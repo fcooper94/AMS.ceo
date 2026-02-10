@@ -596,6 +596,159 @@ router.post('/create-singleplayer', async (req, res) => {
 });
 
 /**
+ * End a single-player world (mark as completed, stop time)
+ */
+router.post('/end-sp', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { worldId } = req.body;
+    if (!worldId) {
+      return res.status(400).json({ error: 'World ID required' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const world = await World.findByPk(worldId);
+    if (!world) {
+      return res.status(404).json({ error: 'World not found' });
+    }
+
+    if (world.worldType !== 'singleplayer') {
+      return res.status(400).json({ error: 'Only single-player worlds can be ended this way' });
+    }
+
+    if (world.ownerUserId !== user.id) {
+      return res.status(403).json({ error: 'Only the world owner can end this world' });
+    }
+
+    if (world.status === 'completed') {
+      return res.status(400).json({ error: 'World has already ended' });
+    }
+
+    // Mark world as completed
+    await world.update({ status: 'completed' });
+
+    // Stop the time service
+    try {
+      const worldTimeService = require('../services/worldTimeService');
+      worldTimeService.stopWorld(worldId);
+    } catch (e) {
+      // Non-critical — world may not be running
+    }
+
+    // Clear active world if this was the user's active world
+    if (req.session?.activeWorldId === worldId) {
+      req.session.activeWorldId = null;
+    }
+
+    res.json({ success: true, message: 'World ended successfully' });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error ending SP world:', error);
+    }
+    res.status(500).json({ error: 'Failed to end world' });
+  }
+});
+
+/**
+ * Rejoin a single-player world with a fresh airline after bankruptcy
+ */
+router.post('/rejoin-sp', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { worldId, airlineName, airlineCode, iataCode, baseAirportId } = req.body;
+
+    if (!worldId || !airlineName || !airlineCode || !iataCode || !baseAirportId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const world = await World.findByPk(worldId);
+    if (!world) {
+      return res.status(404).json({ error: 'World not found' });
+    }
+
+    if (world.worldType !== 'singleplayer') {
+      return res.status(400).json({ error: 'Only single-player worlds can be rejoined this way' });
+    }
+
+    if (world.ownerUserId !== user.id) {
+      return res.status(403).json({ error: 'Only the world owner can rejoin' });
+    }
+
+    if (world.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot rejoin an ended world' });
+    }
+
+    // Check no existing membership
+    const existingMembership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId }
+    });
+    if (existingMembership) {
+      return res.status(400).json({ error: 'You already have an airline in this world' });
+    }
+
+    // Check codes aren't taken by AI in this world
+    const codeTaken = await WorldMembership.findOne({
+      where: { worldId, [Op.or]: [{ airlineCode }, { iataCode }] }
+    });
+    if (codeTaken) {
+      return res.status(400).json({ error: 'Airline code or IATA code already in use in this world' });
+    }
+
+    // Verify airport exists
+    const airport = await Airport.findByPk(baseAirportId);
+    if (!airport) {
+      return res.status(404).json({ error: 'Selected airport not found' });
+    }
+
+    // Calculate starting capital for the world's era
+    const startingBalance = eraEconomicService.getStartingCapital(world.era);
+
+    // Create new membership
+    const membership = await WorldMembership.create({
+      userId: user.id,
+      worldId: world.id,
+      airlineName,
+      airlineCode,
+      iataCode,
+      region: airport.country,
+      baseAirportId,
+      balance: startingBalance,
+      reputation: 50,
+      isAI: false
+    });
+
+    // Set as active world
+    req.session.activeWorldId = worldId;
+
+    res.json({
+      success: true,
+      message: 'Rejoined world successfully',
+      membershipId: membership.id
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error rejoining SP world:', error);
+    }
+    res.status(500).json({ error: 'Failed to rejoin world' });
+  }
+});
+
+/**
  * Get global stats across all active worlds
  */
 router.get('/global-stats', async (req, res) => {

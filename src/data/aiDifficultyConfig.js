@@ -1,7 +1,37 @@
 /**
  * AI Difficulty Configuration
- * Defines behaviour parameters for each difficulty level
+ * Defines behaviour parameters for each difficulty level.
+ * Spawning volume is the SAME across all difficulties (~800 airlines).
+ * Difficulty only affects AI behaviour (pricing, aggression, efficiency).
  */
+
+// Shared spawning config — same for all difficulties
+// ~790 airlines: 60×4 + 100×3 + 200×1 = 240+300+200 = 740, plus base airport extras
+const SPAWN_TIERS = [
+  { airports: 60,  aiPerAirport: 4, fleetSize: { min: 3, max: 6 } },
+  { airports: 100, aiPerAirport: 3, fleetSize: { min: 2, max: 4 } },
+  { airports: 200, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
+];
+
+// Regional airport slot distribution (% of total airports per region)
+const REGION_WEIGHTS = {
+  'Europe': 35,
+  'North America': 30,
+  'Asia': 15,
+  'Middle East': 7,
+  'South America': 5,
+  'Oceania': 4,
+  'Africa': 4
+};
+
+// Guaranteed competition at the player's base airport, scaled by airport type
+// These are ADDITIONAL airlines beyond what the tier system already assigns
+const BASE_AIRPORT_COMPETITORS = {
+  'International Hub': { min: 3, max: 4 },
+  'Major':            { min: 2, max: 3 },
+  'Regional':         { min: 1, max: 2 },
+  'Small Regional':   { min: 1, max: 1 }
+};
 
 const AI_DIFFICULTY = {
   easy: {
@@ -38,14 +68,9 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 6,             // Go bankrupt after 6 loss cycles
     spawnReplacements: false,            // Don't replace bankrupt AI
 
-    // Tier-based spawning: top airports by traffic demand
-    // Each tier: { airports: N, aiPerAirport: M, fleetSize: {min, max} }
-    spawnTiers: [
-      { airports: 20, aiPerAirport: 3, fleetSize: { min: 3, max: 5 } },
-      { airports: 40, aiPerAirport: 2, fleetSize: { min: 2, max: 3 } },
-      { airports: 60, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
-    ]
-    // ~200 total AI airlines
+    spawnTiers: SPAWN_TIERS,
+    regionWeights: REGION_WEIGHTS,
+    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
   },
 
   medium: {
@@ -75,12 +100,9 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 5,
     spawnReplacements: true,
 
-    spawnTiers: [
-      { airports: 30, aiPerAirport: 3, fleetSize: { min: 3, max: 5 } },
-      { airports: 60, aiPerAirport: 2, fleetSize: { min: 2, max: 3 } },
-      { airports: 100, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
-    ]
-    // ~310 total AI airlines
+    spawnTiers: SPAWN_TIERS,
+    regionWeights: REGION_WEIGHTS,
+    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
   },
 
   hard: {
@@ -110,12 +132,9 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 4,
     spawnReplacements: true,
 
-    spawnTiers: [
-      { airports: 50, aiPerAirport: 3, fleetSize: { min: 4, max: 6 } },
-      { airports: 80, aiPerAirport: 2, fleetSize: { min: 2, max: 4 } },
-      { airports: 150, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
-    ]
-    // ~460 total AI airlines
+    spawnTiers: SPAWN_TIERS,
+    regionWeights: REGION_WEIGHTS,
+    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
   }
 };
 

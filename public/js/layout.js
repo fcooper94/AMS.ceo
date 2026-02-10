@@ -841,7 +841,10 @@ async function executeBankruptcy() {
         const aircraftCount = data.summary?.aircraftSold || 0;
         const routesCount = data.summary?.routesCancelled || 0;
 
-        modalContent.innerHTML = `
+        const isSP = data.worldType === 'singleplayer';
+        const bankruptWorldId = data.worldId;
+
+        const summaryHtml = `
           <div style="margin-bottom: 1.5rem;">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem;">
               <circle cx="12" cy="12" r="10"></circle>
@@ -869,27 +872,104 @@ async function executeBankruptcy() {
               </div>
             </div>
           </div>
-
-          <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.85rem;">
-            You can start a new airline by joining a world.
-          </p>
-
-          <button id="bankruptcyDoneBtn" style="
-            padding: 0.75rem 2rem;
-            background: #22c55e;
-            border: 1px solid #22c55e;
-            border-radius: 4px;
-            color: white;
-            cursor: pointer;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          ">Continue</button>
         `;
 
-        document.getElementById('bankruptcyDoneBtn').addEventListener('click', function() {
-          window.location.href = '/world-selection';
-        });
+        if (isSP) {
+          modalContent.innerHTML = summaryHtml + `
+            <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.9rem;">
+              What would you like to do with this world?
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <button id="bankruptcyStartFresh" style="
+                padding: 0.75rem 1.5rem;
+                background: #22c55e;
+                border: 1px solid #22c55e;
+                border-radius: 4px;
+                color: white;
+                cursor: pointer;
+                font-size: 0.9rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              ">Start Fresh Airline</button>
+              <button id="bankruptcyEndWorld" style="
+                padding: 0.75rem 1.5rem;
+                background: #f85149;
+                border: 1px solid #f85149;
+                border-radius: 4px;
+                color: white;
+                cursor: pointer;
+                font-size: 0.9rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              ">End World</button>
+              <button id="bankruptcyDecideLater" style="
+                padding: 0.75rem 1.5rem;
+                background: transparent;
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
+                color: var(--text-secondary);
+                cursor: pointer;
+                font-size: 0.9rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              ">Decide Later</button>
+            </div>
+          `;
+
+          document.getElementById('bankruptcyStartFresh').addEventListener('click', function() {
+            window.location.href = '/world-selection?rejoin=' + encodeURIComponent(bankruptWorldId);
+          });
+
+          document.getElementById('bankruptcyEndWorld').addEventListener('click', async function() {
+            this.textContent = 'Ending...';
+            this.disabled = true;
+            try {
+              const endRes = await fetch('/api/worlds/end-sp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ worldId: bankruptWorldId })
+              });
+              if (endRes.ok) {
+                window.location.href = '/world-selection';
+              } else {
+                const errData = await endRes.json();
+                alert(errData.error || 'Failed to end world');
+                this.textContent = 'End World';
+                this.disabled = false;
+              }
+            } catch (e) {
+              alert('Network error. Please try again.');
+              this.textContent = 'End World';
+              this.disabled = false;
+            }
+          });
+
+          document.getElementById('bankruptcyDecideLater').addEventListener('click', function() {
+            window.location.href = '/world-selection';
+          });
+        } else {
+          modalContent.innerHTML = summaryHtml + `
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.85rem;">
+              You can start a new airline by joining a world.
+            </p>
+            <button id="bankruptcyDoneBtn" style="
+              padding: 0.75rem 2rem;
+              background: #22c55e;
+              border: 1px solid #22c55e;
+              border-radius: 4px;
+              color: white;
+              cursor: pointer;
+              font-size: 0.9rem;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            ">Continue</button>
+          `;
+
+          document.getElementById('bankruptcyDoneBtn').addEventListener('click', function() {
+            window.location.href = '/world-selection';
+          });
+        }
       }
     } else {
       alert(data.error || 'Failed to declare bankruptcy. Please try again.');

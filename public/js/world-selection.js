@@ -1,5 +1,9 @@
 let selectedWorldId = null;
 let bankruptcyWorldId = null;
+let endWorldId = null;
+let rejoinWorldId = null;
+let rejoinAirportId = null;
+let rejoinSearchTimeout = null;
 let selectedAirportId = null;
 let airportSearchTimeout = null;
 let allAirports = [];
@@ -10,8 +14,8 @@ let spSelectedAirportId = null;
 let spAirportSearchTimeout = null;
 let airportBrowserContext = 'join'; // 'join' or 'sp'
 
-// AI count by difficulty (mirrors aiDifficultyConfig.js spawnTiers totals)
-const AI_TOTAL_COUNTS = { easy: 200, medium: 310, hard: 460 };
+// AI count — same across all difficulties (~800), difficulty only affects AI behaviour
+const AI_TOTAL_COUNTS = { easy: 800, medium: 800, hard: 800 };
 
 // Airport loading overlay functions
 function showAirportLoadingOverlay(message = 'Loading...') {
@@ -328,7 +332,7 @@ async function loadWorlds() {
       const statsRes = await fetch('/api/worlds/global-stats');
       if (statsRes.ok) {
         const stats = await statsRes.json();
-        const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n;
+        const fmt = n => Number(n).toLocaleString();
         const elAirlines = document.getElementById('statTotalAirlines');
         const elAircraft = document.getElementById('statTotalAircraft');
         const elRoutes = document.getElementById('statTotalRoutes');
@@ -342,6 +346,21 @@ async function loadWorlds() {
 
     // Start real-time clock updates
     startWorldClocks();
+
+    // Check for ?rejoin=WORLD_ID query param (from bankruptcy "Start Fresh" button)
+    const urlParams = new URLSearchParams(window.location.search);
+    const rejoinId = urlParams.get('rejoin');
+    if (rejoinId) {
+      // Clean the URL so refreshing doesn't re-trigger
+      window.history.replaceState({}, '', window.location.pathname);
+      // Find the world name from loaded data
+      const rejoinWorld = worlds.find(w => w.id === rejoinId);
+      if (rejoinWorld && rejoinWorld.worldType === 'singleplayer' && rejoinWorld.status !== 'completed') {
+        // Auto-switch to SP view and open rejoin modal
+        selectMode('sp');
+        openRejoinModal(rejoinId, rejoinWorld.name || 'SP World');
+      }
+    }
 
   } catch (error) {
     console.error('Error loading worlds:', error);
@@ -469,13 +488,52 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
         <span class="cost-badge weekly" style="background: rgba(107, 114, 128, 0.15); color: #9ca3af;">This world has ended</span>
       </div>
     `;
-  } else if (isSP) {
+  } else if (isSP && isMember) {
     footerHtml = `
       <div class="world-card-costs">
         <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
         ${freeWeeksRemaining > 0 ? `<span class="cost-badge free">${freeWeeksRemaining} free wk${freeWeeksRemaining !== 1 ? 's' : ''} remaining</span>` : ''}
       </div>
-      <button class="btn btn-primary continue-game-btn">CONTINUE</button>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn btn-primary continue-game-btn" style="flex: 1;">CONTINUE</button>
+        <button class="end-world-btn" title="End World" style="
+          padding: 0.5rem;
+          background: transparent;
+          border: 1px solid rgba(248, 81, 73, 0.3);
+          border-radius: 4px;
+          color: #f85149;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        " onmouseenter="this.style.background='rgba(248,81,73,0.15)'" onmouseleave="this.style.background='transparent'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+        </button>
+      </div>
+    `;
+  } else if (isSP && !isMember) {
+    footerHtml = `
+      <div class="world-card-costs">
+        <span class="cost-badge weekly" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">No active airline</span>
+      </div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn btn-primary rejoin-world-btn" style="flex: 1; background: #22c55e; border-color: #16a34a;">REJOIN</button>
+        <button class="end-world-btn" title="End World" style="
+          padding: 0.5rem;
+          background: transparent;
+          border: 1px solid rgba(248, 81, 73, 0.3);
+          border-radius: 4px;
+          color: #f85149;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        " onmouseenter="this.style.background='rgba(248,81,73,0.15)'" onmouseleave="this.style.background='transparent'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+        </button>
+      </div>
     `;
   } else {
     footerHtml = `
@@ -551,7 +609,9 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   const cardBody = card.querySelector('.world-card-body');
   if (cardBody) {
     cardBody.addEventListener('click', () => {
-      if (isMember || isSP) {
+      if (isSP && !isMember && !isEnded) {
+        openRejoinModal(world.id, world.name);
+      } else if (isMember || isSP) {
         enterWorld(world.id);
       } else {
         openJoinModal(world.id, world.name, world.joinCost, world.weeklyCost, world.freeWeeks);
@@ -566,6 +626,22 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     continueGameBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       enterWorld(world.id);
+    });
+  }
+
+  const rejoinBtn = card.querySelector('.rejoin-world-btn');
+  if (rejoinBtn) {
+    rejoinBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openRejoinModal(world.id, world.name);
+    });
+  }
+
+  const endWorldBtn = card.querySelector('.end-world-btn');
+  if (endWorldBtn) {
+    endWorldBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openEndWorldModal(world.id, world.name);
     });
   }
 
@@ -981,6 +1057,178 @@ async function confirmBankruptcy() {
   } catch (error) {
     console.error('Error leaving world:', error);
     showErrorMessage('Network error. Please try again.');
+  }
+}
+
+// === End World Modal ===
+function openEndWorldModal(worldId, worldName) {
+  endWorldId = worldId;
+  document.getElementById('endWorldName').textContent = worldName;
+  document.getElementById('endWorldModal').style.display = 'flex';
+}
+
+function closeEndWorldModal() {
+  document.getElementById('endWorldModal').style.display = 'none';
+  endWorldId = null;
+}
+
+async function confirmEndWorld() {
+  if (!endWorldId) return;
+
+  try {
+    const response = await fetch('/api/worlds/end-sp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worldId: endWorldId })
+    });
+
+    if (response.ok) {
+      closeEndWorldModal();
+      loadWorlds();
+    } else {
+      const data = await response.json();
+      showErrorMessage(data.error || 'Failed to end world');
+    }
+  } catch (error) {
+    console.error('Error ending world:', error);
+    showErrorMessage('Network error. Please try again.');
+  }
+}
+
+// === Rejoin World Modal ===
+function openRejoinModal(worldId, worldName) {
+  rejoinWorldId = worldId;
+  rejoinAirportId = null;
+  document.getElementById('rejoinWorldName').textContent = worldName;
+  document.getElementById('rejoinAirlineName').value = '';
+  document.getElementById('rejoinAirlineCode').value = '';
+  document.getElementById('rejoinIataCode').value = '';
+  document.getElementById('rejoinAirportSearch').value = '';
+  document.getElementById('rejoinAirportResults').style.display = 'none';
+  document.getElementById('rejoinSelectedAirport').style.display = 'none';
+  document.getElementById('rejoinError').style.display = 'none';
+  document.getElementById('rejoinWorldModal').style.display = 'flex';
+
+  // Set up airport search
+  const searchInput = document.getElementById('rejoinAirportSearch');
+  searchInput.removeEventListener('input', handleRejoinAirportSearch);
+  searchInput.addEventListener('input', handleRejoinAirportSearch);
+}
+
+function closeRejoinModal() {
+  document.getElementById('rejoinWorldModal').style.display = 'none';
+  rejoinWorldId = null;
+  rejoinAirportId = null;
+}
+
+function handleRejoinAirportSearch() {
+  const query = this.value.trim();
+  clearTimeout(rejoinSearchTimeout);
+
+  if (query.length < 2) {
+    document.getElementById('rejoinAirportResults').style.display = 'none';
+    return;
+  }
+
+  rejoinSearchTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/airports/search?q=${encodeURIComponent(query)}&limit=8`);
+      if (!res.ok) return;
+      const airports = await res.json();
+
+      const resultsDiv = document.getElementById('rejoinAirportResults');
+      if (airports.length === 0) {
+        resultsDiv.innerHTML = '<div style="padding: 0.75rem; color: var(--text-muted); text-align: center;">No airports found</div>';
+      } else {
+        resultsDiv.innerHTML = airports.map(ap => `
+          <div style="padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border-color); transition: background 0.15s;"
+               onmouseenter="this.style.background='var(--surface-elevated)'"
+               onmouseleave="this.style.background='transparent'"
+               onclick="selectRejoinAirport('${ap.id}', '${ap.icaoCode}', '${(ap.name || '').replace(/'/g, "\\'")}', '${(ap.city || '').replace(/'/g, "\\'")}')">
+            <div style="font-weight: 600; color: var(--text-primary);">${ap.icaoCode} - ${ap.name}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">${ap.city || ''}, ${ap.country || ''} (${ap.type || ''})</div>
+          </div>
+        `).join('');
+      }
+      resultsDiv.style.display = 'block';
+    } catch (e) {
+      // ignore
+    }
+  }, 300);
+}
+
+function selectRejoinAirport(id, icao, name, city) {
+  rejoinAirportId = id;
+  document.getElementById('rejoinAirportSearch').style.display = 'none';
+  document.getElementById('rejoinAirportResults').style.display = 'none';
+  const selected = document.getElementById('rejoinSelectedAirport');
+  selected.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <span><strong>${icao}</strong> - ${name} (${city})</span>
+      <button onclick="clearRejoinAirport()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem;">&times;</button>
+    </div>
+  `;
+  selected.style.display = 'block';
+}
+
+function clearRejoinAirport() {
+  rejoinAirportId = null;
+  document.getElementById('rejoinAirportSearch').value = '';
+  document.getElementById('rejoinAirportSearch').style.display = 'block';
+  document.getElementById('rejoinSelectedAirport').style.display = 'none';
+}
+
+async function confirmRejoin() {
+  if (!rejoinWorldId) return;
+
+  const airlineName = document.getElementById('rejoinAirlineName').value.trim();
+  const airlineCode = document.getElementById('rejoinAirlineCode').value.trim().toUpperCase();
+  const iataCode = document.getElementById('rejoinIataCode').value.trim().toUpperCase();
+  const errorDiv = document.getElementById('rejoinError');
+
+  if (!airlineName || !airlineCode || !iataCode || !rejoinAirportId) {
+    errorDiv.textContent = 'Please fill in all fields and select a base airport.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  if (airlineCode.length < 3 || airlineCode.length > 4) {
+    errorDiv.textContent = 'ICAO code must be 3-4 characters.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  if (iataCode.length !== 2) {
+    errorDiv.textContent = 'IATA code must be exactly 2 characters.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/worlds/rejoin-sp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        worldId: rejoinWorldId,
+        airlineName,
+        airlineCode,
+        iataCode,
+        baseAirportId: rejoinAirportId
+      })
+    });
+
+    if (response.ok) {
+      closeRejoinModal();
+      enterWorld(rejoinWorldId);
+    } else {
+      const data = await response.json();
+      errorDiv.textContent = data.error || 'Failed to rejoin world.';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error rejoining world:', error);
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
   }
 }
 

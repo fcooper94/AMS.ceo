@@ -495,6 +495,9 @@ router.post('/bankruptcy', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Get world info (for response)
+    const world = await World.findByPk(activeWorldId);
+
     // Get membership
     const membership = await WorldMembership.findOne({
       where: { userId: user.id, worldId: activeWorldId },
@@ -586,6 +589,8 @@ router.post('/bankruptcy', async (req, res) => {
     res.json({
       success: true,
       message: 'Bankruptcy declared successfully',
+      worldId: activeWorldId,
+      worldType: world ? world.worldType : null,
       summary: {
         airlineName: membership.airlineName,
         aircraftSold: aircraftSold.length,
