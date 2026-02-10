@@ -111,44 +111,10 @@
             <option value="60">60x</option>
             <option value="120">120x</option>
             <option value="240">240x</option>
-            <option value="480">480x</option>
-            <option value="960">960x</option>
           </select>
         </div>
         <div style="margin-left: auto; font-size: 0.75rem; color: var(--text-muted);" id="spWorldStatus">
           Running
-        </div>
-      </div>
-    </div>
-
-    <!-- Competition Summary (SP worlds only) -->
-    <div id="competitionCard" class="dashboard-panel" style="display: none; margin-bottom: 1.5rem;">
-      <div class="panel-header-bar">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-        <span>COMPETITION</span>
-        <a href="/competition" style="margin-left: auto; font-size: 0.75rem; color: var(--primary-color); text-decoration: none;">View Details</a>
-      </div>
-      <div style="padding: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;" id="competitionSummary">
-        <div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">YOUR RANK</div>
-          <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-color);" id="compRank">--</div>
-        </div>
-        <div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">AI AIRLINES</div>
-          <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);" id="compAICount">--</div>
-        </div>
-        <div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">CONTESTED ROUTES</div>
-          <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);" id="compContestedRoutes">--</div>
-        </div>
-        <div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">DIFFICULTY</div>
-          <div style="font-size: 1.5rem; font-weight: 700;" id="compDifficulty">--</div>
         </div>
       </div>
     </div>
@@ -163,7 +129,6 @@
             <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
           </svg>
           <span>NOTIFICATIONS</span>
-          <span class="notification-count" id="notificationCount" style="display: none;">0</span>
         </div>
         <div class="panel-body-scroll" id="notificationsBody">
           <div class="panel-loading">Loading notifications...</div>
@@ -182,23 +147,87 @@
           <span>NEWS</span>
         </div>
         <div class="panel-body-scroll" id="newsBody">
-          <div class="news-item">
-            <div class="news-date">07 Feb 2026</div>
-            <div class="news-title">Welcome to AMS</div>
-            <div class="news-text">Welcome to Airline Management Sim! Build your airline empire by purchasing aircraft, creating routes, and managing your operations efficiently.</div>
+          <div class="news-item" onclick="openNewsModal(0)" style="cursor: pointer;">
+            <div class="news-item-content">
+              <div class="news-date">07 Feb 2026</div>
+              <div class="news-title">Welcome to AMS</div>
+              <div class="news-text">Welcome to Airline Management Sim! Build your airline empire by purchasing aircraft, creating routes, and managing your operations efficiently.</div>
+            </div>
+            <svg class="notification-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </div>
-          <div class="news-item">
-            <div class="news-date">07 Feb 2026</div>
-            <div class="news-title">Getting Started</div>
-            <div class="news-text">Start by buying or leasing an aircraft from the marketplace, then create a route from your base airport. Schedule flights and watch your airline grow!</div>
+          <div class="news-item" onclick="openNewsModal(1)" style="cursor: pointer;">
+            <div class="news-item-content">
+              <div class="news-date">07 Feb 2026</div>
+              <div class="news-title">Getting Started</div>
+              <div class="news-text">Start by buying or leasing an aircraft from the marketplace, then create a route from your base airport. Schedule flights and watch your airline grow!</div>
+            </div>
+            <svg class="notification-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </div>
-          <div class="news-item">
-            <div class="news-date">07 Feb 2026</div>
-            <div class="news-title">Maintenance Matters</div>
-            <div class="news-text">Keep your aircraft maintained with regular checks. Missed maintenance can ground your fleet and cost you revenue. Enable auto-scheduling in the maintenance page.</div>
+          <div class="news-item" onclick="openNewsModal(2)" style="cursor: pointer;">
+            <div class="news-item-content">
+              <div class="news-date">07 Feb 2026</div>
+              <div class="news-title">Maintenance Matters</div>
+              <div class="news-text">Keep your aircraft maintained with regular checks. Missed maintenance can ground your fleet and cost you revenue. Enable auto-scheduling in the maintenance page.</div>
+            </div>
+            <svg class="notification-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </div>
         </div>
       </div>
     </div>
   </main>
+</div>
+
+<!-- Notification Detail Modal -->
+<div id="notificationModal" class="detail-modal" style="display: none;">
+  <div class="detail-modal-backdrop" onclick="closeNotificationModal()"></div>
+  <div class="detail-modal-content">
+    <div class="detail-modal-accent" id="notifModalAccent"></div>
+    <div class="detail-modal-header">
+      <div class="detail-modal-icon" id="notifModalIcon"></div>
+      <div class="detail-modal-header-text">
+        <div class="detail-modal-badge" id="notifModalBadge"></div>
+        <div class="detail-modal-title" id="notifModalTitle"></div>
+      </div>
+      <button class="detail-modal-close" onclick="closeNotificationModal()">&times;</button>
+    </div>
+    <div class="detail-modal-body">
+      <div class="detail-modal-message" id="notifModalMessage"></div>
+      <div class="detail-modal-divider"></div>
+      <div class="detail-modal-meta" id="notifModalMeta"></div>
+    </div>
+    <div class="detail-modal-footer">
+      <button class="detail-modal-btn" onclick="closeNotificationModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- News Detail Modal -->
+<div id="newsModal" class="detail-modal" style="display: none;">
+  <div class="detail-modal-backdrop" onclick="closeNewsModal()"></div>
+  <div class="detail-modal-content">
+    <div class="detail-modal-accent" style="background: var(--accent-color);"></div>
+    <div class="detail-modal-header">
+      <div class="detail-modal-icon" style="background: rgba(37, 99, 235, 0.12); color: var(--accent-color);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path>
+          <line x1="10" y1="6" x2="18" y2="6"></line>
+          <line x1="10" y1="10" x2="18" y2="10"></line>
+          <line x1="10" y1="14" x2="14" y2="14"></line>
+        </svg>
+      </div>
+      <div class="detail-modal-header-text">
+        <div class="detail-modal-badge" style="background: rgba(37, 99, 235, 0.15); color: var(--accent-color);">Announcement</div>
+        <div class="detail-modal-title" id="newsModalTitle"></div>
+      </div>
+      <button class="detail-modal-close" onclick="closeNewsModal()">&times;</button>
+    </div>
+    <div class="detail-modal-body">
+      <div class="detail-modal-message" id="newsModalMessage"></div>
+      <div class="detail-modal-divider"></div>
+      <div class="detail-modal-meta" id="newsModalMeta"></div>
+    </div>
+    <div class="detail-modal-footer">
+      <button class="detail-modal-btn" onclick="closeNewsModal()">Close</button>
+    </div>
+  </div>
 </div>

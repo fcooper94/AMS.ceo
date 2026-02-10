@@ -217,8 +217,8 @@ router.post('/acceleration', async (req, res) => {
 
     const { factor } = req.body;
 
-    if (!factor || factor <= 0) {
-      return res.status(400).json({ error: 'Invalid acceleration factor' });
+    if (!factor || factor <= 0 || factor > 240) {
+      return res.status(400).json({ error: 'Invalid acceleration factor (max 240x)' });
     }
 
     await worldTimeService.setTimeAcceleration(activeWorldId, parseFloat(factor));

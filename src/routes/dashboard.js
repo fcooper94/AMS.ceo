@@ -252,6 +252,12 @@ router.get('/notifications', async (req, res) => {
       });
     }
 
+    // One-time cleanup: dismiss old-format AI notifications
+    await Notification.update(
+      { isRead: true },
+      { where: { worldMembershipId: membership.id, isRead: false, title: 'New Competitor Entered Market' } }
+    );
+
     // Merge persistent notifications (sale/lease events)
     const persistentNotifs = await Notification.findAll({
       where: {
@@ -271,7 +277,8 @@ router.get('/notifications', async (req, res) => {
         message: pn.message,
         link: pn.link,
         priority: pn.priority,
-        persistent: true
+        persistent: true,
+        gameTime: pn.gameTime || null
       });
     }
 
