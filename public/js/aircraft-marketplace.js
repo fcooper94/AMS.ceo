@@ -858,7 +858,7 @@ function showProcessingOverlay(actionType = 'order') {
       </div>
       <h2 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 1.3rem;">${actionText} Aircraft</h2>
       <p style="margin: 0; color: var(--text-secondary); font-size: 0.95rem;">Processing your order, please wait...</p>
-      <p style="margin: 1rem 0 0 0; color: var(--text-muted); font-size: 0.8rem;">This may take a few seconds</p>
+      <div id="loading-quip-market" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-top: 0.75rem;"></div>
     </div>
     <style>
       @keyframes spin {
@@ -868,10 +868,12 @@ function showProcessingOverlay(actionType = 'order') {
   `;
 
   document.body.appendChild(overlay);
+  startLoadingQuips('loading-quip-market');
 }
 
 // Hide processing overlay
 function hideProcessingOverlay() {
+  stopLoadingQuips();
   const existing = document.getElementById('processingOverlay');
   if (existing) {
     existing.remove();

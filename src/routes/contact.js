@@ -85,7 +85,7 @@ router.post('/', async (req, res) => {
     // Email to site owner
     const mailOptions = {
       from: process.env.SMTP_FROM || process.env.GMAIL_USER || 'noreply@airlinemanager.com',
-      to: 'fcooper94@icloud.com',
+      to: 'support@ams.ceo',
       replyTo: email,
       subject: `[Airline Manager Contact] ${subject}`,
       text: `

@@ -150,6 +150,7 @@ function showLoadingOverlay(message = 'Loading...') {
           "></div>
         </div>
         <div id="loadingMessage" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);"></div>
+        <div id="loading-quip-routes" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-top: 0.75rem;"></div>
       </div>
       <style>
         @keyframes spin {
@@ -165,6 +166,7 @@ function showLoadingOverlay(message = 'Loading...') {
     messageEl.innerHTML = message;
   }
   overlay.style.display = 'flex';
+  startLoadingQuips('loading-quip-routes');
 }
 
 function updateLoadingOverlay(message) {
@@ -178,6 +180,7 @@ function updateLoadingOverlay(message) {
 }
 
 function hideLoadingOverlay() {
+  stopLoadingQuips();
   const overlay = document.getElementById('airportLoadingOverlay');
   if (overlay) {
     overlay.style.display = 'none';
@@ -2173,6 +2176,7 @@ function showLoadingOverlay(message = 'Creating route...') {
         color: rgba(255, 255, 255, 0.7);
         font-size: 0.9rem;
       "></div>
+      <div id="loading-quip-create" style="font-size: 0.8rem; color: rgba(255,255,255,0.5); font-style: italic; margin-top: 0.75rem;"></div>
     </div>
   `;
 
@@ -2187,6 +2191,7 @@ function showLoadingOverlay(message = 'Creating route...') {
   document.head.appendChild(style);
 
   document.body.appendChild(overlay);
+  startLoadingQuips('loading-quip-create');
 }
 
 function updateLoadingProgress(current, total, message) {
@@ -2203,6 +2208,7 @@ function updateLoadingProgress(current, total, message) {
 }
 
 function hideLoadingOverlay() {
+  stopLoadingQuips();
   const overlay = document.getElementById('loadingOverlay');
   if (overlay) {
     overlay.remove();

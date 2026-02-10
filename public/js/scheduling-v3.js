@@ -515,14 +515,17 @@ function updateAircraftStatusBadges() {
 
     // Determine if we should have a badge
     if (hasExpiredChecks) {
-      // Build tooltip
+      // Build tooltip - show only the heaviest check from each category
+      const checkWeight = { 'daily': 0, 'weekly': 1, 'A': 2, 'C': 3, 'D': 4 };
+      const heaviestInProgress = inProgressChecks.length > 0 ? inProgressChecks.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
+      const heaviestExpired = actuallyExpired.length > 0 ? actuallyExpired.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
       let groundedTooltip = '';
-      if (actuallyExpired.length > 0 && inProgressChecks.length > 0) {
-        groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired; ${inProgressChecks.map(c => c.name).join(', ')} in progress`;
-      } else if (inProgressChecks.length > 0) {
-        groundedTooltip = `MAINTENANCE IN PROGRESS: ${inProgressChecks.map(c => c.name).join(', ')}`;
-      } else {
-        groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired`;
+      if (heaviestExpired && heaviestInProgress) {
+        groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired; ${heaviestInProgress.name} in progress`;
+      } else if (heaviestInProgress) {
+        groundedTooltip = `MAINTENANCE IN PROGRESS: ${heaviestInProgress.name}`;
+      } else if (heaviestExpired) {
+        groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired`;
       }
 
       const badgeColor = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? '#d29922' : '#f85149';
@@ -1225,27 +1228,28 @@ async function applyGlobalMaintenanceSettings() {
 // Fetch all schedule data in a single request (much faster than 4 separate requests)
 async function fetchAllScheduleData() {
   try {
-    const worldTime = getCurrentWorldTime();
+    let worldTime = getCurrentWorldTime();
+    // Retry a few times if world time isn't ready yet (layout.js may still be loading)
     if (!worldTime) {
-      console.error('World time not available');
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        worldTime = getCurrentWorldTime();
+        if (worldTime) break;
+      }
+    }
+    if (!worldTime) {
+      console.error('World time not available after retries');
       return;
     }
 
-    // Add cache-buster to ensure fresh data
-    const cacheBuster = Date.now();
-    console.log('[DEBUG] Fetching schedule data with cache buster:', cacheBuster);
-    const response = await fetch(`/api/schedule/data?_=${cacheBuster}`);
+    const response = await fetch('/api/schedule/data');
     if (response.ok) {
       const data = await response.json();
-      console.log('[DEBUG] API returned maintenance count:', data.maintenance?.length || 0);
       userFleet = (data.fleet || []).filter(ac => ac.status === 'active' || ac.status === 'maintenance');
       routes = data.routes || [];
       // Templates come from server with dayOfWeek - compute virtual dates for rendering
       scheduledFlights = computeVirtualDatesForTemplates(data.flights || [], worldTime);
       scheduledMaintenance = data.maintenance || [];
-      console.log(`Loaded: ${userFleet.length} aircraft (active/maintenance), ${routes.length} routes, ${scheduledFlights.length} flight templates, ${scheduledMaintenance.length} maintenance`);
-    } else {
-      console.error('[DEBUG] API response not OK:', response.status, response.statusText);
     }
   } catch (error) {
     console.error('Error fetching schedule data:', error);
@@ -1743,9 +1747,44 @@ function renderFlightSegments(params) {
   const returnDepTime = addMinutesToTime(depTime, outboundMins + turnaroundMins);
 
   // Check if daily check is needed at turnaround (only if no home base check covers this flight)
-  const dailyCheckDue = flight.aircraft && flight.scheduledDate
-    ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.scheduledDate, depTime, flight.scheduledDate?.substring(0, 10))
+  // For overnight flights, turnaround date is after departure date
+  const [_dH, _dM] = (depTime || '00:00').split(':').map(Number);
+  const _depMins = _dH * 60 + _dM;
+  const _arrAtDestMins = _depMins + outboundMins;
+  const _turnaroundDaysAfterDep = Math.floor(_arrAtDestMins / 1440);
+  const turnaroundDate = _turnaroundDaysAfterDep > 0
+    ? addDaysToDate(flight.scheduledDate, _turnaroundDaysAfterDep)
+    : (typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : flight.scheduledDate);
+
+  let dailyCheckDue = flight.aircraft && flight.scheduledDate
+    ? isDailyCheckDueAtTurnaround(flight.aircraft, turnaroundDate, depTime, flight.scheduledDate?.substring(0, 10))
     : false;
+  let dailyCheckMaintId = null;
+
+  // Find the maintenance record for this daily check (for click-to-view)
+  if (flight.aircraft && flight.scheduledDate) {
+    const turnaroundStartInDay = _arrAtDestMins % 1440;
+    const turnaroundEndInDay = (_arrAtDestMins + turnaroundMins) % 1440;
+    const aircraftId = flight.aircraft.id;
+    const matchingMaint = scheduledMaintenance.find(m => {
+      if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
+      if (m.checkType !== 'daily') return false;
+      if (m.status === 'completed' || m.status === 'inactive') return false;
+      const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
+      if (checkDate !== turnaroundDate) return false;
+      const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
+      const maintMins = mH * 60 + mM;
+      if (turnaroundStartInDay <= turnaroundEndInDay) {
+        return maintMins >= turnaroundStartInDay && maintMins < turnaroundEndInDay;
+      } else {
+        return maintMins >= turnaroundStartInDay || maintMins < turnaroundEndInDay;
+      }
+    });
+    if (matchingMaint) {
+      dailyCheckDue = true;
+      dailyCheckMaintId = matchingMaint.id;
+    }
+  }
   const dailyCheckDuration = 30; // Daily check takes 30 minutes
 
   if (hasTechStop && legMins.leg1 && legMins.leg2) {
@@ -1793,17 +1832,23 @@ function renderFlightSegments(params) {
     `;
     currentLeft += leg2Width;
 
-    // Turnaround at destination (purple)
+    // Turnaround at destination (purple) - use turnaround's own duration for compact
     const turnaroundWidth = (turnaroundMins / 60) * 100;
+    const turnaroundCompact = turnaroundMins < 30 ? 'very-compact' : turnaroundMins < 45 ? 'compact' : '';
     const techTurnaroundTitle = dailyCheckDue
-      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)`
+      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)${dailyCheckMaintId ? ' - Click D to view' : ''}`
       : `Turnaround at ${arrAirport} (${turnaroundMins}m)`;
+    const techDailyBadgeHtml = dailyCheckDue
+      ? (dailyCheckMaintId
+        ? `<span class="daily-check-badge" onclick="event.stopPropagation(); viewMaintenanceDetails('${dailyCheckMaintId}')" style="cursor: pointer;">D</span>`
+        : '<span class="daily-check-badge">D</span>')
+      : '';
     segmentsHtml += `
-      <div class="flight-segment segment-turnaround ${compactClass} ${dailyCheckDue ? 'has-daily-check' : ''}"
+      <div class="flight-segment segment-turnaround ${turnaroundCompact} ${dailyCheckDue ? 'has-daily-check' : ''}"
            style="left: ${currentLeft}%; width: ${turnaroundWidth}%;"
            onclick="viewFlightDetails('${flight.id}')"
            title="${techTurnaroundTitle}">
-        <span class="segment-label">${arrAirport}</span>
+        <span class="segment-label">${arrAirport}${techDailyBadgeHtml}</span>
         ${dailyCheckDue
           ? `<span class="segment-time" style="color: #fbbf24;">Daily ${dailyCheckDuration}m</span>`
           : `<span class="segment-time">${turnaroundMins}m</span>`
@@ -1858,17 +1903,23 @@ function renderFlightSegments(params) {
     `;
     currentLeft += outboundWidth;
 
-    // Turnaround segment (purple)
+    // Turnaround segment (purple) - use turnaround's own duration for compact, not total flight
     const turnaroundWidth = (turnaroundMins / 60) * 100;
+    const turnaroundCompact = turnaroundMins < 30 ? 'very-compact' : turnaroundMins < 45 ? 'compact' : '';
     const stdTurnaroundTitle = dailyCheckDue
-      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)`
+      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)${dailyCheckMaintId ? ' - Click D to view' : ''}`
       : `Turnaround at ${arrAirport} (${turnaroundMins}m)`;
+    const stdDailyBadgeHtml = dailyCheckDue
+      ? (dailyCheckMaintId
+        ? `<span class="daily-check-badge" onclick="event.stopPropagation(); viewMaintenanceDetails('${dailyCheckMaintId}')" style="cursor: pointer;">D</span>`
+        : '<span class="daily-check-badge">D</span>')
+      : '';
     segmentsHtml += `
-      <div class="flight-segment segment-turnaround ${compactClass} ${dailyCheckDue ? 'has-daily-check' : ''}"
+      <div class="flight-segment segment-turnaround ${turnaroundCompact} ${dailyCheckDue ? 'has-daily-check' : ''}"
            style="left: ${currentLeft}%; width: ${turnaroundWidth}%;"
            onclick="viewFlightDetails('${flight.id}')"
            title="${stdTurnaroundTitle}">
-        <span class="segment-label">${arrAirport}</span>
+        <span class="segment-label">${arrAirport}${stdDailyBadgeHtml}</span>
         ${dailyCheckDue
           ? `<span class="segment-time" style="color: #fbbf24;">Daily ${dailyCheckDuration}m</span>`
           : `<span class="segment-time">${turnaroundMins}m</span>`
@@ -1958,9 +2009,36 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
 
   // Check if daily check is needed at turnaround (only if no home base check covers this flight)
   // Pass scheduledDate as departureDate to filter out downroute checks from covering check search
-  const dailyCheckDue = flight.aircraft && flight.arrivalDate
+  let dailyCheckDue = flight.aircraft && flight.arrivalDate
     ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.arrivalDate, depTime, flight.scheduledDate?.substring(0, 10))
     : false;
+  let dailyCheckMaintId = null;
+
+  // Find the maintenance record for this daily check (for click-to-view)
+  if (flight.aircraft && flight.scheduledDate) {
+    const turnaroundStartInDay = arrivalMinutesFromMidnight;
+    const turnaroundEndInDay = (arrivalMinutesFromMidnight + turnaroundMins) % 1440;
+    const aircraftId = flight.aircraft.id;
+    const turnaroundDateStr = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : '') : '';
+    const matchingMaint = scheduledMaintenance.find(m => {
+      if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
+      if (m.checkType !== 'daily') return false;
+      if (m.status === 'completed' || m.status === 'inactive') return false;
+      const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
+      if (checkDate !== turnaroundDateStr) return false;
+      const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
+      const maintMins = mH * 60 + mM;
+      if (turnaroundStartInDay <= turnaroundEndInDay) {
+        return maintMins >= turnaroundStartInDay && maintMins < turnaroundEndInDay;
+      } else {
+        return maintMins >= turnaroundStartInDay || maintMins < turnaroundEndInDay;
+      }
+    });
+    if (matchingMaint) {
+      dailyCheckDue = true;
+      dailyCheckMaintId = matchingMaint.id;
+    }
+  }
   const dailyCheckDuration = 30;
 
   // Helper to calculate time from minutes after midnight
@@ -2006,14 +2084,19 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
     // Show full turnaround
     const turnaroundWidth = (turnaroundMins / 60) * 100;
     const turnaroundTitle = dailyCheckDue
-      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)`
+      ? `Turnaround at ${arrAirport} (${turnaroundMins}m) - DAILY CHECK (${dailyCheckDuration}m)${dailyCheckMaintId ? ' - Click D to view' : ''}`
       : `Turnaround at ${arrAirport} (${turnaroundMins}m)`;
+    const overnightDailyBadgeHtml = dailyCheckDue
+      ? (dailyCheckMaintId
+        ? `<span class="daily-check-badge" onclick="event.stopPropagation(); viewMaintenanceDetails('${dailyCheckMaintId}')" style="cursor: pointer;">D</span>`
+        : '<span class="daily-check-badge">D</span>')
+      : '';
     segmentsHtml += `
       <div class="flight-segment segment-turnaround ${turnaroundMins < 60 ? 'compact' : ''} ${dailyCheckDue ? 'has-daily-check' : ''}"
            style="left: ${currentLeft}%; width: ${turnaroundWidth}%;"
            onclick="viewFlightDetails('${flight.id}')"
            title="${turnaroundTitle}">
-        <span class="segment-label">${arrAirport}</span>
+        <span class="segment-label">${arrAirport}${overnightDailyBadgeHtml}</span>
         ${dailyCheckDue
           ? `<span class="segment-time" style="color: #fbbf24;">Daily ${dailyCheckDuration}m</span>`
           : `<span class="segment-time">${turnaroundMins}m</span>`
@@ -2047,7 +2130,7 @@ function renderOvernightArrivalBlock(flight, route, calculatedArrTime = null, se
            style="left: -0.4rem; width: calc(${turnaroundWidth}% + 0.4rem); border-radius: 0;"
            onclick="viewFlightDetails('${flight.id}')"
            title="${continuingTitle}">
-        <span class="segment-label">${arrAirport}</span>
+        <span class="segment-label">${arrAirport}${dailyCheckDue ? '<span class="daily-check-badge">D</span>' : ''}</span>
         ${dailyCheckDue
           ? `<span class="segment-time" style="color: #fbbf24;">Daily ${dailyCheckDuration}m</span>`
           : `<span class="segment-time">${Math.round(remainingTurnaround)}m</span>`
@@ -2217,16 +2300,48 @@ function renderTransitDayBlock(flight, route, viewingDate) {
 
     if (seg.type === 'turnaround') {
       // Check daily check for turnaround - pass scheduledDate as departureDate to exclude downroute checks
-      const dailyCheckDue = flight.aircraft && flight.arrivalDate
+      let dailyCheckDue = flight.aircraft && flight.arrivalDate
         ? isDailyCheckDueAtTurnaround(flight.aircraft, flight.arrivalDate, depTimeStr, flight.scheduledDate?.substring(0, 10))
         : false;
+      let dailyCheckMaintId = null;
 
+      // Find the maintenance record for this daily check (for click-to-view)
+      if (flight.aircraft && flight.scheduledDate) {
+        const turnaroundStartInDay = (depMinsFromMidnight + outboundMins) % 1440;
+        const turnaroundEndInDay = (turnaroundStartInDay + turnaroundMins) % 1440;
+        const aircraftId = flight.aircraft.id;
+        const turnaroundDateStr = flight.arrivalDate ? (typeof flight.arrivalDate === 'string' ? flight.arrivalDate.substring(0, 10) : '') : '';
+        const matchingMaint = scheduledMaintenance.find(m => {
+          if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
+          if (m.checkType !== 'daily') return false;
+          if (m.status === 'completed' || m.status === 'inactive') return false;
+          const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
+          if (checkDate !== turnaroundDateStr) return false;
+          const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
+          const maintMins = mH * 60 + mM;
+          if (turnaroundStartInDay <= turnaroundEndInDay) {
+            return maintMins >= turnaroundStartInDay && maintMins < turnaroundEndInDay;
+          } else {
+            return maintMins >= turnaroundStartInDay || maintMins < turnaroundEndInDay;
+          }
+        });
+        if (matchingMaint) {
+          dailyCheckDue = true;
+          dailyCheckMaintId = matchingMaint.id;
+        }
+      }
+
+      const multiDayDailyBadgeHtml = dailyCheckDue
+        ? (dailyCheckMaintId
+          ? `<span class="daily-check-badge" onclick="event.stopPropagation(); viewMaintenanceDetails('${dailyCheckMaintId}')" style="cursor: pointer;">D</span>`
+          : '<span class="daily-check-badge">D</span>')
+        : '';
       segmentsHtml += `
         <div class="flight-segment ${cssClass} ${isCompact ? 'compact' : ''} ${dailyCheckDue ? 'has-daily-check' : ''}"
              style="left: ${leftStyle}; width: ${widthStyle}; ${borderRadius}"
              onclick="viewFlightDetails('${flight.id}')"
-             title="Turnaround at ${arrAirport} (${turnaroundMins}m)${dailyCheckDue ? ' - DAILY CHECK (30m)' : ''} | ${segStartTime}-${segEndTime}">
-          <span class="segment-label">${arrAirport}</span>
+             title="Turnaround at ${arrAirport} (${turnaroundMins}m)${dailyCheckDue ? ' - DAILY CHECK (30m)' : ''}${dailyCheckMaintId ? ' - Click D to view' : ''} | ${segStartTime}-${segEndTime}">
+          <span class="segment-label">${arrAirport}${multiDayDailyBadgeHtml}</span>
           ${dailyCheckDue
             ? `<span class="segment-time" style="color: #fbbf24;">Daily 30m</span>`
             : `<span class="segment-time">${turnaroundMins}m</span>`
@@ -2727,17 +2842,24 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
       const leftPos = isOngoing ? 0 : leftPercent; // Start from beginning if ongoing
       const borderRadiusHeavy = isOngoing ? '0' : '2px 0 0 2px';
 
-      // Calculate which day of maintenance this is
+      // Calculate which day of maintenance this is and detect last day
+      const totalDays = Math.ceil((check.duration || 1440) / 1440);
+      let dayNum = 0;
       let dayLabel = '';
+      let isLastDay = false;
       if (check.scheduledDate && check.displayDate && check.scheduledDate !== check.displayDate) {
-        const startDate = new Date(check.scheduledDate + 'T00:00:00Z');
-        const displayDate = new Date(check.displayDate + 'T00:00:00Z');
-        const dayNum = Math.floor((displayDate - startDate) / (24 * 60 * 60 * 1000)) + 1;
-        dayLabel = `DAY ${dayNum}`;
+        const startDateObj = new Date(check.scheduledDate + 'T00:00:00Z');
+        const displayDateObj = new Date(check.displayDate + 'T00:00:00Z');
+        dayNum = Math.floor((displayDateObj - startDateObj) / (24 * 60 * 60 * 1000)) + 1;
+        isLastDay = dayNum >= totalDays;
+        dayLabel = isLastDay ? 'RETURNS TO SERVICE' : `DAY ${dayNum}`;
       }
 
-      // Extend from start position across all remaining cells (2400% = 24 hours worth)
-      // This creates a visual indicator that the check continues for days/weeks
+      // On the last day, don't extend across all cells - cap the width
+      const heavyWidth = isLastDay ? '100%' : '2400%';
+      const borderRadiusEnd = isLastDay ? '0 2px 2px 0' : '0';
+      const finalBorderRadius = isOngoing ? borderRadiusEnd : (isLastDay ? '2px' : '2px 0 0 2px');
+
       return `
         <div
           class="maintenance-block heavy-maintenance"
@@ -2745,10 +2867,10 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
             position: absolute;
             top: 2px;
             left: ${leftPos}%;
-            width: 2400%;
+            width: ${heavyWidth};
             height: calc(100% - 4px);
-            background: ${backgroundColor};
-            border-radius: ${borderRadiusHeavy};
+            background: ${isLastDay ? 'linear-gradient(90deg, ' + backgroundColor + ' 60%, #22c55e)' : backgroundColor};
+            border-radius: ${finalBorderRadius};
             color: white;
             font-size: 0.75rem;
             font-weight: 700;
@@ -2762,11 +2884,11 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
             overflow: hidden;
           "
           onclick="viewMaintenanceDetails('${check.id}')"
-          title="${checkLabel} CHECK: ${checkDescription} | ${isOngoing ? dayLabel + ' - ' : 'Started ' + startTime + ' - '}ongoing for weeks"
+          title="${checkLabel} CHECK: ${checkDescription} | ${isLastDay ? dayLabel : (isOngoing ? dayLabel + ' - ' : 'Started ' + startTime + ' - ')}${isLastDay ? '' : 'ongoing'}"
         >
           <span style="background: rgba(255,255,255,0.2); padding: 0.1rem 0.3rem; border-radius: 2px;">${checkLabel}</span>
           <span style="opacity: 0.7; font-size: 0.7rem;">${dayLabel || 'IN PROGRESS'}</span>
-          <span style="margin-left: auto; opacity: 0.6;">▸▸▸</span>
+          ${isLastDay ? '' : '<span style="margin-left: auto; opacity: 0.6;">▸▸▸</span>'}
         </div>
       `;
     }
@@ -4031,7 +4153,7 @@ async function viewFlightDetailsWeekly(flightId) {
   const hasTechStop = route.techStopAirport;
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-  const scheduledDate = flight.scheduledDate;
+  const scheduledDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : flight.scheduledDate;
   // Format date as DD/MM/YYYY
   const dateParts = scheduledDate.split('-');
   const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
@@ -4119,19 +4241,31 @@ async function viewFlightDetailsWeekly(flightId) {
   const turnaroundDaysAfterDep = Math.floor(arrAtDestMins / 1440);
   const turnaroundDate = turnaroundDaysAfterDep > 0 ? addDaysToDate(scheduledDate, turnaroundDaysAfterDep) : scheduledDate;
   let dailyCheckDue = isDailyCheckDueAtTurnaround(aircraft, turnaroundDate, depTime, scheduledDate);
-  const dailyCheckDuration = 30; // Daily check takes 30 minutes
 
-  // Fallback: if a downroute daily check is actually scheduled, show it regardless of expiry calc
-  if (!dailyCheckDue) {
-    dailyCheckDue = scheduledMaintenance.some(m => {
-      const maintAircraftId = m.aircraftId || m.aircraft?.id;
-      if (maintAircraftId != aircraft.id) return false;
+  // Also check if auto-scheduler placed a daily check during the turnaround window
+  if (aircraft) {
+    const turnaroundStartInDay = arrAtDestMins % 1440;
+    const turnaroundEndInDay = (turnaroundStartInDay + turnaroundMinutes) % 1440;
+    const aircraftId = aircraft.id;
+    const matchingMaint = scheduledMaintenance.find(m => {
+      if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
       if (m.checkType !== 'daily') return false;
-      if (m.status !== 'active') return false;
+      if (m.status === 'completed' || m.status === 'inactive') return false;
       const checkDate = typeof m.scheduledDate === 'string' ? m.scheduledDate.substring(0, 10) : '';
-      return checkDate === turnaroundDate && checkDate > scheduledDate;
+      if (checkDate !== turnaroundDate) return false;
+      const [mH, mM] = (m.startTime || '00:00').substring(0, 5).split(':').map(Number);
+      const maintMins = mH * 60 + mM;
+      if (turnaroundStartInDay <= turnaroundEndInDay) {
+        return maintMins >= turnaroundStartInDay && maintMins < turnaroundEndInDay;
+      } else {
+        return maintMins >= turnaroundStartInDay || maintMins < turnaroundEndInDay;
+      }
     });
+    if (matchingMaint) {
+      dailyCheckDue = true;
+    }
   }
+  const dailyCheckDuration = 30; // Daily check takes 30 minutes
 
   // Calculate all phase times - MUST match display times for consistency
   const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
@@ -4358,6 +4492,7 @@ async function viewFlightDetailsWeekly(flightId) {
           <div style="display: flex; gap: 2rem; margin-bottom: 1rem; font-size: 0.85rem; flex-wrap: wrap;">
             <div><span style="color: #8b949e;">Aircraft:</span> <span style="color: #f0f6fc; font-weight: 600;">${aircraft.registration}</span> <span style="color: #8b949e;">(${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model})</span></div>
             <div><span style="color: #8b949e;">Date:</span> <span style="color: #f0f6fc;">${formattedDate}</span></div>
+            <div><span style="color: #8b949e;">Turnaround:</span> <span style="color: #f0f6fc;">${Math.floor(turnaroundMinutes / 60)}h ${turnaroundMinutes % 60}m</span></div>
           </div>
 
           <!-- Two sector columns -->
@@ -4840,11 +4975,56 @@ async function viewMaintenanceDetails(maintenanceId) {
     // Store the current maintenance ID for live updates
     currentMaintenanceModalId = maintenanceId;
 
+    // Determine if this daily check is scheduled downroute (at a destination airport)
+    let downrouteAirport = '';
+    if (maintenance.checkType === 'daily' && maintenance.scheduledDate && maintenance.startTime) {
+      const maintDateStr = typeof maintenance.scheduledDate === 'string' ? maintenance.scheduledDate.substring(0, 10) : '';
+      const maintDate = new Date(maintDateStr + 'T12:00:00');
+      const maintDow = maintDate.getDay();
+      const [maintH, maintM] = (maintenance.startTime || '00:00').substring(0, 5).split(':').map(Number);
+      const maintMins = maintH * 60 + maintM;
+
+      // Check all flights for this aircraft to find if maintenance falls in a turnaround
+      const aircraftFlights = (scheduledFlights || []).filter(f =>
+        f.aircraftId === maintenance.aircraftId && f.route
+      );
+      for (const flight of aircraftFlights) {
+        const arrOffset = flight.arrivalDayOffset || 0;
+        const [depH, depM] = (flight.departureTime || '00:00').substring(0, 5).split(':').map(Number);
+        const depMins = depH * 60 + depM;
+        const [arrH, arrM] = (flight.arrivalTime || '00:00').substring(0, 5).split(':').map(Number);
+        const arrMins = arrH * 60 + arrM;
+        const turnaroundTime = flight.route.turnaroundTime || 45;
+        const totalTripMins = arrOffset * 1440 + arrMins - depMins;
+        const totalFlightMins = Math.max(0, totalTripMins - turnaroundTime);
+        const outboundMins = Math.round(totalFlightMins / 2);
+        const destArrAbsMins = depMins + outboundMins;
+        const turnaroundDay = Math.floor(destArrAbsMins / 1440);
+        const turnaroundStartOnDay = destArrAbsMins % 1440;
+        const turnaroundEndOnDay = turnaroundStartOnDay + turnaroundTime;
+
+        // Check if this flight's turnaround falls on the maintenance date
+        const turnaroundDow = (flight.dayOfWeek + turnaroundDay) % 7;
+        if (turnaroundDow === maintDow) {
+          // Check if maintenance time falls within turnaround window
+          const inWindow = turnaroundStartOnDay <= turnaroundEndOnDay
+            ? (maintMins >= turnaroundStartOnDay && maintMins < turnaroundEndOnDay)
+            : (maintMins >= turnaroundStartOnDay || maintMins < turnaroundEndOnDay);
+          if (inWindow) {
+            const destAirport = flight.route.arrivalAirport;
+            downrouteAirport = destAirport?.iataCode || destAirport?.icaoCode || '';
+            break;
+          }
+        }
+      }
+    }
+
     // Create the modal shell first (header and footer are static)
     const checkColors = { 'daily': '#FFA500', 'weekly': '#8B5CF6', 'A': '#17A2B8', 'C': '#6B7280', 'D': '#4B5563' };
     const checkColor = checkColors[maintenance.checkType] || '#6b7280';
     const checkTypeLabels = { 'daily': 'Daily Check', 'weekly': 'Weekly Check', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
     const checkType = checkTypeLabels[maintenance.checkType] || `${maintenance.checkType} Check`;
+    const checkSubtitle = downrouteAirport ? `Scheduled downroute in ${downrouteAirport}` : '';
 
     const modalHtml = `
       <div id="maintenanceDetailsModal" style="
@@ -4876,7 +5056,7 @@ async function viewMaintenanceDetails(maintenanceId) {
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <span style="background: ${checkColor}; color: white; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem;">${maintenance.checkType === 'daily' ? 'D' : maintenance.checkType === 'weekly' ? 'W' : maintenance.checkType}</span>
               <div>
-                <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${checkType}</h3>
+                <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${checkType}${checkSubtitle ? ` <span style="font-weight: 400; font-size: 0.8rem; color: #fbbf24;">(${checkSubtitle})</span>` : ''}</h3>
                 <span style="color: #8b949e; font-size: 0.75rem;">${aircraft.registration}</span>
               </div>
             </div>
@@ -5533,13 +5713,16 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
   const inProgressChecks = expiredChecks.filter(c => c.inProgress);
   const actuallyExpired = expiredChecks.filter(c => !c.inProgress);
 
+  const checkWeight = { 'daily': 0, 'weekly': 1, 'A': 2, 'C': 3, 'D': 4 };
+  const heaviestInProgress = inProgressChecks.length > 0 ? inProgressChecks.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
+  const heaviestExpired = actuallyExpired.length > 0 ? actuallyExpired.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
   let groundedTooltip = '';
-  if (actuallyExpired.length > 0 && inProgressChecks.length > 0) {
-    groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired; ${inProgressChecks.map(c => c.name).join(', ')} in progress`;
-  } else if (inProgressChecks.length > 0) {
-    groundedTooltip = `MAINTENANCE IN PROGRESS: ${inProgressChecks.map(c => c.name).join(', ')}`;
-  } else {
-    groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired`;
+  if (heaviestExpired && heaviestInProgress) {
+    groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired; ${heaviestInProgress.name} in progress`;
+  } else if (heaviestInProgress) {
+    groundedTooltip = `MAINTENANCE IN PROGRESS: ${heaviestInProgress.name}`;
+  } else if (heaviestExpired) {
+    groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired`;
   }
 
   let html = `<tr data-aircraft-id="${aircraft.id}" style="border-bottom: 1px solid var(--border-color);">`;
@@ -5943,6 +6126,17 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           // Use the full maintenance ID for the modal
           const maintId = maint.id;
 
+          // Detect if this column's date is the last day of the check
+          const totalDays = Math.ceil(durationMinutes / 1440);
+          let dayNum = 0;
+          let isLastDay = false;
+          if (maint.scheduledDate && col.targetDate) {
+            const startDateObj = new Date(maint.scheduledDate.split('T')[0] + 'T00:00:00Z');
+            const colDateObj = new Date(col.targetDate.substring(0, 10) + 'T00:00:00Z');
+            dayNum = Math.floor((colDateObj - startDateObj) / (24 * 60 * 60 * 1000)) + 1;
+            isLastDay = dayNum >= totalDays;
+          }
+
           // Only show extended "in progress" blocks if maintenance has actually started
           if (hasStarted) {
             // Block 1: Days before current day (Mon through Tue if current is Wed)
@@ -5965,25 +6159,43 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               `;
             }
 
-            // Block 2: From check start time to end of visible week (Sunday)
-            // Width = rest of current day + all remaining days to Sunday
-            const remainingDays = 6 - colIndex; // columns from current+1 to Sunday (index 6)
-            const mainBlockWidth = (100 - leftPct) + (remainingDays * 100);
+            if (isLastDay) {
+              // Last day of maintenance - show "RETURNS TO SERVICE" with green gradient, capped width
+              const lastDayContent = `
+                <span style="background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 2px; color: white; font-size: 0.7rem; font-weight: 700;">${maint.checkType}</span>
+                <span style="color: rgba(255,255,255,0.85); font-size: 0.6rem; font-weight: 600; margin-left: 0.3rem;">RETURNS TO SERVICE</span>
+              `;
 
-            // Content fits within single cell since cells now clip
-            const content = `
-              <span style="background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 2px; color: white; font-size: 0.7rem; font-weight: 700;">${maint.checkType}</span>
-            `;
+              cellContent += `
+                <div
+                  onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
+                  title="${heavyMaintTooltip}"
+                  style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: linear-gradient(90deg, ${maintBg} 50%, #22c55e); border-radius: 0 3px 3px 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
+                >
+                  ${lastDayContent}
+                </div>
+              `;
+            } else {
+              // Block 2: From check start time to end of visible week (Sunday)
+              // Width = rest of current day + all remaining days to Sunday
+              const remainingDays = 6 - colIndex; // columns from current+1 to Sunday (index 6)
+              const mainBlockWidth = (100 - leftPct) + (remainingDays * 100);
 
-            cellContent += `
-              <div
-                onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                title="${heavyMaintTooltip}"
-                style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
-              >
-                ${content}
-              </div>
-            `;
+              // Content fits within single cell since cells now clip
+              const content = `
+                <span style="background: rgba(255,255,255,0.2); padding: 0.1rem 0.4rem; border-radius: 2px; color: white; font-size: 0.7rem; font-weight: 700;">${maint.checkType}</span>
+              `;
+
+              cellContent += `
+                <div
+                  onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
+                  title="${heavyMaintTooltip}"
+                  style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
+                >
+                  ${content}
+                </div>
+              `;
+            }
           } else {
             // Maintenance not yet started - just show a simple block for the scheduled day only
             let widthPct = 15; // Small block to indicate scheduled maintenance
@@ -6360,7 +6572,7 @@ async function loadSchedule() {
     // Close add route modal if it's open
     closeAddRouteModal();
 
-    // Show loading indicator
+    // Show loading indicator with rotating aviation quips
     container.innerHTML = `
       <div style="padding: 3rem; text-align: center; color: var(--text-secondary);">
         <div style="
@@ -6372,7 +6584,8 @@ async function loadSchedule() {
           animation: scheduleSpin 1s linear infinite;
           margin: 0 auto 1rem auto;
         "></div>
-        <div style="font-size: 1rem;">Loading schedule...</div>
+        <div style="font-size: 1rem; margin-bottom: 0.5rem;">Loading schedule...</div>
+        <div id="loading-quip" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;"></div>
       </div>
       <style>
         @keyframes scheduleSpin {
@@ -6381,24 +6594,15 @@ async function loadSchedule() {
         }
       </style>
     `;
+    startLoadingQuips('loading-quip');
 
     updateSelectedDay();
 
     // Use combined endpoint for much faster loading (1 request instead of 4)
     await fetchAllScheduleData();
 
-    // Debug: log maintenance data before rendering
-    console.log('[DEBUG] Maintenance before render:', scheduledMaintenance.length, 'records');
-    if (scheduledMaintenance.length > 0) {
-      console.log('[DEBUG] First 3 maintenance records:', scheduledMaintenance.slice(0, 3).map(m => ({
-        id: m.id,
-        aircraftId: m.aircraftId,
-        checkType: m.checkType,
-        scheduledDate: m.scheduledDate
-      })));
-    }
-
-    // Render the schedule
+    // Stop rotating quips and render the schedule
+    stopLoadingQuips();
     renderSchedule();
   } catch (error) {
     console.error('Error loading schedule:', error);
@@ -6429,13 +6633,16 @@ function generateAircraftRow(aircraft, timeColumns) {
   const inProgressChecks = expiredChecks.filter(c => c.inProgress);
   const actuallyExpired = expiredChecks.filter(c => !c.inProgress);
 
+  const checkWeight = { 'daily': 0, 'weekly': 1, 'A': 2, 'C': 3, 'D': 4 };
+  const heaviestInProgress = inProgressChecks.length > 0 ? inProgressChecks.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
+  const heaviestExpired = actuallyExpired.length > 0 ? actuallyExpired.reduce((a, b) => (checkWeight[b.type] || 0) > (checkWeight[a.type] || 0) ? b : a) : null;
   let groundedTooltip = '';
-  if (actuallyExpired.length > 0 && inProgressChecks.length > 0) {
-    groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired; ${inProgressChecks.map(c => c.name).join(', ')} in progress`;
-  } else if (inProgressChecks.length > 0) {
-    groundedTooltip = `MAINTENANCE IN PROGRESS: ${inProgressChecks.map(c => c.name).join(', ')}`;
-  } else {
-    groundedTooltip = `GROUNDED: ${actuallyExpired.map(c => c.name).join(', ')} expired`;
+  if (heaviestExpired && heaviestInProgress) {
+    groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired; ${heaviestInProgress.name} in progress`;
+  } else if (heaviestInProgress) {
+    groundedTooltip = `MAINTENANCE IN PROGRESS: ${heaviestInProgress.name}`;
+  } else if (heaviestExpired) {
+    groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired`;
   }
 
   // Aircraft info column (sticky left)
@@ -8575,6 +8782,7 @@ function showLoadingOverlay(message = 'Processing...') {
         font-weight: 600;
         margin-bottom: 0.5rem;
       ">${message}</div>
+      <div id="loading-quip-modal" style="font-size: 0.8rem; color: rgba(255,255,255,0.5); font-style: italic; margin-top: 0.75rem;"></div>
     </div>
   `;
 
@@ -8592,9 +8800,11 @@ function showLoadingOverlay(message = 'Processing...') {
   }
 
   document.body.appendChild(overlay);
+  startLoadingQuips('loading-quip-modal');
 }
 
 function hideLoadingOverlay() {
+  stopLoadingQuips();
   const overlay = document.getElementById('loadingOverlay');
   if (overlay) {
     overlay.remove();

@@ -4,6 +4,10 @@ const { Op } = require('sequelize');
 const { ScheduledFlight, RecurringMaintenance, Route, UserAircraft, Airport, Aircraft, WorldMembership, User, World } = require('../models');
 const { checkMaintenanceConflict, attemptMaintenanceReschedule, optimizeMaintenanceForDates, createAutoScheduledMaintenance, refreshAutoScheduledMaintenance } = require('./fleet');
 
+// Debounce cache for maintenance refresh - skip if refreshed recently (per membership)
+const maintenanceRefreshCache = new Map(); // membershipId -> timestamp
+const REFRESH_DEBOUNCE_MS = 60000; // 60 seconds real time (~1 game hour at 60x)
+
 // Wind and route variation constants (must match frontend scheduling-v3.js)
 const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
 const ROUTE_VARIATION_FACTOR = 0.035; // ±3.5% for natural-looking times
@@ -167,15 +171,20 @@ router.get('/data', async (req, res) => {
 
     const worldMembershipId = membership.id;
 
-    // Run all queries in parallel for maximum speed
-    const [fleet, routes, flights, maintenancePatterns] = await Promise.all([
-      // Fleet query
-      UserAircraft.findAll({
-        where: { worldMembershipId },
-        include: [{ model: Aircraft, as: 'aircraft' }],
-        order: [['acquiredAt', 'DESC']]
-      }),
+    // Step 1: Get fleet first (needed for aircraft IDs)
+    const fleet = await UserAircraft.findAll({
+      where: { worldMembershipId },
+      include: [{ model: Aircraft, as: 'aircraft' }],
+      order: [['acquiredAt', 'DESC']]
+    });
 
+    const aircraftIds = fleet.map(a => a.id);
+
+    // Step 2: Check if maintenance refresh is needed (debounce to avoid slow loads)
+    const lastRefresh = maintenanceRefreshCache.get(worldMembershipId) || 0;
+    const needsRefresh = Date.now() - lastRefresh > REFRESH_DEBOUNCE_MS;
+
+    const queries = [
       // Routes query
       Route.findAll({
         where: { worldMembershipId },
@@ -186,7 +195,7 @@ router.get('/data', async (req, res) => {
         ]
       }),
 
-      // Flight templates query (weekly templates - no date filtering needed)
+      // Flight templates query
       ScheduledFlight.findAll({
         where: { isActive: true },
         include: [
@@ -208,31 +217,33 @@ router.get('/data', async (req, res) => {
           }
         ],
         order: [['dayOfWeek', 'ASC'], ['departureTime', 'ASC']]
-      }),
+      })
+    ];
 
-      // Maintenance patterns query - return ALL scheduled maintenance (no date filter)
-      // so modal can show "Next Scheduled" for far-future checks like A, C, D
-      (async () => {
-        const aircraftIds = await UserAircraft.findAll({
-          where: { worldMembershipId },
-          attributes: ['id'],
-          raw: true
-        }).then(rows => rows.map(r => r.id));
+    if (needsRefresh) {
+      // Refresh maintenance in parallel with routes/flights, then query maintenance after
+      const refreshPromises = fleet
+        .filter(a => a.autoScheduleDaily || a.autoScheduleWeekly || a.autoScheduleA || a.autoScheduleC || a.autoScheduleD)
+        .map(a => refreshAutoScheduledMaintenance(a.id, activeWorldId).catch(err => {
+          console.error(`[MAINT-REFRESH] Error refreshing aircraft ${a.id}:`, err.message);
+        }));
+      queries.unshift(Promise.all(refreshPromises));
+      maintenanceRefreshCache.set(worldMembershipId, Date.now());
+    }
 
-        console.log('[MAINT-QUERY] worldMembershipId:', worldMembershipId, 'aircraftIds:', aircraftIds.length);
+    const queryResults = await Promise.all(queries);
+    const routes = needsRefresh ? queryResults[1] : queryResults[0];
+    const flights = needsRefresh ? queryResults[2] : queryResults[1];
 
-        if (aircraftIds.length === 0) return [];
-
-        const maint = await RecurringMaintenance.findAll({
+    // Query maintenance (after refresh if it ran, or directly if debounced)
+    const maintenancePatterns = aircraftIds.length > 0
+      ? await RecurringMaintenance.findAll({
           where: {
             aircraftId: { [Op.in]: aircraftIds },
             status: 'active'
           }
-        });
-        console.log('[MAINT-QUERY] Found', maint.length, 'maintenance records');
-        return maint;
-      })()
-    ]);
+        })
+      : [];
 
     // Efficiently attach maintenance to fleet (O(n) instead of O(n*m))
     const maintenanceByAircraft = {};
@@ -248,23 +259,6 @@ router.get('/data', async (req, res) => {
       aircraftJson.recurringMaintenance = maintenanceByAircraft[aircraft.id] || [];
       return aircraftJson;
     });
-
-    // Background: refresh auto-scheduled maintenance on page load
-    // This keeps maintenance current as game time advances (prevents checks from expiring)
-    (async () => {
-      try {
-        const activeWorldId2 = req.session?.activeWorldId;
-        for (const aircraft of fleet) {
-          const hasAutoSchedule = aircraft.autoScheduleDaily || aircraft.autoScheduleWeekly ||
-            aircraft.autoScheduleA || aircraft.autoScheduleC || aircraft.autoScheduleD;
-          if (hasAutoSchedule) {
-            await refreshAutoScheduledMaintenance(aircraft.id, activeWorldId2);
-          }
-        }
-      } catch (err) {
-        console.error('[MAINT-REFRESH] Error refreshing maintenance on page load:', err.message);
-      }
-    })();
 
     // Generate display blocks for multi-day maintenance (C/D checks)
     // This creates separate blocks with displayDate for each day of multi-day maintenance

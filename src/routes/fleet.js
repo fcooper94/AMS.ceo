@@ -204,7 +204,7 @@ async function getFlightSlotsForDate(aircraftId, dateStr) {
  * Extract flight time slots for a given day-of-week from a set of templates.
  * Shared logic between getFlightSlotsForDate and getFlightSlotsForDateCached.
  */
-function getFlightSlotsFromTemplates(templates, targetDow) {
+function getFlightSlotsFromTemplates(templates, targetDow, forDailyCheck = false) {
   const slots = [];
 
   for (const flight of templates) {
@@ -224,30 +224,67 @@ function getFlightSlotsFromTemplates(templates, targetDow) {
     const [depH, depM] = flight.departureTime.split(':').map(Number);
     const [arrH, arrM] = (flight.arrivalTime || '23:59:00').split(':').map(Number);
     const arrOffset = flight.arrivalDayOffset || 0;
+    const depMins = depH * 60 + depM;
+    const arrMins = arrH * 60 + arrM;
+
+    // For daily checks on overnight flights, calculate turnaround window
+    // Daily checks can be done downroute, so the turnaround gap should be available
+    let turnaroundDayFromDep = -1;
+    let turnaroundStartOnDay = 0;
+    let turnaroundEndOnDay = 0;
+    if (forDailyCheck && arrOffset > 0) {
+      const turnaroundTime = flight.route?.turnaroundTime || 45;
+      const totalTripMins = arrOffset * 1440 + arrMins - depMins;
+      const totalFlightMins = Math.max(0, totalTripMins - turnaroundTime);
+      const outboundMins = Math.round(totalFlightMins / 2);
+      const destArrAbsMins = depMins + outboundMins;
+      turnaroundDayFromDep = Math.floor(destArrAbsMins / 1440);
+      turnaroundStartOnDay = destArrAbsMins % 1440;
+      turnaroundEndOnDay = Math.min(turnaroundStartOnDay + turnaroundTime, 1440);
+    }
 
     // Flight departs on this day-of-week
     if (flight.dayOfWeek === targetDow) {
-      let startMinutes = depH * 60 + depM - preFlight;
-      let endMinutes = arrH * 60 + arrM + postFlight;
       if (arrOffset > 0) {
-        endMinutes = 1440; // Flight extends past midnight
+        if (forDailyCheck && turnaroundDayFromDep === 0 && turnaroundEndOnDay <= 1440) {
+          // Turnaround is on departure day - split around it
+          slots.push({ start: Math.max(0, depMins - preFlight), end: turnaroundStartOnDay });
+          slots.push({ start: turnaroundEndOnDay, end: 1440 });
+        } else {
+          slots.push({ start: Math.max(0, depMins - preFlight), end: 1440 });
+        }
+      } else {
+        let endMinutes = arrMins + postFlight;
+        slots.push({ start: Math.max(0, depMins - preFlight), end: Math.min(1440, endMinutes) });
       }
-      slots.push({ start: Math.max(0, startMinutes), end: Math.min(1440, endMinutes) });
     }
 
     // Flight arrives on this day-of-week (departed on a previous day)
     if (arrOffset > 0) {
       const arrDow = (flight.dayOfWeek + arrOffset) % 7;
       if (arrDow === targetDow) {
-        let endMinutes = arrH * 60 + arrM + postFlight;
-        slots.push({ start: 0, end: Math.min(1440, endMinutes) });
+        if (forDailyCheck && turnaroundDayFromDep === arrOffset) {
+          // Turnaround is on arrival day - split into outbound arrival + return departure
+          slots.push({ start: 0, end: turnaroundStartOnDay });
+          slots.push({ start: turnaroundEndOnDay, end: Math.min(1440, arrMins + postFlight) });
+        } else {
+          slots.push({ start: 0, end: Math.min(1440, arrMins + postFlight) });
+        }
       }
 
-      // Transit days: aircraft is in-flight all day
+      // Transit days: aircraft is in-flight all day (unless turnaround is on this day)
       for (let d = 1; d < arrOffset; d++) {
         const transitDow = (flight.dayOfWeek + d) % 7;
         if (transitDow === targetDow) {
-          slots.push({ start: 0, end: 1440 });
+          if (forDailyCheck && turnaroundDayFromDep === d) {
+            // Turnaround is on this transit day - split around it
+            slots.push({ start: 0, end: turnaroundStartOnDay });
+            if (turnaroundEndOnDay < 1440) {
+              slots.push({ start: turnaroundEndOnDay, end: 1440 });
+            }
+          } else {
+            slots.push({ start: 0, end: 1440 });
+          }
         }
       }
     }
@@ -646,16 +683,16 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
   // === HELPER FUNCTIONS USING IN-MEMORY DATA ===
 
-  function getFlightSlotsForDateCached(dateStr) {
+  function getFlightSlotsForDateCached(dateStr, forDailyCheck = false) {
     // Convert date to day-of-week and use template-based slot calculation
     const targetDate = new Date(dateStr + 'T00:00:00');
     const targetDow = targetDate.getDay();
     const templates = flightsByDow[targetDow] || [];
-    return getFlightSlotsFromTemplates(templates, targetDow);
+    return getFlightSlotsFromTemplates(templates, targetDow, forDailyCheck);
   }
 
   function findAvailableSlotCached(dateStr, duration, checkType) {
-    const flightSlots = getFlightSlotsForDateCached(dateStr);
+    const flightSlots = getFlightSlotsForDateCached(dateStr, checkType === 'daily');
     const targetDate = new Date(dateStr + 'T00:00:00');
 
     // Get existing maintenance on this date OR multi-day maintenance in progress
@@ -1006,13 +1043,12 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
         }
 
         // Check if a heavier check covers this period (D > C > A > weekly > daily)
-        // e.g. an A check within the weekly interval means weekly is unnecessary
+        // A heavier check only covers if it COMPLETES before this check's expiry
         let coveredByHeavierCheck = false;
         if (!alreadyScheduled) {
           const currentHierarchyIdx = checkHierarchy.indexOf(checkType);
           const heavierTypes = checkHierarchy.slice(0, currentHierarchyIdx); // all heavier types
           if (heavierTypes.length > 0) {
-            const coverageWindowMs = checkInterval * 24 * 60 * 60 * 1000;
             // Check both existing DB records and newly queued records
             const allHeavierRecords = [
               ...allExistingMaint.filter(m => heavierTypes.includes(m.checkType)),
@@ -1020,10 +1056,15 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
             ];
             coveredByHeavierCheck = allHeavierRecords.some(r => {
               const rDate = new Date(r.scheduledDate);
-              return Math.abs(rDate - targetStartDate) < coverageWindowMs;
+              const rDur = r.duration || CHECK_DURATIONS[r.checkType] || 60;
+              const rDurationDays = Math.ceil(rDur / 1440);
+              const rCompletionDate = new Date(rDate);
+              rCompletionDate.setDate(rCompletionDate.getDate() + rDurationDays);
+              // Heavier check covers ONLY if it completes before this check's expiry
+              return rCompletionDate <= currentExpiryDate;
             });
             if (coveredByHeavierCheck) {
-              console.log(`[AUTO-SCHEDULE] ${checkType}: Covered by heavier check near ${targetDateStr}, skipping`);
+              console.log(`[AUTO-SCHEDULE] ${checkType}: Covered by heavier check completing before expiry ${currentExpiryDate.toISOString().split('T')[0]}, skipping`);
             }
           }
         }
@@ -1330,13 +1371,21 @@ async function refreshAutoScheduledMaintenance(aircraftId, worldId = null, provi
           return false; // Don't delete
         }
       }
-      // Protect past-dated daily/weekly checks that haven't been processed yet
-      // Let processMaintenance catch up on them before they're deleted
-      if (['daily', 'weekly'].includes(m.checkType) && m.scheduledDate) {
+      // Protect past-dated and in-progress daily/weekly/A checks
+      if (['daily', 'weekly', 'A'].includes(m.checkType) && m.scheduledDate) {
         const schedDateStr = String(m.scheduledDate).split('T')[0];
         if (schedDateStr < gameNowStr) {
-          console.log(`[MAINT REFRESH] Protecting unprocessed past ${m.checkType} check (${schedDateStr})`);
-          return false; // Don't delete - processMaintenance will handle
+          return false; // Don't delete past-dated checks
+        }
+        // Also protect today's checks that have already started (in progress)
+        if (schedDateStr === gameNowStr && m.startTime) {
+          const [mH, mM] = String(m.startTime).substring(0, 5).split(':').map(Number);
+          const maintStartMins = mH * 60 + mM;
+          const gameHours = gameNow.getUTCHours();
+          const gameMins = gameHours * 60 + gameNow.getUTCMinutes();
+          if (gameMins >= maintStartMins) {
+            return false; // Don't delete in-progress checks
+          }
         }
       }
       return true; // Delete

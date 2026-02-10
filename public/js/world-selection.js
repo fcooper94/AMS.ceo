@@ -47,6 +47,7 @@ function showAirportLoadingOverlay(message = 'Loading...') {
           "></div>
         </div>
         <div id="airportLoadingMessage" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);"></div>
+        <div id="loading-quip-world" style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-top: 0.75rem;"></div>
       </div>
       <style>
         @keyframes spin {
@@ -62,6 +63,7 @@ function showAirportLoadingOverlay(message = 'Loading...') {
     messageEl.innerHTML = message;
   }
   overlay.style.display = 'flex';
+  startLoadingQuips('loading-quip-world');
 }
 
 function updateAirportLoadingOverlay(message) {
@@ -75,6 +77,7 @@ function updateAirportLoadingOverlay(message) {
 }
 
 function hideAirportLoadingOverlay() {
+  stopLoadingQuips();
   const overlay = document.getElementById('airportLoadingOverlay');
   if (overlay) {
     overlay.style.display = 'none';
