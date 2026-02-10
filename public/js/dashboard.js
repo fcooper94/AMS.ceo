@@ -433,6 +433,24 @@ async function loadSPControls() {
     // Set pause/resume state
     worldIsPaused = !!world.isPaused;
     updatePauseResumeUI();
+
+    // Show free weeks remaining banner
+    // SP: count from world startDate. MP: count from user's joinedAt.
+    const freeWeeks = world.freeWeeks || 0;
+    if (freeWeeks > 0 && world.currentTime) {
+      const isSP = world.worldType === 'singleplayer';
+      const referenceDate = isSP ? world.startDate : world.joinedAt;
+      if (referenceDate) {
+        const weeksElapsed = Math.floor((new Date(world.currentTime) - new Date(referenceDate)) / (7 * 24 * 60 * 60 * 1000));
+        const freeWeeksRemaining = Math.max(0, freeWeeks - weeksElapsed);
+        const banner = document.getElementById('freeWeeksBanner');
+        const bannerText = document.getElementById('freeWeeksBannerText');
+        if (banner && bannerText && freeWeeksRemaining > 0) {
+          bannerText.textContent = `${freeWeeksRemaining} free week${freeWeeksRemaining !== 1 ? 's' : ''} remaining — no credit charges until your free period ends.`;
+          banner.style.display = 'flex';
+        }
+      }
+    }
   } catch (err) {
     // SP controls not critical
   }
@@ -539,4 +557,15 @@ document.addEventListener('DOMContentLoaded', () => {
     setNavbarHeight();
     window.addEventListener('resize', setNavbarHeight);
   }
+});
+
+// Real-time notification updates via Socket.IO
+let notificationRefreshTimer = null;
+
+window.addEventListener('notificationsRefresh', () => {
+  if (notificationRefreshTimer) clearTimeout(notificationRefreshTimer);
+  notificationRefreshTimer = setTimeout(() => {
+    notificationRefreshTimer = null;
+    loadNotifications();
+  }, 2000);
 });

@@ -595,6 +595,8 @@ let deleteAirportId = null;
 // ==================== WORLDS MANAGEMENT ====================
 
 let allWorlds = [];
+let mpWorlds = [];
+let spWorlds = [];
 let selectedWorldId = null;
 let deleteWorldId = null;
 
@@ -605,28 +607,29 @@ async function loadWorlds() {
     const worlds = await response.json();
     allWorlds = worlds;
 
-    renderWorldsTable(worlds);
+    // Split into multiplayer and singleplayer
+    mpWorlds = worlds.filter(w => w.worldType !== 'singleplayer');
+    spWorlds = worlds.filter(w => w.worldType === 'singleplayer');
+
+    renderMpWorldsTable(mpWorlds);
+    renderSpWorldsTable(spWorlds);
   } catch (error) {
     console.error('Error loading worlds:', error);
-    const tbody = document.getElementById('worldsTableBody');
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading worlds</td>
-      </tr>
+    document.getElementById('mpWorldsTableBody').innerHTML = `
+      <tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading worlds</td></tr>
+    `;
+    document.getElementById('spWorldsTableBody').innerHTML = `
+      <tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading worlds</td></tr>
     `;
   }
 }
 
-// Render worlds table
-function renderWorldsTable(worlds) {
-  const tbody = document.getElementById('worldsTableBody');
+// Render multiplayer worlds table
+function renderMpWorldsTable(worlds) {
+  const tbody = document.getElementById('mpWorldsTableBody');
 
   if (worlds.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No worlds found</td>
-      </tr>
-    `;
+    tbody.innerHTML = `<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No multiplayer worlds found</td></tr>`;
     return;
   }
 
@@ -636,13 +639,7 @@ function renderWorldsTable(worlds) {
                        world.status === 'completed' ? 'var(--text-secondary)' :
                        'var(--accent-color)';
     const statusText = world.status.charAt(0).toUpperCase() + world.status.slice(1);
-
-    // Debug: Log the raw currentTime value
-    console.log('World currentTime from API:', world.name, world.currentTime, typeof world.currentTime);
-
     const currentTime = new Date(world.currentTime);
-    console.log('Parsed currentTime as Date:', currentTime.toString());
-
     const formattedTime = currentTime.toLocaleDateString('en-GB') + ' ' + currentTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
 
     return `
@@ -664,46 +661,130 @@ function renderWorldsTable(worlds) {
   }).join('');
 }
 
-// Search worlds
-function searchWorlds() {
-  const searchTerm = document.getElementById('searchWorldInput').value.toLowerCase();
+// Render singleplayer worlds table
+function renderSpWorldsTable(worlds) {
+  const tbody = document.getElementById('spWorldsTableBody');
 
-  if (!searchTerm) {
-    renderWorldsTable(allWorlds);
+  if (worlds.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No single player worlds found</td></tr>`;
     return;
   }
 
-  const filteredWorlds = allWorlds.filter(world => {
-    return world.name.toLowerCase().includes(searchTerm) ||
-           world.era.toString().includes(searchTerm);
+  tbody.innerHTML = worlds.map(world => {
+    const statusColor = world.status === 'active' ? 'var(--success-color)' :
+                       world.status === 'paused' ? 'var(--warning-color)' :
+                       world.status === 'completed' ? 'var(--text-secondary)' :
+                       'var(--accent-color)';
+    const statusText = world.status.charAt(0).toUpperCase() + world.status.slice(1);
+    const currentTime = new Date(world.currentTime);
+    const formattedTime = currentTime.toLocaleDateString('en-GB') + ' ' + currentTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
+    const ownerName = world.owner ? `${world.owner.firstName} ${world.owner.lastName}` : 'Unknown';
+
+    return `
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 0.5rem; font-weight: 600;">${world.name}</td>
+        <td style="padding: 0.5rem;">${ownerName}</td>
+        <td style="padding: 0.5rem; text-align: center;">${world.era}</td>
+        <td style="padding: 0.5rem; text-align: center;">${formattedTime}</td>
+        <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
+        <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${world.timeAcceleration || 60}x</td>
+        <td style="padding: 0.5rem; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "\\'")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "\\'")}")'>Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Search worlds by type
+function searchWorlds(type) {
+  const inputId = type === 'singleplayer' ? 'searchSpWorldInput' : 'searchMpWorldInput';
+  const searchTerm = document.getElementById(inputId).value.toLowerCase();
+  const sourceWorlds = type === 'singleplayer' ? spWorlds : mpWorlds;
+
+  if (!searchTerm) {
+    if (type === 'singleplayer') {
+      renderSpWorldsTable(spWorlds);
+    } else {
+      renderMpWorldsTable(mpWorlds);
+    }
+    return;
+  }
+
+  const filtered = sourceWorlds.filter(world => {
+    const matchesName = world.name.toLowerCase().includes(searchTerm);
+    const matchesEra = world.era.toString().includes(searchTerm);
+    const matchesOwner = type === 'singleplayer' && world.owner &&
+      `${world.owner.firstName} ${world.owner.lastName}`.toLowerCase().includes(searchTerm);
+    return matchesName || matchesEra || matchesOwner;
   });
 
-  renderWorldsTable(filteredWorlds);
+  if (type === 'singleplayer') {
+    renderSpWorldsTable(filtered);
+  } else {
+    renderMpWorldsTable(filtered);
+  }
 }
 
 // Open add world modal
-function openAddWorldModal() {
+function openAddWorldModal(worldType) {
   selectedWorldId = null;
-  document.getElementById('worldModalTitle').textContent = 'ADD WORLD';
+  const isSp = worldType === 'singleplayer';
+  document.getElementById('worldModalTitle').textContent = isSp ? 'ADD SINGLE PLAYER WORLD' : 'ADD MULTIPLAYER WORLD';
   clearWorldForm();
-  document.getElementById('worldModal').style.display = 'flex';
+  document.getElementById('worldType').value = worldType || 'multiplayer';
 
-  // Debug: Add event listener to track typing
-  const nameInput = document.getElementById('worldNameInput');
-  if (nameInput) {
-    nameInput.addEventListener('input', function(e) {
-      console.log('World Name input changed to:', e.target.value);
+  // Show/hide SP-specific fields
+  document.getElementById('worldOwnerGroup').style.display = isSp ? 'block' : 'none';
+  document.getElementById('worldDifficultyGroup').style.display = isSp ? 'block' : 'none';
+  document.getElementById('worldMaxPlayersGroup').style.display = isSp ? 'none' : 'block';
+
+  // Load user list for owner dropdown if SP
+  if (isSp) {
+    loadWorldOwnerDropdown();
+  }
+
+  document.getElementById('worldModal').style.display = 'flex';
+}
+
+// Load users into owner dropdown
+async function loadWorldOwnerDropdown() {
+  const select = document.getElementById('worldOwnerSelect');
+  select.innerHTML = '<option value="">-- Loading... --</option>';
+
+  try {
+    const response = await fetch('/api/admin/users');
+    const users = await response.json();
+
+    select.innerHTML = '<option value="">-- Select Owner --</option>';
+    users.forEach(user => {
+      const option = document.createElement('option');
+      option.value = user.id;
+      option.textContent = `${user.firstName} ${user.lastName} (${user.vatsimId})`;
+      select.appendChild(option);
     });
-    console.log('World Name input element attached, initial value:', nameInput.value);
-  } else {
-    console.error('World Name input element NOT FOUND when opening modal');
+  } catch (error) {
+    console.error('Error loading users for owner dropdown:', error);
+    select.innerHTML = '<option value="">-- Error loading users --</option>';
   }
 }
 
 // Open edit world modal
 function openEditWorldModal(world) {
   selectedWorldId = world.id;
+  const isSp = world.worldType === 'singleplayer';
   document.getElementById('worldModalTitle').textContent = 'EDIT WORLD';
+
+  // Set world type
+  document.getElementById('worldType').value = world.worldType || 'multiplayer';
+
+  // Show/hide SP-specific fields
+  document.getElementById('worldOwnerGroup').style.display = isSp ? 'block' : 'none';
+  document.getElementById('worldDifficultyGroup').style.display = isSp ? 'block' : 'none';
+  document.getElementById('worldMaxPlayersGroup').style.display = isSp ? 'none' : 'block';
 
   // Populate form
   document.getElementById('worldNameInput').value = world.name || '';
@@ -716,6 +797,14 @@ function openEditWorldModal(world) {
   document.getElementById('worldEndDate').value = world.endDate ? new Date(world.endDate).toISOString().split('T')[0] : '';
   document.getElementById('worldStatus').value = world.status || 'setup';
   document.getElementById('worldDescription').value = world.description || '';
+  document.getElementById('worldDifficulty').value = world.difficulty || '';
+
+  // Load owner dropdown if SP
+  if (isSp) {
+    loadWorldOwnerDropdown().then(() => {
+      document.getElementById('worldOwnerSelect').value = world.ownerUserId || '';
+    });
+  }
 
   document.getElementById('worldError').style.display = 'none';
   document.getElementById('worldModal').style.display = 'flex';
@@ -731,7 +820,7 @@ function closeWorldModal() {
 // Clear world form
 function clearWorldForm() {
   document.getElementById('worldNameInput').value = '';
-  document.getElementById('worldStartDate').value = new Date().toISOString().split('T')[0]; // Set to today
+  document.getElementById('worldStartDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('worldTimeAcceleration').value = '60';
   document.getElementById('worldMaxPlayers').value = '100';
   document.getElementById('worldJoinCost').value = '10';
@@ -740,86 +829,74 @@ function clearWorldForm() {
   document.getElementById('worldEndDate').value = '';
   document.getElementById('worldStatus').value = 'setup';
   document.getElementById('worldDescription').value = '';
+  document.getElementById('worldType').value = 'multiplayer';
+  document.getElementById('worldOwnerSelect').value = '';
+  document.getElementById('worldDifficulty').value = '';
   document.getElementById('worldError').style.display = 'none';
 }
 
 // Save world (create or update)
 async function saveWorld() {
   const errorDiv = document.getElementById('worldError');
+  const worldType = document.getElementById('worldType').value;
+  const isSp = worldType === 'singleplayer';
 
-  // Debug: Log all input elements
-  const nameElement = document.getElementById('worldNameInput');
-  const startDateElement = document.getElementById('worldStartDate');
-  const timeAccelElement = document.getElementById('worldTimeAcceleration');
-  const statusElement = document.getElementById('worldStatus');
-
-  console.log('Input elements found:', {
-    nameElement: !!nameElement,
-    nameValue: nameElement ? nameElement.value : 'ELEMENT NOT FOUND',
-    startDateElement: !!startDateElement,
-    startDateValue: startDateElement ? startDateElement.value : 'ELEMENT NOT FOUND',
-    timeAccelElement: !!timeAccelElement,
-    timeAccelValue: timeAccelElement ? timeAccelElement.value : 'ELEMENT NOT FOUND',
-    statusElement: !!statusElement,
-    statusValue: statusElement ? statusElement.value : 'ELEMENT NOT FOUND'
-  });
-
-  const startDate = startDateElement ? startDateElement.value : '';
+  const startDate = document.getElementById('worldStartDate').value;
 
   const worldData = {
-    name: nameElement ? nameElement.value.trim() : '',
-    era: startDate ? new Date(startDate).getFullYear() : new Date().getFullYear(), // Calculate era from start date
+    name: document.getElementById('worldNameInput').value.trim(),
+    era: startDate ? new Date(startDate).getFullYear() : new Date().getFullYear(),
     startDate: startDate,
-    timeAcceleration: timeAccelElement ? parseFloat(timeAccelElement.value) : NaN,
-    maxPlayers: parseInt(document.getElementById('worldMaxPlayers').value),
+    timeAcceleration: parseFloat(document.getElementById('worldTimeAcceleration').value),
+    maxPlayers: isSp ? 1 : parseInt(document.getElementById('worldMaxPlayers').value),
     joinCost: parseInt(document.getElementById('worldJoinCost').value) || 10,
     weeklyCost: parseInt(document.getElementById('worldWeeklyCost').value) || 1,
     freeWeeks: parseInt(document.getElementById('worldFreeWeeks').value) || 0,
     endDate: document.getElementById('worldEndDate').value || null,
-    status: statusElement ? statusElement.value : '',
-    description: document.getElementById('worldDescription').value.trim() || null
+    status: document.getElementById('worldStatus').value,
+    description: document.getElementById('worldDescription').value.trim() || null,
+    worldType: worldType
   };
 
-  console.log('World data built:', worldData);
+  // Add SP-specific fields
+  if (isSp) {
+    worldData.ownerUserId = document.getElementById('worldOwnerSelect').value || null;
+    worldData.difficulty = document.getElementById('worldDifficulty').value || null;
+  }
 
-  // Validate required fields with specific error messages
+  // Validate required fields
   const missingFields = [];
   if (!worldData.name) missingFields.push('World Name');
   if (!worldData.startDate) missingFields.push('Start Date');
   if (isNaN(worldData.timeAcceleration)) missingFields.push('Time Acceleration');
   if (!worldData.status) missingFields.push('Status');
+  if (isSp && !worldData.ownerUserId) missingFields.push('Owner');
 
   if (missingFields.length > 0) {
     errorDiv.textContent = 'Missing required fields: ' + missingFields.join(', ');
     errorDiv.style.display = 'block';
-    console.log('Validation failed. World data:', worldData);
-    console.log('Missing fields:', missingFields);
     return;
   }
 
-  // Validate timeAcceleration is positive
   if (worldData.timeAcceleration <= 0) {
     errorDiv.textContent = 'Time acceleration must be greater than 0';
     errorDiv.style.display = 'block';
     return;
   }
 
-  // Set default maxPlayers if not provided
-  if (isNaN(worldData.maxPlayers) || worldData.maxPlayers <= 0) {
+  if (!isSp && (isNaN(worldData.maxPlayers) || worldData.maxPlayers <= 0)) {
     worldData.maxPlayers = 100;
   }
 
   try {
     let response;
     if (selectedWorldId) {
-      // Update existing world
       response = await fetch(`/api/admin/worlds/${selectedWorldId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(worldData)
       });
     } else {
-      // Create new world
       response = await fetch('/api/admin/worlds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1436,6 +1513,11 @@ async function loadAirlines() {
   const worldId = document.getElementById('airlinesWorldSelect').value;
   const tbody = document.getElementById('airlinesTableBody');
 
+  // Clear owner search and reset to world view
+  document.getElementById('searchOwnerInput').value = '';
+  document.getElementById('airlinesTableTitle').textContent = 'AIRLINES IN WORLD';
+  setAirlinesTableWorldColumn(false);
+
   if (!worldId) {
     tbody.innerHTML = `
       <tr>
@@ -1469,13 +1551,14 @@ async function loadAirlines() {
 }
 
 // Render airlines table
-function renderAirlinesTable(airlines) {
+function renderAirlinesTable(airlines, showWorld = false) {
   const tbody = document.getElementById('airlinesTableBody');
+  const colspan = showWorld ? 9 : 8;
 
   if (airlines.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">No airlines found in this world</td>
+        <td colspan="${colspan}" style="padding: 1rem; text-align: center; color: var(--text-muted);">${showWorld ? 'No airlines found for this owner' : 'No airlines found in this world'}</td>
       </tr>
     `;
     return;
@@ -1491,12 +1574,16 @@ function renderAirlinesTable(airlines) {
 
     const ownerName = airline.user ? `${airline.user.firstName} ${airline.user.lastName}` : 'Unknown';
     const baseAirport = airline.baseAirport ? airline.baseAirport.icaoCode : 'N/A';
+    const worldCell = showWorld
+      ? `<td style="padding: 0.5rem; text-align: center; font-size: 0.85rem;">${airline.world ? `${airline.world.name}` : 'N/A'}</td>`
+      : '';
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
         <td style="padding: 0.5rem; font-weight: 600;">${airline.airlineName || 'Unnamed Airline'}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${codes}</td>
         <td style="padding: 0.5rem;">${ownerName}</td>
+        ${worldCell}
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${baseAirport}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${balanceColor}; font-weight: 600;">${balance}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${airline.fleetCount || 0}</td>
@@ -1517,8 +1604,11 @@ function renderAirlinesTable(airlines) {
   }).join('');
 }
 
-// Search airlines
+// Search airlines by name/code (requires world selected)
 function searchAirlines() {
+  // Clear owner search when using name/code search
+  document.getElementById('searchOwnerInput').value = '';
+
   const searchTerm = document.getElementById('searchAirlineInput').value.toLowerCase();
 
   if (!searchTerm) {
@@ -1530,15 +1620,82 @@ function searchAirlines() {
     const airlineName = (airline.airlineName || '').toLowerCase();
     const airlineCode = (airline.airlineCode || '').toLowerCase();
     const iataCode = (airline.iataCode || '').toLowerCase();
-    const ownerName = airline.user ? `${airline.user.firstName} ${airline.user.lastName}`.toLowerCase() : '';
 
     return airlineName.includes(searchTerm) ||
            airlineCode.includes(searchTerm) ||
-           iataCode.includes(searchTerm) ||
-           ownerName.includes(searchTerm);
+           iataCode.includes(searchTerm);
   });
 
   renderAirlinesTable(filteredAirlines);
+}
+
+// Search airlines by owner (across all worlds)
+let ownerSearchTimer = null;
+function searchAirlinesByOwner() {
+  // Clear name/code search when using owner search
+  document.getElementById('searchAirlineInput').value = '';
+
+  const searchTerm = document.getElementById('searchOwnerInput').value.trim();
+
+  if (!searchTerm) {
+    // Restore world-based view
+    document.getElementById('airlinesTableTitle').textContent = 'AIRLINES IN WORLD';
+    const worldId = document.getElementById('airlinesWorldSelect').value;
+    if (worldId) {
+      renderAirlinesTable(allAirlines);
+    } else {
+      document.getElementById('airlinesTableBody').innerHTML = `
+        <tr>
+          <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">Select a world to view airlines</td>
+        </tr>
+      `;
+    }
+    setAirlinesTableWorldColumn(false);
+    return;
+  }
+
+  // Debounce the API call
+  if (ownerSearchTimer) clearTimeout(ownerSearchTimer);
+  ownerSearchTimer = setTimeout(async () => {
+    document.getElementById('airlinesTableTitle').textContent = 'AIRLINES BY OWNER';
+    document.getElementById('airlinesTableBody').innerHTML = `
+      <tr>
+        <td colspan="9" style="padding: 1rem; text-align: center; color: var(--text-muted);">Searching...</td>
+      </tr>
+    `;
+
+    try {
+      const response = await fetch(`/api/admin/airlines/search-by-owner?query=${encodeURIComponent(searchTerm)}`);
+      const airlines = await response.json();
+      setAirlinesTableWorldColumn(true);
+      renderAirlinesTable(airlines, true);
+    } catch (error) {
+      console.error('Error searching airlines by owner:', error);
+      document.getElementById('airlinesTableBody').innerHTML = `
+        <tr>
+          <td colspan="9" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error searching airlines</td>
+        </tr>
+      `;
+    }
+  }, 300);
+}
+
+// Toggle WORLD column in airlines table header
+function setAirlinesTableWorldColumn(show) {
+  const headRow = document.getElementById('airlinesTableHead');
+  const existingWorldTh = headRow.querySelector('[data-col="world"]');
+
+  if (show && !existingWorldTh) {
+    const worldTh = document.createElement('th');
+    worldTh.setAttribute('data-col', 'world');
+    worldTh.style.cssText = 'padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);';
+    worldTh.textContent = 'WORLD';
+    // Insert after OWNER column (3rd th, index 2)
+    const ownerTh = headRow.children[2];
+    ownerTh.after(worldTh);
+  } else if (!show && existingWorldTh) {
+    existingWorldTh.remove();
+  }
 }
 
 // ==================== AIRLINE BALANCE MODAL ====================

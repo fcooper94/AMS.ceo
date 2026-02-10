@@ -74,12 +74,7 @@
       </div>
 
       <div id="singlePlayerSection" class="worlds-section" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <h2 class="section-title" style="margin-bottom: 0;">SINGLE PLAYER</h2>
-          <button class="btn btn-primary" onclick="openCreateSPModal()" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
-            + CREATE NEW WORLD
-          </button>
-        </div>
+        <h2 class="section-title">SINGLE PLAYER</h2>
         <div id="singlePlayerList" class="worlds-grid"></div>
       </div>
 
@@ -180,6 +175,11 @@
             <p id="spAICountPreview" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color); color: var(--accent-color); font-weight: 600;">
               AI Competitors: Select airport to calculate
             </p>
+            <p id="spCreditCost" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+              <span style="color: var(--warning-color); font-weight: 600;">Creation Cost: 10 Credits</span>
+              <span id="spUserCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
+            </p>
+            <p style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week (first 4 weeks free)</p>
           </div>
         </div>
 

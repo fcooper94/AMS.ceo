@@ -121,6 +121,7 @@ router.get('/info', async (req, res) => {
       freeWeeks: world.freeWeeks || 0,
       weeklyCost: world.weeklyCost !== undefined ? world.weeklyCost : 1,
       lastCreditDeduction: membership?.lastCreditDeduction || null,
+      joinedAt: membership?.joinedAt || null,
       // Include base airport info for registration prefix and route planning
       baseAirport: baseAirport ? {
         id: baseAirport.id,

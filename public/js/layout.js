@@ -153,6 +153,12 @@ if (socket) {
     updateTimeReference(data.gameTime, 'socket');
   });
 
+  // Notification refresh event from server
+  socket.on('notifications:refresh', (data) => {
+    if (!currentWorldId || data.worldId !== currentWorldId) return;
+    window.dispatchEvent(new CustomEvent('notificationsRefresh'));
+  });
+
   console.log('[Layout] Socket.IO event listeners registered');
 } else {
   console.warn('[Layout] Socket.IO not available - falling back to API-only time sync');

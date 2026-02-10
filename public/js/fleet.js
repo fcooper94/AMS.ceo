@@ -70,6 +70,7 @@ function filterFleet() {
       if (statusFilter === 'leased' && isOwned) return false;
       if (statusFilter === 'listed' && !['listed_sale', 'listed_lease'].includes(userAircraft.status)) return false;
       if (statusFilter === 'leased_out' && userAircraft.status !== 'leased_out') return false;
+      if (statusFilter === 'storage' && !['storage', 'recalling'].includes(userAircraft.status)) return false;
     }
 
     return true;
@@ -163,9 +164,12 @@ function displayFleet() {
 
       // Status-aware badge
       let badgeText, badgeClass;
-      if (userAircraft.status === 'listed_sale') { badgeText = 'Sale'; badgeClass = 'status-listed-sale'; }
+      if (userAircraft.status === 'recalling') { badgeText = 'Ferry'; badgeClass = 'status-recalling'; }
+      else if (userAircraft.status === 'storage') { badgeText = 'Stored'; badgeClass = 'status-storage'; }
+      else if (userAircraft.status === 'listed_sale') { badgeText = 'Sale'; badgeClass = 'status-listed-sale'; }
       else if (userAircraft.status === 'listed_lease') { badgeText = 'List'; badgeClass = 'status-listed-lease'; }
       else if (userAircraft.status === 'leased_out') { badgeText = 'L-Out'; badgeClass = 'status-leased-out'; }
+      else if (userAircraft.status === 'maintenance') { badgeText = 'Maint'; badgeClass = 'status-maintenance'; }
       else { badgeText = isOwned ? 'Own' : 'Lse'; badgeClass = isOwned ? 'status-owned' : 'status-leased'; }
 
       html += `
@@ -309,6 +313,12 @@ async function showAircraftDetails(userAircraftId) {
           ` : userAircraft.status === 'leased_out' ? `
             <span><span style="color: #14b8a6; font-weight: 600;">Leased to ${userAircraft.leaseOutTenantName || 'NPC Airline'}</span> @ <strong>$${formatCurrency(userAircraft.leaseOutMonthlyRate || 0)}/mo</strong></span>
             <span><span style="color: var(--text-muted);">Until:</span> <strong>${userAircraft.leaseOutEndDate ? new Date(userAircraft.leaseOutEndDate).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
+          ` : userAircraft.status === 'recalling' ? `
+            <span><span style="color: #60a5fa; font-weight: 600;">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? `Ferrying to ${userAircraft.storageAirportCode} for Storage` : `Recalling from ${userAircraft.storageAirportCode || 'Storage'}`}</span></span>
+            <span><span style="color: var(--text-muted);">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? 'Reaches Storage:' : 'Back at Base:'}</span> <strong style="color: var(--accent-color);">${userAircraft.recallAvailableAt ? new Date(userAircraft.recallAvailableAt).toLocaleDateString('en-GB') : 'Soon'}</strong></span>
+          ` : userAircraft.status === 'storage' ? `
+            <span><span style="color: #94a3b8; font-weight: 600;">In Storage</span> at <strong>${userAircraft.storageAirportCode || 'N/A'}</strong> since <strong>${userAircraft.storedAt ? new Date(userAircraft.storedAt).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
+            <span><span style="color: var(--text-muted);">Storage Cost:</span> <strong style="color: var(--warning-color);">$${formatCurrency(calculateStorageMonthlyCost(userAircraft))}/mo</strong></span>
           ` : isLeased ? `
             <span><span style="color: var(--text-muted);">Lease:</span> <strong>${userAircraft.leaseDurationMonths} months</strong> @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseMonthly)}/mo</span></span>
             <span><span style="color: var(--text-muted);">Ends:</span> <strong>${new Date(userAircraft.leaseEndDate).toLocaleDateString('en-GB')}</strong></span>
@@ -359,13 +369,18 @@ async function showAircraftDetails(userAircraftId) {
     // Update maintenance info
     const maintInfoEl = document.getElementById('maintInfo');
     const maint = details.maintenance;
+    const isStored = ['storage', 'recalling'].includes(userAircraft.status);
     let maintHtml = '';
+
+    if (isStored) {
+      maintHtml += `<div style="padding: 0.3rem 0.5rem; margin-bottom: 0.4rem; background: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 4px; font-size: 0.75rem; color: #94a3b8; text-align: center;">C &amp; D checks frozen while in storage</div>`;
+    }
 
     if (maint.nextCCheck) {
       const cDate = new Date(maint.nextCCheck);
       const daysUntilC = Math.ceil((cDate - new Date()) / (1000 * 60 * 60 * 24));
-      const cColor = daysUntilC < 30 ? 'var(--danger-color)' : daysUntilC < 90 ? 'var(--warning-color)' : 'var(--text-primary)';
-      maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0;"><span style="color: var(--text-muted);">C-Check Next Due:</span><span style="color: ${cColor}; font-weight: 600;">${cDate.toLocaleDateString('en-GB')}</span></div>`;
+      const cColor = isStored ? '#94a3b8' : daysUntilC < 30 ? 'var(--danger-color)' : daysUntilC < 90 ? 'var(--warning-color)' : 'var(--text-primary)';
+      maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0;"><span style="color: var(--text-muted);">C-Check Next Due:</span><span style="color: ${cColor}; font-weight: 600;">${cDate.toLocaleDateString('en-GB')}${isStored ? ' &#10074;&#10074;' : ''}</span></div>`;
     } else {
       maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0;"><span style="color: var(--text-muted);">C-Check Next Due:</span><span>Not scheduled</span></div>`;
     }
@@ -373,8 +388,8 @@ async function showAircraftDetails(userAircraftId) {
     if (maint.nextDCheck) {
       const dDate = new Date(maint.nextDCheck);
       const daysUntilD = Math.ceil((dDate - new Date()) / (1000 * 60 * 60 * 24));
-      const dColor = daysUntilD < 90 ? 'var(--danger-color)' : daysUntilD < 180 ? 'var(--warning-color)' : 'var(--text-primary)';
-      maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0; border-top: 1px solid var(--border-color);"><span style="color: var(--text-muted);">D-Check Next Due:</span><span style="color: ${dColor}; font-weight: 600;">${dDate.toLocaleDateString('en-GB')}</span></div>`;
+      const dColor = isStored ? '#94a3b8' : daysUntilD < 90 ? 'var(--danger-color)' : daysUntilD < 180 ? 'var(--warning-color)' : 'var(--text-primary)';
+      maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0; border-top: 1px solid var(--border-color);"><span style="color: var(--text-muted);">D-Check Next Due:</span><span style="color: ${dColor}; font-weight: 600;">${dDate.toLocaleDateString('en-GB')}${isStored ? ' &#10074;&#10074;' : ''}</span></div>`;
     } else {
       maintHtml += `<div style="display: flex; justify-content: space-between; padding: 0.4rem 0; border-top: 1px solid var(--border-color);"><span style="color: var(--text-muted);">D-Check Next Due:</span><span>Not scheduled</span></div>`;
     }
@@ -404,27 +419,37 @@ function buildActionButtons(ua) {
 
   if (isLeased && ['active', 'maintenance', 'storage'].includes(status)) {
     const monthlyRate = parseFloat(ua.leaseMonthlyPayment) || 0;
-    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmCancelLease('${ua.id}', '${ua.registration}', ${isPlayerLease}, ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem;">CANCEL LEASE</button>`;
+    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmCancelLease('${ua.id}', '${ua.registration}', ${isPlayerLease}, ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CANCEL LEASE</button>`;
   }
   if (isOwned && ['active', 'storage'].includes(status)) {
-    html += `<button class="btn" onclick="event.stopPropagation(); showSellDialog('${ua.id}', '${ua.registration}', ${ua.purchasePrice || 0})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; background: #d29922; border-color: #d29922; color: #fff;">SELL</button>`;
-    html += `<button class="btn btn-primary" onclick="event.stopPropagation(); showLeaseOutDialog('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem;">LEASE OUT</button>`;
+    html += `<button class="btn" onclick="event.stopPropagation(); showSellDialog('${ua.id}', '${ua.registration}', ${ua.purchasePrice || 0})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #d29922; border-color: #d29922; color: #fff;">SELL</button>`;
+    html += `<button class="btn btn-primary" onclick="event.stopPropagation(); showLeaseOutDialog('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">LEASE OUT</button>`;
+  }
+  if (status === 'active') {
+    html += `<button class="btn" onclick="event.stopPropagation(); confirmPutInStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #64748b; border-color: #64748b; color: #fff;">STORE</button>`;
+  }
+  if (status === 'storage') {
+    html += `<button class="btn" onclick="event.stopPropagation(); confirmTakeOutOfStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: var(--success-color); border-color: var(--success-color); color: #fff;">RECALL FROM STORAGE</button>`;
+  }
+  if (status === 'recalling') {
+    const toStorage = ua.currentAirport && ua.storageAirportCode && ua.currentAirport === ua.storageAirportCode;
+    html += `<span style="flex:1; padding: 0.5rem; font-size: 0.85rem; color: #60a5fa; text-align: center; font-weight: 600;">${toStorage ? 'Ferrying to storage...' : 'Recalling from storage...'}</span>`;
   }
   if (['listed_sale', 'listed_lease'].includes(status)) {
-    html += `<button class="btn" onclick="event.stopPropagation(); withdrawListing('${ua.id}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; background: #d29922; border-color: #d29922; color: #fff;">WITHDRAW LISTING</button>`;
+    html += `<button class="btn" onclick="event.stopPropagation(); withdrawListing('${ua.id}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #d29922; border-color: #d29922; color: #fff;">WITHDRAW LISTING</button>`;
   }
   if (status === 'leased_out') {
     const monthlyRate = parseFloat(ua.leaseOutMonthlyRate) || 0;
-    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmRecallAircraft('${ua.id}', '${ua.registration}', ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem;">RECALL AIRCRAFT</button>`;
+    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmRecallAircraft('${ua.id}', '${ua.registration}', ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">RECALL AIRCRAFT</button>`;
   }
 
-  html += `<button id="closeDetailBtn" class="btn btn-secondary" style="flex:1; padding: 0.5rem; font-size: 0.9rem;">CLOSE</button>`;
+  html += `<button id="closeDetailBtn" class="btn btn-secondary" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CLOSE</button>`;
   return html;
 }
 
 // ── Fleet Action Modal System ──
 
-function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confirmLabel, confirmClass, onConfirm, inputConfig }) {
+function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confirmLabel, confirmClass, onConfirm, inputConfig, modalClass }) {
   // Remove any existing fleet modal
   document.querySelector('.fleet-modal-backdrop')?.remove();
 
@@ -444,7 +469,7 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
   ` : '';
 
   backdrop.innerHTML = `
-    <div class="fleet-modal">
+    <div class="fleet-modal${modalClass ? ' ' + modalClass : ''}">
       <div class="fleet-modal-header">
         <div class="modal-icon ${iconClass}">${icon}</div>
         <div>
@@ -543,8 +568,24 @@ function confirmCancelLease(aircraftId, registration, isPlayerLease, monthlyRate
 }
 
 // Sell dialog with price input
-function showSellDialog(aircraftId, registration, purchasePrice) {
+async function showSellDialog(aircraftId, registration, purchasePrice) {
   const suggestedPrice = Math.round((purchasePrice || 0) * 0.8);
+  const userAircraft = fleetData.find(a => a.id === aircraftId);
+  const aircraftTypeId = userAircraft?.aircraftId;
+
+  let marketHtml = '';
+  if (aircraftTypeId) {
+    try {
+      const res = await fetch(`/api/fleet/market-averages/${aircraftTypeId}`);
+      if (res.ok) {
+        const market = await res.json();
+        if (market.sale.count > 0) {
+          marketHtml = `<p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Market avg sale price: <strong style="color: var(--accent-color);">$${formatCurrency(market.sale.avg)}</strong> <span style="opacity: 0.7;">($${formatCurrency(market.sale.min)} – $${formatCurrency(market.sale.max)})</span></p>`;
+        }
+      }
+    } catch (e) { /* ignore market data errors */ }
+  }
+
   showFleetModal({
     icon: '&#128181;',
     iconClass: 'warning',
@@ -553,6 +594,7 @@ function showSellDialog(aircraftId, registration, purchasePrice) {
     bodyHtml: `
       <p>Set an asking price to list this aircraft on the used market. Scheduled flights and maintenance will be removed.</p>
       <p style="font-size: 0.8rem; color: var(--text-muted);">Original purchase price: <strong style="color: var(--text-primary);">$${formatCurrency(purchasePrice || 0)}</strong></p>
+      ${marketHtml}
     `,
     confirmLabel: 'List for Sale',
     confirmClass: 'btn-confirm-warning',
@@ -581,7 +623,25 @@ function showSellDialog(aircraftId, registration, purchasePrice) {
 }
 
 // Lease out dialog with monthly rate input
-function showLeaseOutDialog(aircraftId, registration) {
+async function showLeaseOutDialog(aircraftId, registration) {
+  const userAircraft = fleetData.find(a => a.id === aircraftId);
+  const aircraftTypeId = userAircraft?.aircraftId;
+
+  let marketHtml = '';
+  let suggestedRate = '';
+  if (aircraftTypeId) {
+    try {
+      const res = await fetch(`/api/fleet/market-averages/${aircraftTypeId}`);
+      if (res.ok) {
+        const market = await res.json();
+        if (market.lease.count > 0) {
+          suggestedRate = market.lease.avg;
+          marketHtml = `<p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/mo</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/mo)</span></p>`;
+        }
+      }
+    } catch (e) { /* ignore market data errors */ }
+  }
+
   showFleetModal({
     icon: '&#9992;',
     iconClass: 'primary',
@@ -589,12 +649,13 @@ function showLeaseOutDialog(aircraftId, registration) {
     registration,
     bodyHtml: `
       <p>Set a monthly rate to list this aircraft for lease. Scheduled flights and maintenance will be removed while listed.</p>
+      ${marketHtml}
     `,
     confirmLabel: 'List for Lease',
     confirmClass: 'btn-confirm-primary',
     inputConfig: {
       label: 'Monthly Lease Rate',
-      defaultValue: '',
+      defaultValue: suggestedRate,
       placeholder: 'Enter monthly rate',
       suffix: '/mo',
       errorMsg: 'Please enter a valid monthly rate.'
@@ -665,6 +726,189 @@ function confirmRecallAircraft(aircraftId, registration, monthlyRate) {
     onConfirm: async () => {
       try {
         const res = await fetch(`/api/fleet/${aircraftId}/recall-aircraft`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('aircraftDetailOverlay')?.remove();
+        loadFleet();
+      } catch (err) {
+        showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+      }
+    }
+  });
+}
+
+// Calculate storage monthly cost using per-airport rate
+function calculateStorageMonthlyCost(userAircraft) {
+  const purchasePrice = parseFloat(userAircraft.purchasePrice) || 0;
+  if (userAircraft.storageAirportCode && window.STORAGE_AIRPORTS) {
+    const sa = window.STORAGE_AIRPORTS.find(a => a.icao === userAircraft.storageAirportCode);
+    if (sa) return Math.round(purchasePrice * sa.monthlyRatePercent / 100);
+  }
+  return Math.round(purchasePrice * 0.005);
+}
+
+// Put aircraft into storage - with airport selection
+async function confirmPutInStorage(aircraftId, registration) {
+  let storageAirports;
+  try {
+    const res = await fetch('/api/fleet/storage-airports');
+    storageAirports = await res.json();
+    if (!res.ok) throw new Error(storageAirports.error);
+  } catch (err) {
+    showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>Failed to load storage airports: ${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+    return;
+  }
+
+  if (storageAirports.length === 0) {
+    showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'No Facilities', bodyHtml: `<p>No storage facilities are available in the current era.</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+    return;
+  }
+
+  const userAircraft = fleetData.find(a => a.id === aircraftId);
+  const purchasePrice = parseFloat(userAircraft?.purchasePrice) || 0;
+
+  const tierClass = (t) => t === 'Very Cheap' ? 'vcheap' : t === 'Cheap' ? 'cheap' : t === 'Middle' ? 'middle' : t === 'Mid-Expensive' ? 'midexp' : 'expensive';
+  let listHtml = '<div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 0.75rem;">';
+  listHtml += `<table class="storage-table">
+    <thead><tr>
+      <th></th><th>Location</th><th>Tier</th><th style="text-align:right">Cost/mo</th><th style="text-align:right">Wear</th><th style="text-align:right">Ferry</th><th style="text-align:right">Dist</th>
+    </tr></thead><tbody>`;
+  storageAirports.forEach((sa, i) => {
+    const monthlyCost = Math.round(purchasePrice * sa.monthlyRatePercent / 100);
+    listHtml += `
+      <tr class="${i === 0 ? 'selected-row' : ''}" onclick="this.querySelector('input').checked=true; this.closest('tbody').querySelectorAll('tr').forEach(r=>r.classList.remove('selected-row')); this.classList.add('selected-row');">
+        <td><input type="radio" name="storageAirport" value="${sa.icao}" ${i === 0 ? 'checked' : ''}></td>
+        <td><div class="loc-name">${sa.icao}</div><div class="loc-detail">${sa.city}, ${sa.country}</div></td>
+        <td><span class="tier-badge tier-${tierClass(sa.costTier)}">${sa.costTier}</span></td>
+        <td class="num">$${monthlyCost.toLocaleString()}</td>
+        <td class="num">${sa.annualConditionLoss}%/yr</td>
+        <td class="num">${sa.recallDays}d</td>
+        <td class="num">${sa.distanceNm.toLocaleString()}nm</td>
+      </tr>`;
+  });
+  listHtml += '</tbody></table></div>';
+
+  showFleetModal({
+    icon: '&#128230;',
+    iconClass: 'secondary',
+    title: 'Select Storage Facility',
+    registration,
+    modalClass: 'fleet-modal-wide',
+    bodyHtml: `
+      <p style="margin-bottom: 0.5rem;">Choose a storage facility. Cost, condition wear, and recall time vary by location.</p>
+      ${listHtml}
+      <p style="font-size: 0.8rem; color: var(--text-muted);">All maintenance and route assignments will be removed. The aircraft will ferry to the storage facility before entering storage.</p>
+    `,
+    confirmLabel: 'Store Aircraft',
+    confirmClass: 'btn-confirm-warning',
+    onConfirm: async () => {
+      const selected = document.querySelector('input[name="storageAirport"]:checked');
+      if (!selected) return;
+      try {
+        const res = await fetch(`/api/fleet/${aircraftId}/put-in-storage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storageAirportCode: selected.value })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('aircraftDetailOverlay')?.remove();
+        loadFleet();
+      } catch (err) {
+        showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+      }
+    }
+  });
+}
+
+// Recall aircraft from storage
+async function confirmTakeOutOfStorage(aircraftId, registration) {
+  const userAircraft = fleetData.find(a => a.id === aircraftId);
+  const storageCode = userAircraft?.storageAirportCode;
+  const storageAirport = storageCode && window.STORAGE_AIRPORTS ? window.STORAGE_AIRPORTS.find(sa => sa.icao === storageCode) : null;
+
+  let recallDays = '?';
+  if (storageAirport) {
+    try {
+      const res = await fetch('/api/fleet/storage-airports');
+      if (res.ok) {
+        const airports = await res.json();
+        const match = airports.find(a => a.icao === storageCode);
+        if (match) recallDays = match.recallDays;
+      }
+    } catch (e) { /* use fallback */ }
+  }
+
+  // Calculate storage breakdown
+  const gameTime = typeof calculateCurrentWorldTime === 'function' ? calculateCurrentWorldTime() : null;
+  const storedAt = userAircraft?.storedAt ? new Date(userAircraft.storedAt) : null;
+  const conditionAtStorage = userAircraft?.conditionPercentage ?? 100;
+  const annualLoss = storageAirport?.annualConditionLoss ?? 0;
+
+  let daysInStorage = 0;
+  let totalWear = 0;
+  let conditionAfter = conditionAtStorage;
+  if (storedAt && gameTime) {
+    const msInStorage = gameTime.getTime() - storedAt.getTime();
+    daysInStorage = Math.max(0, Math.floor(msInStorage / (1000 * 60 * 60 * 24)));
+    totalWear = Math.round((annualLoss / 365) * daysInStorage);
+    conditionAfter = Math.max(0, conditionAtStorage - totalWear);
+  }
+
+  const fmtDate = (d) => d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const locationName = storageAirport ? `${storageAirport.name}, ${storageAirport.country}` : (storageCode || 'Unknown');
+  const r = 'display: flex; justify-content: space-between; padding: 0.25rem 0;';
+  const sep = 'border-bottom: 1px solid rgba(148,163,184,0.15);';
+
+  // Calculate arrival date at base
+  const recallDaysNum = typeof recallDays === 'number' ? recallDays : parseInt(recallDays) || 0;
+  let arrivalDate = null;
+  if (gameTime && recallDaysNum > 0) {
+    arrivalDate = new Date(gameTime.getTime() + recallDaysNum * 24 * 60 * 60 * 1000);
+  }
+
+  showFleetModal({
+    icon: '&#9992;',
+    iconClass: 'success',
+    title: 'Recall from Storage',
+    registration,
+    bodyHtml: `
+      <p style="margin-bottom: 0.5rem;">Recall from <strong>${storageCode}</strong> — ${locationName}?</p>
+      <div style="padding: 0.6rem; background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 6px; font-size: 0.85rem;">
+        <div style="${r} ${sep}">
+          <span style="color: var(--text-muted);">Entered Storage</span>
+          <span style="font-weight: 600; color: var(--text-primary);">${fmtDate(storedAt)} &nbsp;— &nbsp;${conditionAtStorage}% condition</span>
+        </div>
+        <div style="${r} ${sep}">
+          <span style="color: var(--text-muted);">Recalled</span>
+          <span style="font-weight: 600; color: var(--text-primary);">${fmtDate(gameTime)} &nbsp;— &nbsp;${conditionAfter}% condition</span>
+        </div>
+        <div style="${r} ${sep}">
+          <span style="color: var(--text-muted);">Total Days in Storage</span>
+          <span style="font-weight: 600; color: var(--text-primary);">${daysInStorage.toLocaleString()} days</span>
+        </div>
+        <div style="${r}">
+          <span style="color: var(--text-muted);">Total Wear Incurred</span>
+          <span style="font-weight: 600; color: ${totalWear > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">${totalWear > 0 ? '-' : ''}${totalWear}%</span>
+        </div>
+      </div>
+      <div style="margin-top: 0.5rem; padding: 0.45rem 0.6rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; font-size: 0.85rem;">
+        <div style="${r} ${sep}">
+          <span style="color: var(--text-muted);">Ferry Time</span>
+          <span style="font-weight: 600; color: var(--accent-color);">${recallDays} days</span>
+        </div>
+        <div style="${r}">
+          <span style="color: var(--text-muted);">Arrives at Base</span>
+          <span style="font-weight: 600; color: var(--accent-color);">${fmtDate(arrivalDate)}</span>
+        </div>
+      </div>
+      <p style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-muted);">A ferry exemption will be granted to position the aircraft back to base. C and D check validity is preserved during storage. Once returned, a Daily, Weekly, or A check may be required before the aircraft can be scheduled to operate.</p>
+    `,
+    confirmLabel: `Recall (${recallDays}d ferry)`,
+    confirmClass: 'btn-confirm-primary',
+    onConfirm: async () => {
+      try {
+        const res = await fetch(`/api/fleet/${aircraftId}/take-out-of-storage`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         document.getElementById('aircraftDetailOverlay')?.remove();

@@ -1,6 +1,6 @@
 <!-- TITLE: Fleet Management - AMS.ceo -->
 <!-- SUBTITLE: Fleet Overview -->
-<!-- SCRIPTS: /js/fleet.js -->
+<!-- SCRIPTS: /js/storageAirports.js, /js/fleet.js -->
 
 <style>
   .fleet-grid-wrapper {
@@ -163,6 +163,30 @@
     border: 1px solid #14b8a6;
   }
 
+  .status-storage {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid #94a3b8;
+  }
+
+  .status-recalling {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid #60a5fa;
+    animation: pulse-recall 2s infinite;
+  }
+
+  @keyframes pulse-recall {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .status-maintenance {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid #f59e0b;
+  }
+
   .cond-excellent {
     background: rgba(5, 150, 105, 0.15);
     color: var(--success-color);
@@ -214,7 +238,10 @@
     border: 1px solid var(--border-color);
     border-radius: 10px;
     width: 100%;
-    max-width: 420px;
+    max-width: 500px;
+  }
+  .fleet-modal.fleet-modal-wide {
+    max-width: 680px;
     transform: scale(0.95) translateY(10px);
     transition: transform 0.2s ease;
     overflow: hidden;
@@ -242,6 +269,8 @@
   .fleet-modal-header .modal-icon.danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
   .fleet-modal-header .modal-icon.warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
   .fleet-modal-header .modal-icon.primary { background: rgba(59, 130, 246, 0.15); color: var(--accent-color); }
+  .fleet-modal-header .modal-icon.secondary { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+  .fleet-modal-header .modal-icon.success { background: rgba(5, 150, 105, 0.15); color: var(--success-color); }
   .fleet-modal-header h3 {
     margin: 0;
     font-size: 1.05rem;
@@ -366,6 +395,32 @@
     color: #fff;
   }
   .fleet-modal-footer .btn-confirm-primary:hover { background: #2563eb; }
+
+  /* Storage airport picker table */
+  .storage-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .storage-table thead th {
+    text-align: left; padding: 0.35rem 0.5rem; font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border-color);
+    white-space: nowrap; font-weight: 600;
+  }
+  .storage-table thead th:first-child { width: 24px; }
+  .storage-table tbody tr { cursor: pointer; border-bottom: 1px solid var(--border-color); }
+  .storage-table tbody tr:last-child { border-bottom: none; }
+  .storage-table tbody tr:hover { background: var(--surface-elevated); }
+  .storage-table tbody tr.selected-row { background: rgba(59, 130, 246, 0.08); }
+  .storage-table tbody td { padding: 0.4rem 0.5rem; color: var(--text-primary); white-space: nowrap; }
+  .storage-table .loc-name { font-weight: 600; font-size: 0.8rem; }
+  .storage-table .loc-detail { font-size: 0.7rem; color: var(--text-muted); }
+  .storage-table .tier-badge {
+    display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+    font-size: 0.68rem; font-weight: 600;
+  }
+  .storage-table .tier-vcheap { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+  .storage-table .tier-cheap { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+  .storage-table .tier-middle { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+  .storage-table .tier-midexp { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+  .storage-table .tier-expensive { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+  .storage-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 
 <div class="dashboard-container">
@@ -401,6 +456,7 @@
               <option value="leased">Leased</option>
               <option value="listed">Listed</option>
               <option value="leased_out">Leased Out</option>
+              <option value="storage">In Storage</option>
             </select>
           </div>
           <div style="margin-left: auto; color: var(--text-muted); font-size: 0.8rem;">

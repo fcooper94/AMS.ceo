@@ -56,7 +56,7 @@ router.get('/available', async (req, res) => {
     if (user) {
       userMemberships = await WorldMembership.findAll({
         where: { userId: user.id },
-        attributes: ['worldId', 'airlineName', 'airlineCode', 'iataCode', 'lastVisited']
+        attributes: ['worldId', 'airlineName', 'airlineCode', 'iataCode', 'lastVisited', 'joinedAt']
       });
     }
 
@@ -83,7 +83,8 @@ router.get('/available', async (req, res) => {
         airlineName: membership?.airlineName,
         airlineCode: membership?.airlineCode,
         iataCode: membership?.iataCode,
-        lastVisited: membership?.lastVisited || null
+        lastVisited: membership?.lastVisited || null,
+        joinedAt: membership?.joinedAt || null
       };
     }));
 
@@ -167,7 +168,7 @@ router.post('/join', async (req, res) => {
     });
 
     // Check if user has enough credits to join
-    if (user.credits < JOIN_COST_CREDITS) {
+    if (!user.unlimitedCredits && user.credits < JOIN_COST_CREDITS) {
       return res.status(400).json({
         error: `Not enough credits to join a world. You need ${JOIN_COST_CREDITS} credits but only have ${user.credits}.`,
         creditsRequired: JOIN_COST_CREDITS,
@@ -223,12 +224,14 @@ router.post('/join', async (req, res) => {
       lastCreditDeduction: creditDeductionStart // Offset by free weeks so deductions start later
     });
 
-    // Deduct credits for joining
-    user.credits -= JOIN_COST_CREDITS;
-    await user.save();
+    // Deduct credits for joining (skip for unlimited users)
+    if (!user.unlimitedCredits) {
+      user.credits -= JOIN_COST_CREDITS;
+      await user.save();
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Deducted ${JOIN_COST_CREDITS} credits from user ${user.id} for joining world. New balance: ${user.credits}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Deducted ${JOIN_COST_CREDITS} credits from user ${user.id} for joining world. New balance: ${user.credits}`);
+      }
     }
 
     res.json({
@@ -240,8 +243,8 @@ router.post('/join', async (req, res) => {
         iataCode: membership.iataCode,
         balance: membership.balance
       },
-      creditsDeducted: JOIN_COST_CREDITS,
-      creditsRemaining: user.credits
+      creditsDeducted: user.unlimitedCredits ? 0 : JOIN_COST_CREDITS,
+      creditsRemaining: user.unlimitedCredits ? 'unlimited' : user.credits
     });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -489,6 +492,20 @@ router.post('/create-singleplayer', async (req, res) => {
       }
     });
 
+    // SP worlds cost 10 credits to create
+    const spCreateCost = 10;
+    if (!user.unlimitedCredits) {
+      if ((user.credits || 0) < spCreateCost) {
+        return res.status(400).json({
+          error: 'Not enough credits to create a single-player world',
+          creditsRequired: spCreateCost,
+          creditsAvailable: user.credits || 0
+        });
+      }
+      user.credits = (user.credits || 0) - spCreateCost;
+      await user.save();
+    }
+
     // Calculate start date from era
     const startYear = parseInt(era);
     const startDate = new Date(`${startYear}-01-01T00:00:00Z`);
@@ -504,9 +521,9 @@ router.post('/create-singleplayer', async (req, res) => {
       era: startYear,
       maxPlayers: 1,
       status: 'active',
-      joinCost: 0,
-      weeklyCost: 0,
-      freeWeeks: 0,
+      joinCost: 10,
+      weeklyCost: 1,
+      freeWeeks: 4,
       worldType: 'singleplayer',
       difficulty,
       ownerUserId: user.id

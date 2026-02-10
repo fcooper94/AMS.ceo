@@ -972,7 +972,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
   `;
 
   overlay.innerHTML = `
-    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; width: 90%; max-width: 550px; margin: auto;">
+    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; width: 90%; max-width: 650px; margin: auto;">
       <h2 style="margin-bottom: 1.5rem; color: var(--text-primary); text-align: center;">${title}</h2>
 
       <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface-elevated); border-radius: 4px;">
@@ -1019,37 +1019,37 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
           Auto-schedule recurring maintenance checks to keep them valid.
         </div>
         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.8rem; color: #FFA500;">Daily</span>
-            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+            <span style="font-size: 0.75rem; color: #FFA500; white-space: nowrap;">Daily</span>
+            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.8rem; color: #8B5CF6;">Weekly</span>
-            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+            <span style="font-size: 0.75rem; color: #8B5CF6; white-space: nowrap;">Weekly</span>
+            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.8rem; color: #3B82F6;">A Check</span>
-            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+            <span style="font-size: 0.75rem; color: #3B82F6; white-space: nowrap;">A Chk</span>
+            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.8rem; color: #10B981;">C Check</span>
-            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+            <span style="font-size: 0.75rem; color: #10B981; white-space: nowrap;">C Chk</span>
+            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleC" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--surface); border-radius: 4px;">
-            <span style="font-size: 0.8rem; color: #EF4444;">D Check</span>
-            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; height: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+            <span style="font-size: 0.75rem; color: #EF4444; white-space: nowrap;">D Chk</span>
+            <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleD" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
@@ -1183,10 +1183,36 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
     document.body.removeChild(overlay);
   });
 
-  // Clear error on input
+  // Live registration availability check
+  let regCheckTimer = null;
+  let lastCheckedReg = '';
+
   registrationSuffix.addEventListener('input', () => {
     registrationError.style.display = 'none';
     inputContainer.style.borderColor = 'var(--border-color)';
+
+    clearTimeout(regCheckTimer);
+    const suffix = registrationSuffix.value.trim();
+    if (!suffix) { lastCheckedReg = ''; return; }
+
+    const validation = validateRegistration(suffix);
+    if (!validation.valid) return;
+
+    const fullReg = validation.value;
+    if (fullReg === lastCheckedReg) return;
+
+    regCheckTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/fleet/check-registration?registration=${encodeURIComponent(fullReg)}`);
+        const data = await resp.json();
+        lastCheckedReg = fullReg;
+        if (data.inUse) {
+          registrationError.textContent = `${fullReg} is already in use`;
+          registrationError.style.display = 'block';
+          inputContainer.style.borderColor = 'var(--warning-color)';
+        }
+      } catch (e) { /* ignore network errors */ }
+    }, 400);
   });
 
   // Allow Enter key to submit
@@ -1374,37 +1400,37 @@ function showLeaseConfirmationDialog() {
               Auto-schedule recurring maintenance checks.
             </div>
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem;">
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.75rem; color: #FFA500;">Daily</span>
-                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; height: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+                <span style="font-size: 0.7rem; color: #FFA500; white-space: nowrap;">Daily</span>
+                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.75rem; color: #8B5CF6;">Weekly</span>
-                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; height: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+                <span style="font-size: 0.7rem; color: #8B5CF6; white-space: nowrap;">Wkly</span>
+                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.75rem; color: #3B82F6;">A</span>
-                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; height: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+                <span style="font-size: 0.7rem; color: #3B82F6; white-space: nowrap;">A</span>
+                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.75rem; color: #10B981;">C</span>
-                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; height: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+                <span style="font-size: 0.7rem; color: #10B981; white-space: nowrap;">C</span>
+                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleC" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.75rem; color: #EF4444;">D</span>
-                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; height: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+                <span style="font-size: 0.7rem; color: #EF4444; white-space: nowrap;">D</span>
+                <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleD" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
@@ -1602,9 +1628,37 @@ function showLeaseConfirmationDialog() {
     document.body.removeChild(overlay);
   });
 
-  // Clear error on input
+  // Live registration availability check
+  let regCheckTimer = null;
+  let lastCheckedReg = '';
+  const leaseInputContainer = registrationSuffix.parentElement;
+
   registrationSuffix.addEventListener('input', () => {
     registrationError.style.display = 'none';
+    leaseInputContainer.style.borderColor = 'var(--border-color)';
+
+    clearTimeout(regCheckTimer);
+    const suffix = registrationSuffix.value.trim();
+    if (!suffix) { lastCheckedReg = ''; return; }
+
+    const validation = validateLeaseRegistration(suffix);
+    if (!validation.valid) return;
+
+    const fullReg = validation.value;
+    if (fullReg === lastCheckedReg) return;
+
+    regCheckTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/fleet/check-registration?registration=${encodeURIComponent(fullReg)}`);
+        const data = await resp.json();
+        lastCheckedReg = fullReg;
+        if (data.inUse) {
+          registrationError.textContent = `${fullReg} is already in use`;
+          registrationError.style.display = 'block';
+          leaseInputContainer.style.borderColor = 'var(--warning-color)';
+        }
+      } catch (e) { /* ignore network errors */ }
+    }, 400);
   });
 
   // Focus registration input
@@ -1714,7 +1768,7 @@ function showSuccessMessage(message, newBalance) {
       <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">${message}</p>
       <p style="margin-bottom: 2rem; color: var(--text-secondary);">New Balance: <strong style="color: var(--success-color);">$${formatCurrency(newBalance)}</strong></p>
       <button id="viewFleetBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem;">View My Fleet</button>
-      <button id="continueShoppingBtn" class="btn btn-secondary" style="width: 100%;">Continue Shopping</button>
+      <button id="continueShoppingBtn" class="btn btn-secondary" style="width: 100%;">Purchase / Lease More Aircraft</button>
     </div>
   `;
 

@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale } = require('../models');
 const airportCacheService = require('../services/airportCacheService');
 const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
@@ -347,6 +349,14 @@ router.get('/worlds', async (req, res) => {
     }
 
     const worlds = await World.findAll({
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'vatsimId', 'firstName', 'lastName'],
+          required: false
+        }
+      ],
       order: [['createdAt', 'ASC']]
     });
 
@@ -391,50 +401,41 @@ router.post('/worlds', async (req, res) => {
       joinCost,
       weeklyCost,
       freeWeeks,
-      endDate
+      endDate,
+      worldType,
+      ownerUserId,
+      difficulty
     } = req.body;
-
-    // Debug: Log received data
-    console.log('Creating world with data:', {
-      name,
-      era,
-      startDate,
-      startDateType: typeof startDate,
-      timeAcceleration,
-      maxPlayers,
-      status
-    });
 
     // Validate required fields
     if (!name || !era || !startDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Validate singleplayer worlds require an owner
+    if (worldType === 'singleplayer' && !ownerUserId) {
+      return res.status(400).json({ error: 'Single player worlds require an owner' });
+    }
+
     // Ensure startDate is a proper Date object
     const startDateObj = new Date(startDate);
-    console.log('Parsed startDate:', startDateObj, 'ISO:', startDateObj.toISOString());
 
     const world = await World.create({
       name,
       era,
       startDate: startDateObj,
-      currentTime: startDateObj, // Start with the start date
+      currentTime: startDateObj,
       timeAcceleration: timeAcceleration || 60,
-      maxPlayers: maxPlayers || 100,
+      maxPlayers: worldType === 'singleplayer' ? 1 : (maxPlayers || 100),
       status: status || 'setup',
       description,
       joinCost: joinCost !== undefined ? joinCost : 10,
       weeklyCost: weeklyCost !== undefined ? weeklyCost : 1,
       freeWeeks: freeWeeks !== undefined ? freeWeeks : 0,
-      endDate: endDate ? new Date(endDate) : null
-    });
-
-    console.log('Created world:', {
-      id: world.id,
-      name: world.name,
-      startDate: world.startDate,
-      currentTime: world.currentTime,
-      era: world.era
+      endDate: endDate ? new Date(endDate) : null,
+      worldType: worldType || 'multiplayer',
+      ownerUserId: worldType === 'singleplayer' ? ownerUserId : null,
+      difficulty: worldType === 'singleplayer' ? (difficulty || null) : null
     });
 
     res.json({
@@ -882,6 +883,80 @@ router.get('/airlines', async (req, res) => {
       console.error('Error fetching airlines:', error);
     }
     res.status(500).json({ error: 'Failed to fetch airlines' });
+  }
+});
+
+/**
+ * Search airlines by owner across all worlds
+ */
+router.get('/airlines/search-by-owner', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { query } = req.query;
+
+    if (!query || query.trim().length === 0) {
+      return res.json([]);
+    }
+
+    const searchTerm = query.trim();
+
+    // Find users matching the search term against full name (firstName + lastName)
+    const matchingUsers = await User.findAll({
+      where: sequelize.where(
+        sequelize.fn('LOWER', sequelize.fn('CONCAT', sequelize.col('first_name'), ' ', sequelize.col('last_name'))),
+        { [Op.like]: `%${searchTerm.toLowerCase()}%` }
+      ),
+      attributes: ['id']
+    });
+
+    if (matchingUsers.length === 0) {
+      return res.json([]);
+    }
+
+    const userIds = matchingUsers.map(u => u.id);
+
+    const airlines = await WorldMembership.findAll({
+      where: { userId: { [Op.in]: userIds }, isActive: true },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'vatsimId', 'firstName', 'lastName']
+        },
+        {
+          model: Airport,
+          as: 'baseAirport',
+          attributes: ['id', 'icaoCode', 'name', 'city']
+        },
+        {
+          model: World,
+          as: 'world',
+          attributes: ['id', 'name', 'era']
+        }
+      ],
+      order: [['airlineName', 'ASC']]
+    });
+
+    const airlinesWithFleet = await Promise.all(airlines.map(async (airline) => {
+      const fleetCount = await UserAircraft.count({
+        where: { worldMembershipId: airline.id }
+      });
+
+      return {
+        ...airline.toJSON(),
+        fleetCount
+      };
+    }));
+
+    res.json(airlinesWithFleet);
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error searching airlines by owner:', error);
+    }
+    res.status(500).json({ error: 'Failed to search airlines by owner' });
   }
 });
 

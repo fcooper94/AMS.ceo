@@ -9,6 +9,18 @@ async function syncDatabase() {
     console.log('Starting database synchronization...');
     console.log(`Models loaded: ${Object.keys(models).join(', ')}`);
 
+    // Drop old global-unique registration constraints (now per-world unique via composite index)
+    try {
+      for (const name of ['user_aircraft_registration_key', 'user_aircraft_registration_key1', 'user_aircraft_registration_key2']) {
+        await sequelize.query(`ALTER TABLE user_aircraft DROP CONSTRAINT IF EXISTS ${name}`);
+        await sequelize.query(`DROP INDEX IF EXISTS ${name}`);
+      }
+      await sequelize.query('DROP INDEX IF EXISTS user_aircraft_registration');
+      console.log('✓ Cleaned up old registration uniqueness constraints');
+    } catch (e) {
+      console.log('Note: Old registration constraints may already be removed');
+    }
+
     // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 

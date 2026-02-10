@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const { Op } = require('sequelize');
-const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification } = require('../models');
+const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
+const { STORAGE_AIRPORTS, calculateStorageDistanceNm, calculateRecallDays } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
 
 // Check durations in minutes
 const CHECK_DURATIONS = {
@@ -559,6 +560,11 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
   if (!aircraft) {
     console.error(`Aircraft ${aircraftId} not found for auto-scheduling`);
+    return createdRecords;
+  }
+
+  // Skip auto-scheduling entirely for stored/recalling aircraft
+  if (['storage', 'recalling'].includes(aircraft.status)) {
     return createdRecords;
   }
 
@@ -1687,10 +1693,190 @@ router.get('/', async (req, res) => {
       return aircraftJson;
     });
 
+    // Lazy recall completion: auto-transition recalling aircraft that are past due
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
+    if (gameTime) {
+      for (let i = 0; i < fleet.length; i++) {
+        const ac = fleet[i];
+        if (ac.status === 'recalling' && ac.recallAvailableAt && new Date(ac.recallAvailableAt) <= gameTime) {
+          const ferryingToStorage = ac.currentAirport && ac.storageAirportCode && ac.currentAirport === ac.storageAirportCode;
+          if (ferryingToStorage) {
+            // Arrived at boneyard - transition to storage
+            await ac.update({ status: 'storage', storedAt: gameTime, recallAvailableAt: null });
+            fleetWithMaintenance[i].status = 'storage';
+            fleetWithMaintenance[i].storedAt = gameTime;
+            fleetWithMaintenance[i].recallAvailableAt = null;
+          } else {
+            // Arrived at base - transition to active
+            await ac.update({ status: 'active', recallAvailableAt: null, storageAirportCode: null });
+            try { await refreshAutoScheduledMaintenance(ac.id, activeWorldId, gameTime); } catch (e) { /* ignore */ }
+            fleetWithMaintenance[i].status = 'active';
+            fleetWithMaintenance[i].recallAvailableAt = null;
+            fleetWithMaintenance[i].storageAirportCode = null;
+          }
+        }
+      }
+    }
+
     res.json(fleetWithMaintenance);
   } catch (error) {
     console.error('Error fetching fleet:', error);
     res.status(500).json({ error: 'Failed to fetch fleet', details: error.message });
+  }
+});
+
+/**
+ * Get available storage airports for current world era
+ */
+router.get('/storage-airports', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) return res.status(400).json({ error: 'No active world selected' });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId },
+      include: [{ model: Airport, as: 'baseAirport' }]
+    });
+    if (!membership || !membership.baseAirport) return res.status(404).json({ error: 'No base airport found' });
+
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const currentYear = gameTime ? gameTime.getFullYear() : 2010;
+    const baseLat = parseFloat(membership.baseAirport.latitude);
+    const baseLon = parseFloat(membership.baseAirport.longitude);
+
+    const available = STORAGE_AIRPORTS
+      .filter(sa => sa.availableFrom <= currentYear)
+      .map(sa => {
+        const distanceNm = calculateStorageDistanceNm(baseLat, baseLon, sa.lat, sa.lon);
+        const recallDays = calculateRecallDays(distanceNm);
+        return { ...sa, distanceNm, recallDays };
+      })
+      .sort((a, b) => a.distanceNm - b.distanceNm);
+
+    res.json(available);
+  } catch (error) {
+    console.error('Error fetching storage airports:', error);
+    res.status(500).json({ error: 'Failed to fetch storage airports' });
+  }
+});
+
+/**
+ * Get market averages for a specific aircraft type in the current world
+ * Combines: NPC generated market prices (from base type), persistent used listings, and player listings
+ */
+router.get('/market-averages/:aircraftTypeId', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) return res.status(400).json({ error: 'No active world selected' });
+
+    const aircraftTypeId = req.params.aircraftTypeId;
+
+    // 1. Get the base Aircraft variant for its new purchase price
+    const baseAircraft = await Aircraft.findByPk(aircraftTypeId);
+    if (!baseAircraft) return res.status(404).json({ error: 'Aircraft type not found' });
+
+    const newPrice = parseFloat(baseAircraft.purchasePrice) || 0;
+
+    // 2. Get current world year for era filtering
+    const world = await World.findByPk(activeWorldId);
+    const currentYear = world?.currentTime ? new Date(world.currentTime).getFullYear() : 2010;
+    let maxAge = 25;
+    if (baseAircraft.availableFrom) {
+      maxAge = Math.min(25, currentYear - baseAircraft.availableFrom);
+    }
+    if (maxAge < 0) maxAge = 0;
+
+    // 3. Calculate representative NPC market prices using the same depreciation formula as aircraft.js
+    // Sample ages from 0 to maxAge to get a realistic spread
+    const salePrices = [];
+    const leaseRates = [];
+    const sampleAges = [];
+    for (let age = 0; age <= maxAge; age += Math.max(1, Math.floor(maxAge / 8))) {
+      sampleAges.push(age);
+    }
+    if (maxAge > 0 && !sampleAges.includes(maxAge)) sampleAges.push(maxAge);
+
+    for (const age of sampleAges) {
+      // Condition range for this age bracket
+      let condMin, condMax;
+      if (age <= 5) { condMin = 85; condMax = 100; }
+      else if (age <= 10) { condMin = 60; condMax = 95; }
+      else if (age <= 15) { condMin = 40; condMax = 70; }
+      else { condMin = 20; condMax = 50; }
+      const condMid = Math.round((condMin + condMax) / 2);
+
+      // Depreciation factor (same formula as generateUsedAircraft in aircraft.js)
+      let depFactor;
+      if (age <= 5) depFactor = 0.70 - (age * 0.05);
+      else if (age <= 10) depFactor = 0.45 - ((age - 5) * 0.04);
+      else if (age <= 15) depFactor = 0.25 - ((age - 10) * 0.03);
+      else depFactor = 0.10 - Math.min((age - 15) * 0.01, 0.05);
+
+      const condModifier = condMid / 100;
+      depFactor = Math.max(depFactor * condModifier * 0.95, 0.03); // ~0.95 for check validity
+
+      const usedPrice = Math.round(newPrice * depFactor);
+      salePrices.push(usedPrice);
+
+      // Lease: 0.3-0.5% of used price per month (use 0.4% as mid)
+      leaseRates.push(Math.round(usedPrice * 0.004));
+    }
+
+    // 4. Add persistent UsedAircraftForSale listings for this type
+    const persistentListings = await UsedAircraftForSale.findAll({
+      where: {
+        worldId: activeWorldId,
+        aircraftId: aircraftTypeId,
+        status: 'available'
+      },
+      attributes: ['purchasePrice', 'leasePrice']
+    });
+    for (const pl of persistentListings) {
+      if (pl.purchasePrice) salePrices.push(Math.round(parseFloat(pl.purchasePrice)));
+      if (pl.leasePrice) leaseRates.push(Math.round(parseFloat(pl.leasePrice)));
+    }
+
+    // 5. Add player listings
+    const memberships = await WorldMembership.findAll({
+      where: { worldId: activeWorldId, isActive: true },
+      attributes: ['id']
+    });
+    const membershipIds = memberships.map(m => m.id);
+
+    const playerAircraft = await UserAircraft.findAll({
+      where: {
+        worldMembershipId: { [Op.in]: membershipIds },
+        aircraftId: aircraftTypeId,
+        status: { [Op.in]: ['listed_sale', 'listed_lease', 'leased_out'] }
+      },
+      attributes: ['status', 'listingPrice', 'leaseOutMonthlyRate']
+    });
+    for (const pa of playerAircraft) {
+      if (pa.status === 'listed_sale' && pa.listingPrice) salePrices.push(Math.round(parseFloat(pa.listingPrice)));
+      if (pa.status === 'listed_lease' && pa.listingPrice) leaseRates.push(Math.round(parseFloat(pa.listingPrice)));
+      if (pa.status === 'leased_out' && pa.leaseOutMonthlyRate) leaseRates.push(Math.round(parseFloat(pa.leaseOutMonthlyRate)));
+    }
+
+    // 6. Calculate averages
+    const calcStats = (arr) => {
+      if (arr.length === 0) return { avg: null, min: null, max: null, count: 0 };
+      const avg = Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+      return { avg, min: Math.min(...arr), max: Math.max(...arr), count: arr.length };
+    };
+
+    res.json({
+      newPrice,
+      sale: calcStats(salePrices),
+      lease: calcStats(leaseRates)
+    });
+  } catch (error) {
+    console.error('Error fetching market averages:', error);
+    res.status(500).json({ error: 'Failed to fetch market data' });
   }
 });
 
@@ -1817,6 +2003,37 @@ router.get('/:aircraftId/details', async (req, res) => {
 });
 
 /**
+ * Check if a registration is already in use within the active world
+ */
+router.get('/check-registration', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+    const { registration } = req.query;
+    if (!registration) {
+      return res.status(400).json({ error: 'Registration required' });
+    }
+    const existing = await UserAircraft.findOne({
+      where: { registration: registration.toUpperCase() },
+      include: [{
+        model: WorldMembership,
+        as: 'membership',
+        where: { worldId: activeWorldId },
+        attributes: []
+      }]
+    });
+    res.json({ inUse: !!existing });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check registration' });
+  }
+});
+
+/**
  * Purchase aircraft
  */
 router.post('/purchase', async (req, res) => {
@@ -1925,8 +2142,16 @@ router.post('/purchase', async (req, res) => {
       }
     }
 
-    // Check if registration is already in use
-    const existingAircraft = await UserAircraft.findOne({ where: { registration: registrationUpper } });
+    // Check if registration is already in use within this world
+    const existingAircraft = await UserAircraft.findOne({
+      where: { registration: registrationUpper },
+      include: [{
+        model: WorldMembership,
+        as: 'membership',
+        where: { worldId: activeWorldId },
+        attributes: []
+      }]
+    });
     if (existingAircraft) {
       return res.status(400).json({ error: 'Registration already in use' });
     }
@@ -2188,8 +2413,16 @@ router.post('/lease', async (req, res) => {
       }
     }
 
-    // Check if registration is already in use
-    const existingAircraft = await UserAircraft.findOne({ where: { registration: registrationUpper } });
+    // Check if registration is already in use within this world
+    const existingAircraft = await UserAircraft.findOne({
+      where: { registration: registrationUpper },
+      include: [{
+        model: WorldMembership,
+        as: 'membership',
+        where: { worldId: activeWorldId },
+        attributes: []
+      }]
+    });
     if (existingAircraft) {
       return res.status(400).json({ error: 'Registration already in use' });
     }
@@ -4171,6 +4404,159 @@ router.post('/:aircraftId/recall-aircraft', async (req, res) => {
     res.json({ message: 'Aircraft recalled successfully', registration: aircraft.registration, compensation });
   } catch (error) {
     console.error('Error recalling aircraft:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/:aircraftId/put-in-storage
+ * Put an active aircraft into storage
+ * Aircraft must have no active flights
+ */
+router.post('/:aircraftId/put-in-storage', async (req, res) => {
+  try {
+    const { aircraft, membership, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
+
+    if (aircraft.status !== 'active') {
+      return res.status(400).json({ error: 'Only active aircraft can be put into storage' });
+    }
+
+    // Check for active scheduled flights
+    const activeFlights = await ScheduledFlight.count({ where: { aircraftId: aircraft.id } });
+    if (activeFlights > 0) {
+      return res.status(400).json({ error: 'Aircraft has active flights. Remove all flights before storing.' });
+    }
+
+    const { storageAirportCode } = req.body;
+    if (!storageAirportCode) {
+      return res.status(400).json({ error: 'Storage airport must be selected' });
+    }
+
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const currentYear = gameTime ? gameTime.getFullYear() : 2010;
+    const storageAirport = STORAGE_AIRPORTS.find(sa => sa.icao === storageAirportCode);
+    if (!storageAirport) {
+      return res.status(400).json({ error: 'Invalid storage airport' });
+    }
+    if (storageAirport.availableFrom > currentYear) {
+      return res.status(400).json({ error: 'This storage facility is not yet available in the current era' });
+    }
+
+    // Clear maintenance and route assignments
+    await clearAircraftSchedule(aircraft.id);
+
+    // Calculate ferry time based on distance from base airport
+    const membershipWithBase = await WorldMembership.findOne({
+      where: { id: membership.id },
+      include: [{ model: Airport, as: 'baseAirport' }]
+    });
+
+    let ferryDays = 3;
+    if (membershipWithBase?.baseAirport) {
+      const baseLat = parseFloat(membershipWithBase.baseAirport.latitude);
+      const baseLon = parseFloat(membershipWithBase.baseAirport.longitude);
+      const distanceNm = calculateStorageDistanceNm(baseLat, baseLon, storageAirport.lat, storageAirport.lon);
+      ferryDays = calculateRecallDays(distanceNm);
+    }
+
+    const recallAvailableAt = new Date(gameTime.getTime() + ferryDays * 24 * 60 * 60 * 1000);
+
+    await aircraft.update({
+      status: 'recalling',
+      recallAvailableAt: recallAvailableAt,
+      storageAirportCode: storageAirportCode,
+      currentAirport: storageAirportCode
+    });
+
+    console.log(`Aircraft ferrying to storage: ${aircraft.registration} -> ${storageAirportCode} (${ferryDays}d ferry, available ${recallAvailableAt})`);
+    res.json({ message: `Aircraft departing for ${storageAirport.name}, ${storageAirport.country}. ${ferryDays} day ferry.`, registration: aircraft.registration, newStatus: 'recalling', storageAirport: storageAirportCode, ferryDays });
+  } catch (error) {
+    console.error('Error putting aircraft in storage:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/:aircraftId/take-out-of-storage
+ * Return a stored aircraft to active service
+ * C and D check dates are frozen during storage (advanced by storage duration)
+ */
+router.post('/:aircraftId/take-out-of-storage', async (req, res) => {
+  try {
+    const { aircraft, membership, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
+
+    if (aircraft.status !== 'storage') {
+      return res.status(400).json({ error: 'Aircraft is not in storage' });
+    }
+
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const updateData = { storedAt: null };
+
+    // Look up storage airport for condition degradation
+    const storageAirport = STORAGE_AIRPORTS.find(sa => sa.icao === aircraft.storageAirportCode);
+
+    // Freeze/thaw C and D check dates + condition degradation
+    if (aircraft.storedAt) {
+      const storageDurationMs = gameTime.getTime() - new Date(aircraft.storedAt).getTime();
+      if (storageDurationMs > 0) {
+        // C/D check date freeze (advance by storage duration)
+        if (aircraft.lastCCheckDate) {
+          updateData.lastCCheckDate = new Date(new Date(aircraft.lastCCheckDate).getTime() + storageDurationMs);
+        }
+        if (aircraft.lastDCheckDate) {
+          updateData.lastDCheckDate = new Date(new Date(aircraft.lastDCheckDate).getTime() + storageDurationMs);
+        }
+
+        // Condition degradation based on storage airport
+        if (storageAirport) {
+          const yearsInStorage = storageDurationMs / (1000 * 60 * 60 * 24 * 365.25);
+          const conditionLoss = Math.round(yearsInStorage * storageAirport.annualConditionLoss);
+          if (conditionLoss > 0) {
+            const currentCondition = aircraft.conditionPercentage ?? 100;
+            updateData.conditionPercentage = Math.max(0, currentCondition - conditionLoss);
+          }
+        }
+      }
+    }
+
+    // Calculate recall time based on distance from base airport
+    const membershipWithBase = await WorldMembership.findOne({
+      where: { id: membership.id },
+      include: [{ model: Airport, as: 'baseAirport' }]
+    });
+
+    let recallDays = 3;
+    if (membershipWithBase?.baseAirport && storageAirport) {
+      const baseLat = parseFloat(membershipWithBase.baseAirport.latitude);
+      const baseLon = parseFloat(membershipWithBase.baseAirport.longitude);
+      const distanceNm = calculateStorageDistanceNm(baseLat, baseLon, storageAirport.lat, storageAirport.lon);
+      recallDays = calculateRecallDays(distanceNm);
+    }
+
+    const recallAvailableAt = new Date(gameTime.getTime() + recallDays * 24 * 60 * 60 * 1000);
+    updateData.status = 'recalling';
+    updateData.recallAvailableAt = recallAvailableAt;
+    if (membershipWithBase?.baseAirport) {
+      updateData.currentAirport = membershipWithBase.baseAirport.icaoCode;
+    }
+
+    await aircraft.update(updateData);
+
+    const conditionLoss = updateData.conditionPercentage !== undefined
+      ? (aircraft.conditionPercentage ?? 100) - updateData.conditionPercentage
+      : 0;
+
+    console.log(`Aircraft recalling: ${aircraft.registration} from ${aircraft.storageAirportCode} - available ${recallAvailableAt} (${recallDays}d ferry, -${conditionLoss}% condition)`);
+    res.json({
+      message: `Aircraft recall initiated. Will be available in ${recallDays} days.`,
+      registration: aircraft.registration,
+      newStatus: 'recalling',
+      recallAvailableAt: recallAvailableAt.toISOString(),
+      recallDays,
+      conditionLoss
+    });
+  } catch (error) {
+    console.error('Error taking aircraft out of storage:', error);
     res.status(error.status || 500).json({ error: error.message });
   }
 });

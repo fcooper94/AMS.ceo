@@ -109,6 +109,25 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'lease_out_tenant_name',
     comment: 'Name of NPC airline leasing this aircraft'
   },
+  // Storage tracking
+  storedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'stored_at',
+    comment: 'Game-time when aircraft was put into storage (for C/D check date freezing)'
+  },
+  storageAirportCode: {
+    type: DataTypes.STRING(4),
+    allowNull: true,
+    field: 'storage_airport_code',
+    comment: 'ICAO code of the storage facility where aircraft is stored'
+  },
+  recallAvailableAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'recall_available_at',
+    comment: 'Game-time when recalling aircraft will become active after ferry'
+  },
   // Player-to-player lease linking
   playerLessorAircraftId: {
     type: DataTypes.UUID,
@@ -133,8 +152,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
   },
   // Aircraft name/registration
   registration: {
-    type: DataTypes.STRING,
-    unique: true
+    type: DataTypes.STRING
   },
   customName: {
     type: DataTypes.STRING,
@@ -142,7 +160,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
   },
   // Status
   status: {
-    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'sold', 'listed_sale', 'listed_lease', 'leased_out'),
+    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out'),
     defaultValue: 'active'
   },
   // Location
@@ -264,8 +282,9 @@ const UserAircraft = sequelize.define('UserAircraft', {
       fields: ['status']
     },
     {
-      fields: ['registration'],
-      unique: true
+      fields: ['registration', 'world_membership_id'],
+      unique: true,
+      name: 'user_aircraft_registration_world_unique'
     }
   ]
 });

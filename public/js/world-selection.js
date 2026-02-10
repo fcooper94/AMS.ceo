@@ -300,9 +300,9 @@ async function loadWorlds() {
         const cardElement = createWorldCard(world, world.isMember, userCredits, userUnlimited);
         spList.appendChild(cardElement);
       });
-    } else {
-      spList.innerHTML = '<div class="empty-message" style="grid-column: 1 / -1;">No single-player worlds yet. Create one to get started!</div>';
     }
+    // Always append the "create new world" card
+    spList.appendChild(createNewWorldCard());
 
     // Populate multiplayer section
     mpList.innerHTML = '';
@@ -367,9 +367,21 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     minute: '2-digit'
   });
 
-  const weeklyCost = world.weeklyCost !== undefined ? world.weeklyCost : 1;
-  const joinCost = world.joinCost !== undefined ? world.joinCost : 10;
+  // SP worlds always have fixed pricing regardless of stored DB values
+  const weeklyCost = isSP ? 1 : (world.weeklyCost !== undefined ? world.weeklyCost : 1);
+  const joinCost = isSP ? 10 : (world.joinCost !== undefined ? world.joinCost : 10);
   const freeWeeks = world.freeWeeks || 0;
+
+  // Calculate remaining free weeks
+  // SP: from world startDate. MP members: from joinedAt. MP non-members: show promo text.
+  let freeWeeksRemaining = 0;
+  if (freeWeeks > 0 && world.currentTime) {
+    const referenceDate = isSP ? world.startDate : (isMember ? world.joinedAt : null);
+    if (referenceDate) {
+      const weeksElapsed = Math.floor((new Date(world.currentTime) - new Date(referenceDate)) / (7 * 24 * 60 * 60 * 1000));
+      freeWeeksRemaining = Math.max(0, freeWeeks - weeksElapsed);
+    }
+  }
   const canAffordJoin = !isMember && !isEnded && (userUnlimited || (userCredits || 0) >= joinCost);
 
   // Difficulty badge colors
@@ -460,7 +472,8 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
   } else if (isSP) {
     footerHtml = `
       <div class="world-card-costs">
-        <span class="cost-badge weekly" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">No credits required</span>
+        <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
+        ${freeWeeksRemaining > 0 ? `<span class="cost-badge free">${freeWeeksRemaining} free wk${freeWeeksRemaining !== 1 ? 's' : ''} remaining</span>` : ''}
       </div>
       <button class="btn btn-primary continue-game-btn">CONTINUE</button>
     `;
@@ -470,6 +483,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
         <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
         ${!isMember ? `<span class="cost-badge join">${joinCost} to join</span>` : ''}
         ${!isMember && freeWeeks > 0 ? `<span class="cost-badge free">First ${freeWeeks} wks free!</span>` : ''}
+        ${isMember && freeWeeksRemaining > 0 ? `<span class="cost-badge free">${freeWeeksRemaining} free wk${freeWeeksRemaining !== 1 ? 's' : ''} remaining</span>` : ''}
       </div>
       ${isMember ? `
         <button class="btn btn-primary continue-game-btn">CONTINUE</button>
@@ -561,6 +575,41 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
       openJoinModal(world.id, world.name, world.joinCost, world.weeklyCost, world.freeWeeks);
     });
   }
+
+  return card;
+}
+
+// Create the "create new world" card for SP section
+function createNewWorldCard() {
+  const card = document.createElement('div');
+  card.className = 'world-card';
+  card.style.cssText = 'border: 2px dashed var(--border-color); border-left: 3px dashed var(--border-color); cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 200px; transition: all 0.2s;';
+
+  card.innerHTML = `
+    <div style="text-align: center; padding: 2rem;">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem; opacity: 0.7;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="16"></line>
+        <line x1="8" y1="12" x2="16" y2="12"></line>
+      </svg>
+      <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color); margin-bottom: 0.5rem;">CREATE NEW WORLD</div>
+      <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Start a new single player airline with AI competition</div>
+      <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted);">
+        <span style="background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: 600;">10 Credits</span>
+        <span style="margin-left: 0.4rem;">First 4 weeks free</span>
+      </div>
+    </div>
+  `;
+
+  card.addEventListener('mouseenter', () => {
+    card.style.borderColor = 'var(--primary-color)';
+    card.style.background = 'var(--surface-elevated)';
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.borderColor = 'var(--border-color)';
+    card.style.background = 'var(--surface)';
+  });
+  card.addEventListener('click', () => openCreateSPModal());
 
   return card;
 }
@@ -792,7 +841,11 @@ async function openJoinModal(worldId, worldName, joinCost, weeklyCost, freeWeeks
 
     if (data.authenticated && data.user) {
       const credits = data.user.credits !== undefined ? data.user.credits : 0;
-      if (credits >= worldJoinCost) {
+      const unlimited = !!data.user.unlimitedCredits;
+      if (unlimited) {
+        creditsEl.textContent = '(Unlimited credits)';
+        creditsEl.style.color = 'var(--success-color)';
+      } else if (credits >= worldJoinCost) {
         creditsEl.textContent = `(You have ${credits} credits)`;
         creditsEl.style.color = 'var(--success-color)';
       } else {
@@ -1402,6 +1455,28 @@ function openCreateSPModal() {
   document.getElementById('spAICountPreview').textContent = 'AI Competitors: Select airport to calculate';
   updateSPPreview();
   document.getElementById('createSPModal').style.display = 'flex';
+
+  // Fetch and display user credits
+  fetch('/auth/status')
+    .then(r => r.json())
+    .then(data => {
+      const creditsEl = document.getElementById('spUserCredits');
+      if (data.authenticated && data.user) {
+        const credits = data.user.credits !== undefined ? data.user.credits : 0;
+        const unlimited = !!data.user.unlimitedCredits;
+        if (unlimited) {
+          creditsEl.textContent = '(Unlimited credits)';
+          creditsEl.style.color = 'var(--success-color)';
+        } else if (credits >= 10) {
+          creditsEl.textContent = `(You have ${credits} credits)`;
+          creditsEl.style.color = 'var(--success-color)';
+        } else {
+          creditsEl.textContent = `(You only have ${credits} credits - need 10)`;
+          creditsEl.style.color = 'var(--warning-color)';
+        }
+      }
+    })
+    .catch(() => {});
 }
 
 function closeCreateSPModal() {

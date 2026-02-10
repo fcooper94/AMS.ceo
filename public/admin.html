@@ -138,17 +138,18 @@
 
   <!-- Worlds Tab -->
   <div id="worldsSection" class="admin-section" style="display: none;">
-    <div class="worlds-section">
+    <!-- Multiplayer Worlds -->
+    <div class="worlds-section" style="margin-bottom: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem;">
         <div class="form-group" style="flex: 1; margin: 0;">
-          <label for="searchWorldInput">SEARCH WORLDS</label>
-          <input type="text" id="searchWorldInput" placeholder="Search by name or era..." onkeyup="searchWorlds()">
+          <label for="searchMpWorldInput">SEARCH MULTIPLAYER WORLDS</label>
+          <input type="text" id="searchMpWorldInput" placeholder="Search by name or era..." onkeyup="searchWorlds('multiplayer')">
         </div>
-        <button class="btn btn-primary" onclick="openAddWorldModal()" style="margin-left: 1rem;">+ ADD WORLD</button>
+        <button class="btn btn-primary" onclick="openAddWorldModal('multiplayer')" style="margin-left: 1rem;">+ ADD MULTIPLAYER WORLD</button>
       </div>
 
-      <h2 class="section-title">MANAGE WORLDS</h2>
-      <div id="worldsTable">
+      <h2 class="section-title">MULTIPLAYER WORLDS</h2>
+      <div id="mpWorldsTable">
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
@@ -161,7 +162,40 @@
               <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
             </tr>
           </thead>
-          <tbody id="worldsTableBody">
+          <tbody id="mpWorldsTableBody">
+            <tr>
+              <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading worlds...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Single Player Worlds -->
+    <div class="worlds-section">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label for="searchSpWorldInput">SEARCH SINGLE PLAYER WORLDS</label>
+          <input type="text" id="searchSpWorldInput" placeholder="Search by name, era, or owner..." onkeyup="searchWorlds('singleplayer')">
+        </div>
+        <button class="btn btn-primary" onclick="openAddWorldModal('singleplayer')" style="margin-left: 1rem;">+ ADD SINGLE PLAYER WORLD</button>
+      </div>
+
+      <h2 class="section-title">SINGLE PLAYER WORLDS</h2>
+      <div id="spWorldsTable">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">WORLD NAME</th>
+              <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OWNER</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ERA</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CURRENT TIME</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">STATUS</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">SYNC RATE</th>
+              <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="spWorldsTableBody">
             <tr>
               <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">Loading worlds...</td>
             </tr>
@@ -175,23 +209,29 @@
   <div id="airlinesSection" class="admin-section" style="display: none;">
     <div class="worlds-section">
       <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 0.75rem; gap: 1rem;">
-        <div class="form-group" style="margin: 0; min-width: 200px;">
-          <label for="airlinesWorldSelect">SELECT WORLD</label>
-          <select id="airlinesWorldSelect" onchange="loadAirlines()">
-            <option value="">-- Select a World --</option>
-          </select>
-        </div>
         <div class="form-group" style="flex: 1; margin: 0;">
-          <label for="searchAirlineInput">SEARCH AIRLINE</label>
-          <input type="text" id="searchAirlineInput" placeholder="Search by name, code, or owner..." onkeyup="searchAirlines()">
+          <label for="searchOwnerInput">SEARCH BY OWNER (ALL WORLDS)</label>
+          <input type="text" id="searchOwnerInput" placeholder="Search owner name..." onkeyup="searchAirlinesByOwner()">
+        </div>
+        <div style="display: flex; align-items: flex-end; gap: 0.75rem; flex: 1;">
+          <div class="form-group" style="margin: 0; min-width: 180px;">
+            <label for="airlinesWorldSelect">SELECT WORLD</label>
+            <select id="airlinesWorldSelect" onchange="loadAirlines()">
+              <option value="">-- Select a World --</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1; margin: 0;">
+            <label for="searchAirlineInput">SEARCH NAME / CODE</label>
+            <input type="text" id="searchAirlineInput" placeholder="Search by name or code..." onkeyup="searchAirlines()">
+          </div>
         </div>
       </div>
 
-      <h2 class="section-title">AIRLINES IN WORLD</h2>
+      <h2 class="section-title" id="airlinesTableTitle">AIRLINES IN WORLD</h2>
       <div id="airlinesTable">
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
-            <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);">
+            <tr style="background: var(--surface); border-bottom: 2px solid var(--border-color);" id="airlinesTableHead">
               <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">AIRLINE</th>
               <th style="padding: 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">CODES</th>
               <th style="padding: 0.5rem; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">OWNER</th>
@@ -670,10 +710,30 @@
       <button class="modal-close" onclick="closeWorldModal()">&times;</button>
     </div>
     <div class="modal-body">
+      <input type="hidden" id="worldType" value="multiplayer">
+
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
         <div class="form-group" style="grid-column: 1 / -1;">
           <label for="worldNameInput">WORLD NAME *</label>
           <input type="text" id="worldNameInput" placeholder="e.g., Modern Aviation Era">
+        </div>
+
+        <div class="form-group" id="worldOwnerGroup" style="grid-column: 1 / -1; display: none;">
+          <label for="worldOwnerSelect">OWNER *</label>
+          <select id="worldOwnerSelect">
+            <option value="">-- Select Owner --</option>
+          </select>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">The user who owns this single player world.</div>
+        </div>
+
+        <div class="form-group" id="worldDifficultyGroup" style="display: none;">
+          <label for="worldDifficulty">DIFFICULTY</label>
+          <select id="worldDifficulty">
+            <option value="">-- None --</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -686,7 +746,7 @@
           <input type="number" id="worldTimeAcceleration" placeholder="e.g., 60" min="1" max="240" value="60">
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="worldMaxPlayersGroup">
           <label for="worldMaxPlayers">MAX PLAYERS</label>
           <input type="number" id="worldMaxPlayers" placeholder="e.g., 100" min="1" max="1000" value="100">
         </div>

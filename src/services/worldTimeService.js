@@ -2,6 +2,8 @@ const World = require('../models/World');
 const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, RecurringMaintenance } = require('../models');
 const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
+const path = require('path');
+const { STORAGE_AIRPORTS } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
 
 /**
  * World Time Service
@@ -32,6 +34,14 @@ class WorldTimeService {
     this.aiCheckInterval = 30000; // Check AI decisions every 30 seconds (real time)
     this.isProcessingAI = false;
     // AI flight templates repeat weekly - no refresh needed
+    // Notification refresh via Socket.IO
+    this.lastNotificationCheck = 0;
+    this.notificationCheckInterval = 30000; // Emit notification refresh every 30 real seconds
+    this.lastNotificationDayEmitted = {}; // Map of worldId -> last game day where daily notification was emitted
+    // Recall processing
+    this.lastRecallCheck = 0;
+    this.recallCheckInterval = 30000; // Check recalls every 30 seconds (real time)
+    this.isProcessingRecalls = false;
   }
 
   /**
@@ -361,6 +371,15 @@ class WorldTimeService {
         .finally(() => { this.isProcessingListings = false; });
     }
 
+    // Process aircraft recall completions (recalling -> active)
+    if (!this.isProcessingRecalls && now - this.lastRecallCheck >= this.recallCheckInterval) {
+      this.lastRecallCheck = now;
+      this.isProcessingRecalls = true;
+      this.processRecalls(worldId, gameTime)
+        .catch(err => console.error('Error processing recalls:', err.message))
+        .finally(() => { this.isProcessingRecalls = false; });
+    }
+
     // Process AI airline decisions (SP worlds only)
     if (!this.isProcessingAI && now - this.lastAICheck >= this.aiCheckInterval) {
       this.lastAICheck = now;
@@ -372,6 +391,24 @@ class WorldTimeService {
     }
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
+
+    // Emit notification refresh signal (throttled to every 30 real seconds)
+    // Picks up computed notification changes from processing cycles above
+    if (global.io && now - this.lastNotificationCheck >= this.notificationCheckInterval) {
+      this.lastNotificationCheck = now;
+      global.io.emit('notifications:refresh', { worldId: worldId });
+    }
+
+    // Emit notification refresh at 00:01 game time each day for persistent notifications
+    const lastNotifDay = this.lastNotificationDayEmitted[worldId] || 0;
+    if (global.io && gameDay > lastNotifDay) {
+      const hour = gameTime.getHours();
+      const minute = gameTime.getMinutes();
+      if (hour === 0 && minute >= 1) {
+        this.lastNotificationDayEmitted[worldId] = gameDay;
+        global.io.emit('notifications:refresh', { worldId: worldId });
+      }
+    }
   }
 
   /**
@@ -1100,10 +1137,11 @@ class WorldTimeService {
       const membershipIds = memberships.map(m => m.id);
       if (membershipIds.length === 0) return;
 
-      // Get all aircraft with auto-scheduling enabled
+      // Get all aircraft with auto-scheduling enabled (exclude stored/sold/listed)
       const aircraftToRefresh = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
+          status: { [Op.notIn]: ['storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out'] },
           [Op.or]: [
             { autoScheduleDaily: true },
             { autoScheduleWeekly: true },
@@ -1309,6 +1347,85 @@ class WorldTimeService {
   }
 
   /**
+   * Process aircraft recall completions (recalling -> active)
+   */
+  async processRecalls(worldId, currentGameTime) {
+    try {
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true },
+        attributes: ['id']
+      });
+      if (memberships.length === 0) return;
+
+      const membershipIds = memberships.map(m => m.id);
+      const recallingAircraft = await UserAircraft.findAll({
+        where: {
+          worldMembershipId: { [Op.in]: membershipIds },
+          status: 'recalling',
+          recallAvailableAt: { [Op.lte]: currentGameTime }
+        }
+      });
+
+      for (const ac of recallingAircraft) {
+        // Determine ferry direction: currentAirport === storageAirportCode means ferrying TO storage
+        const ferryingToStorage = ac.currentAirport && ac.storageAirportCode && ac.currentAirport === ac.storageAirportCode;
+
+        if (ferryingToStorage) {
+          // Arrived at boneyard - transition to storage
+          await ac.update({ status: 'storage', storedAt: currentGameTime, recallAvailableAt: null });
+          console.log(`Aircraft arrived at storage: ${ac.registration} -> storage at ${ac.storageAirportCode}`);
+
+          try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+              worldMembershipId: ac.worldMembershipId,
+              type: 'aircraft_stored',
+              icon: 'warehouse',
+              title: `Aircraft Stored: ${ac.registration}`,
+              message: `${ac.registration} has been ferried to ${ac.storageAirportCode} and is now in storage.`,
+              link: '/fleet',
+              priority: 3,
+              gameTime: currentGameTime
+            });
+          } catch (e) {
+            console.error('Error creating storage notification:', e.message);
+          }
+        } else {
+          // Arrived at base - transition to active
+          await ac.update({ status: 'active', recallAvailableAt: null, storageAirportCode: null });
+
+          try {
+            const { refreshAutoScheduledMaintenance } = require('../routes/fleet');
+            await refreshAutoScheduledMaintenance(ac.id, worldId, currentGameTime);
+          } catch (e) {
+            console.error(`Error refreshing maintenance after recall for ${ac.registration}:`, e.message);
+          }
+
+          try {
+            const Notification = require('../models/Notification');
+            await Notification.create({
+              worldMembershipId: ac.worldMembershipId,
+              type: 'aircraft_recalled',
+              icon: 'plane',
+              title: `Aircraft Ready: ${ac.registration}`,
+              message: `${ac.registration} has been ferried from storage and is now available for service.`,
+              link: '/fleet',
+              priority: 3,
+              gameTime: currentGameTime
+            });
+          } catch (e) {
+            console.error('Error creating recall notification:', e.message);
+          }
+
+          console.log(`Aircraft recall complete: ${ac.registration} -> active`);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing recalls:', error);
+    }
+  }
+
+  /**
    * Process aircraft listings: NPC buyers/lessees and lease-out income
    */
   async processListings(worldId, currentGameTime) {
@@ -1407,6 +1524,33 @@ class WorldTimeService {
           await membership.save();
 
           console.log(`Lease income: $${rate} from ${ac.registration} to membership ${membership.id}`);
+        }
+
+        // --- Process storage costs (monthly) ---
+        const storedAircraft = await UserAircraft.findAll({
+          where: {
+            worldMembershipId: { [Op.in]: membershipIds },
+            status: 'storage'
+          }
+        });
+
+        for (const ac of storedAircraft) {
+          const membership = membershipMap.get(ac.worldMembershipId);
+          if (!membership) continue;
+
+          const purchasePrice = parseFloat(ac.purchasePrice) || 0;
+          let monthlyRate = 0.005; // default 0.5%
+          if (ac.storageAirportCode) {
+            const sa = STORAGE_AIRPORTS.find(a => a.icao === ac.storageAirportCode);
+            if (sa) monthlyRate = sa.monthlyRatePercent / 100;
+          }
+          const storageCost = Math.round(purchasePrice * monthlyRate);
+
+          if (storageCost > 0) {
+            membership.balance = parseFloat(membership.balance) - storageCost;
+            await membership.save();
+            console.log(`Storage cost: -$${storageCost} for ${ac.registration} at ${ac.storageAirportCode || 'unknown'} (${monthlyRate * 100}%/mo)`);
+          }
         }
       }
     } catch (error) {
