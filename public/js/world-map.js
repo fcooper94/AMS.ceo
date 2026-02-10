@@ -13,37 +13,35 @@ let flightsListOpen = false; // Hidden by default, user can toggle open
 
 // Synchronized position updates - all aircraft jump together on each tick
 let positionUpdateInterval = null;
-const worldOffsets = [0, 360, -360];
 
 // Update all marker positions in one synchronized batch
 function syncUpdateAllPositions() {
   activeFlights.forEach(flight => {
-    const markers = flightMarkers.get(flight.id);
+    const marker = flightMarkers.get(flight.id);
 
     const position = calculateFlightPosition(flight);
 
     // Hide aircraft during turnaround or tech stop
     if (position.phase === 'turnaround' || position.phase === 'techstop') {
-      if (markers) {
-        const markersArray = Array.isArray(markers) ? markers : [markers];
-        markersArray.forEach(m => map.removeLayer(m));
+      if (marker) {
+        map.removeLayer(marker);
         flightMarkers.delete(flight.id);
       }
       return;
     }
 
     // Re-create marker if it doesn't exist (e.g., exiting turnaround)
-    if (!markers) {
+    if (!marker) {
       createFlightMarker(flight, position);
       return;
     }
 
-    const markersArray = Array.isArray(markers) ? markers : [markers];
+    marker.setLatLng([position.lat, position.lng]);
+    // Only update bearing if it changed significantly (>2 degrees)
     const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
-
-    markersArray.forEach((marker, idx) => {
-      const offset = worldOffsets[idx] || 0;
-      marker.setLatLng([position.lat, position.lng + offset]);
+    const prevBearing = flight._lastBearing || 0;
+    if (Math.abs(bearing - prevBearing) > 2) {
+      flight._lastBearing = bearing;
       const iconEl = marker.getElement();
       if (iconEl) {
         const inner = iconEl.querySelector('.aircraft-marker-inner');
@@ -51,23 +49,22 @@ function syncUpdateAllPositions() {
           inner.style.transform = `rotate(${bearing}deg)`;
         }
       }
-    });
+    }
   });
 
-  // Update info panel if a flight is selected
+  // Update info panel if a flight is selected (only progress/status, not full rebuild)
   if (selectedFlightId) {
-    const flight = activeFlights.find(f => f.id === selectedFlightId);
-    if (flight) showFlightInfo(flight);
+    updateFlightInfoProgress();
   }
 
-  // Refresh flights list
-  if (flightsListOpen) updateFlightsList();
+  // Refresh flights list (only if open)
+  if (flightsListOpen) updateFlightsListPositions();
 }
 
-// Start synchronized position updates (1 second interval)
+// Start synchronized position updates (2 second interval - aircraft move slowly enough)
 function startPositionUpdates() {
   if (positionUpdateInterval) return;
-  positionUpdateInterval = setInterval(syncUpdateAllPositions, 1000);
+  positionUpdateInterval = setInterval(syncUpdateAllPositions, 2000);
 }
 
 // Stop position updates
@@ -321,7 +318,6 @@ window.handleAirlineFilterChange = handleAirlineFilterChange;
 // Load active flights from API
 async function loadActiveFlights() {
   try {
-    console.log('[WorldMap] Fetching active flights...');
     const endpoint = airlineFilterMode === 'all' ? '/api/schedule/active-all' : '/api/schedule/active';
     const response = await fetch(endpoint);
 
@@ -330,20 +326,12 @@ async function loadActiveFlights() {
     }
 
     const data = await response.json();
-    console.log('[WorldMap] Active flights received:', data);
 
     if (data.flights && Array.isArray(data.flights)) {
       activeFlights = data.flights;
       updateFlightsOnMap(data.flights);
-      // Hide loading overlay after flights are rendered at correct positions
-      // Wait for markers to be fully rendered and world time to stabilize (250ms buffer)
-      setTimeout(() => {
-        // Update positions one more time to ensure correct placement
-        updateFlightsOnMap(activeFlights);
-        setTimeout(() => {
-          hideMapLoadingOverlay();
-        }, 50);
-      }, 200);
+      // Hide loading overlay after first render
+      hideMapLoadingOverlay();
       // Update selected flight info if one is selected
       if (selectedFlightId) {
         const selectedFlight = activeFlights.find(f => f.id === selectedFlightId);
@@ -385,20 +373,15 @@ async function loadActiveFlights() {
   }
 }
 
-// Update flights on map (only aircraft markers)
+// Update flights on map (only aircraft markers) - uses delta updates
 function updateFlightsOnMap(flights) {
   // Track which flights are still active
   const activeFlightIds = new Set(flights.map(f => f.id));
 
   // Remove markers for flights that are no longer active
-  for (const [flightId, markers] of flightMarkers) {
+  for (const [flightId, marker] of flightMarkers) {
     if (!activeFlightIds.has(flightId)) {
-      // Handle both array and single marker (for backwards compatibility)
-      if (Array.isArray(markers)) {
-        markers.forEach(m => map.removeLayer(m));
-      } else {
-        map.removeLayer(markers);
-      }
+      map.removeLayer(marker);
       flightMarkers.delete(flightId);
 
       // Also clean up route/airports if this was selected
@@ -410,28 +393,16 @@ function updateFlightsOnMap(flights) {
     }
   }
 
-  // Add or update markers for active flights
+  // Add markers only for NEW flights (existing ones updated by syncUpdateAllPositions)
   flights.forEach(flight => {
+    if (flightMarkers.has(flight.id)) return; // Already has a marker
+
     const position = calculateFlightPosition(flight);
 
-    // Hide aircraft during turnaround or tech stop (on the ground)
-    if (position.phase === 'turnaround' || position.phase === 'techstop') {
-      if (flightMarkers.has(flight.id)) {
-        const markers = flightMarkers.get(flight.id);
-        if (Array.isArray(markers)) {
-          markers.forEach(m => map.removeLayer(m));
-        } else {
-          map.removeLayer(markers);
-        }
-        flightMarkers.delete(flight.id);
-      }
-      return; // Skip to next flight
-    }
+    // Skip aircraft on the ground
+    if (position.phase === 'turnaround' || position.phase === 'techstop') return;
 
-    if (!flightMarkers.has(flight.id)) {
-      // Create new marker - continuous animation loop handles position updates
-      createFlightMarker(flight, position);
-    }
+    createFlightMarker(flight, position);
   });
 }
 
@@ -453,13 +424,23 @@ function calculateFlightPosition(flight) {
   }
 
   // Parse departure time
-  const departureDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
+  if (!flight._depDateTime) {
+    flight._depDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
+  }
+  const departureDateTime = flight._depDateTime;
 
-  // Airport coordinates
-  const depLat = parseFloat(flight.departureAirport.latitude);
-  const depLng = parseFloat(flight.departureAirport.longitude);
-  const arrLat = parseFloat(flight.arrivalAirport.latitude);
-  const arrLng = parseFloat(flight.arrivalAirport.longitude);
+  // Airport coordinates (cache parsed floats on the flight object)
+  if (flight._coordsCached === undefined) {
+    flight._depLat = parseFloat(flight.departureAirport.latitude);
+    flight._depLng = parseFloat(flight.departureAirport.longitude);
+    flight._arrLat = parseFloat(flight.arrivalAirport.latitude);
+    flight._arrLng = parseFloat(flight.arrivalAirport.longitude);
+    flight._coordsCached = true;
+  }
+  const depLat = flight._depLat;
+  const depLng = flight._depLng;
+  const arrLat = flight._arrLat;
+  const arrLng = flight._arrLng;
 
   // Use aircraft's actual cruise speed, fallback to 450 if not available
   const speedKnots = flight.aircraft?.aircraftType?.cruiseSpeed || flight.aircraft?.cruiseSpeed || 450;
@@ -476,28 +457,43 @@ function calculateFlightPosition(flight) {
 
   if (hasTechStop) {
     // Tech stop route: DEP → TECH → ARR → TECH → DEP
-    const techLat = parseFloat(flight.route.techStopAirport.latitude);
-    const techLng = parseFloat(flight.route.techStopAirport.longitude);
+    // Cache tech stop coordinates and timeline
+    if (!flight._techCached) {
+      flight._techLat = parseFloat(flight.route.techStopAirport.latitude);
+      flight._techLng = parseFloat(flight.route.techStopAirport.longitude);
 
-    const distanceNm = parseFloat(flight.route.distance) || 500;
-    const leg1Distance = flight.route.legOneDistance || Math.round(distanceNm * 0.4);
-    const leg2Distance = flight.route.legTwoDistance || Math.round(distanceNm * 0.6);
+      const distanceNm = parseFloat(flight.route.distance) || 500;
+      const leg1Distance = flight.route.legOneDistance || Math.round(distanceNm * 0.4);
+      const leg2Distance = flight.route.legTwoDistance || Math.round(distanceNm * 0.6);
 
-    const techStopMs = 30 * 60 * 1000; // 30 min tech stop
+      const techStopMs = 30 * 60 * 1000;
 
-    // Calculate each leg duration
-    const leg1Ms = calculateFlightDurationMs(leg1Distance, depLng, techLng, depLat, techLat, speedKnots);
-    const leg2Ms = calculateFlightDurationMs(leg2Distance, techLng, arrLng, techLat, arrLat, speedKnots);
-    const leg3Ms = calculateFlightDurationMs(leg2Distance, arrLng, techLng, arrLat, techLat, speedKnots);
-    const leg4Ms = calculateFlightDurationMs(leg1Distance, techLng, depLng, techLat, depLat, speedKnots);
+      flight._leg1Ms = calculateFlightDurationMs(leg1Distance, depLng, flight._techLng, depLat, flight._techLat, speedKnots);
+      flight._leg2Ms = calculateFlightDurationMs(leg2Distance, flight._techLng, arrLng, flight._techLat, arrLat, speedKnots);
+      flight._leg3Ms = calculateFlightDurationMs(leg2Distance, arrLng, flight._techLng, arrLat, flight._techLat, speedKnots);
+      flight._leg4Ms = calculateFlightDurationMs(leg1Distance, flight._techLng, depLng, flight._techLat, depLat, speedKnots);
 
-    // Timeline: leg1 → techStop1 → leg2 → turnaround → leg3 → techStop2 → leg4
-    const t1 = leg1Ms;
-    const t2 = t1 + techStopMs;
-    const t3 = t2 + leg2Ms;
-    const t4 = t3 + turnaroundMs;
-    const t5 = t4 + leg3Ms;
-    const t6 = t5 + techStopMs;
+      flight._t1 = flight._leg1Ms;
+      flight._t2 = flight._t1 + techStopMs;
+      flight._t3 = flight._t2 + flight._leg2Ms;
+      flight._t4 = flight._t3 + turnaroundMs;
+      flight._t5 = flight._t4 + flight._leg3Ms;
+      flight._t6 = flight._t5 + techStopMs;
+      flight._techCached = true;
+    }
+
+    const techLat = flight._techLat;
+    const techLng = flight._techLng;
+    const leg1Ms = flight._leg1Ms;
+    const leg2Ms = flight._leg2Ms;
+    const leg3Ms = flight._leg3Ms;
+    const leg4Ms = flight._leg4Ms;
+    const t1 = flight._t1;
+    const t2 = flight._t2;
+    const t3 = flight._t3;
+    const t4 = flight._t4;
+    const t5 = flight._t5;
+    const t6 = flight._t6;
 
     if (elapsedMs < t1) {
       // LEG 1: DEP → TECH
@@ -560,14 +556,16 @@ function calculateFlightPosition(flight) {
       destLng = depLng;
     }
   } else {
-    // Standard direct route
-    const distanceNm = parseFloat(flight.route.distance) || 500;
+    // Standard direct route - cache durations
+    if (!flight._durationsCached) {
+      const distanceNm = parseFloat(flight.route.distance) || 500;
+      flight._outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, speedKnots);
+      flight._returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, speedKnots);
+      flight._durationsCached = true;
+    }
 
-    // Outbound: departure -> arrival (with wind effect)
-    const outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, speedKnots);
-
-    // Return: arrival -> departure (opposite wind effect)
-    const returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, speedKnots);
+    const outboundFlightMs = flight._outboundFlightMs;
+    const returnFlightMs = flight._returnFlightMs;
 
     if (elapsedMs < outboundFlightMs) {
       // OUTBOUND LEG: departure → arrival
@@ -739,25 +737,20 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-// Create aircraft marker on all world copies for seamless scrolling
+// Create a single aircraft marker
 function createFlightMarker(flight, position) {
-  // Calculate bearing from CURRENT position to destination (follows great circle curve)
   const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
 
-  // Get flight info for label
   const flightNumber = position.routeNumber || flight.route?.routeNumber || '';
   const registration = flight.aircraft?.registration || '';
-  // Combine model and variant (e.g., "777" + "300ER" = "777-300ER")
   const model = flight.aircraft?.aircraftType?.model || '';
   const variant = flight.aircraft?.aircraftType?.variant || '';
   const aircraftModel = variant ? `${model}${variant.startsWith('-') ? variant : '-' + variant}` : model;
 
-  // Check if this is another airline's flight
   const isOtherAirline = flight.isOwnFlight === false;
-  const airlineName = flight.airlineName || '';
   const markerClass = isOtherAirline ? 'aircraft-marker-inner other-airline' : 'aircraft-marker-inner';
 
-  const createIcon = () => L.divIcon({
+  const icon = L.divIcon({
     className: 'aircraft-marker',
     html: isOtherAirline
       ? `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="transform: rotate(${bearing}deg)">${aircraftSvg}</div></div>`
@@ -773,24 +766,15 @@ function createFlightMarker(flight, position) {
     iconAnchor: [12, 12]
   });
 
-  // Create markers on main world and adjacent copies
-  const worldOffsets = [0, 360, -360];
-  const markers = [];
+  const marker = L.marker([position.lat, position.lng], { icon })
+    .addTo(map);
 
-  worldOffsets.forEach(offset => {
-    const marker = L.marker([position.lat, position.lng + offset], { icon: createIcon() })
-      .addTo(map);
-
-    marker.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      selectFlight(flight.id);
-    });
-
-    markers.push(marker);
+  marker.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    selectFlight(flight.id);
   });
 
-  // Store array of markers for this flight
-  flightMarkers.set(flight.id, markers);
+  flightMarkers.set(flight.id, marker);
 }
 
 // Create route line for selected flight
@@ -814,64 +798,31 @@ function createRouteLine(flight) {
 
   const allPolylines = [];
 
-  // Draw route on main world and adjacent copies (for seamless scrolling)
-  const worldOffsets = [0, 360, -360];
-
-  // Helper to add polyline with longitude offset
-  const addPolylineWithOffset = (segment, offset) => {
-    const offsetSegment = segment.map(([lat, lng]) => [lat, lng + offset]);
-    const polyline = L.polyline(offsetSegment, lineStyle).addTo(map);
-    allPolylines.push(polyline);
-  };
-
   if (hasTechStop) {
-    // Draw two great circle segments: DEP → TECH → ARR
     const techLat = parseFloat(flight.route.techStopAirport.latitude);
     const techLng = parseFloat(flight.route.techStopAirport.longitude);
 
-    // First segment: DEP → TECH (with date line handling)
     const segments1 = generateGreatCirclePath(depLat, depLng, techLat, techLng, 30);
-
-    // Second segment: TECH → ARR (with date line handling)
     const segments2 = generateGreatCirclePath(techLat, techLng, arrLat, arrLng, 30);
 
-    // Draw on all world copies
-    worldOffsets.forEach(offset => {
-      segments1.forEach(segment => addPolylineWithOffset(segment, offset));
-      segments2.forEach(segment => addPolylineWithOffset(segment, offset));
+    segments1.forEach(segment => {
+      allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+    });
+    segments2.forEach(segment => {
+      allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
     });
   } else {
-    // Direct route: generate great circle path with date line handling
     const segments = generateGreatCirclePath(depLat, depLng, arrLat, arrLng, 50);
-
-    // Draw on all world copies
-    worldOffsets.forEach(offset => {
-      segments.forEach(segment => addPolylineWithOffset(segment, offset));
+    segments.forEach(segment => {
+      allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
     });
   }
 
-  // Store all polylines (may be multiple if crossing date line or multiple world copies)
   routeLines.set(flight.id, allPolylines);
 }
 
 // Create airport markers for selected flight
-// Creates markers on main world and adjacent copies for seamless scrolling
 function createAirportMarkers(flight) {
-  const worldOffsets = [0, 360, -360];
-
-  // Helper to create markers on all world copies
-  const createMarkerOnAllCopies = (lat, lng, icon, popupContent, keyPrefix) => {
-    const markers = [];
-    worldOffsets.forEach((offset, idx) => {
-      const marker = L.marker([lat, lng + offset], { icon })
-        .addTo(map)
-        .bindPopup(popupContent);
-      markers.push(marker);
-      airportMarkers.set(`${keyPrefix}-${flight.id}-${idx}`, marker);
-    });
-    return markers;
-  };
-
   // Departure airport (hub style - green)
   const depIcon = L.divIcon({
     className: 'airport-marker',
@@ -880,17 +831,17 @@ function createAirportMarkers(flight) {
     iconAnchor: [8, 8]
   });
 
-  createMarkerOnAllCopies(
-    parseFloat(flight.departureAirport.latitude),
-    parseFloat(flight.departureAirport.longitude),
-    depIcon,
+  const depMarker = L.marker(
+    [parseFloat(flight.departureAirport.latitude), parseFloat(flight.departureAirport.longitude)],
+    { icon: depIcon }
+  ).addTo(map).bindPopup(
     `<div class="popup-title">${flight.departureAirport.iataCode || flight.departureAirport.icaoCode}</div>
      <div class="popup-info">
        <span>${flight.departureAirport.name}</span>
        <span>${flight.departureAirport.city}, ${flight.departureAirport.country}</span>
-     </div>`,
-    'dep'
+     </div>`
   );
+  airportMarkers.set(`dep-${flight.id}`, depMarker);
 
   // Tech stop airport (yellow) - if exists
   if (flight.route?.techStopAirport) {
@@ -901,18 +852,18 @@ function createAirportMarkers(flight) {
       iconAnchor: [7, 7]
     });
 
-    createMarkerOnAllCopies(
-      parseFloat(flight.route.techStopAirport.latitude),
-      parseFloat(flight.route.techStopAirport.longitude),
-      techIcon,
+    const techMarker = L.marker(
+      [parseFloat(flight.route.techStopAirport.latitude), parseFloat(flight.route.techStopAirport.longitude)],
+      { icon: techIcon }
+    ).addTo(map).bindPopup(
       `<div class="popup-title">${flight.route.techStopAirport.iataCode || flight.route.techStopAirport.icaoCode}</div>
        <div class="popup-info">
          <span>${flight.route.techStopAirport.name}</span>
          <span>${flight.route.techStopAirport.city}, ${flight.route.techStopAirport.country}</span>
          <span style="color: #d29922; font-weight: 600;">Tech Stop</span>
-       </div>`,
-      'tech'
+       </div>`
     );
+    airportMarkers.set(`tech-${flight.id}`, techMarker);
   }
 
   // Arrival airport (green)
@@ -923,17 +874,17 @@ function createAirportMarkers(flight) {
     iconAnchor: [6, 6]
   });
 
-  createMarkerOnAllCopies(
-    parseFloat(flight.arrivalAirport.latitude),
-    parseFloat(flight.arrivalAirport.longitude),
-    arrIcon,
+  const arrMarker = L.marker(
+    [parseFloat(flight.arrivalAirport.latitude), parseFloat(flight.arrivalAirport.longitude)],
+    { icon: arrIcon }
+  ).addTo(map).bindPopup(
     `<div class="popup-title">${flight.arrivalAirport.iataCode || flight.arrivalAirport.icaoCode}</div>
      <div class="popup-info">
        <span>${flight.arrivalAirport.name}</span>
        <span>${flight.arrivalAirport.city}, ${flight.arrivalAirport.country}</span>
-     </div>`,
-    'arr'
+     </div>`
   );
+  airportMarkers.set(`arr-${flight.id}`, arrMarker);
 }
 
 // Show flight info panel for selected flight
@@ -1261,6 +1212,45 @@ function showFlightInfo(flight) {
   if (dropdown) dropdown.classList.add('shifted');
 }
 
+// Lightweight update of just the progress/status in the flight info panel (called every 1s)
+function updateFlightInfoProgress() {
+  const flight = activeFlights.find(f => f.id === selectedFlightId);
+  if (!flight) return;
+
+  const position = calculateFlightPosition(flight);
+  const phase = position.phase || 'outbound';
+
+  // Update status badge
+  const statusBadge = document.querySelector('.status-badge');
+  if (statusBadge) {
+    const phaseStatus = phase === 'outbound' ? 'OUTBOUND' : phase === 'turnaround' ? 'TURNAROUND' : 'RETURN';
+    statusBadge.textContent = phaseStatus;
+    statusBadge.className = `status-badge ${phase}`;
+  }
+
+  // Update progress text
+  const progressText = document.querySelector('.progress-text');
+  if (progressText) {
+    const progressPercent = phase === 'turnaround' ? 100 : Math.round((position.progress || 0) * 100);
+    progressText.textContent = `${progressPercent}% complete`;
+  }
+
+  // Update sector card active states
+  const sectorCards = document.querySelectorAll('.sector-card');
+  if (sectorCards.length >= 2) {
+    // Outbound card
+    sectorCards[0].className = `sector-card ${phase === 'outbound' ? 'active' : phase === 'turnaround' || phase === 'return' ? 'completed' : ''}`;
+    // Return card
+    sectorCards[1].className = `sector-card ${phase === 'return' ? 'active' : ''}`;
+  }
+
+  // Update turnaround indicator
+  const turnaround = document.querySelector('.turnaround-indicator');
+  if (turnaround) {
+    turnaround.className = `turnaround-indicator ${phase === 'turnaround' ? 'active' : phase === 'return' ? 'completed' : ''}`;
+  }
+}
+
 // Hide flight info panel
 function hideFlightInfo() {
   const panel = document.getElementById('flightInfoPanel');
@@ -1277,15 +1267,13 @@ function hideFlightInfo() {
 function clearSelectedFlightElements() {
   // Remove selected highlight from previous aircraft marker
   if (selectedFlightId) {
-    const prevMarkers = flightMarkers.get(selectedFlightId);
-    if (prevMarkers) {
-      (Array.isArray(prevMarkers) ? prevMarkers : [prevMarkers]).forEach(m => {
-        const el = m.getElement();
-        if (el) {
-          const inner = el.querySelector('.aircraft-marker-inner');
-          if (inner) inner.classList.remove('selected');
-        }
-      });
+    const prevMarker = flightMarkers.get(selectedFlightId);
+    if (prevMarker) {
+      const el = prevMarker.getElement();
+      if (el) {
+        const inner = el.querySelector('.aircraft-marker-inner');
+        if (inner) inner.classList.remove('selected');
+      }
     }
   }
 
@@ -1326,15 +1314,13 @@ function selectFlight(flightId) {
   createAirportMarkers(flight);
 
   // Highlight the selected aircraft marker
-  const selectedMarkers = flightMarkers.get(flightId);
-  if (selectedMarkers) {
-    (Array.isArray(selectedMarkers) ? selectedMarkers : [selectedMarkers]).forEach(m => {
-      const el = m.getElement();
-      if (el) {
-        const inner = el.querySelector('.aircraft-marker-inner');
-        if (inner) inner.classList.add('selected');
-      }
-    });
+  const selectedMarker = flightMarkers.get(flightId);
+  if (selectedMarker) {
+    const el = selectedMarker.getElement();
+    if (el) {
+      const inner = el.querySelector('.aircraft-marker-inner');
+      if (inner) inner.classList.add('selected');
+    }
   }
 
   // Show flight info
@@ -1373,15 +1359,8 @@ function deselectFlight() {
 
 // Clear all map elements
 function clearMap() {
-  flightMarkers.forEach((markers) => {
-    if (Array.isArray(markers)) {
-      markers.forEach(m => map.removeLayer(m));
-    } else {
-      map.removeLayer(markers);
-    }
-  });
+  flightMarkers.forEach(marker => map.removeLayer(marker));
   flightMarkers.clear();
-
   clearSelectedFlightElements();
 }
 
@@ -1468,6 +1447,31 @@ function updateFlightsList() {
   }
 
   body.innerHTML = html;
+}
+
+// Lightweight update of flight list phase indicators (called every 1s tick)
+function updateFlightsListPositions() {
+  const body = document.getElementById('flightsListBody');
+  if (!body) return;
+
+  const entries = body.querySelectorAll('.fl-entry');
+  entries.forEach(entry => {
+    const flightId = entry.dataset.flightId;
+    const flight = activeFlights.find(f => f.id === flightId);
+    if (!flight) return;
+
+    const position = calculateFlightPosition(flight);
+    const phaseEl = entry.querySelector('.fl-phase');
+    if (phaseEl) {
+      phaseEl.className = `fl-phase ${position.phase || 'outbound'}`;
+    }
+
+    // Update arrow direction
+    const arrowEl = entry.querySelector('.fl-arrow');
+    if (arrowEl) {
+      arrowEl.textContent = position.phase === 'return' ? ' ◂ ' : ' ▸ ';
+    }
+  });
 }
 
 // Focus map on a specific flight and select it

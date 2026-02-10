@@ -588,6 +588,10 @@ router.post('/create-singleplayer', async (req, res) => {
     console.error('Error creating SP world:', error);
 
     if (error.name === 'SequelizeUniqueConstraintError') {
+      const fields = error.fields || {};
+      if (fields.airline_code || fields.iata_code) {
+        return res.status(400).json({ error: 'Airline ICAO or IATA code already in use' });
+      }
       return res.status(400).json({ error: 'A world with that name already exists' });
     }
 

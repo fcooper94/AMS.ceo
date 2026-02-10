@@ -21,6 +21,22 @@ async function syncDatabase() {
       console.log('Note: Old registration constraints may already be removed');
     }
 
+    // Drop accumulated worlds name uniqueness constraints (name no longer needs to be unique)
+    try {
+      const [nameConstraints] = await sequelize.query(
+        "SELECT conname FROM pg_constraint WHERE conrelid = 'worlds'::regclass AND conname LIKE 'worlds_name_key%'"
+      );
+      for (const c of nameConstraints) {
+        await sequelize.query(`ALTER TABLE worlds DROP CONSTRAINT IF EXISTS "${c.conname}"`);
+        await sequelize.query(`DROP INDEX IF EXISTS "${c.conname}"`);
+      }
+      if (nameConstraints.length > 0) {
+        console.log(`✓ Cleaned up ${nameConstraints.length} old worlds name uniqueness constraints`);
+      }
+    } catch (e) {
+      console.log('Note: Worlds name constraints cleanup skipped');
+    }
+
     // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 

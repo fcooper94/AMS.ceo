@@ -1843,12 +1843,18 @@ async function createSinglePlayerWorld() {
   const baseAirportId = document.getElementById('spBaseAirport').value;
   const errorDiv = document.getElementById('spCreateError');
 
-  // Auto-generate world name from username
+  // Auto-generate world name from username, always using next available number
   const userName = (document.getElementById('userName')?.textContent || 'My').trim();
-  const existingSPCount = document.querySelectorAll('#singlePlayerList .world-card').length;
-  const name = existingSPCount > 0
-    ? `${userName}'s World #${existingSPCount + 1}`
-    : `${userName}'s World`;
+  const existingNames = new Set(
+    Array.from(document.querySelectorAll('#singlePlayerList .world-card-name'))
+      .map(el => el.textContent.trim())
+  );
+  let worldNum = 1;
+  let name = `${userName}'s World`;
+  while (existingNames.has(name)) {
+    worldNum++;
+    name = `${userName}'s World #${worldNum}`;
+  }
 
   // Validation
   if (!airlineName) {

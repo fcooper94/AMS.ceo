@@ -192,12 +192,22 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
   const existingNames = new Set(existingMembers.map(m => m.airlineName).filter(Boolean));
 
   // Get airports with region-weighted selection
+  // Sort by type priority (International Hub first) then by traffic_demand
+  // This ensures major hubs get tier 1 (most AI airlines) while small airports get tier 3
+  const TYPE_PRIORITY = { 'International Hub': 3, 'Major': 2, 'Regional': 1 };
   const regionWeights = config.regionWeights;
   const allEligible = await Airport.findAll({
     where: {
       type: { [Op.in]: ['International Hub', 'Major', 'Regional'] }
     },
     order: [['traffic_demand', 'DESC']]
+  });
+  // Sort by type priority first, then traffic_demand (DB sort alone isn't enough
+  // because traffic_demand has many ties — 3000+ airports all at 10)
+  allEligible.sort((a, b) => {
+    const typeDiff = (TYPE_PRIORITY[b.type] || 0) - (TYPE_PRIORITY[a.type] || 0);
+    if (typeDiff !== 0) return typeDiff;
+    return (b.trafficDemand || 0) - (a.trafficDemand || 0);
   });
 
   // Group airports by region
@@ -231,8 +241,12 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
     airports.push(humanBaseAirport);
   }
 
-  // Re-sort by traffic_demand DESC so tier assignment gives top airports more airlines
-  airports.sort((a, b) => b.trafficDemand - a.trafficDemand);
+  // Re-sort by type priority then traffic_demand so tier assignment gives major hubs more airlines
+  airports.sort((a, b) => {
+    const typeDiff = (TYPE_PRIORITY[b.type] || 0) - (TYPE_PRIORITY[a.type] || 0);
+    if (typeDiff !== 0) return typeDiff;
+    return (b.trafficDemand || 0) - (a.trafficDemand || 0);
+  });
 
   console.log(`[AI-SPAWN] Region distribution: ${regionEntries.map(([r, w]) => `${r}: ${(byRegion[r] || []).length} eligible, ${Math.round(totalAirports * w / 100)} slots`).join(', ')}`);
 
