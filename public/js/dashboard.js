@@ -294,11 +294,42 @@ function updatePauseResumeUI() {
 
 async function toggleWorldPause() {
   try {
+    // Capture the current client-side time BEFORE pausing so we freeze at the displayed time
+    const currentClientTime = typeof calculateCurrentWorldTime === 'function'
+      ? calculateCurrentWorldTime()
+      : (typeof getGlobalWorldTime === 'function' ? getGlobalWorldTime() : null);
+
     const endpoint = worldIsPaused ? '/api/world/resume' : '/api/world/pause';
-    const res = await fetch(endpoint, { method: 'POST' });
+    const body = {};
+    // Send the client's current time so the server freezes at the right moment
+    if (!worldIsPaused && currentClientTime) {
+      body.clientTime = currentClientTime.toISOString();
+    }
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
     if (res.ok) {
       worldIsPaused = !worldIsPaused;
+      // Sync global pause state so navbar clock freezes/resumes immediately
+      if (typeof worldIsPausedGlobal !== 'undefined') {
+        worldIsPausedGlobal = worldIsPaused;
+      }
+      if (typeof updateNavbarPausedState === 'function') {
+        updateNavbarPausedState(worldIsPaused);
+      }
+      // When pausing, freeze the reference at current client time to avoid jump-back
+      if (worldIsPaused && currentClientTime) {
+        if (typeof serverReferenceTime !== 'undefined') {
+          serverReferenceTime = currentClientTime;
+          serverReferenceTimestamp = Date.now();
+        }
+      }
       updatePauseResumeUI();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      console.error('Failed to toggle pause:', res.status, err);
     }
   } catch (err) {
     console.error('Error toggling pause:', err);
@@ -312,8 +343,15 @@ async function changeWorldSpeed(factor) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ factor: parseInt(factor) })
     });
-    if (!res.ok) {
-      console.error('Failed to change speed');
+    if (res.ok) {
+      // Sync global acceleration so navbar clock reflects new speed immediately
+      if (typeof worldTimeAcceleration !== 'undefined') {
+        worldTimeAcceleration = parseInt(factor);
+      }
+      console.log(`Speed changed to ${factor}x`);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      console.error('Failed to change speed:', res.status, err);
     }
   } catch (err) {
     console.error('Error changing speed:', err);

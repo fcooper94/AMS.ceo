@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { World, WorldMembership, User, Airport } = require('../models');
+const { World, WorldMembership, User, Airport, UserAircraft, Route } = require('../models');
 const eraEconomicService = require('../services/eraEconomicService');
 const { getAICount } = require('../data/aiDifficultyConfig');
 
@@ -47,7 +47,7 @@ router.get('/available', async (req, res) => {
           }] : [])
         ]
       },
-      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate', 'worldType', 'difficulty', 'status'],
+      attributes: ['id', 'name', 'description', 'era', 'currentTime', 'timeAcceleration', 'maxPlayers', 'joinCost', 'weeklyCost', 'freeWeeks', 'endDate', 'worldType', 'difficulty', 'status', 'isPaused'],
       order: [['createdAt', 'DESC']]
     });
 
@@ -575,6 +575,35 @@ router.post('/create-singleplayer', async (req, res) => {
     }
 
     res.status(500).json({ error: 'Failed to create single-player world' });
+  }
+});
+
+/**
+ * Get global stats across all active worlds
+ */
+router.get('/global-stats', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Count all aircraft, routes, and airlines across all active worlds
+    const [totalAircraft, totalRoutes, totalAirlines] = await Promise.all([
+      UserAircraft.count({
+        where: { status: { [Op.notIn]: ['sold'] } }
+      }),
+      Route.count({
+        where: { isActive: true }
+      }),
+      WorldMembership.count()
+    ]);
+
+    res.json({ totalAircraft, totalRoutes, totalAirlines });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error fetching global stats:', error);
+    }
+    res.status(500).json({ error: 'Failed to fetch global stats' });
   }
 });
 

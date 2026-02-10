@@ -39,7 +39,7 @@ router.post('/dev-bypass', async (req, res) => {
       }
     }
 
-    const { bypassPassword } = req.body;
+    const { bypassPassword, userId } = req.body;
 
     // Validate bypass password from environment variable (defaults to 'devpass' if not set)
     const expectedPassword = process.env.DEV_BYPASS_PASSWORD || 'devpass';
@@ -47,33 +47,56 @@ router.post('/dev-bypass', async (req, res) => {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    // Find or create the dev user
-    let user = await User.findOne({ where: { vatsimId: '10000010' } });
+    // If no userId provided, return user list for selection
+    if (!userId) {
+      try {
+        const users = await User.findAll({
+          attributes: ['id', 'vatsimId', 'firstName', 'lastName', 'email', 'isAdmin'],
+          order: [['lastName', 'ASC'], ['firstName', 'ASC']]
+        });
+        return res.json({ authenticated: true, users: users.map(u => u.toJSON()) });
+      } catch (dbErr) {
+        console.error('Error fetching users for dev bypass:', dbErr);
+        return res.status(500).json({ error: 'Failed to fetch user list: ' + dbErr.message });
+      }
+    }
 
-    if (!user) {
-      user = await User.create({
-        vatsimId: '10000010',
-        firstName: 'WebTen',
-        lastName: 'Dev',
-        email: 'dev@localhost',
-        rating: 'C1',
-        pilotRating: 0,
-        division: 'DEV',
-        isAdmin: true,
-        credits: 100
-      });
+    // Find or create the target user
+    let user;
+    if (userId === 'new') {
+      // Create/find default dev user
+      user = await User.findOne({ where: { vatsimId: '10000010' } });
+      if (!user) {
+        user = await User.create({
+          vatsimId: '10000010',
+          firstName: 'WebTen',
+          lastName: 'Dev',
+          email: 'dev@localhost',
+          rating: 'C1',
+          pilotRating: 0,
+          division: 'DEV',
+          isAdmin: true,
+          credits: 100
+        });
+      }
+    } else {
+      user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
     }
 
     // Log the user in
     req.login(user, (err) => {
       if (err) {
-        return res.status(500).json({ error: 'Login failed' });
+        console.error('Dev bypass req.login() failed:', err);
+        return res.status(500).json({ error: 'Login failed: ' + err.message });
       }
       res.json({ success: true, redirect: '/world-selection' });
     });
   } catch (error) {
     console.error('Dev bypass error:', error);
-    res.status(500).json({ error: 'Dev bypass failed' });
+    res.status(500).json({ error: 'Dev bypass failed: ' + error.message });
   }
 });
 

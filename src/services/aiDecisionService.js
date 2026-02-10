@@ -750,17 +750,23 @@ function scheduleReplacementSpawn(world, config, gameTime) {
 
       // Create a mini-spawn (1 airline) by temporarily limiting
       const origDifficulty = freshWorld.difficulty;
-      await spawnOneAIAirline(freshWorld, origDifficulty, player.baseAirport);
+      const spawnResult = await spawnOneAIAirline(freshWorld, origDifficulty, player.baseAirport);
 
       // Get game time for notification
       const worldTimeService = require('./worldTimeService');
       const currentGameTime = worldTimeService.getCurrentTime(world.id) || new Date();
 
+      const aiName = spawnResult?.airlineName || 'A new airline';
+      const aiBase = spawnResult?.baseAirport;
+      const baseInfo = aiBase ? ` based at ${aiBase.icaoCode} (${aiBase.city || aiBase.name})` : '';
+      const isAtPlayerBase = aiBase && player.baseAirport && aiBase.id === player.baseAirport.id;
+      const label = isAtPlayerBase ? 'New Competitor' : 'New Airline';
+
       await notifyPlayer(world.id,
-        'New Competitor Entered Market',
-        'A new AI airline has entered the market and will begin operations soon.',
+        `${label}: ${aiName}`,
+        `${aiName} has entered the market${baseInfo} and will begin operations soon.`,
         currentGameTime,
-        { type: 'operations', icon: 'plane', priority: 3, link: '/competition' }
+        { type: 'operations', icon: 'plane', priority: isAtPlayerBase ? 2 : 3, link: '/competition' }
       );
 
       console.log(`[AI-SPAWN] Replacement AI airline spawned in world ${world.id}`);
@@ -851,6 +857,8 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
       await assignInitialFleet(membership, baseAirport, eraAircraft, config, new Set());
     }
   }
+
+  return { airlineName: airline.name, baseAirport };
 }
 
 /**

@@ -19,8 +19,9 @@ class AirportCacheService {
   /**
    * Generate cache key based on query parameters
    */
-  getCacheKey(worldId, type, country, search) {
+  getCacheKey(worldId, type, country, search, eraYear) {
     const parts = [worldId || 'default'];
+    if (eraYear) parts.push(`era:${eraYear}`);
     if (type) parts.push(`type:${type}`);
     if (country) parts.push(`country:${country}`);
     if (search) parts.push(`search:${search}`);
@@ -39,8 +40,8 @@ class AirportCacheService {
   /**
    * Get airports from cache if available and valid
    */
-  get(worldId, type, country, search) {
-    const key = this.getCacheKey(worldId, type, country, search);
+  get(worldId, type, country, search, eraYear) {
+    const key = this.getCacheKey(worldId, type, country, search, eraYear);
     const cacheEntry = this.cache.get(key);
 
     if (this.isCacheValid(cacheEntry)) {
@@ -59,8 +60,8 @@ class AirportCacheService {
   /**
    * Store airports in cache
    */
-  set(worldId, type, country, search, data) {
-    const key = this.getCacheKey(worldId, type, country, search);
+  set(worldId, type, country, search, data, eraYear) {
+    const key = this.getCacheKey(worldId, type, country, search, eraYear);
     this.cache.set(key, {
       data,
       timestamp: Date.now()
@@ -122,7 +123,7 @@ class AirportCacheService {
    * Fetch and cache airports for a specific world
    * This is the main method that queries the database
    */
-  async fetchAndCacheAirports(worldId, type, country, search) {
+  async fetchAndCacheAirports(worldId, type, country, search, eraYear) {
     const { Op } = require('sequelize');
 
     // Build where clause
@@ -160,17 +161,20 @@ class AirportCacheService {
       replacements.search = `%${search}%`;
     }
 
-    // Add world year filtering if applicable
-    if (worldId) {
+    // Add year filtering: use explicit eraYear if provided, otherwise derive from world
+    let filterYear = eraYear || null;
+    if (!filterYear && worldId) {
       const world = await World.findByPk(worldId);
       if (world && world.currentTime) {
-        const worldYear = world.currentTime.getFullYear();
-        whereClauses.push(`(
-          (a.operational_from IS NULL OR a.operational_from <= :worldYear) AND
-          (a.operational_until IS NULL OR a.operational_until >= :worldYear)
-        )`);
-        replacements.worldYear = worldYear;
+        filterYear = world.currentTime.getFullYear();
       }
+    }
+    if (filterYear) {
+      whereClauses.push(`(
+        (a.operational_from IS NULL OR a.operational_from <= :worldYear) AND
+        (a.operational_until IS NULL OR a.operational_until >= :worldYear)
+      )`);
+      replacements.worldYear = filterYear;
     }
 
     const whereSQL = whereClauses.join(' AND ');
@@ -226,14 +230,8 @@ class AirportCacheService {
       type: QueryTypes.SELECT
     });
 
-    // Calculate dynamic traffic and infrastructure based on world year
-    let worldYear = 2024;
-    if (worldId) {
-      const world = await World.findByPk(worldId);
-      if (world && world.currentTime) {
-        worldYear = world.currentTime.getFullYear();
-      }
-    }
+    // Calculate dynamic traffic and infrastructure based on year
+    let worldYear = filterYear || 2024;
 
     // Apply dynamic metrics and historical country names to each airport
     const airportsWithDynamicData = airportsWithData.map(airport => {
@@ -262,7 +260,7 @@ class AirportCacheService {
     }
 
     // Cache the result
-    this.set(worldId, type, country, search, airportsWithDynamicData);
+    this.set(worldId, type, country, search, airportsWithDynamicData, eraYear);
 
     return airportsWithDynamicData;
   }

@@ -403,6 +403,11 @@ body {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
+select option {
+  background: #141b2d;
+  color: #e2e8f0;
+}
+
 .form-value {
   padding: 0.75rem 1rem;
   background: var(--surface-elevated);
@@ -461,6 +466,12 @@ body {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   min-width: 320px;
   justify-content: space-around;
+  transition: border-color 0.3s;
+}
+
+.nav-world-info.world-paused {
+  border-color: #d97706;
+  box-shadow: 0 0 8px rgba(217, 119, 6, 0.25);
 }
 
 .world-info-item {

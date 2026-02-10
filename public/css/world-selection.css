@@ -1,5 +1,93 @@
 /* ===== World Selection Page ===== */
 
+/* Mode Selector Buttons */
+.mode-select-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2.5rem 2.5rem;
+  background: var(--surface);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.mode-select-btn:hover {
+  border-color: var(--accent-color);
+  background: var(--surface-elevated);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.mode-select-btn:hover svg {
+  color: var(--accent-color);
+}
+
+.mode-select-btn svg {
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.mode-select-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.mode-select-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 320px;
+}
+
+/* Global Stats Bar */
+.global-stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 2.5rem;
+  margin-top: 2rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.global-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.global-stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.global-stat-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+@media (max-width: 600px) {
+  #modeSelector > div:first-child {
+    grid-template-columns: 1fr !important;
+  }
+  .mode-select-btn {
+    padding: 2rem 1rem;
+  }
+  .global-stats-bar {
+    gap: 1.5rem;
+  }
+}
+
 .worlds-section {
   margin-bottom: 2.5rem;
 }
@@ -407,11 +495,62 @@
   color: var(--text-primary);
 }
 
+/* ===== Difficulty Radio Buttons ===== */
+
+.difficulty-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--surface-elevated);
+  transition: border-color 0.2s;
+}
+
+.difficulty-option:hover {
+  border-color: var(--accent-color);
+}
+
+.difficulty-option input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  border: 2px solid var(--text-muted);
+  border-radius: 50%;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+}
+
+.difficulty-option input[type="radio"]:checked {
+  border-color: var(--accent-color);
+}
+
+.difficulty-option input[type="radio"]:checked::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+}
+
 /* ===== Join Modal (Wide Two-Column) ===== */
 
 .join-modal-content {
-  max-width: 820px;
-  max-height: none;
+  max-width: 960px;
+  max-height: 90vh;
+}
+
+.join-modal-content .modal-body {
+  overflow-y: auto;
 }
 
 .join-modal-grid {

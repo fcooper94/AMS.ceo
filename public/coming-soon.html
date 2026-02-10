@@ -197,11 +197,11 @@
       border-radius: 8px;
       padding: 1.5rem;
       width: 100%;
-      max-width: 360px;
+      max-width: 420px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     ">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h3 style="margin: 0; color: var(--text-primary, #f1f5f9); font-size: 1.1rem;">Dev Bypass Authentication</h3>
+        <h3 id="devBypassTitle" style="margin: 0; color: var(--text-primary, #f1f5f9); font-size: 1.1rem;">Dev Bypass Authentication</h3>
         <button onclick="closeDevBypassModal()" style="
           background: none;
           border: none;
@@ -212,72 +212,110 @@
           line-height: 1;
         ">&times;</button>
       </div>
-      <div style="margin-bottom: 1rem;">
-        <label style="display: block; font-size: 0.85rem; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem;">
-          Enter bypass password
-        </label>
-        <input
-          type="password"
-          id="devBypassPassword"
-          placeholder="Password"
-          style="
-            width: 100%;
+
+      <!-- Phase 1: Password Entry -->
+      <div id="devBypassPasswordView">
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.85rem; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem;">
+            Enter bypass password
+          </label>
+          <input
+            type="password"
+            id="devBypassPassword"
+            placeholder="Password"
+            style="
+              width: 100%;
+              padding: 0.75rem;
+              background: var(--surface, #0f172a);
+              border: 1px solid var(--border-color, #334155);
+              border-radius: 4px;
+              color: var(--text-primary, #f1f5f9);
+              font-size: 1rem;
+              box-sizing: border-box;
+            "
+          >
+          <div id="devBypassError" style="
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(220, 38, 38, 0.2);
+            border: 1px solid #dc2626;
+            border-radius: 4px;
+            color: #fca5a5;
+            font-size: 0.85rem;
+          "></div>
+        </div>
+        <div style="display: flex; gap: 0.75rem;">
+          <button onclick="closeDevBypassModal()" style="
+            flex: 1;
             padding: 0.75rem;
             background: var(--surface, #0f172a);
             border: 1px solid var(--border-color, #334155);
             border-radius: 4px;
             color: var(--text-primary, #f1f5f9);
-            font-size: 1rem;
-            box-sizing: border-box;
-          "
-        >
-        <div id="devBypassError" style="
-          display: none;
-          margin-top: 0.5rem;
-          padding: 0.5rem;
-          background: rgba(220, 38, 38, 0.2);
-          border: 1px solid #dc2626;
-          border-radius: 4px;
-          color: #fca5a5;
-          font-size: 0.85rem;
-        "></div>
+            font-size: 0.9rem;
+            cursor: pointer;
+          ">Cancel</button>
+          <button onclick="submitDevBypass()" style="
+            flex: 1;
+            padding: 0.75rem;
+            background: var(--warning-color, #d97706);
+            border: 1px solid var(--warning-color, #d97706);
+            border-radius: 4px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+          ">Login</button>
+        </div>
       </div>
-      <div style="display: flex; gap: 0.75rem;">
-        <button onclick="closeDevBypassModal()" style="
-          flex: 1;
-          padding: 0.75rem;
+
+      <!-- Phase 2: User Selection -->
+      <div id="devBypassUserView" style="display: none;">
+        <div id="devBypassUserList" style="
+          max-height: 400px;
+          overflow-y: auto;
+          margin-bottom: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        "></div>
+        <button onclick="devBypassBackToPassword()" style="
+          width: 100%;
+          padding: 0.6rem;
           background: var(--surface, #0f172a);
           border: 1px solid var(--border-color, #334155);
           border-radius: 4px;
-          color: var(--text-primary, #f1f5f9);
-          font-size: 0.9rem;
+          color: var(--text-secondary, #94a3b8);
+          font-size: 0.85rem;
           cursor: pointer;
-        ">Cancel</button>
-        <button onclick="submitDevBypass()" style="
-          flex: 1;
-          padding: 0.75rem;
-          background: var(--warning-color, #d97706);
-          border: 1px solid var(--warning-color, #d97706);
-          border-radius: 4px;
-          color: white;
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-        ">Login</button>
+        ">Back</button>
       </div>
     </div>
   </div>
 
   <script>
+    let devBypassStoredPassword = '';
+
     function devBypassLogin() {
       document.getElementById('devBypassModal').style.display = 'flex';
       document.getElementById('devBypassPassword').value = '';
       document.getElementById('devBypassError').style.display = 'none';
+      document.getElementById('devBypassPasswordView').style.display = '';
+      document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
       document.getElementById('devBypassPassword').focus();
     }
 
     function closeDevBypassModal() {
       document.getElementById('devBypassModal').style.display = 'none';
+      devBypassStoredPassword = '';
+    }
+
+    function devBypassBackToPassword() {
+      document.getElementById('devBypassPasswordView').style.display = '';
+      document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
     }
 
     function submitDevBypass() {
@@ -298,16 +336,75 @@
       })
         .then(res => res.json())
         .then(data => {
-          if (data.success) {
-            window.location.href = data.redirect;
-          } else {
-            errorDiv.textContent = data.error || 'Login failed';
+          if (data.authenticated && data.users) {
+            devBypassStoredPassword = password;
+            showUserSelection(data.users);
+          } else if (data.error) {
+            errorDiv.textContent = data.error;
             errorDiv.style.display = 'block';
           }
         })
         .catch(err => {
           errorDiv.textContent = 'Bypass login failed: ' + err.message;
           errorDiv.style.display = 'block';
+        });
+    }
+
+    function showUserSelection(users) {
+      document.getElementById('devBypassPasswordView').style.display = 'none';
+      document.getElementById('devBypassUserView').style.display = '';
+      document.getElementById('devBypassTitle').textContent = 'Select User';
+
+      const list = document.getElementById('devBypassUserList');
+      const itemStyle = `
+        padding: 0.6rem 0.75rem;
+        background: var(--surface, #0f172a);
+        border: 1px solid var(--border-color, #334155);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `;
+
+      let html = `<div onclick="selectDevUser('new')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--warning-color, #d97706)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
+        <div>
+          <div style="color: var(--warning-color, #d97706); font-weight: 600; font-size: 0.9rem;">+ New Dev User</div>
+          <div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">Creates default admin account</div>
+        </div>
+      </div>`;
+
+      users.forEach(u => {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
+        const badge = u.isAdmin ? '<span style="background: var(--warning-color, #d97706); color: white; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; margin-left: 0.5rem;">ADMIN</span>' : '';
+        const email = u.email ? `<div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">${u.email}</div>` : '';
+        html += `<div onclick="selectDevUser('${u.id}')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
+          <div>
+            <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}</div>
+            ${email}
+          </div>
+          <div style="color: var(--text-muted, #64748b); font-size: 0.7rem; font-family: monospace;">${u.vatsimId || ''}</div>
+        </div>`;
+      });
+
+      list.innerHTML = html;
+    }
+
+    function selectDevUser(userId) {
+      fetch('/auth/dev-bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bypassPassword: devBypassStoredPassword, userId })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          }
+        })
+        .catch(err => {
+          console.error('User selection failed:', err);
         });
     }
 

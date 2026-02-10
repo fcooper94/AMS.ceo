@@ -27,7 +27,8 @@
       "Bash(npm install:*)",
       "Bash(find:*)",
       "Bash(test:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

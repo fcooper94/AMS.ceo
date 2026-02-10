@@ -175,7 +175,8 @@ router.post('/pause', async (req, res) => {
     if (!activeWorldId) {
       return res.status(400).json({ error: 'No active world selected' });
     }
-    await worldTimeService.pauseWorld(activeWorldId);
+    const clientTime = req.body?.clientTime ? new Date(req.body.clientTime) : null;
+    await worldTimeService.pauseWorld(activeWorldId, clientTime);
     res.json({ message: 'World paused', status: 'paused' });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -308,15 +309,17 @@ router.get('/:worldId/info', async (req, res) => {
 router.get('/airports', async (req, res) => {
   try {
     const startTime = Date.now();
-    const { type, search, country, worldId } = req.query;
+    const { type, search, country, worldId, era } = req.query;
 
     // Determine effective world ID
     const effectiveWorldId = worldId || req.session?.activeWorldId;
+    // Era override: used when creating a new SP world (no worldId yet)
+    const eraYear = era ? parseInt(era, 10) : null;
 
-    console.log(`[AIRPORT API] Request - worldId: ${effectiveWorldId}, type: ${type}, country: ${country}, search: ${search}`);
+    console.log(`[AIRPORT API] Request - worldId: ${effectiveWorldId}, era: ${eraYear}, type: ${type}, country: ${country}, search: ${search}`);
 
     // Try to get from cache first
-    let airportsData = airportCacheService.get(effectiveWorldId, type, country, search);
+    let airportsData = airportCacheService.get(effectiveWorldId, type, country, search, eraYear);
     let isFirstLoad = false;
 
     // If not in cache, fetch from database and cache it
@@ -327,7 +330,8 @@ router.get('/airports', async (req, res) => {
         effectiveWorldId,
         type,
         country,
-        search
+        search,
+        eraYear
       );
     } else {
       console.log('[AIRPORT API] Cache HIT - returning cached data');

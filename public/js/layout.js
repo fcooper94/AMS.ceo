@@ -30,11 +30,20 @@ try {
 let serverReferenceTime = null; // Server's game time at a specific moment
 let serverReferenceTimestamp = null; // Real-world timestamp when serverReferenceTime was valid
 let worldTimeAcceleration = 60;
+let worldIsPausedGlobal = false;
 let worldClockInterval = null;
 let worldInfoFetchInProgress = false; // Prevent concurrent fetches
 let worldInfoFetchSequence = 0; // Track request order to ignore stale responses
 let lastTimeUpdateSource = 'none'; // Track last update source for debugging
 let currentWorldId = null; // Current world ID to filter Socket.IO events
+
+// Update the navbar paused visual state
+function updateNavbarPausedState(isPaused) {
+  const container = document.getElementById('worldInfoContainer');
+  if (container) {
+    container.classList.toggle('world-paused', isPaused);
+  }
+}
 
 // Helper function to update time reference with validation
 function updateTimeReference(newGameTime, source) {
@@ -282,8 +291,10 @@ async function loadWorldInfo() {
         worldNameEl.textContent = worldInfo.name || '--';
       }
 
-      // Update time acceleration (always accept this)
+      // Update time acceleration and pause state
       worldTimeAcceleration = worldInfo.timeAcceleration || 60;
+      worldIsPausedGlobal = !!worldInfo.isPaused;
+      updateNavbarPausedState(worldIsPausedGlobal);
 
       // Update time reference with validation (Socket.IO takes precedence)
       updateTimeReference(worldInfo.currentTime, 'api');
@@ -446,6 +457,11 @@ function updateWorldTime() {
 function calculateCurrentWorldTime() {
   if (!serverReferenceTime || !serverReferenceTimestamp) {
     return null;
+  }
+
+  // When paused, return the frozen reference time
+  if (worldIsPausedGlobal) {
+    return new Date(serverReferenceTime.getTime());
   }
 
   // Calculate real-world time elapsed since we got the reference

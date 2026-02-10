@@ -9,19 +9,84 @@
       <p class="subtitle">SELECT AN OPERATIONAL ENVIRONMENT</p>
     </div>
 
-    <div id="myWorlds" class="worlds-section" style="display: none;">
-      <h2 class="section-title">YOUR WORLDS</h2>
-      <div id="myWorldsList" class="worlds-grid"></div>
-    </div>
-
-    <div class="worlds-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h2 class="section-title" style="margin-bottom: 0;">AVAILABLE WORLDS</h2>
-        <button class="btn btn-primary" onclick="openCreateSPModal()" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
-          + CREATE SINGLE-PLAYER WORLD
+    <!-- Mode Selector -->
+    <div id="modeSelector">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <button onclick="selectMode('sp')" class="mode-select-btn">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="7" r="4"></circle>
+            <path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path>
+          </svg>
+          <span class="mode-select-title">SINGLE PLAYER</span>
+          <span class="mode-select-desc">Build your airline empire at your own pace with AI competition</span>
+        </button>
+        <button onclick="selectMode('mp')" class="mode-select-btn">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span class="mode-select-title">MULTIPLAYER</span>
+          <span class="mode-select-desc">Compete against other players in shared worlds</span>
         </button>
       </div>
-      <div id="worldsList" class="worlds-grid"></div>
+      <div id="globalStatsBar" class="global-stats-bar" style="display: none;">
+        <div class="global-stat">
+          <span class="global-stat-value" id="statTotalAirlines">-</span>
+          <span class="global-stat-label">Airlines</span>
+        </div>
+        <div class="global-stat">
+          <span class="global-stat-value" id="statTotalAircraft">-</span>
+          <span class="global-stat-label">Aircraft</span>
+        </div>
+        <div class="global-stat">
+          <span class="global-stat-value" id="statTotalRoutes">-</span>
+          <span class="global-stat-label">Routes</span>
+        </div>
+        <div class="global-stat">
+          <span class="global-stat-value" id="statCredits">-</span>
+          <span class="global-stat-label">Your Credits</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- World Lists (hidden until mode selected) -->
+    <div id="worldListView" style="display: none;">
+      <div style="margin-bottom: 1rem;">
+        <button onclick="backToModeSelector()" style="
+          background: none;
+          border: 1px solid var(--border-color);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          padding: 0.4rem 0.8rem;
+          border-radius: 4px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+        ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          Back
+        </button>
+      </div>
+
+      <div id="singlePlayerSection" class="worlds-section" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h2 class="section-title" style="margin-bottom: 0;">SINGLE PLAYER</h2>
+          <button class="btn btn-primary" onclick="openCreateSPModal()" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+            + CREATE NEW WORLD
+          </button>
+        </div>
+        <div id="singlePlayerList" class="worlds-grid"></div>
+      </div>
+
+      <div id="multiplayerSection" class="worlds-section" style="display: none;">
+        <h2 class="section-title">MULTIPLAYER</h2>
+        <div id="multiplayerList" class="worlds-grid"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -37,15 +102,10 @@
       <div class="join-modal-grid">
         <!-- Left Column: World & Airline Settings -->
         <div class="join-modal-col">
-          <div class="form-group">
-            <label for="spWorldName">WORLD NAME *</label>
-            <input type="text" id="spWorldName" maxlength="50" placeholder="e.g., My Airline Empire">
-          </div>
-
           <div class="join-modal-codes">
             <div class="form-group">
               <label for="spEra">ERA / START YEAR *</label>
-              <select id="spEra" onchange="updateSPPreview()">
+              <select id="spEra" onchange="updateSPPreview(); clearSPSelectedAirport();">
                 <option value="1950">1950s - Propeller Era</option>
                 <option value="1960">1960s - Early Jet Era</option>
                 <option value="1970">1970s - Widebody Era</option>
@@ -70,21 +130,21 @@
           <div class="form-group">
             <label>DIFFICULTY *</label>
             <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.25rem;">
-              <label class="difficulty-option" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--surface-elevated);">
+              <label class="difficulty-option">
                 <input type="radio" name="spDifficulty" value="easy" onchange="updateSPPreview()">
                 <div>
                   <div style="font-weight: 600; color: #22c55e;">EASY</div>
                   <div style="font-size: 0.75rem; color: var(--text-secondary);">Fewer, less aggressive AI competitors. Higher starting funds.</div>
                 </div>
               </label>
-              <label class="difficulty-option" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--surface-elevated);">
+              <label class="difficulty-option">
                 <input type="radio" name="spDifficulty" value="medium" checked onchange="updateSPPreview()">
                 <div>
                   <div style="font-weight: 600; color: #f59e0b;">MEDIUM</div>
                   <div style="font-size: 0.75rem; color: var(--text-secondary);">Balanced competition. AI airlines match market rates.</div>
                 </div>
               </label>
-              <label class="difficulty-option" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--surface-elevated);">
+              <label class="difficulty-option">
                 <input type="radio" name="spDifficulty" value="hard" onchange="updateSPPreview()">
                 <div>
                   <div style="font-weight: 600; color: #ef4444;">HARD</div>

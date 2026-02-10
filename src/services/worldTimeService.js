@@ -83,8 +83,9 @@ class WorldTimeService {
       const now = new Date();
 
       // Calculate catch-up time: time that passed while server was off
+      // Skip catch-up if world was paused
       let catchUpTime = new Date(world.currentTime);
-      if (world.lastTickAt) {
+      if (world.lastTickAt && !world.isPaused) {
         const realTimeSinceLastTick = (now.getTime() - world.lastTickAt.getTime()) / 1000; // seconds
         const gameTimeToAdd = realTimeSinceLastTick * world.timeAcceleration; // seconds
         catchUpTime = new Date(world.currentTime.getTime() + (gameTimeToAdd * 1000));
@@ -94,6 +95,8 @@ class WorldTimeService {
           const gameHoursAdded = Math.round(gameTimeToAdd / 3600);
           console.log(`  Catching up ${minutesOffline} min offline → +${gameHoursAdded} game hours`);
         }
+      } else if (world.isPaused) {
+        console.log(`  World "${world.name}" is paused - skipping catch-up`);
       }
 
       // Check if caught-up time has passed the end date
@@ -1226,36 +1229,65 @@ class WorldTimeService {
 
   /**
    * Pause a world
+   * @param {string} worldId
+   * @param {Date|null} clientTime - client's calculated game time at moment of pause
    */
-  async pauseWorld(worldId) {
+  async pauseWorld(worldId, clientTime) {
     const worldState = this.worlds.get(worldId);
+    // Use client time if provided and valid, otherwise use server's in-memory time
+    let freezeTime = null;
+    if (clientTime && !isNaN(clientTime.getTime())) {
+      freezeTime = clientTime;
+    } else if (worldState) {
+      freezeTime = worldState.inMemoryTime;
+    }
+
     if (worldState) {
       worldState.world.isPaused = true;
-      await worldState.world.sequelize.query(
+      if (freezeTime) {
+        worldState.inMemoryTime = freezeTime;
+        worldState.world.currentTime = freezeTime;
+      }
+    }
+    // Always persist to DB even if world not in memory
+    const sequelize = require('../config/database');
+    if (freezeTime) {
+      await sequelize.query(
+        'UPDATE worlds SET "is_paused" = true, "current_time" = :currentTime WHERE id = :worldId',
+        { replacements: { worldId, currentTime: freezeTime } }
+      );
+    } else {
+      await sequelize.query(
         'UPDATE worlds SET "is_paused" = true WHERE id = :worldId',
         { replacements: { worldId } }
       );
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`⏸ World paused: ${worldState.world.name}`);
-      }
     }
+    console.log(`⏸ World paused: ${worldId}${freezeTime ? ' at ' + freezeTime.toISOString() : ''}`);
   }
 
   /**
    * Resume a world
    */
   async resumeWorld(worldId) {
+    const now = new Date();
     const worldState = this.worlds.get(worldId);
     if (worldState) {
       worldState.world.isPaused = false;
-      worldState.lastTickAt = new Date();
-      await worldState.world.sequelize.query(
-        'UPDATE worlds SET "is_paused" = false, "last_tick_at" = :lastTickAt WHERE id = :worldId',
-        { replacements: { worldId, lastTickAt: worldState.lastTickAt } }
-      );
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`▶ World resumed: ${worldState.world.name}`);
-      }
+      worldState.lastTickAt = now;
+    }
+    // Always persist to DB even if world not in memory
+    const sequelize = require('../config/database');
+    await sequelize.query(
+      'UPDATE worlds SET "is_paused" = false, "last_tick_at" = :lastTickAt WHERE id = :worldId',
+      { replacements: { worldId, lastTickAt: now } }
+    );
+    console.log(`▶ World resumed: ${worldId}`);
+
+    // If world wasn't in memory, try to start it
+    if (!worldState) {
+      this.startWorld(worldId).catch(err => {
+        console.error(`Failed to start world ${worldId} after resume:`, err.message);
+      });
     }
   }
 
@@ -1266,14 +1298,14 @@ class WorldTimeService {
     const worldState = this.worlds.get(worldId);
     if (worldState) {
       worldState.world.timeAcceleration = factor;
-      await worldState.world.sequelize.query(
-        'UPDATE worlds SET "time_acceleration" = :factor WHERE id = :worldId',
-        { replacements: { worldId, factor } }
-      );
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`⏱ Time acceleration set to ${factor}x for ${worldState.world.name}`);
-      }
     }
+    // Always persist to DB even if world not in memory
+    const sequelize = require('../config/database');
+    await sequelize.query(
+      'UPDATE worlds SET "time_acceleration" = :factor WHERE id = :worldId',
+      { replacements: { worldId, factor } }
+    );
+    console.log(`⏱ Time acceleration set to ${factor}x for world ${worldId}`);
   }
 
   /**

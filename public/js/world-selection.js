@@ -84,6 +84,19 @@ function hideAirportLoadingOverlay() {
   }
 }
 
+// Mode selection
+function selectMode(mode) {
+  document.getElementById('modeSelector').style.display = 'none';
+  document.getElementById('worldListView').style.display = 'block';
+  document.getElementById('singlePlayerSection').style.display = mode === 'sp' ? 'block' : 'none';
+  document.getElementById('multiplayerSection').style.display = mode === 'mp' ? 'block' : 'none';
+}
+
+function backToModeSelector() {
+  document.getElementById('modeSelector').style.display = 'block';
+  document.getElementById('worldListView').style.display = 'none';
+}
+
 // World time tracking for live clocks
 let worldTimeReferences = {}; // { worldId: { referenceTime, referenceTimestamp, acceleration } }
 let worldCardsClockInterval = null;
@@ -92,6 +105,9 @@ let worldCardsClockInterval = null;
 function calculateWorldTime(worldId) {
   const ref = worldTimeReferences[worldId];
   if (!ref) return null;
+
+  // Paused worlds don't advance
+  if (ref.isPaused) return new Date(ref.referenceTime.getTime());
 
   const realElapsedMs = Date.now() - ref.referenceTimestamp;
   const gameElapsedMs = realElapsedMs * ref.acceleration;
@@ -183,30 +199,29 @@ function hideLoadingOverlay() {
 
 // Load available worlds
 async function loadWorlds() {
-  // Show loading message in the worlds list
-  const worldsList = document.getElementById('worldsList');
-  if (worldsList) {
-    worldsList.innerHTML = `
-      <div style="text-align: center; padding: 3rem; color: var(--text-secondary); grid-column: 1 / -1;">
-        <div style="
-          border: 3px solid var(--border-color);
-          border-top: 3px solid var(--accent-color);
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: worldsLoadSpin 1s linear infinite;
-          margin: 0 auto 1rem auto;
-        "></div>
-        <div style="font-size: 1rem;">Loading worlds...</div>
-      </div>
-      <style>
-        @keyframes worldsLoadSpin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      </style>
-    `;
-  }
+  // Show loading message in both lists
+  const loadingHtml = `
+    <div style="text-align: center; padding: 3rem; color: var(--text-secondary); grid-column: 1 / -1;">
+      <div style="
+        border: 3px solid var(--border-color);
+        border-top: 3px solid var(--accent-color);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: worldsLoadSpin 1s linear infinite;
+        margin: 0 auto 1rem auto;
+      "></div>
+      <div style="font-size: 1rem;">Loading worlds...</div>
+    </div>
+    <style>
+      @keyframes worldsLoadSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+  const spListLoading = document.getElementById('singlePlayerList');
+  if (spListLoading) spListLoading.innerHTML = loadingHtml;
 
   try {
     const response = await fetch('/api/worlds/available');
@@ -236,60 +251,93 @@ async function loadWorlds() {
       console.error('Error fetching user credits for world cards:', e);
     }
 
-    const worldsList = document.getElementById('worldsList');
-    const myWorldsList = document.getElementById('myWorldsList');
-    const myWorldsSection = document.getElementById('myWorlds');
+    const spList = document.getElementById('singlePlayerList');
+    const mpList = document.getElementById('multiplayerList');
+    const mpSection = document.getElementById('multiplayerSection');
 
     if (!Array.isArray(worlds)) {
       console.error('Invalid response format:', worlds);
-      worldsList.innerHTML = '<div class="empty-message">Error loading worlds. Please refresh the page.</div>';
+      spList.innerHTML = '<div class="empty-message">Error loading worlds. Please refresh the page.</div>';
       return;
     }
 
-    const myWorlds = worlds.filter(w => w.isMember);
-    // Sort my worlds by most recently visited (newest first), then by name
-    myWorlds.sort((a, b) => {
-      const aTime = a.lastVisited ? new Date(a.lastVisited).getTime() : 0;
-      const bTime = b.lastVisited ? new Date(b.lastVisited).getTime() : 0;
-      if (bTime !== aTime) return bTime - aTime;
-      return (a.name || '').localeCompare(b.name || '');
-    });
-    const availableWorlds = worlds.filter(w => !w.isMember);
+    // Split by world type
+    const spWorlds = worlds.filter(w => w.worldType === 'singleplayer');
+    const mpWorlds = worlds.filter(w => w.worldType !== 'singleplayer');
 
-    // Store time references for active worlds only (ended worlds don't tick)
+    // Sort: member worlds first (by last visited), then available worlds (by name)
+    const sortWorlds = (list) => {
+      list.sort((a, b) => {
+        if (a.isMember && !b.isMember) return -1;
+        if (!a.isMember && b.isMember) return 1;
+        if (a.isMember && b.isMember) {
+          const aTime = a.lastVisited ? new Date(a.lastVisited).getTime() : 0;
+          const bTime = b.lastVisited ? new Date(b.lastVisited).getTime() : 0;
+          if (bTime !== aTime) return bTime - aTime;
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    };
+    sortWorlds(spWorlds);
+    sortWorlds(mpWorlds);
+
+    // Store time references for active worlds only (ended/paused worlds don't tick)
     worlds.forEach(world => {
       if (world.status !== 'completed') {
         worldTimeReferences[world.id] = {
           referenceTime: new Date(world.currentTime),
           referenceTimestamp: Date.now(),
-          acceleration: world.timeAcceleration || 60
+          acceleration: world.timeAcceleration || 60,
+          isPaused: !!world.isPaused
         };
       }
     });
 
-    // Show my worlds section if user has any
-    if (myWorlds.length > 0) {
-      myWorldsSection.style.display = 'block';
-      myWorldsList.innerHTML = '';
-      myWorlds.forEach(world => {
-        const cardElement = createWorldCard(world, true, userCredits, userUnlimited);
-        myWorldsList.appendChild(cardElement);
+    // Populate single player section
+    spList.innerHTML = '';
+    if (spWorlds.length > 0) {
+      spWorlds.forEach(world => {
+        const cardElement = createWorldCard(world, world.isMember, userCredits, userUnlimited);
+        spList.appendChild(cardElement);
       });
     } else {
-      myWorldsSection.style.display = 'none';
+      spList.innerHTML = '<div class="empty-message" style="grid-column: 1 / -1;">No single-player worlds yet. Create one to get started!</div>';
     }
 
-    // Show available worlds
-    worldsList.innerHTML = '';
-    if (availableWorlds.length > 0) {
-      availableWorlds.forEach(world => {
-        const cardElement = createWorldCard(world, false, userCredits, userUnlimited);
-        worldsList.appendChild(cardElement);
+    // Populate multiplayer section
+    mpList.innerHTML = '';
+    if (mpWorlds.length > 0) {
+      mpWorlds.forEach(world => {
+        const cardElement = createWorldCard(world, world.isMember, userCredits, userUnlimited);
+        mpList.appendChild(cardElement);
       });
-    } else if (myWorlds.length === 0) {
-      worldsList.innerHTML = '<div class="empty-message">No worlds available. Please contact an administrator.</div>';
     } else {
-      worldsList.innerHTML = '<div class="empty-message">No other worlds available.</div>';
+      mpList.innerHTML = '<div class="empty-message" style="grid-column: 1 / -1;">No multiplayer worlds available.</div>';
+    }
+
+    // Update global stats bar - credits shown immediately
+    const statCredits = document.getElementById('statCredits');
+    if (statCredits) {
+      statCredits.textContent = userUnlimited ? '\u221E' : userCredits;
+    }
+    const statsBar = document.getElementById('globalStatsBar');
+    if (statsBar) statsBar.style.display = 'flex';
+
+    // Fetch global stats (all airlines, aircraft, routes across all worlds)
+    try {
+      const statsRes = await fetch('/api/worlds/global-stats');
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n;
+        const elAirlines = document.getElementById('statTotalAirlines');
+        const elAircraft = document.getElementById('statTotalAircraft');
+        const elRoutes = document.getElementById('statTotalRoutes');
+        if (elAirlines) elAirlines.textContent = fmt(stats.totalAirlines);
+        if (elAircraft) elAircraft.textContent = fmt(stats.totalAircraft);
+        if (elRoutes) elRoutes.textContent = fmt(stats.totalRoutes);
+      }
+    } catch (e) {
+      // Non-critical, leave as dashes
     }
 
     // Start real-time clock updates
@@ -297,9 +345,9 @@ async function loadWorlds() {
 
   } catch (error) {
     console.error('Error loading worlds:', error);
-    const worldsList = document.getElementById('worldsList');
-    if (worldsList) {
-      worldsList.innerHTML = '<div class="empty-message">Error loading worlds. Please refresh the page.</div>';
+    const spListErr = document.getElementById('singlePlayerList');
+    if (spListErr) {
+      spListErr.innerHTML = '<div class="empty-message" style="grid-column: 1 / -1;">Error loading worlds. Please refresh the page.</div>';
     }
   }
 }
@@ -473,7 +521,7 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
         </div>
         <div class="world-card-stat">
           <div class="world-card-stat-label">Speed</div>
-          <div class="world-card-stat-value">${world.timeAcceleration || 60}x</div>
+          <div class="world-card-stat-value">${world.isPaused ? '<span style="color: #f59e0b;">PAUSED</span>' : `${world.timeAcceleration || 60}x`}</div>
         </div>
         `}
         ${fourthStat}
@@ -619,7 +667,7 @@ function generateLevelScale(level) {
   }
 
   return `
-    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap; max-width: 100%;">
+    <div style="display: flex; gap: 2px; align-items: center;">
       ${dots.join('')}
       <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${level}/20</span>
     </div>
@@ -652,7 +700,7 @@ function generateCapacityScale(percentage) {
   }
 
   return `
-    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap; max-width: 100%;">
+    <div style="display: flex; gap: 2px; align-items: center;">
       ${dots.join('')}
       <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${percentage}%</span>
     </div>
@@ -962,8 +1010,14 @@ async function loadAllAirports() {
   showAirportLoadingOverlay('Loading airports...');
 
   try {
-    const worldParam = selectedWorldId ? `?worldId=${selectedWorldId}` : '';
-    const response = await fetch(`/api/world/airports${worldParam}`);
+    const params = new URLSearchParams();
+    if (selectedWorldId) params.set('worldId', selectedWorldId);
+    if (airportBrowserContext === 'sp') {
+      const era = document.getElementById('spEra')?.value;
+      if (era) params.set('era', era);
+    }
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await fetch(`/api/world/airports${qs}`);
 
     if (!response.ok) {
       throw new Error('Failed to load airports');
@@ -1332,7 +1386,6 @@ function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, 
 
 function openCreateSPModal() {
   spSelectedAirportId = null;
-  document.getElementById('spWorldName').value = '';
   document.getElementById('spAirlineName').value = '';
   document.getElementById('spAirlineCode').value = '';
   document.getElementById('spIataCode').value = '';
@@ -1458,7 +1511,6 @@ function clearSPSelectedAirport() {
 }
 
 async function createSinglePlayerWorld() {
-  const name = document.getElementById('spWorldName').value.trim();
   const era = document.getElementById('spEra').value;
   const timeAcceleration = document.getElementById('spSpeed').value;
   const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value;
@@ -1468,12 +1520,14 @@ async function createSinglePlayerWorld() {
   const baseAirportId = document.getElementById('spBaseAirport').value;
   const errorDiv = document.getElementById('spCreateError');
 
+  // Auto-generate world name from username
+  const userName = (document.getElementById('userName')?.textContent || 'My').trim();
+  const existingSPCount = document.querySelectorAll('#singlePlayerList .world-card').length;
+  const name = existingSPCount > 0
+    ? `${userName}'s World #${existingSPCount + 1}`
+    : `${userName}'s World`;
+
   // Validation
-  if (!name) {
-    errorDiv.textContent = 'Please enter a world name';
-    errorDiv.style.display = 'block';
-    return;
-  }
   if (!airlineName) {
     errorDiv.textContent = 'Please enter an airline name';
     errorDiv.style.display = 'block';
