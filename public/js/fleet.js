@@ -456,12 +456,13 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
   const backdrop = document.createElement('div');
   backdrop.className = 'fleet-modal-backdrop';
 
+  const formattedDefault = inputConfig && inputConfig.defaultValue ? Number(inputConfig.defaultValue).toLocaleString() : '';
   const inputHtml = inputConfig ? `
     <div class="fleet-modal-input-group">
       <label>${inputConfig.label}</label>
       <div class="fleet-modal-input-wrap">
         <span class="input-prefix">$</span>
-        <input type="number" id="fleetModalInput" value="${inputConfig.defaultValue || ''}" min="1" step="1" placeholder="${inputConfig.placeholder || '0'}">
+        <input type="text" inputmode="numeric" id="fleetModalInput" value="${formattedDefault}" placeholder="${inputConfig.placeholder || '0'}">
         ${inputConfig.suffix ? `<span class="input-suffix">${inputConfig.suffix}</span>` : ''}
       </div>
       <div class="fleet-modal-input-error" id="fleetModalError"></div>
@@ -493,6 +494,16 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
 
   const input = backdrop.querySelector('#fleetModalInput');
   if (input) {
+    input.addEventListener('input', () => {
+      const raw = input.value.replace(/[^0-9]/g, '');
+      if (raw) {
+        const num = parseInt(raw, 10);
+        const cursorFromEnd = input.value.length - (input.selectionStart || 0);
+        input.value = num.toLocaleString();
+        const newPos = Math.max(0, input.value.length - cursorFromEnd);
+        input.setSelectionRange(newPos, newPos);
+      }
+    });
     input.focus();
     input.select();
   }
@@ -511,7 +522,7 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
   // Confirm
   const doConfirm = () => {
     if (inputConfig) {
-      const val = parseFloat(input.value);
+      const val = parseFloat(input.value.replace(/,/g, ''));
       if (!val || val <= 0) {
         backdrop.querySelector('#fleetModalError').textContent = inputConfig.errorMsg || 'Please enter a valid amount.';
         input.focus();
@@ -568,23 +579,12 @@ function confirmCancelLease(aircraftId, registration, isPlayerLease, monthlyRate
 }
 
 // Sell dialog with price input
-async function showSellDialog(aircraftId, registration, purchasePrice) {
+function showSellDialog(aircraftId, registration, purchasePrice) {
   const suggestedPrice = Math.round((purchasePrice || 0) * 0.8);
   const userAircraft = fleetData.find(a => a.id === aircraftId);
   const aircraftTypeId = userAircraft?.aircraftId;
 
-  let marketHtml = '';
-  if (aircraftTypeId) {
-    try {
-      const res = await fetch(`/api/fleet/market-averages/${aircraftTypeId}`);
-      if (res.ok) {
-        const market = await res.json();
-        if (market.sale.count > 0) {
-          marketHtml = `<p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Market avg sale price: <strong style="color: var(--accent-color);">$${formatCurrency(market.sale.avg)}</strong> <span style="opacity: 0.7;">($${formatCurrency(market.sale.min)} – $${formatCurrency(market.sale.max)})</span></p>`;
-        }
-      }
-    } catch (e) { /* ignore market data errors */ }
-  }
+  const loadingSpinner = '<p id="sellMarketData" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;"><span class="spinner-dots">Loading market data</span></p>';
 
   showFleetModal({
     icon: '&#128181;',
@@ -594,7 +594,7 @@ async function showSellDialog(aircraftId, registration, purchasePrice) {
     bodyHtml: `
       <p>Set an asking price to list this aircraft on the used market. Scheduled flights and maintenance will be removed.</p>
       <p style="font-size: 0.8rem; color: var(--text-muted);">Original purchase price: <strong style="color: var(--text-primary);">$${formatCurrency(purchasePrice || 0)}</strong></p>
-      ${marketHtml}
+      ${aircraftTypeId ? loadingSpinner : ''}
     `,
     confirmLabel: 'List for Sale',
     confirmClass: 'btn-confirm-warning',
@@ -620,27 +620,32 @@ async function showSellDialog(aircraftId, registration, purchasePrice) {
       }
     }
   });
+
+  // Fetch market data in background and update modal
+  if (aircraftTypeId) {
+    fetch(`/api/fleet/market-averages/${aircraftTypeId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(market => {
+        const el = document.getElementById('sellMarketData');
+        if (!el) return;
+        if (market && market.sale.count > 0) {
+          el.innerHTML = `Market avg sale price: <strong style="color: var(--accent-color);">$${formatCurrency(market.sale.avg)}</strong> <span style="opacity: 0.7;">($${formatCurrency(market.sale.min)} – $${formatCurrency(market.sale.max)})</span>`;
+        } else {
+          el.remove();
+        }
+      })
+      .catch(() => {
+        document.getElementById('sellMarketData')?.remove();
+      });
+  }
 }
 
 // Lease out dialog with monthly rate input
-async function showLeaseOutDialog(aircraftId, registration) {
+function showLeaseOutDialog(aircraftId, registration) {
   const userAircraft = fleetData.find(a => a.id === aircraftId);
   const aircraftTypeId = userAircraft?.aircraftId;
 
-  let marketHtml = '';
-  let suggestedRate = '';
-  if (aircraftTypeId) {
-    try {
-      const res = await fetch(`/api/fleet/market-averages/${aircraftTypeId}`);
-      if (res.ok) {
-        const market = await res.json();
-        if (market.lease.count > 0) {
-          suggestedRate = market.lease.avg;
-          marketHtml = `<p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/mo</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/mo)</span></p>`;
-        }
-      }
-    } catch (e) { /* ignore market data errors */ }
-  }
+  const loadingSpinner = '<p id="leaseMarketData" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;"><span class="spinner-dots">Loading market data</span></p>';
 
   showFleetModal({
     icon: '&#9992;',
@@ -649,13 +654,13 @@ async function showLeaseOutDialog(aircraftId, registration) {
     registration,
     bodyHtml: `
       <p>Set a monthly rate to list this aircraft for lease. Scheduled flights and maintenance will be removed while listed.</p>
-      ${marketHtml}
+      ${aircraftTypeId ? loadingSpinner : ''}
     `,
     confirmLabel: 'List for Lease',
     confirmClass: 'btn-confirm-primary',
     inputConfig: {
       label: 'Monthly Lease Rate',
-      defaultValue: suggestedRate,
+      defaultValue: '',
       placeholder: 'Enter monthly rate',
       suffix: '/mo',
       errorMsg: 'Please enter a valid monthly rate.'
@@ -676,6 +681,29 @@ async function showLeaseOutDialog(aircraftId, registration) {
       }
     }
   });
+
+  // Fetch market data in background and update modal
+  if (aircraftTypeId) {
+    fetch(`/api/fleet/market-averages/${aircraftTypeId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(market => {
+        const el = document.getElementById('leaseMarketData');
+        if (!el) return;
+        if (market && market.lease.count > 0) {
+          el.innerHTML = `Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/mo</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/mo)</span>`;
+          // Also update input with suggested rate
+          const input = document.getElementById('fleetModalInput');
+          if (input && !input.value) {
+            input.value = Number(market.lease.avg).toLocaleString();
+          }
+        } else {
+          el.remove();
+        }
+      })
+      .catch(() => {
+        document.getElementById('leaseMarketData')?.remove();
+      });
+  }
 }
 
 // Withdraw listing
@@ -748,46 +776,11 @@ function calculateStorageMonthlyCost(userAircraft) {
 }
 
 // Put aircraft into storage - with airport selection
-async function confirmPutInStorage(aircraftId, registration) {
-  let storageAirports;
-  try {
-    const res = await fetch('/api/fleet/storage-airports');
-    storageAirports = await res.json();
-    if (!res.ok) throw new Error(storageAirports.error);
-  } catch (err) {
-    showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>Failed to load storage airports: ${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
-    return;
-  }
-
-  if (storageAirports.length === 0) {
-    showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'No Facilities', bodyHtml: `<p>No storage facilities are available in the current era.</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
-    return;
-  }
-
+function confirmPutInStorage(aircraftId, registration) {
   const userAircraft = fleetData.find(a => a.id === aircraftId);
   const purchasePrice = parseFloat(userAircraft?.purchasePrice) || 0;
 
-  const tierClass = (t) => t === 'Very Cheap' ? 'vcheap' : t === 'Cheap' ? 'cheap' : t === 'Middle' ? 'middle' : t === 'Mid-Expensive' ? 'midexp' : 'expensive';
-  let listHtml = '<div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 0.75rem;">';
-  listHtml += `<table class="storage-table">
-    <thead><tr>
-      <th></th><th>Location</th><th>Tier</th><th style="text-align:right">Cost/mo</th><th style="text-align:right">Wear</th><th style="text-align:right">Ferry</th><th style="text-align:right">Dist</th>
-    </tr></thead><tbody>`;
-  storageAirports.forEach((sa, i) => {
-    const monthlyCost = Math.round(purchasePrice * sa.monthlyRatePercent / 100);
-    listHtml += `
-      <tr class="${i === 0 ? 'selected-row' : ''}" onclick="this.querySelector('input').checked=true; this.closest('tbody').querySelectorAll('tr').forEach(r=>r.classList.remove('selected-row')); this.classList.add('selected-row');">
-        <td><input type="radio" name="storageAirport" value="${sa.icao}" ${i === 0 ? 'checked' : ''}></td>
-        <td><div class="loc-name">${sa.icao}</div><div class="loc-detail">${sa.city}, ${sa.country}</div></td>
-        <td><span class="tier-badge tier-${tierClass(sa.costTier)}">${sa.costTier}</span></td>
-        <td class="num">$${monthlyCost.toLocaleString()}</td>
-        <td class="num">${sa.annualConditionLoss}%/yr</td>
-        <td class="num">${sa.recallDays}d</td>
-        <td class="num">${sa.distanceNm.toLocaleString()}nm</td>
-      </tr>`;
-  });
-  listHtml += '</tbody></table></div>';
-
+  // Show modal immediately with loading state
   showFleetModal({
     icon: '&#128230;',
     iconClass: 'secondary',
@@ -796,7 +789,9 @@ async function confirmPutInStorage(aircraftId, registration) {
     modalClass: 'fleet-modal-wide',
     bodyHtml: `
       <p style="margin-bottom: 0.5rem;">Choose a storage facility. Cost, condition wear, and recall time vary by location.</p>
-      ${listHtml}
+      <div id="storageTableContainer" style="min-height: 100px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 0.75rem; padding: 1.5rem;">
+        <span class="spinner-dots" style="font-size: 0.9rem;">Loading storage facilities</span>
+      </div>
       <p style="font-size: 0.8rem; color: var(--text-muted);">All maintenance and route assignments will be removed. The aircraft will ferry to the storage facility before entering storage.</p>
     `,
     confirmLabel: 'Store Aircraft',
@@ -819,27 +814,63 @@ async function confirmPutInStorage(aircraftId, registration) {
       }
     }
   });
+
+  // Disable confirm until data loads
+  const confirmBtn = document.getElementById('fleetModalConfirm');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5'; }
+
+  // Fetch storage airports in background
+  fetch('/api/fleet/storage-airports')
+    .then(res => res.json().then(data => { if (!res.ok) throw new Error(data.error); return data; }))
+    .then(storageAirports => {
+      const container = document.getElementById('storageTableContainer');
+      if (!container) return;
+
+      if (storageAirports.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted);">No storage facilities are available in the current era.</p>';
+        return;
+      }
+
+      const tierClass = (t) => t === 'Very Cheap' ? 'vcheap' : t === 'Cheap' ? 'cheap' : t === 'Middle' ? 'middle' : t === 'Mid-Expensive' ? 'midexp' : 'expensive';
+      let tableHtml = `<table class="storage-table">
+        <thead><tr>
+          <th></th><th>Location</th><th>Tier</th><th style="text-align:right">Cost/mo</th><th style="text-align:right">Wear</th><th style="text-align:right">Ferry</th><th style="text-align:right">Dist</th>
+        </tr></thead><tbody>`;
+      storageAirports.forEach((sa, i) => {
+        const monthlyCost = Math.round(purchasePrice * sa.monthlyRatePercent / 100);
+        tableHtml += `
+          <tr class="${i === 0 ? 'selected-row' : ''}" onclick="this.querySelector('input').checked=true; this.closest('tbody').querySelectorAll('tr').forEach(r=>r.classList.remove('selected-row')); this.classList.add('selected-row');">
+            <td><input type="radio" name="storageAirport" value="${sa.icao}" ${i === 0 ? 'checked' : ''}></td>
+            <td><div class="loc-name">${sa.icao}</div><div class="loc-detail">${sa.city}, ${sa.country}</div></td>
+            <td><span class="tier-badge tier-${tierClass(sa.costTier)}">${sa.costTier}</span></td>
+            <td class="num">$${monthlyCost.toLocaleString()}</td>
+            <td class="num">${sa.annualConditionLoss}%/yr</td>
+            <td class="num">${sa.recallDays}d</td>
+            <td class="num">${sa.distanceNm.toLocaleString()}nm</td>
+          </tr>`;
+      });
+      tableHtml += '</tbody></table>';
+
+      container.style.cssText = 'max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 0.75rem;';
+      container.innerHTML = tableHtml;
+
+      // Enable confirm button
+      const btn = document.getElementById('fleetModalConfirm');
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    })
+    .catch(err => {
+      const container = document.getElementById('storageTableContainer');
+      if (container) container.innerHTML = `<p style="color: var(--danger-color);">Failed to load storage facilities: ${err.message}</p>`;
+    });
 }
 
 // Recall aircraft from storage
-async function confirmTakeOutOfStorage(aircraftId, registration) {
+function confirmTakeOutOfStorage(aircraftId, registration) {
   const userAircraft = fleetData.find(a => a.id === aircraftId);
   const storageCode = userAircraft?.storageAirportCode;
   const storageAirport = storageCode && window.STORAGE_AIRPORTS ? window.STORAGE_AIRPORTS.find(sa => sa.icao === storageCode) : null;
 
-  let recallDays = '?';
-  if (storageAirport) {
-    try {
-      const res = await fetch('/api/fleet/storage-airports');
-      if (res.ok) {
-        const airports = await res.json();
-        const match = airports.find(a => a.icao === storageCode);
-        if (match) recallDays = match.recallDays;
-      }
-    } catch (e) { /* use fallback */ }
-  }
-
-  // Calculate storage breakdown
+  // Calculate storage breakdown with local data first
   const gameTime = typeof calculateCurrentWorldTime === 'function' ? calculateCurrentWorldTime() : null;
   const storedAt = userAircraft?.storedAt ? new Date(userAircraft.storedAt) : null;
   const conditionAtStorage = userAircraft?.conditionPercentage ?? 100;
@@ -860,13 +891,7 @@ async function confirmTakeOutOfStorage(aircraftId, registration) {
   const r = 'display: flex; justify-content: space-between; padding: 0.25rem 0;';
   const sep = 'border-bottom: 1px solid rgba(148,163,184,0.15);';
 
-  // Calculate arrival date at base
-  const recallDaysNum = typeof recallDays === 'number' ? recallDays : parseInt(recallDays) || 0;
-  let arrivalDate = null;
-  if (gameTime && recallDaysNum > 0) {
-    arrivalDate = new Date(gameTime.getTime() + recallDaysNum * 24 * 60 * 60 * 1000);
-  }
-
+  // Show modal immediately with placeholder for ferry info
   showFleetModal({
     icon: '&#9992;',
     iconClass: 'success',
@@ -892,19 +917,12 @@ async function confirmTakeOutOfStorage(aircraftId, registration) {
           <span style="font-weight: 600; color: ${totalWear > 0 ? 'var(--warning-color)' : 'var(--success-color)'};">${totalWear > 0 ? '-' : ''}${totalWear}%</span>
         </div>
       </div>
-      <div style="margin-top: 0.5rem; padding: 0.45rem 0.6rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; font-size: 0.85rem;">
-        <div style="${r} ${sep}">
-          <span style="color: var(--text-muted);">Ferry Time</span>
-          <span style="font-weight: 600; color: var(--accent-color);">${recallDays} days</span>
-        </div>
-        <div style="${r}">
-          <span style="color: var(--text-muted);">Arrives at Base</span>
-          <span style="font-weight: 600; color: var(--accent-color);">${fmtDate(arrivalDate)}</span>
-        </div>
+      <div id="recallFerryInfo" style="margin-top: 0.5rem; padding: 0.45rem 0.6rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; font-size: 0.85rem; text-align: center;">
+        <span class="spinner-dots">Loading ferry details</span>
       </div>
       <p style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-muted);">A ferry exemption will be granted to position the aircraft back to base. C and D check validity is preserved during storage. Once returned, a Daily, Weekly, or A check may be required before the aircraft can be scheduled to operate.</p>
     `,
-    confirmLabel: `Recall (${recallDays}d ferry)`,
+    confirmLabel: 'Recall',
     confirmClass: 'btn-confirm-primary',
     onConfirm: async () => {
       try {
@@ -918,6 +936,44 @@ async function confirmTakeOutOfStorage(aircraftId, registration) {
       }
     }
   });
+
+  // Fetch ferry details in background
+  if (storageAirport) {
+    fetch('/api/fleet/storage-airports')
+      .then(res => res.ok ? res.json() : null)
+      .then(airports => {
+        const ferryEl = document.getElementById('recallFerryInfo');
+        if (!ferryEl) return;
+        let recallDays = '?';
+        if (airports) {
+          const match = airports.find(a => a.icao === storageCode);
+          if (match) recallDays = match.recallDays;
+        }
+        const recallDaysNum = typeof recallDays === 'number' ? recallDays : parseInt(recallDays) || 0;
+        let arrivalDate = null;
+        if (gameTime && recallDaysNum > 0) {
+          arrivalDate = new Date(gameTime.getTime() + recallDaysNum * 24 * 60 * 60 * 1000);
+        }
+        ferryEl.style.textAlign = '';
+        ferryEl.innerHTML = `
+          <div style="${r} ${sep}">
+            <span style="color: var(--text-muted);">Ferry Time</span>
+            <span style="font-weight: 600; color: var(--accent-color);">${recallDays} days</span>
+          </div>
+          <div style="${r}">
+            <span style="color: var(--text-muted);">Arrives at Base</span>
+            <span style="font-weight: 600; color: var(--accent-color);">${fmtDate(arrivalDate)}</span>
+          </div>
+        `;
+        // Update confirm button label
+        const btn = document.getElementById('fleetModalConfirm');
+        if (btn) btn.textContent = `Recall (${recallDays}d ferry)`;
+      })
+      .catch(() => {
+        const ferryEl = document.getElementById('recallFerryInfo');
+        if (ferryEl) ferryEl.remove();
+      });
+  }
 }
 
 // Format currency
