@@ -822,7 +822,7 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
 
   const aiRegion = getRegionFromCountry(baseAirport.country);
   const personality = pickPersonality(difficulty);
-  const airline = generateAIAirline(aiRegion, worldYear, existingICAO, existingIATA, existingNames);
+  const airline = generateAIAirline(aiRegion, worldYear, existingICAO, existingIATA, existingNames, baseAirport.country);
   if (!airline.icaoCode || !airline.iataCode) return;
 
   const startingBalance = eraEconomicService.getStartingCapital(worldYear) * config.startingBalanceMultiplier;

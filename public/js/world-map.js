@@ -7,7 +7,8 @@ let airportMarkers = new Map(); // Map of airport ID to marker
 let selectedFlightId = null;
 let updateInterval = null;
 let activeFlights = []; // Store flight data for selection
-let airlineFilterMode = 'mine'; // 'mine' or 'all'
+let airlineFilterMode = 'mine'; // 'mine', 'hq', or 'all'
+let hqAirportCode = null; // Player's HQ airport ICAO code (set on init)
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
 let flightsListOpen = false; // Hidden by default, user can toggle open
 
@@ -252,6 +253,20 @@ function initMap() {
 
   console.log('[WorldMap] Map initialized with dark theme');
 
+  // Fetch HQ airport code to label the filter dropdown
+  fetch('/api/world/info')
+    .then(r => r.json())
+    .then(info => {
+      if (info.baseAirport) {
+        hqAirportCode = info.baseAirport.icaoCode || info.baseAirport.iataCode;
+        const hqOption = document.getElementById('hqFilterOption');
+        if (hqOption && hqAirportCode) {
+          hqOption.textContent = `${hqAirportCode} Flights`;
+        }
+      }
+    })
+    .catch(() => {}); // Non-critical, label stays as "HQ Airport"
+
   // Load active flights
   loadActiveFlights();
 
@@ -300,10 +315,10 @@ function handleAirlineFilterChange() {
   const select = document.getElementById('airlineFilter');
   airlineFilterMode = select.value;
 
-  // Show/hide other airline legend
+  // Show/hide other airline legend (visible for 'all' and 'hq' modes)
   const otherLegend = document.querySelector('.other-airline-legend');
   if (otherLegend) {
-    otherLegend.style.display = airlineFilterMode === 'all' ? 'flex' : 'none';
+    otherLegend.style.display = (airlineFilterMode === 'all' || airlineFilterMode === 'hq') ? 'flex' : 'none';
   }
 
   // Clear current flights and reload
@@ -318,7 +333,9 @@ window.handleAirlineFilterChange = handleAirlineFilterChange;
 // Load active flights from API
 async function loadActiveFlights() {
   try {
-    const endpoint = airlineFilterMode === 'all' ? '/api/schedule/active-all' : '/api/schedule/active';
+    const endpoint = airlineFilterMode === 'all' ? '/api/schedule/active-all'
+      : airlineFilterMode === 'hq' ? '/api/schedule/active-hq'
+      : '/api/schedule/active';
     const response = await fetch(endpoint);
 
     if (!response.ok) {

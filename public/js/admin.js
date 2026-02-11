@@ -52,8 +52,8 @@ async function loadUsers() {
           <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
           <td style="padding: 0.5rem; text-align: center;">
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-              <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
-              <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
+              <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Edit Credits</button>
+              <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Detailed Permissions</button>
             </div>
           </td>
         </tr>
@@ -125,8 +125,8 @@ function searchUsers() {
         <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user)})'>Edit Credits</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user)})'>Detailed Permissions</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Edit Credits</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Detailed Permissions</button>
           </div>
         </td>
       </tr>
@@ -378,8 +378,8 @@ function renderAircraftTable(aircraft) {
         <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAircraftModal(${JSON.stringify(ac).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAircraftModal("${ac.id}", "${fullName.replace(/'/g, "\\'")}")'>Delete</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAircraftModal(${JSON.stringify(ac).replace(/'/g, "&#39;")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAircraftModal("${ac.id}", "${fullName.replace(/'/g, "&#39;")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -652,8 +652,8 @@ function renderMpWorldsTable(worlds) {
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${world.timeAcceleration || 60}x</td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "\\'")}")'>Delete</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "&#39;")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "&#39;")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -690,8 +690,8 @@ function renderSpWorldsTable(worlds) {
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${world.timeAcceleration || 60}x</td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "\\'")}")'>Delete</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditWorldModal(${JSON.stringify(world).replace(/'/g, "&#39;")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteWorldModal("${world.id}", "${world.name.replace(/'/g, "&#39;")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -1014,8 +1014,8 @@ function renderAirportsTable(airports) {
         <td style="padding: 0.5rem; text-align: center; color: ${statusColor}; font-weight: 600;">${statusText}</td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirportModal(${JSON.stringify(airport).replace(/'/g, "\\'")})'>Edit</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAirportModal("${airport.id}", "${airport.name.replace(/'/g, "\\'")}")'>Delete</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirportModal(${JSON.stringify(airport).replace(/'/g, "&#39;")})'>Edit</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dc2626; border-color: #dc2626; color: white;" onclick='openDeleteAirportModal("${airport.id}", "${airport.name.replace(/'/g, "&#39;")}")'>Delete</button>
           </div>
         </td>
       </tr>
@@ -1595,8 +1595,8 @@ function renderAirlinesTable(airlines, showWorld = false) {
         </td>
         <td style="padding: 0.5rem; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineBalanceModal(${JSON.stringify(airline).replace(/'/g, "\\'")})'>Edit Balance</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineFleetModal(${JSON.stringify(airline).replace(/'/g, "\\'")})'>Manage Fleet</button>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineBalanceModal(${JSON.stringify(airline).replace(/'/g, "&#39;")})'>Edit Balance</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditAirlineFleetModal(${JSON.stringify(airline).replace(/'/g, "&#39;")})'>Manage Fleet</button>
           </div>
         </td>
       </tr>

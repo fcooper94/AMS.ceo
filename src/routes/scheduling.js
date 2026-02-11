@@ -2208,6 +2208,107 @@ router.get('/active-all', async (req, res) => {
 });
 
 /**
+ * GET /api/schedule/active-hq
+ * Fetch all currently active (in-flight) templates for flights touching the player's HQ airport
+ * Returns flights from ANY airline where departure or arrival is the player's base airport
+ */
+router.get('/active-hq', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userMembership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+
+    if (!userMembership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    const baseAirportId = userMembership.baseAirportId;
+    if (!baseAirportId) {
+      return res.json({ flights: [] });
+    }
+
+    const userMembershipId = userMembership.id;
+
+    // Get all memberships in this world (need all airlines since any could fly to/from HQ)
+    const allMemberships = await WorldMembership.findAll({
+      where: { worldId: activeWorldId },
+      attributes: ['id', 'airlineName', 'airlineCode']
+    });
+
+    const membershipIds = allMemberships.map(m => m.id);
+    const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode }]));
+
+    const worldTimeService = require('../services/worldTimeService');
+    const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
+
+    // Filter: all airlines, but only routes that touch the player's base airport
+    const activeTemplates = await findActiveTemplates(worldTime, {
+      worldMembershipId: { [Op.in]: membershipIds },
+      [Op.or]: [
+        { departureAirportId: baseAirportId },
+        { arrivalAirportId: baseAirportId }
+      ]
+    });
+
+    const flights = activeTemplates.map(template => {
+      const membershipId = template.route.worldMembershipId;
+      const airlineInfo = membershipMap.get(membershipId) || {};
+      const isOwnFlight = membershipId === userMembershipId;
+      const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+
+      return {
+        id: template.id,
+        scheduledDate,
+        departureTime: template.departureTime,
+        arrivalTime: template.arrivalTime,
+        arrivalDate,
+        status: 'in_progress',
+        isOwnFlight: isOwnFlight,
+        airlineName: airlineInfo.airlineName || 'Unknown Airline',
+        airlineCode: airlineInfo.airlineCode || '??',
+        route: {
+          id: template.route.id,
+          routeNumber: template.route.routeNumber,
+          returnRouteNumber: template.route.returnRouteNumber,
+          distance: template.route.distance,
+          turnaroundTime: template.route.turnaroundTime || 45,
+          techStopAirport: template.route.techStopAirport || null,
+          demand: template.route.demand || 0,
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+        },
+        departureAirport: template.route.departureAirport,
+        arrivalAirport: template.route.arrivalAirport,
+        aircraft: template.aircraft ? {
+          id: template.aircraft.id,
+          registration: template.aircraft.registration,
+          aircraftType: template.aircraft.aircraft,
+          passengerCapacity: template.aircraft.aircraft?.passengerCapacity || 0
+        } : null
+      };
+    });
+
+    res.json({ flights });
+  } catch (error) {
+    console.error('Error fetching HQ airport flights:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/schedule/clear-all
  * Clear all scheduled flights and maintenance for the specified aircraft
  * Only clears schedules for aircraft owned by the user in the current world
