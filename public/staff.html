@@ -1,0 +1,46 @@
+<!-- TITLE: Staff - AMS.ceo -->
+<!-- SUBTITLE: Human Resources -->
+<!-- SCRIPTS: /js/staff.js -->
+<!-- STYLES: /css/staff.css -->
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>STAFF MANAGEMENT</h1>
+      <p class="subtitle">YOUR AIRLINE WORKFORCE</p>
+    </div>
+
+    <!-- Summary Bar -->
+    <div class="staff-summary-bar">
+      <div class="staff-stat-card">
+        <div class="stat-label">TOTAL EMPLOYEES</div>
+        <div class="stat-value" id="statTotalEmployees">--</div>
+      </div>
+      <div class="staff-stat-card">
+        <div class="stat-label">MONTHLY PAYROLL</div>
+        <div class="stat-value" id="statMonthlyPayroll">$--</div>
+      </div>
+      <div class="staff-stat-card">
+        <div class="stat-label">FLEET SIZE</div>
+        <div class="stat-value" id="statFleetSize">--</div>
+      </div>
+      <div class="staff-stat-card">
+        <div class="stat-label">ORG STAGE</div>
+        <div class="stat-value" id="statEraLabel">--</div>
+      </div>
+      <div class="staff-stat-card staff-global-adjust">
+        <div class="stat-label">GLOBAL SALARY</div>
+        <div class="stat-value" style="display:flex;align-items:center;gap:0.5rem;">
+          <button class="salary-adjust-btn minus" onclick="adjustGlobalSalary(-0.05)" title="-5%">-</button>
+          <span id="statGlobalModifier">100%</span>
+          <button class="salary-adjust-btn plus" onclick="adjustGlobalSalary(0.05)" title="+5%">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Department Sections -->
+    <div id="staffDepartments">
+      <div class="staff-loading">Loading staff data...</div>
+    </div>
+  </main>
+</div>

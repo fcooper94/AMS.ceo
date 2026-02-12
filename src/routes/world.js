@@ -631,9 +631,12 @@ router.get('/competition', async (req, res) => {
       return res.status(404).json({ error: 'World not found' });
     }
 
-    // Get player membership
+    // Get player membership via logged-in user
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
     const playerMembership = await WorldMembership.findOne({
-      where: { worldId: activeWorldId, isAI: false, isActive: true }
+      where: { worldId: activeWorldId, userId: user.id, isActive: true }
     });
     if (!playerMembership) {
       return res.status(404).json({ error: 'No active membership in this world' });

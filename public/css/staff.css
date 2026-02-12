@@ -1,0 +1,521 @@
+/* ─── Staff Summary Bar ─────────────────────────────────────────── */
+.staff-summary-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.staff-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  flex: 1;
+  min-width: 120px;
+  transition: border-color 0.2s;
+}
+
+.staff-stat-card:hover {
+  border-color: var(--accent-color);
+}
+
+.staff-stat-card .stat-label {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.5px;
+}
+
+.staff-stat-card .stat-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.staff-global-adjust .stat-value {
+  font-size: 0.9rem;
+}
+
+/* ─── Salary Adjust Buttons ────────────────────────────────────── */
+.salary-adjust-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.salary-adjust-btn.plus:hover {
+  background: rgba(5, 150, 105, 0.2);
+  border-color: var(--success-color);
+  color: var(--success-color);
+}
+
+.salary-adjust-btn.minus:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* ─── Department Section ───────────────────────────────────────── */
+.staff-department {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.staff-department-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.staff-department-header:hover {
+  background: var(--surface-hover);
+}
+
+.staff-dept-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.staff-dept-name .collapse-icon {
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+
+.staff-dept-name .collapse-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.staff-dept-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+}
+
+.staff-dept-cost {
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.staff-dept-adjust {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.staff-dept-adjust span {
+  min-width: 32px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+}
+
+/* ─── Department Body (roles) ──────────────────────────────────── */
+.staff-department-body {
+  display: none;
+}
+
+.staff-department-body.expanded {
+  display: block;
+}
+
+/* Role header row */
+.staff-role-header {
+  display: grid;
+  grid-template-columns: 2fr 0.6fr 1fr 1fr 1fr;
+  padding: 0.35rem 1rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface);
+}
+
+/* Role row */
+.staff-role-row {
+  display: grid;
+  grid-template-columns: 2fr 0.6fr 1fr 1fr 1fr;
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: background 0.1s;
+  align-items: center;
+}
+
+.staff-role-row:hover {
+  background: var(--surface-elevated);
+}
+
+.staff-role-row:last-child {
+  border-bottom: none;
+}
+
+.staff-role-name {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.staff-role-name .popout-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.staff-role-row:hover .popout-icon {
+  color: var(--accent-color);
+}
+
+.staff-role-count {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  text-align: right;
+}
+
+.staff-role-salary {
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+  text-align: right;
+}
+
+.staff-role-annual {
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+  text-align: right;
+}
+
+.staff-role-total {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  text-align: right;
+}
+
+/* ─── Outsourced Department Banner ─────────────────────────────── */
+.staff-outsourced-banner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.outsourced-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.outsourced-dept-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.outsourced-tag {
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+}
+
+.outsourced-banner-center {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.outsourced-contractor-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.outsourced-contractor-note {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outsourced-banner-right {
+  text-align: right;
+}
+
+.outsourced-cost {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+/* ─── Staff Names Modal ───────────────────────────────────────── */
+.staff-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.staff-modal-backdrop.visible {
+  opacity: 1;
+}
+
+.staff-modal {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  width: 440px;
+  max-width: 90vw;
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.staff-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.staff-modal-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.staff-modal-subtitle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.staff-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.staff-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.staff-modal-list-header {
+  display: grid;
+  grid-template-columns: 1fr 6.5rem 6.5rem;
+  padding: 0.4rem 1.25rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.staff-modal-list-header span:nth-child(2),
+.staff-modal-list-header span:nth-child(3) {
+  text-align: right;
+}
+
+.staff-modal-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.staff-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 6.5rem 6.5rem;
+  align-items: center;
+  padding: 0.3rem 1.25rem;
+  font-size: 0.73rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.staff-modal-row.even {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.staff-modal-name {
+  color: var(--text-secondary);
+}
+
+.staff-modal-salary {
+  color: var(--text-muted);
+  font-family: 'Courier New', monospace;
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.staff-modal-type-header {
+  padding: 0.45rem 1.25rem 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-color);
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.staff-modal-type-count {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+
+.staff-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 1.25rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.staff-modal-close-btn {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.3rem 1rem;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.staff-modal-close-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+/* ─── Loading State ────────────────────────────────────────────── */
+.staff-loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem;
+  font-size: 0.85rem;
+}
+
+/* ─── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .staff-summary-bar {
+    flex-direction: column;
+  }
+
+  .staff-stat-card {
+    min-width: auto;
+  }
+
+  .staff-department-header {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .staff-role-header,
+  .staff-role-row {
+    grid-template-columns: 1.5fr 0.5fr 0.8fr 0.8fr 0.8fr;
+    font-size: 0.6rem;
+  }
+
+  .staff-outsourced-banner {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .outsourced-banner-right {
+    text-align: left;
+  }
+
+  .outsourced-contractor-note {
+    white-space: normal;
+  }
+
+  .staff-modal {
+    width: 95vw;
+    max-height: 85vh;
+  }
+}

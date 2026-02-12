@@ -278,6 +278,7 @@ async function showAircraftDetails(userAircraftId) {
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Speed</span><span style="font-weight: 500;">${aircraft.cruiseSpeed} kts</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Fuel Cap</span><span style="font-weight: 500;">${formatCurrency(aircraft.fuelCapacityLiters)} L</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Burn Rate</span><span style="font-weight: 500;">${formatCurrency(fuelBurnPerHour)} L/hr</span></div>
+            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0; border-top: 1px solid var(--border-color); margin-top: 0.2rem;"><span style="color: var(--text-muted);">Crew</span><span style="font-weight: 500;">${aircraft.requiredPilots || 2} pilots, ${aircraft.requiredCabinCrew || 0} cabin</span></div>
           </div>
 
           <!-- Col 2: Costs -->

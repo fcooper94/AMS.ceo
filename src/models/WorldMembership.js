@@ -135,6 +135,12 @@ const WorldMembership = sequelize.define('WorldMembership', {
     defaultValue: 'standard',
     field: 'engineering_contractor',
     comment: 'Engineering/maintenance tier: budget, standard, premium'
+  },
+  // Staff salary modifiers (per-department multipliers, e.g. { global: 1.0, flight_ops: 1.05 })
+  staffSalaryModifiers: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    field: 'staff_salary_modifiers'
   }
 }, {
   tableName: 'world_memberships',

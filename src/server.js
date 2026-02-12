@@ -131,6 +131,7 @@ const schedulingRoutes = require('./routes/scheduling');
 const pricingRoutes = require('./routes/pricing');
 const contactRoutes = require('./routes/contact');
 const dashboardRoutes = require('./routes/dashboard');
+const staffRoutes = require('./routes/staff');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -281,6 +282,7 @@ app.use('/api/pricing', requireWorld, pricingRoutes);
 app.use('/api/admin', requireAuth, adminRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', requireWorld, dashboardRoutes);
+app.use('/api/staff', requireWorld, staffRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -353,6 +355,15 @@ app.get('/maintenance', requireWorld, async (req, res) => {
 app.get('/finances', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/finances.html'), '/finances');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/staff', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/staff.html'), '/staff');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
