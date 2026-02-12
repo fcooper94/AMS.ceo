@@ -38,9 +38,10 @@ const UsedAircraftForSale = sequelize.define('UsedAircraftForSale', {
     comment: 'Name of the selling company'
   },
   sellerType: {
-    type: DataTypes.ENUM('airline', 'lessor', 'broker'),
+    type: DataTypes.STRING,
     defaultValue: 'airline',
-    field: 'seller_type'
+    field: 'seller_type',
+    validate: { isIn: [['airline', 'lessor', 'broker']] }
   },
   sellerCountry: {
     type: DataTypes.STRING,
@@ -94,8 +95,9 @@ const UsedAircraftForSale = sequelize.define('UsedAircraftForSale', {
   },
   // Status
   status: {
-    type: DataTypes.ENUM('available', 'sold', 'withdrawn'),
-    defaultValue: 'available'
+    type: DataTypes.STRING,
+    defaultValue: 'available',
+    validate: { isIn: [['available', 'sold', 'withdrawn']] }
   },
   listedAt: {
     type: DataTypes.DATE,

@@ -132,7 +132,11 @@ router.get('/info', async (req, res) => {
         country: baseAirport.country,
         latitude: parseFloat(baseAirport.latitude),
         longitude: parseFloat(baseAirport.longitude)
-      } : null
+      } : null,
+      // Service contractor selections
+      cleaningContractor: membership?.cleaningContractor || 'standard',
+      groundContractor: membership?.groundContractor || 'standard',
+      engineeringContractor: membership?.engineeringContractor || 'standard'
     };
 
     res.json(worldInfo);

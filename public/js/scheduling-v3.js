@@ -4185,10 +4185,10 @@ async function viewFlightDetailsWeekly(flightId) {
   const hasTechStop = route.techStopAirport;
   const acType = aircraft.aircraft?.type || 'Narrowbody';
   const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-  const scheduledDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : flight.scheduledDate;
+  let scheduledDate = typeof flight.scheduledDate === 'string' ? flight.scheduledDate.substring(0, 10) : flight.scheduledDate;
   // Format date as DD/MM/YYYY
-  const dateParts = scheduledDate.split('-');
-  const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+  let dateParts = scheduledDate.split('-');
+  let formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
 
   // Get airport codes
   const depAirport = route.departureAirport.iataCode || route.departureAirport.icaoCode;
@@ -4301,14 +4301,35 @@ async function viewFlightDetailsWeekly(flightId) {
 
   // Calculate all phase times - MUST match display times for consistency
   const now = typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : new Date();
-  const [year, month, day] = scheduledDate.split('-').map(Number);
+  let [year, month, day] = scheduledDate.split('-').map(Number);
   // Use local time (not UTC) to match how world time is represented
-  const departureDateTime = new Date(year, month - 1, day, depH, depM);
+  let departureDateTime = new Date(year, month - 1, day, depH, depM);
 
   // Check if this flight is in the future (scheduled date is after current world date)
   const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const flightDateOnly = new Date(year, month - 1, day);
-  const isFutureFlight = flightDateOnly > nowDateOnly;
+  let flightDateOnly = new Date(year, month - 1, day);
+  let isFutureFlight = flightDateOnly > nowDateOnly;
+
+  // For future flights, check if the PREVIOUS weekly occurrence is still in progress
+  // (e.g., a long-haul or overnight flight that departed earlier this week and hasn't finished yet)
+  if (isFutureFlight && now) {
+    const prevDepMs = departureDateTime.getTime() - 7 * 86400000;
+    const opStartMs = prevDepMs - preFlightTotal * 60000;
+    // Total operation: pre-flight + outbound + turnaround + daily check buffer + return + post-flight
+    const totalOpEndMs = prevDepMs + (outboundMinutes + turnaroundMinutes + dailyCheckDuration + returnMinutes + postFlightTotal) * 60000;
+
+    if (now.getTime() >= opStartMs && now.getTime() < totalOpEndMs) {
+      // Previous occurrence is still in progress — show its progress instead
+      departureDateTime = new Date(prevDepMs);
+      year = departureDateTime.getFullYear();
+      month = departureDateTime.getMonth() + 1;
+      day = departureDateTime.getDate();
+      flightDateOnly = new Date(year, month - 1, day);
+      isFutureFlight = false;
+      formattedDate = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+      scheduledDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
 
   // Outbound sector times
   const outboundPreFlightStart = new Date(departureDateTime.getTime() - preFlightTotal * 60000);

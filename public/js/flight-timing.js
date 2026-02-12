@@ -130,3 +130,33 @@ function calculateTurnaroundBreakdown(distanceNM, paxCapacity, acType) {
 function calculateMinTurnaround(distanceNM, paxCapacity, acType) {
   return calculateTurnaroundBreakdown(distanceNM, paxCapacity, acType).total;
 }
+
+/**
+ * Apply contractor modifiers to a turnaround breakdown.
+ * modifiers = { cleaningMult, boardingMult, deboardingMult, fuellingMult }
+ * Returns a new breakdown object with adjusted durations.
+ */
+function applyContractorModifiers(breakdown, modifiers) {
+  if (!modifiers) return breakdown;
+  const m = { cleaningMult: 1, boardingMult: 1, deboardingMult: 1, fuellingMult: 1, ...modifiers };
+  const cleaning = Math.round(breakdown.cleaning * m.cleaningMult);
+  const boarding = Math.round(breakdown.boarding * m.boardingMult);
+  const deboarding = Math.round(breakdown.deboarding * m.deboardingMult);
+  const fuelling = Math.round(breakdown.fuelling * m.fuellingMult);
+  const catering = breakdown.catering;
+
+  // Parallel catering+cleaning = max of catering and modified cleaning
+  const parallelCateringCleaning = Math.max(catering, cleaning);
+  // Sequential path = deboarding + parallel block + boarding
+  const sequentialPath = deboarding + parallelCateringCleaning + boarding;
+  // Ground ops = max of (fuelling, sequential path)
+  const groundOps = Math.max(fuelling, sequentialPath);
+  const total = groundOps + breakdown.dailyCheck;
+
+  return {
+    fuelling, deboarding, catering, cleaning, boarding,
+    parallelCateringCleaning, sequentialPath, groundOps,
+    dailyCheck: breakdown.dailyCheck,
+    total
+  };
+}

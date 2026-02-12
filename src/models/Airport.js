@@ -52,8 +52,7 @@ const Airport = sequelize.define('Airport', {
   type: {
     type: DataTypes.ENUM('International Hub', 'Major', 'Regional', 'Small Regional'),
     allowNull: false,
-    defaultValue: 'Regional',
-    comment: 'Airport size/classification'
+    defaultValue: 'Regional'
   },
   timezone: {
     type: DataTypes.STRING(50),

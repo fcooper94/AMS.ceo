@@ -32,14 +32,12 @@ const Aircraft = sequelize.define('Aircraft', {
   },
   type: {
     type: DataTypes.ENUM('Narrowbody', 'Widebody', 'Regional', 'Cargo'),
-    allowNull: false,
-    comment: 'Aircraft category'
+    allowNull: false
   },
   rangeCategory: {
     type: DataTypes.ENUM('Short Haul', 'Medium Haul', 'Long Haul'),
     allowNull: false,
-    field: 'range_category',
-    comment: 'Operational range category'
+    field: 'range_category'
   },
   rangeNm: {
     type: DataTypes.INTEGER,

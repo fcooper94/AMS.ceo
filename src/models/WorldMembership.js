@@ -116,6 +116,25 @@ const WorldMembership = sequelize.define('WorldMembership', {
     allowNull: true,
     field: 'ai_last_decision_time',
     comment: 'Game time of last AI decision cycle'
+  },
+  // Service contractor selections (budget, standard, premium)
+  cleaningContractor: {
+    type: DataTypes.STRING,
+    defaultValue: 'standard',
+    field: 'cleaning_contractor',
+    comment: 'Cleaning/cabin services tier: budget, standard, premium'
+  },
+  groundContractor: {
+    type: DataTypes.STRING,
+    defaultValue: 'standard',
+    field: 'ground_contractor',
+    comment: 'Ground services/handling tier: budget, standard, premium'
+  },
+  engineeringContractor: {
+    type: DataTypes.STRING,
+    defaultValue: 'standard',
+    field: 'engineering_contractor',
+    comment: 'Engineering/maintenance tier: budget, standard, premium'
   }
 }, {
   tableName: 'world_memberships',

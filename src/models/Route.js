@@ -91,8 +91,7 @@ const Route = sequelize.define('Route', {
   frequency: {
     type: DataTypes.ENUM('daily', 'weekly', 'biweekly', 'monthly'),
     defaultValue: 'daily',
-    allowNull: false,
-    comment: 'How often this route operates'
+    allowNull: false
   },
   daysOfWeek: {
     type: DataTypes.ARRAY(DataTypes.INTEGER),
@@ -154,8 +153,7 @@ const Route = sequelize.define('Route', {
   transportType: {
     type: DataTypes.ENUM('both', 'passengers_only', 'cargo_only'),
     defaultValue: 'both',
-    field: 'transport_type',
-    comment: 'Type of transport: both, passengers only, or cargo only'
+    field: 'transport_type'
   },
   demand: {
     type: DataTypes.INTEGER,

@@ -24,8 +24,7 @@ const PricingDefault = sequelize.define('PricingDefault', {
   pricingType: {
     type: DataTypes.ENUM('global', 'aircraft_type'),
     allowNull: false,
-    field: 'pricing_type',
-    comment: 'Type of pricing: global defaults or aircraft type specific'
+    field: 'pricing_type'
   },
   aircraftTypeKey: {
     type: DataTypes.STRING,

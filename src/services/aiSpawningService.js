@@ -10,6 +10,7 @@ const { WorldMembership, Airport, Aircraft, UserAircraft, Route, ScheduledFlight
 const crypto = require('crypto');
 const { generateAIAirline } = require('../data/aiAirlineNames');
 const { AI_DIFFICULTY, pickPersonality } = require('../data/aiDifficultyConfig');
+const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
 
 /**
@@ -355,7 +356,10 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
         reputation: 45 + Math.floor(Math.random() * 15),
         isAI: true,
         aiPersonality: personality,
-        aiLastDecisionTime: staggeredTime
+        aiLastDecisionTime: staggeredTime,
+        cleaningContractor: pickAIContractorTier(),
+        groundContractor: pickAIContractorTier(),
+        engineeringContractor: pickAIContractorTier()
       });
 
       for (const fi of airlineFleet) {
@@ -540,7 +544,10 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
           reputation: 45 + Math.floor(Math.random() * 15),
           isAI: true,
           aiPersonality: personality,
-          aiLastDecisionTime: staggeredTime
+          aiLastDecisionTime: staggeredTime,
+          cleaningContractor: pickAIContractorTier(),
+          groundContractor: pickAIContractorTier(),
+          engineeringContractor: pickAIContractorTier()
         });
 
         for (const fi of airlineFleet) {

@@ -17,6 +17,18 @@ let airportBrowserContext = 'join'; // 'join' or 'sp'
 // AI count — same across all difficulties (~800), difficulty only affects AI behaviour
 const AI_TOTAL_COUNTS = { easy: 800, medium: 800, hard: 800 };
 
+// Service contractor monthly costs (2024 USD) — era-scaled in preview functions
+const CONTRACTOR_COSTS = {
+  cleaning:     { budget: 8000,  standard: 18000, premium: 35000 },
+  ground:       { budget: 12000, standard: 25000, premium: 45000 },
+  engineering:  { budget: 15000, standard: 30000, premium: 55000 }
+};
+
+const ERA_MULTIPLIERS = {
+  1950: 0.10, 1960: 0.15, 1970: 0.25, 1980: 0.35,
+  1990: 0.50, 2000: 0.70, 2010: 0.85, 2020: 1.00
+};
+
 // Airport loading overlay functions
 function showAirportLoadingOverlay(message = 'Loading...') {
   let overlay = document.getElementById('airportLoadingOverlay');
@@ -706,6 +718,10 @@ async function updateStartingInfo() {
 
     if (response.ok) {
       capitalEl.textContent = `Starting Capital: ${data.formattedCapital} (${data.eraName})`;
+      // Store era multiplier for MP contractor cost display
+      const decade = Math.floor((data.worldYear || 2010) / 10) * 10;
+      window._mpWorldEraMult = ERA_MULTIPLIERS[decade] || 1.0;
+      updateMPContractorPreview();
     } else {
       console.error('Failed to fetch starting capital:', data.error);
       capitalEl.textContent = 'Starting Capital: Error loading';
@@ -904,6 +920,12 @@ async function openJoinModal(worldId, worldName, joinCost, weeklyCost, freeWeeks
     weeklyInfoEl.textContent = weeklyText;
   }
 
+  // Reset contractor selections to standard
+  document.querySelector('input[name="mpCleaning"][value="standard"]').checked = true;
+  document.querySelector('input[name="mpGround"][value="standard"]').checked = true;
+  document.querySelector('input[name="mpEngineering"][value="standard"]').checked = true;
+
+  showModalStep('mp', 1);
   document.getElementById('joinModal').style.display = 'flex';
 
   // Fetch and display starting capital for this world
@@ -950,6 +972,9 @@ async function confirmJoin() {
   const airlineCode = document.getElementById('airlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('iataCode').value.trim().toUpperCase();
   const baseAirportId = document.getElementById('baseAirport').value;
+  const cleaningContractor = document.querySelector('input[name="mpCleaning"]:checked')?.value || 'standard';
+  const groundContractor = document.querySelector('input[name="mpGround"]:checked')?.value || 'standard';
+  const engineeringContractor = document.querySelector('input[name="mpEngineering"]:checked')?.value || 'standard';
   const errorDiv = document.getElementById('joinError');
 
   // Validation
@@ -988,7 +1013,10 @@ async function confirmJoin() {
         airlineName,
         airlineCode,
         iataCode,
-        baseAirportId
+        baseAirportId,
+        cleaningContractor,
+        groundContractor,
+        engineeringContractor
       })
     });
 
@@ -1107,7 +1135,24 @@ function openRejoinModal(worldId, worldName) {
   document.getElementById('rejoinAirportResults').style.display = 'none';
   document.getElementById('rejoinSelectedAirport').style.display = 'none';
   document.getElementById('rejoinError').style.display = 'none';
+  // Reset contractor selections to standard
+  document.querySelector('input[name="rejoinCleaning"][value="standard"]').checked = true;
+  document.querySelector('input[name="rejoinGround"][value="standard"]').checked = true;
+  document.querySelector('input[name="rejoinEngineering"][value="standard"]').checked = true;
+  showModalStep('rejoin', 1);
   document.getElementById('rejoinWorldModal').style.display = 'flex';
+
+  // Fetch era for contractor cost scaling
+  fetch(`/api/worlds/${worldId}/starting-capital`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.worldYear) {
+        const decade = Math.floor(data.worldYear / 10) * 10;
+        window._rejoinWorldEraMult = ERA_MULTIPLIERS[decade] || 1.0;
+      }
+      updateRejoinContractorPreview();
+    })
+    .catch(() => { updateRejoinContractorPreview(); });
 
   // Set up airport search
   const searchInput = document.getElementById('rejoinAirportSearch');
@@ -1184,6 +1229,9 @@ async function confirmRejoin() {
   const airlineName = document.getElementById('rejoinAirlineName').value.trim();
   const airlineCode = document.getElementById('rejoinAirlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('rejoinIataCode').value.trim().toUpperCase();
+  const cleaningContractor = document.querySelector('input[name="rejoinCleaning"]:checked')?.value || 'standard';
+  const groundContractor = document.querySelector('input[name="rejoinGround"]:checked')?.value || 'standard';
+  const engineeringContractor = document.querySelector('input[name="rejoinEngineering"]:checked')?.value || 'standard';
   const errorDiv = document.getElementById('rejoinError');
 
   if (!airlineName || !airlineCode || !iataCode || !rejoinAirportId) {
@@ -1213,7 +1261,10 @@ async function confirmRejoin() {
         airlineName,
         airlineCode,
         iataCode,
-        baseAirportId: rejoinAirportId
+        baseAirportId: rejoinAirportId,
+        cleaningContractor,
+        groundContractor,
+        engineeringContractor
       })
     });
 
@@ -1701,7 +1752,12 @@ function openCreateSPModal() {
   document.getElementById('spAirportResults').style.display = 'none';
   document.getElementById('spCreateError').style.display = 'none';
   document.getElementById('spAICountPreview').textContent = 'AI Competitors: Select airport to calculate';
+  // Reset contractor selections to standard
+  document.querySelector('input[name="spCleaning"][value="standard"]').checked = true;
+  document.querySelector('input[name="spGround"][value="standard"]').checked = true;
+  document.querySelector('input[name="spEngineering"][value="standard"]').checked = true;
   updateSPPreview();
+  showModalStep('sp', 1);
   document.getElementById('createSPModal').style.display = 'flex';
 
   // Fetch and display user credits
@@ -1737,13 +1793,8 @@ function updateSPPreview() {
   const airportType = document.getElementById('spBaseAirportType').value;
 
   // Update starting capital preview
-  // Simple era-based multiplier (mirrors eraEconomicService)
-  const eraMultipliers = {
-    1950: 0.10, 1960: 0.15, 1970: 0.25, 1980: 0.35,
-    1990: 0.50, 2000: 0.70, 2010: 0.85, 2020: 1.00
-  };
   const decade = Math.floor(era / 10) * 10;
-  const mult = eraMultipliers[decade] || 1.0;
+  const mult = ERA_MULTIPLIERS[decade] || 1.0;
   const baseCapital = 37500000;
   const capital = Math.round(baseCapital * mult);
   const capitalFormatted = capital >= 1000000
@@ -1754,6 +1805,132 @@ function updateSPPreview() {
   // Update AI count preview
   const aiCount = AI_TOTAL_COUNTS[difficulty] || AI_TOTAL_COUNTS['medium'];
   document.getElementById('spAICountPreview').textContent = `AI Competitors: ~${aiCount} airlines`;
+
+  // Update contractor costs for the selected era
+  updateSPContractorPreview();
+}
+
+function formatContractorCost(cost2024, mult) {
+  const scaled = Math.round(cost2024 * mult);
+  return scaled >= 1000000
+    ? `$${(scaled / 1000000).toFixed(1)}M/mo`
+    : `$${(scaled / 1000).toLocaleString('en-US')}K/mo`;
+}
+
+function updateContractorCosts(prefix, mult) {
+  for (const [category, tiers] of Object.entries(CONTRACTOR_COSTS)) {
+    for (const [tier, cost] of Object.entries(tiers)) {
+      const els = document.querySelectorAll(`.${prefix}-${category}-${tier}-cost`);
+      els.forEach(el => { el.textContent = formatContractorCost(cost, mult); });
+    }
+  }
+  // Total
+  const cleaning = document.querySelector(`input[name="${prefix}Cleaning"]:checked`)?.value || 'standard';
+  const ground = document.querySelector(`input[name="${prefix}Ground"]:checked`)?.value || 'standard';
+  const engineering = document.querySelector(`input[name="${prefix}Engineering"]:checked`)?.value || 'standard';
+  const total = (CONTRACTOR_COSTS.cleaning[cleaning] + CONTRACTOR_COSTS.ground[ground] + CONTRACTOR_COSTS.engineering[engineering]) * mult;
+  const totalText = total >= 1000000
+    ? `$${(total / 1000000).toFixed(1)}M/mo`
+    : `$${Math.round(total / 1000).toLocaleString('en-US')}K/mo`;
+  // Update all total spans (one per contractor step)
+  for (const suffix of ['', '2', '3']) {
+    const el = document.getElementById(`${prefix}ContractorTotal${suffix}`);
+    if (el) el.textContent = totalText;
+  }
+}
+
+function updateSPContractorPreview() {
+  const era = parseInt(document.getElementById('spEra').value) || 2010;
+  const decade = Math.floor(era / 10) * 10;
+  const mult = ERA_MULTIPLIERS[decade] || 1.0;
+  updateContractorCosts('sp', mult);
+}
+
+function updateMPContractorPreview() {
+  // MP worlds have a fixed era — use the stored world era if available, otherwise default 1.0
+  const mult = window._mpWorldEraMult || 1.0;
+  updateContractorCosts('mp', mult);
+}
+
+function updateRejoinContractorPreview() {
+  const mult = window._rejoinWorldEraMult || 1.0;
+  updateContractorCosts('rejoin', mult);
+}
+
+// ── Wizard Step Navigation ──────────────────────────────────────────
+
+const MODAL_STEP_CONFIG = {
+  sp:     { steps: 5, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
+  mp:     { steps: 4, closeFunc: 'closeJoinModal',     finalLabel: 'Join World',   finalFunc: 'confirmJoin' },
+  rejoin: { steps: 4, closeFunc: 'closeRejoinModal',   finalLabel: 'Create Airline', finalFunc: 'confirmRejoin' }
+};
+
+function showModalStep(prefix, step) {
+  const config = MODAL_STEP_CONFIG[prefix];
+  if (!config) return;
+  for (let i = 1; i <= config.steps; i++) {
+    const el = document.getElementById(prefix + 'Step' + i);
+    if (el) el.style.display = i === step ? 'block' : 'none';
+  }
+  updateModalStepIndicators(prefix, step);
+  updateModalFooterButtons(prefix, step);
+  // Trigger contractor cost update when entering contractor steps
+  // SP: steps 3-5 are contractors; MP/rejoin: steps 2-4 are contractors
+  const contractorStart = (prefix === 'sp') ? 3 : 2;
+  if (step >= contractorStart) {
+    if (prefix === 'sp') updateSPContractorPreview();
+    else if (prefix === 'mp') updateMPContractorPreview();
+    else if (prefix === 'rejoin') updateRejoinContractorPreview();
+  }
+}
+
+function updateModalStepIndicators(prefix, activeStep) {
+  const config = MODAL_STEP_CONFIG[prefix];
+  if (!config) return;
+  for (let i = 1; i <= config.steps; i++) {
+    const ind = document.getElementById(prefix + 'StepInd' + i);
+    if (!ind) continue;
+    if (i < activeStep) {
+      // Completed step
+      ind.style.background = 'rgba(34, 197, 94, 0.15)';
+      ind.style.border = '1px solid #22c55e';
+      ind.style.color = '#22c55e';
+    } else if (i === activeStep) {
+      // Active step
+      ind.style.background = 'var(--accent-color)';
+      ind.style.border = '1px solid var(--accent-color)';
+      ind.style.color = 'white';
+    } else {
+      // Future step
+      ind.style.background = 'var(--surface-elevated)';
+      ind.style.border = '1px solid var(--border-color)';
+      ind.style.color = 'var(--text-muted)';
+    }
+  }
+}
+
+function updateModalFooterButtons(prefix, step) {
+  const config = MODAL_STEP_CONFIG[prefix];
+  if (!config) return;
+  const footer = document.getElementById(prefix + 'ModalFooter');
+  if (!footer) return;
+
+  if (step === 1) {
+    footer.innerHTML = `
+      <button class="btn btn-secondary" onclick="${config.closeFunc}()">Cancel</button>
+      <button class="btn btn-primary" onclick="showModalStep('${prefix}', 2)">Next</button>
+    `;
+  } else if (step < config.steps) {
+    footer.innerHTML = `
+      <button class="btn btn-secondary" onclick="showModalStep('${prefix}', ${step - 1})">Back</button>
+      <button class="btn btn-primary" onclick="showModalStep('${prefix}', ${step + 1})">Next</button>
+    `;
+  } else {
+    footer.innerHTML = `
+      <button class="btn btn-secondary" onclick="showModalStep('${prefix}', ${step - 1})">Back</button>
+      <button class="btn btn-primary" onclick="${config.finalFunc}()">${config.finalLabel}</button>
+    `;
+  }
 }
 
 // SP Airport search
@@ -1841,6 +2018,9 @@ async function createSinglePlayerWorld() {
   const airlineCode = document.getElementById('spAirlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('spIataCode').value.trim().toUpperCase();
   const baseAirportId = document.getElementById('spBaseAirport').value;
+  const cleaningContractor = document.querySelector('input[name="spCleaning"]:checked')?.value || 'standard';
+  const groundContractor = document.querySelector('input[name="spGround"]:checked')?.value || 'standard';
+  const engineeringContractor = document.querySelector('input[name="spEngineering"]:checked')?.value || 'standard';
   const errorDiv = document.getElementById('spCreateError');
 
   // Auto-generate world name from username, always using next available number
@@ -1893,7 +2073,8 @@ async function createSinglePlayerWorld() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name, era, timeAcceleration, difficulty,
-        baseAirportId, airlineName, airlineCode, iataCode
+        baseAirportId, airlineName, airlineCode, iataCode,
+        cleaningContractor, groundContractor, engineeringContractor
       })
     });
 

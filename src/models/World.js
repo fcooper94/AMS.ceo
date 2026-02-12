@@ -101,15 +101,13 @@ const World = sequelize.define('World', {
   },
   // Single-player world configuration
   worldType: {
-    type: DataTypes.ENUM('multiplayer', 'singleplayer'),
+    type: DataTypes.STRING,
     defaultValue: 'multiplayer',
-    field: 'world_type',
-    comment: 'Multiplayer or singleplayer world type'
+    field: 'world_type'
   },
   difficulty: {
     type: DataTypes.ENUM('easy', 'medium', 'hard'),
-    allowNull: true,
-    comment: 'AI difficulty level for single-player worlds'
+    allowNull: true
   },
   ownerUserId: {
     type: DataTypes.UUID,

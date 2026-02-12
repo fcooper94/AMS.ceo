@@ -106,7 +106,11 @@ router.post('/join', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { worldId, airlineName, airlineCode, iataCode, baseAirportId } = req.body;
+    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const validTiers = ['budget', 'standard', 'premium'];
+    const mpCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
+    const mpGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
+    const mpEngineeringTier = validTiers.includes(engineeringContractor) ? engineeringContractor : 'standard';
 
     if (!worldId || !airlineName || !airlineCode || !iataCode || !baseAirportId) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -221,7 +225,10 @@ router.post('/join', async (req, res) => {
       baseAirportId,
       balance: startingBalance,
       reputation: 50,
-      lastCreditDeduction: creditDeductionStart // Offset by free weeks so deductions start later
+      lastCreditDeduction: creditDeductionStart, // Offset by free weeks so deductions start later
+      cleaningContractor: mpCleaningTier,
+      groundContractor: mpGroundTier,
+      engineeringContractor: mpEngineeringTier
     });
 
     // Deduct credits for joining (skip for unlimited users)
@@ -453,7 +460,11 @@ router.post('/create-singleplayer', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode } = req.body;
+    const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const validTiers = ['budget', 'standard', 'premium'];
+    const spCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
+    const spGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
+    const spEngineeringTier = validTiers.includes(engineeringContractor) ? engineeringContractor : 'standard';
 
     // Validate required fields
     if (!name || !era || !difficulty || !baseAirportId || !airlineName || !airlineCode || !iataCode) {
@@ -543,7 +554,10 @@ router.post('/create-singleplayer', async (req, res) => {
       baseAirportId,
       balance: startingBalance,
       reputation: 50,
-      isAI: false
+      isAI: false,
+      cleaningContractor: spCleaningTier,
+      groundContractor: spGroundTier,
+      engineeringContractor: spEngineeringTier
     });
 
     // Calculate expected AI count (actual spawning happens via aiSpawningService)
@@ -669,7 +683,11 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { worldId, airlineName, airlineCode, iataCode, baseAirportId } = req.body;
+    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const validTiers = ['budget', 'standard', 'premium'];
+    const rejCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
+    const rejGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
+    const rejEngineeringTier = validTiers.includes(engineeringContractor) ? engineeringContractor : 'standard';
 
     if (!worldId || !airlineName || !airlineCode || !iataCode || !baseAirportId) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -733,7 +751,10 @@ router.post('/rejoin-sp', async (req, res) => {
       baseAirportId,
       balance: startingBalance,
       reputation: 50,
-      isAI: false
+      isAI: false,
+      cleaningContractor: rejCleaningTier,
+      groundContractor: rejGroundTier,
+      engineeringContractor: rejEngineeringTier
     });
 
     // Set as active world

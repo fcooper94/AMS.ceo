@@ -44,15 +44,13 @@ const AirportRouteDemand = sequelize.define('AirportRouteDemand', {
     type: DataTypes.ENUM('very_high', 'high', 'medium', 'low', 'very_low'),
     allowNull: false,
     defaultValue: 'medium',
-    field: 'demand_category',
-    comment: 'Demand category for quick filtering'
+    field: 'demand_category'
   },
   routeType: {
     type: DataTypes.ENUM('business', 'leisure', 'mixed', 'cargo', 'regional'),
     allowNull: true,
     defaultValue: 'mixed',
-    field: 'route_type',
-    comment: 'Primary route characteristic'
+    field: 'route_type'
   }
 }, {
   tableName: 'airport_route_demands',

@@ -1,5 +1,25 @@
 let baseAirport = null;
 let worldInfo = null;
+
+// Contractor timing multipliers (client-side mirror of contractorConfig.js)
+const CONTRACTOR_MULTIPLIERS = {
+  cleaning:  { budget: 0.85, standard: 1.0, premium: 1.20 },
+  boarding:  { budget: 0.85, standard: 1.0, premium: 1.15 },
+  deboarding:{ budget: 0.85, standard: 1.0, premium: 1.15 },
+  fuelling:  { budget: 0.90, standard: 1.0, premium: 1.10 }
+};
+
+function getContractorModifiers() {
+  if (!worldInfo) return null;
+  const ct = worldInfo.cleaningContractor || 'standard';
+  const gt = worldInfo.groundContractor || 'standard';
+  return {
+    cleaningMult: CONTRACTOR_MULTIPLIERS.cleaning[ct] || 1.0,
+    boardingMult: CONTRACTOR_MULTIPLIERS.boarding[gt] || 1.0,
+    deboardingMult: CONTRACTOR_MULTIPLIERS.deboarding[gt] || 1.0,
+    fuellingMult: CONTRACTOR_MULTIPLIERS.fuelling[gt] || 1.0
+  };
+}
 let availableAirports = [];
 let selectedDestinationAirport = null;
 let selectedTechStopAirport = null;
@@ -1505,7 +1525,8 @@ function onTurnaroundTimeChange() {
 
   const passengerCapacity = aircraftData.passengerCapacity || 0;
   const acType = aircraftData.type || 'Narrowbody';
-  const minTurnaround = calculateMinTurnaround(distance, passengerCapacity, acType);
+  const rawBreakdown = calculateTurnaroundBreakdown(distance, passengerCapacity, acType);
+  const minTurnaround = applyContractorModifiers(rawBreakdown, getContractorModifiers()).total;
 
   const currentValue = parseInt(turnaroundInput.value) || 0;
 
@@ -1601,7 +1622,8 @@ function calculateFlightTiming() {
   const returnPostFlight = calculatePostFlightTotal(passengerCapacity, acType);
 
   // Calculate turnaround breakdown (includes 30min daily check always)
-  const turnaround = calculateTurnaroundBreakdown(effectiveDistance, passengerCapacity, acType);
+  const rawTurnaround = calculateTurnaroundBreakdown(effectiveDistance, passengerCapacity, acType);
+  const turnaround = applyContractorModifiers(rawTurnaround, getContractorModifiers());
   const minTurnaround = turnaround.total;
 
   // Update minimum turnaround display

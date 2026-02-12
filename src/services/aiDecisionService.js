@@ -11,6 +11,7 @@
 const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification } = require('../models');
 const { Op } = require('sequelize');
 const { AI_DIFFICULTY, pickPersonality } = require('../data/aiDifficultyConfig');
+const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
 const routeDemandService = require('./routeDemandService');
 const airportSlotService = require('./airportSlotService');
@@ -839,7 +840,10 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
     reputation: 40 + Math.floor(Math.random() * 10),
     isAI: true,
     aiPersonality: personality,
-    aiLastDecisionTime: new Date()
+    aiLastDecisionTime: new Date(),
+    cleaningContractor: pickAIContractorTier(),
+    groundContractor: pickAIContractorTier(),
+    engineeringContractor: pickAIContractorTier()
   });
 
   console.log(`[AI-SPAWN] Replacement: ${airline.name} (${airline.icaoCode}) at ${baseAirport.icaoCode} [${personality}]`);

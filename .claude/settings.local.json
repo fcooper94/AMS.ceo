@@ -29,7 +29,8 @@
       "Bash(test:*)",
       "Bash(del:*)",
       "Bash(timeout:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(dir:*)"
     ]
   }
 }

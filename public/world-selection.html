@@ -94,62 +94,88 @@
       <button class="modal-close" onclick="closeCreateSPModal()">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="join-modal-grid">
-        <!-- Left Column: World & Airline Settings -->
-        <div class="join-modal-col">
-          <div class="join-modal-codes">
-            <div class="form-group">
-              <label for="spEra">ERA / START YEAR *</label>
-              <select id="spEra" onchange="updateSPPreview(); clearSPSelectedAirport();">
-                <option value="1950">1950s - Propeller Era</option>
-                <option value="1960">1960s - Early Jet Era</option>
-                <option value="1970">1970s - Widebody Era</option>
-                <option value="1980">1980s - Deregulation Era</option>
-                <option value="1990">1990s - Modern Era</option>
-                <option value="2000">2000s - Next-Gen Era</option>
-                <option value="2010" selected>2010s - Contemporary Era</option>
-                <option value="2020">2020s - Current Era</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="spSpeed">GAME SPEED</label>
-              <select id="spSpeed">
-                <option value="30">30x (Slow)</option>
-                <option value="60" selected>60x (Normal)</option>
-                <option value="120">120x (Fast)</option>
-                <option value="240">240x (Very Fast)</option>
-              </select>
-            </div>
-          </div>
+      <!-- Step Indicators -->
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+        <div id="spStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">1. WORLD</div>
+        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">2. AIRLINE</div>
+        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">3. CABIN SERVICES</div>
+        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">4. GROUND</div>
+        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">5. ENGINEERING</div>
+      </div>
 
+      <!-- STEP 1: World Setup -->
+      <div id="spStep1">
+        <div class="join-modal-codes">
           <div class="form-group">
-            <label>DIFFICULTY *</label>
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.25rem;">
-              <label class="difficulty-option">
-                <input type="radio" name="spDifficulty" value="easy" onchange="updateSPPreview()">
-                <div>
-                  <div style="font-weight: 600; color: #22c55e;">EASY</div>
-                  <div style="font-size: 0.75rem; color: var(--text-secondary);">Fewer, less aggressive AI competitors. Higher starting funds.</div>
-                </div>
-              </label>
-              <label class="difficulty-option">
-                <input type="radio" name="spDifficulty" value="medium" checked onchange="updateSPPreview()">
-                <div>
-                  <div style="font-weight: 600; color: #f59e0b;">MEDIUM</div>
-                  <div style="font-size: 0.75rem; color: var(--text-secondary);">Balanced competition. AI airlines match market rates.</div>
-                </div>
-              </label>
-              <label class="difficulty-option">
-                <input type="radio" name="spDifficulty" value="hard" onchange="updateSPPreview()">
-                <div>
-                  <div style="font-weight: 600; color: #ef4444;">HARD</div>
-                  <div style="font-size: 0.75rem; color: var(--text-secondary);">Many aggressive AI competitors. They will undercut your prices.</div>
-                </div>
-              </label>
-            </div>
+            <label for="spEra">ERA / START YEAR *</label>
+            <select id="spEra" onchange="updateSPPreview(); clearSPSelectedAirport();">
+              <option value="1950">1950s - Propeller Era</option>
+              <option value="1960">1960s - Early Jet Era</option>
+              <option value="1970">1970s - Widebody Era</option>
+              <option value="1980">1980s - Deregulation Era</option>
+              <option value="1990">1990s - Modern Era</option>
+              <option value="2000">2000s - Next-Gen Era</option>
+              <option value="2010" selected>2010s - Contemporary Era</option>
+              <option value="2020">2020s - Current Era</option>
+            </select>
           </div>
+          <div class="form-group">
+            <label for="spSpeed">GAME SPEED</label>
+            <select id="spSpeed">
+              <option value="30">30x (Slow)</option>
+              <option value="60" selected>60x (Normal)</option>
+              <option value="120">120x (Fast)</option>
+              <option value="240">240x (Very Fast)</option>
+            </select>
+          </div>
+        </div>
 
-          <div style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0.5rem;">
+        <div class="form-group">
+          <label>DIFFICULTY *</label>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.25rem;">
+            <label class="difficulty-option">
+              <input type="radio" name="spDifficulty" value="easy" onchange="updateSPPreview()">
+              <div>
+                <div style="font-weight: 600; color: #22c55e;">EASY</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Fewer, less aggressive AI competitors. Higher starting funds.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spDifficulty" value="medium" checked onchange="updateSPPreview()">
+              <div>
+                <div style="font-weight: 600; color: #f59e0b;">MEDIUM</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Balanced competition. AI airlines match market rates.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spDifficulty" value="hard" onchange="updateSPPreview()">
+              <div>
+                <div style="font-weight: 600; color: #ef4444;">HARD</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Many aggressive AI competitors. They will undercut your prices.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-info" style="margin-top: 0.75rem;">
+          <p id="spStartingCapital">Starting Capital: Loading...</p>
+          <p>Starting Reputation: 50/100</p>
+          <p id="spCreditCost" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+            <span style="color: var(--warning-color); font-weight: 600;">Creation Cost: 10 Credits</span>
+            <span id="spUserCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
+          </p>
+          <p style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week (first 4 weeks free)</p>
+        </div>
+      </div>
+
+      <!-- STEP 2: Your Airline -->
+      <div id="spStep2" style="display: none;">
+        <div class="join-modal-grid">
+          <div class="join-modal-col">
             <div class="form-group">
               <label for="spAirlineName">AIRLINE NAME *</label>
               <input type="text" id="spAirlineName" maxlength="50" placeholder="e.g., Transatlantic Airways">
@@ -167,105 +193,185 @@
             <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: -0.5rem;">
               IATA code is your flight number prefix (e.g., BA for BA123)
             </div>
+            <div class="form-info" style="margin-top: 0.75rem;">
+              <p id="spAICountPreview" style="color: var(--accent-color); font-weight: 600;">
+                AI Competitors: Select airport to calculate
+              </p>
+            </div>
           </div>
 
-          <div class="form-info" style="margin-top: 0.75rem;">
-            <p id="spStartingCapital">Starting Capital: Loading...</p>
-            <p>Starting Reputation: 50/100</p>
-            <p id="spAICountPreview" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color); color: var(--accent-color); font-weight: 600;">
-              AI Competitors: Select airport to calculate
-            </p>
-            <p id="spCreditCost" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
-              <span style="color: var(--warning-color); font-weight: 600;">Creation Cost: 10 Credits</span>
-              <span id="spUserCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
-            </p>
-            <p style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week (first 4 weeks free)</p>
-          </div>
-        </div>
-
-        <!-- Right Column: Base Airport -->
-        <div class="join-modal-col">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label for="spBaseAirport">BASE AIRPORT *</label>
-            <div style="position: relative;">
-              <input
-                type="text"
-                id="spAirportSearch"
-                placeholder="Search by name, city, or code..."
-                autocomplete="off"
-                style="margin-bottom: 0.25rem;"
-              >
-              <div style="text-align: center; margin-bottom: 0.4rem;">
-                <a href="#" onclick="openAirportBrowser('sp'); return false;" style="
-                  font-size: 0.8rem;
-                  color: var(--primary-color);
-                  text-decoration: none;
-                  cursor: pointer;
-                " onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
-                  Browse all airports
-                </a>
-              </div>
-              <div id="spAirportResults" style="
-                display: none;
-                position: absolute;
-                top: 100%;
-                left: 0;
-                right: 0;
-                max-height: 300px;
-                overflow-y: auto;
-                background: var(--surface-elevated);
-                border: 1px solid var(--border-color);
-                border-radius: 4px;
-                z-index: 1000;
-                margin-top: 0.25rem;
-              "></div>
-              <div id="spSelectedAirportDisplay" style="
-                padding: 0.6rem;
-                background: var(--surface-elevated);
-                border: 1px solid var(--border-color);
-                border-radius: 4px;
-                margin-top: 0.5rem;
-                display: none;
-              ">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;" id="spSelectedAirportName"></div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);" id="spSelectedAirportLocation"></div>
-                    <div style="margin-top: 0.5rem;">
-                      <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Traffic Demand</div>
-                      <div id="spSelectedAirportTraffic"></div>
-                      <div id="spSelectedAirportPassengers" style="margin-top: 0.2rem; font-size: 0.7rem; color: var(--text-secondary);"></div>
+          <div class="join-modal-col">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="spBaseAirport">BASE AIRPORT *</label>
+              <div style="position: relative;">
+                <input type="text" id="spAirportSearch" placeholder="Search by name, city, or code..." autocomplete="off" style="margin-bottom: 0.25rem;">
+                <div style="text-align: center; margin-bottom: 0.4rem;">
+                  <a href="#" onclick="openAirportBrowser('sp'); return false;" style="font-size: 0.8rem; color: var(--primary-color); text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Browse all airports</a>
+                </div>
+                <div id="spAirportResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 300px; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; z-index: 1000; margin-top: 0.25rem;"></div>
+                <div id="spSelectedAirportDisplay" style="padding: 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.5rem; display: none;">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;" id="spSelectedAirportName"></div>
+                      <div style="font-size: 0.8rem; color: var(--text-secondary);" id="spSelectedAirportLocation"></div>
+                      <div style="margin-top: 0.5rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Traffic Demand</div>
+                        <div id="spSelectedAirportTraffic"></div>
+                        <div id="spSelectedAirportPassengers" style="margin-top: 0.2rem; font-size: 0.7rem; color: var(--text-secondary);"></div>
+                      </div>
+                      <div style="margin-top: 0.4rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Spare Capacity</div>
+                        <div id="spSelectedAirportInfrastructure"></div>
+                      </div>
                     </div>
-                    <div style="margin-top: 0.4rem;">
-                      <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Spare Capacity</div>
-                      <div id="spSelectedAirportInfrastructure"></div>
-                    </div>
+                    <button type="button" onclick="clearSPSelectedAirport()" style="padding: 0.25rem 0.5rem; background: var(--warning-color); border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.75rem; flex-shrink: 0; height: fit-content;">Change</button>
                   </div>
-                  <button type="button" onclick="clearSPSelectedAirport()" style="
-                    padding: 0.25rem 0.5rem;
-                    background: var(--warning-color);
-                    border: none;
-                    border-radius: 3px;
-                    color: white;
-                    cursor: pointer;
-                    font-size: 0.75rem;
-                    flex-shrink: 0;
-                    height: fit-content;
-                  ">Change</button>
                 </div>
               </div>
+              <input type="hidden" id="spBaseAirport">
+              <input type="hidden" id="spBaseAirportType">
             </div>
-            <input type="hidden" id="spBaseAirport">
-            <input type="hidden" id="spBaseAirportType">
           </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: Cabin Services -->
+      <div id="spStep3" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
+          <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR CABIN SERVICES CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="spCleaning" value="budget" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">QuickShine Aviation</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Fast and affordable cabin turnovers. Cuts corners but keeps costs low. 15% faster cleaning but occasional complaints.</div>
+              </div>
+              <span class="sp-cleaning-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$8,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spCleaning" value="standard" checked onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroClean International</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Reliable cabin maintenance you can count on. Industry-standard cleaning with consistent quality.</div>
+              </div>
+              <span class="sp-cleaning-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$18,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spCleaning" value="premium" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Prestige Cabin Care</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Five-star cabin presentation, every flight. Meticulous deep cleaning. 20% slower turnarounds but spotless cabins.</div>
+              </div>
+              <span class="sp-cleaning-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$35,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="spContractorTotal">$73,000/mo</span>
+        </div>
+      </div>
+
+      <!-- STEP 4: Ground Handling -->
+      <div id="spStep4" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
+          <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR GROUND HANDLING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="spGround" value="budget" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">TarmacFirst Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">No-frills ground ops at unbeatable prices. Quick turnarounds but sloppy service. 15% faster boarding, baggage issues common.</div>
+              </div>
+              <span class="sp-ground-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$12,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spGround" value="standard" checked onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">GlobalGate Ground Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Professional handling at every gate. Reliable ground operations with trained staff.</div>
+              </div>
+              <span class="sp-ground-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$25,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spGround" value="premium" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">SkyBridge Premium Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Precision ground ops for premium airlines. Careful, attentive service. 15% slower but passengers notice the difference.</div>
+              </div>
+              <span class="sp-ground-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$45,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="spContractorTotal2">$73,000/mo</span>
+        </div>
+      </div>
+
+      <!-- STEP 5: Engineering -->
+      <div id="spStep5" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
+          <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR ENGINEERING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="spEngineering" value="budget" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">EconTech MRO</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Cost-effective maintenance solutions. Meets minimum standards. 20% cheaper maintenance but 25% faster wear between checks.</div>
+              </div>
+              <span class="sp-engineering-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$15,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spEngineering" value="standard" checked onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroParts Technical Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Trusted engineering for your fleet. Standard MRO work with OEM parts and procedures.</div>
+              </div>
+              <span class="sp-engineering-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$30,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="spEngineering" value="premium" onchange="updateSPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Apex Aviation Engineering</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Engineering excellence, zero compromise. Premium MRO with extended component life. 30% pricier but 25% slower wear.</div>
+              </div>
+              <span class="sp-engineering-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$55,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="spContractorTotal3">$73,000/mo</span>
         </div>
       </div>
 
       <div id="spCreateError" class="error-message" style="display: none;"></div>
     </div>
-    <div class="modal-footer">
+    <div id="spModalFooter" class="modal-footer">
       <button class="btn btn-secondary" onclick="closeCreateSPModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="createSinglePlayerWorld()">Create World</button>
+      <button class="btn btn-primary" onclick="showModalStep('sp', 2)">Next</button>
     </div>
   </div>
 </div>
@@ -278,125 +384,222 @@
       <button class="modal-close" onclick="closeJoinModal()">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="join-modal-grid">
-        <!-- Left Column: Airline Details -->
-        <div class="join-modal-col">
-          <div class="form-group">
-            <label for="airlineName">AIRLINE NAME *</label>
-            <input type="text" id="airlineName" maxlength="50" placeholder="e.g., Transatlantic Airways">
-          </div>
+      <!-- Step Indicators -->
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+        <div id="mpStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">1. YOUR AIRLINE</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="mpStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. CABIN SERVICES</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="mpStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. GROUND HANDLING</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="mpStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. ENGINEERING</div>
+      </div>
 
-          <div class="join-modal-codes">
+      <!-- STEP 1: Your Airline -->
+      <div id="mpStep1">
+        <div class="join-modal-grid">
+          <div class="join-modal-col">
             <div class="form-group">
-              <label for="airlineCode">ICAO CODE * (3 letters)</label>
-              <input type="text" id="airlineCode" maxlength="3" placeholder="e.g., TRA" style="text-transform: uppercase;">
+              <label for="airlineName">AIRLINE NAME *</label>
+              <input type="text" id="airlineName" maxlength="50" placeholder="e.g., Transatlantic Airways">
             </div>
-            <div class="form-group">
-              <label for="iataCode">IATA CODE * (2 letters)</label>
-              <input type="text" id="iataCode" maxlength="2" placeholder="e.g., TR" style="text-transform: uppercase;">
-            </div>
-          </div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: -0.5rem; margin-bottom: 0.75rem;">
-            IATA code is your flight number prefix (e.g., BA for BA123)
-          </div>
 
-          <div class="form-info">
-            <p id="startingCapital">Starting Capital: Loading...</p>
-            <p>Starting Reputation: 50/100</p>
-            <p id="creditCost" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
-              <span style="color: var(--warning-color); font-weight: 600;">Join Cost: 10 Credits</span>
-              <span id="userCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
-            </p>
-            <p id="weeklyMembershipCost" style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week to maintain membership</p>
-          </div>
-        </div>
-
-        <!-- Right Column: Base Airport -->
-        <div class="join-modal-col">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label for="baseAirport">BASE AIRPORT *</label>
-            <div style="position: relative;">
-              <input
-                type="text"
-                id="airportSearch"
-                placeholder="Search by name, city, or code..."
-                autocomplete="off"
-                style="margin-bottom: 0.25rem;"
-              >
-              <div style="text-align: center; margin-bottom: 0.4rem;">
-                <a href="#" onclick="openAirportBrowser(); return false;" style="
-                  font-size: 0.8rem;
-                  color: var(--primary-color);
-                  text-decoration: none;
-                  cursor: pointer;
-                " onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
-                  Browse all airports
-                </a>
+            <div class="join-modal-codes">
+              <div class="form-group">
+                <label for="airlineCode">ICAO CODE * (3 letters)</label>
+                <input type="text" id="airlineCode" maxlength="3" placeholder="e.g., TRA" style="text-transform: uppercase;">
               </div>
-              <div id="airportResults" style="
-                display: none;
-                position: absolute;
-                top: 100%;
-                left: 0;
-                right: 0;
-                max-height: 300px;
-                overflow-y: auto;
-                background: var(--surface-elevated);
-                border: 1px solid var(--border-color);
-                border-radius: 4px;
-                z-index: 1000;
-                margin-top: 0.25rem;
-              "></div>
-              <div id="selectedAirportDisplay" style="
-                padding: 0.6rem;
-                background: var(--surface-elevated);
-                border: 1px solid var(--border-color);
-                border-radius: 4px;
-                margin-top: 0.5rem;
-                display: none;
-              ">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;" id="selectedAirportName"></div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);" id="selectedAirportLocation"></div>
+              <div class="form-group">
+                <label for="iataCode">IATA CODE * (2 letters)</label>
+                <input type="text" id="iataCode" maxlength="2" placeholder="e.g., TR" style="text-transform: uppercase;">
+              </div>
+            </div>
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: -0.5rem; margin-bottom: 0.75rem;">
+              IATA code is your flight number prefix (e.g., BA for BA123)
+            </div>
 
-                    <!-- Traffic Demand Scale -->
-                    <div style="margin-top: 0.5rem;">
-                      <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Traffic Demand</div>
-                      <div id="selectedAirportTraffic"></div>
-                      <div id="selectedAirportPassengers" style="margin-top: 0.2rem; font-size: 0.7rem; color: var(--text-secondary);"></div>
-                    </div>
+            <div class="form-info">
+              <p id="startingCapital">Starting Capital: Loading...</p>
+              <p>Starting Reputation: 50/100</p>
+              <p id="creditCost" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+                <span style="color: var(--warning-color); font-weight: 600;">Join Cost: 10 Credits</span>
+                <span id="userCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
+              </p>
+              <p id="weeklyMembershipCost" style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week to maintain membership</p>
+            </div>
+          </div>
 
-                    <!-- Spare Capacity Scale -->
-                    <div style="margin-top: 0.4rem;">
-                      <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Spare Capacity</div>
-                      <div id="selectedAirportInfrastructure"></div>
+          <div class="join-modal-col">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="baseAirport">BASE AIRPORT *</label>
+              <div style="position: relative;">
+                <input type="text" id="airportSearch" placeholder="Search by name, city, or code..." autocomplete="off" style="margin-bottom: 0.25rem;">
+                <div style="text-align: center; margin-bottom: 0.4rem;">
+                  <a href="#" onclick="openAirportBrowser(); return false;" style="font-size: 0.8rem; color: var(--primary-color); text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Browse all airports</a>
+                </div>
+                <div id="airportResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 300px; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; z-index: 1000; margin-top: 0.25rem;"></div>
+                <div id="selectedAirportDisplay" style="padding: 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.5rem; display: none;">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;" id="selectedAirportName"></div>
+                      <div style="font-size: 0.8rem; color: var(--text-secondary);" id="selectedAirportLocation"></div>
+                      <div style="margin-top: 0.5rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Traffic Demand</div>
+                        <div id="selectedAirportTraffic"></div>
+                        <div id="selectedAirportPassengers" style="margin-top: 0.2rem; font-size: 0.7rem; color: var(--text-secondary);"></div>
+                      </div>
+                      <div style="margin-top: 0.4rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Spare Capacity</div>
+                        <div id="selectedAirportInfrastructure"></div>
+                      </div>
                     </div>
+                    <button type="button" onclick="clearSelectedAirport()" style="padding: 0.25rem 0.5rem; background: var(--warning-color); border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 0.75rem; flex-shrink: 0; height: fit-content;">Change</button>
                   </div>
-                  <button type="button" onclick="clearSelectedAirport()" style="
-                    padding: 0.25rem 0.5rem;
-                    background: var(--warning-color);
-                    border: none;
-                    border-radius: 3px;
-                    color: white;
-                    cursor: pointer;
-                    font-size: 0.75rem;
-                    flex-shrink: 0;
-                    height: fit-content;
-                  ">Change</button>
                 </div>
               </div>
+              <input type="hidden" id="baseAirport">
             </div>
-            <input type="hidden" id="baseAirport">
           </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Cabin Services -->
+      <div id="mpStep2" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
+          <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR CABIN SERVICES CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="mpCleaning" value="budget" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">QuickShine Aviation</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Fast and affordable cabin turnovers. Cuts corners but keeps costs low. 15% faster cleaning but occasional complaints.</div>
+              </div>
+              <span class="mp-cleaning-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$8,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpCleaning" value="standard" checked onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroClean International</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Reliable cabin maintenance you can count on. Industry-standard cleaning with consistent quality.</div>
+              </div>
+              <span class="mp-cleaning-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$18,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpCleaning" value="premium" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Prestige Cabin Care</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Five-star cabin presentation, every flight. Meticulous deep cleaning. 20% slower turnarounds but spotless cabins.</div>
+              </div>
+              <span class="mp-cleaning-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$35,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="mpContractorTotal">$73,000/mo</span>
+        </div>
+      </div>
+
+      <!-- STEP 3: Ground Handling -->
+      <div id="mpStep3" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
+          <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR GROUND HANDLING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="mpGround" value="budget" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">TarmacFirst Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">No-frills ground ops at unbeatable prices. Quick turnarounds but sloppy service. 15% faster boarding, baggage issues common.</div>
+              </div>
+              <span class="mp-ground-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$12,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpGround" value="standard" checked onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">GlobalGate Ground Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Professional handling at every gate. Reliable ground operations with trained staff.</div>
+              </div>
+              <span class="mp-ground-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$25,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpGround" value="premium" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">SkyBridge Premium Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Precision ground ops for premium airlines. Careful, attentive service. 15% slower but passengers notice the difference.</div>
+              </div>
+              <span class="mp-ground-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$45,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="mpContractorTotal2">$73,000/mo</span>
+        </div>
+      </div>
+
+      <!-- STEP 4: Engineering -->
+      <div id="mpStep4" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
+          <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR ENGINEERING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="mpEngineering" value="budget" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">EconTech MRO</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Cost-effective maintenance solutions. Meets minimum standards. 20% cheaper maintenance but 25% faster wear between checks.</div>
+              </div>
+              <span class="mp-engineering-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$15,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpEngineering" value="standard" checked onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroParts Technical Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Trusted engineering for your fleet. Standard MRO work with OEM parts and procedures.</div>
+              </div>
+              <span class="mp-engineering-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$30,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="mpEngineering" value="premium" onchange="updateMPContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Apex Aviation Engineering</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Engineering excellence, zero compromise. Premium MRO with extended component life. 30% pricier but 25% slower wear.</div>
+              </div>
+              <span class="mp-engineering-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$55,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="mpContractorTotal3">$73,000/mo</span>
         </div>
       </div>
 
       <div id="joinError" class="error-message" style="display: none;"></div>
     </div>
-    <div class="modal-footer">
+    <div id="mpModalFooter" class="modal-footer">
       <button class="btn btn-secondary" onclick="closeJoinModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmJoin()">Join World</button>
+      <button class="btn btn-primary" onclick="showModalStep('mp', 2)">Next</button>
     </div>
   </div>
 </div>
@@ -459,45 +662,192 @@
 
 <!-- Rejoin SP World Modal -->
 <div id="rejoinWorldModal" class="modal" style="display: none;">
-  <div class="modal-content">
+  <div class="modal-content join-modal-content">
     <div class="modal-header">
       <h2>START FRESH AIRLINE</h2>
       <button class="modal-close" onclick="closeRejoinModal()">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label>WORLD</label>
-        <div id="rejoinWorldName" class="form-value"></div>
+      <!-- Step Indicators -->
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
+        <div id="rejoinStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">1. YOUR AIRLINE</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="rejoinStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. CABIN SERVICES</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="rejoinStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. GROUND HANDLING</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="rejoinStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. ENGINEERING</div>
       </div>
-      <div class="form-info" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3);">
-        <p style="color: #22c55e; font-weight: 600;">Create a new airline in this existing world.</p>
-        <p>You'll start with fresh capital. AI airlines and the world economy will continue as they are.</p>
-      </div>
-      <div class="form-group">
-        <label>AIRLINE NAME</label>
-        <input type="text" id="rejoinAirlineName" placeholder="e.g. Pacific Airways" maxlength="50">
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+
+      <!-- STEP 1: Your Airline -->
+      <div id="rejoinStep1">
         <div class="form-group">
-          <label>ICAO CODE (3-4 letters)</label>
-          <input type="text" id="rejoinAirlineCode" placeholder="e.g. PAC" maxlength="4" style="text-transform: uppercase;">
+          <label>WORLD</label>
+          <div id="rejoinWorldName" class="form-value"></div>
+        </div>
+        <div class="form-info" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3);">
+          <p style="color: #22c55e; font-weight: 600;">Create a new airline in this existing world.</p>
+          <p>You'll start with fresh capital. AI airlines and the world economy will continue as they are.</p>
         </div>
         <div class="form-group">
-          <label>IATA CODE (2 letters)</label>
-          <input type="text" id="rejoinIataCode" placeholder="e.g. PA" maxlength="2" style="text-transform: uppercase;">
+          <label>AIRLINE NAME</label>
+          <input type="text" id="rejoinAirlineName" placeholder="e.g. Pacific Airways" maxlength="50">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label>ICAO CODE (3-4 letters)</label>
+            <input type="text" id="rejoinAirlineCode" placeholder="e.g. PAC" maxlength="4" style="text-transform: uppercase;">
+          </div>
+          <div class="form-group">
+            <label>IATA CODE (2 letters)</label>
+            <input type="text" id="rejoinIataCode" placeholder="e.g. PA" maxlength="2" style="text-transform: uppercase;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>BASE AIRPORT</label>
+          <input type="text" id="rejoinAirportSearch" placeholder="Search by name, ICAO, or city..." autocomplete="off">
+          <div id="rejoinAirportResults" style="display: none; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.25rem;"></div>
+          <div id="rejoinSelectedAirport" style="display: none; padding: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; margin-top: 0.25rem;"></div>
         </div>
       </div>
-      <div class="form-group">
-        <label>BASE AIRPORT</label>
-        <input type="text" id="rejoinAirportSearch" placeholder="Search by name, ICAO, or city..." autocomplete="off">
-        <div id="rejoinAirportResults" style="display: none; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.25rem;"></div>
-        <div id="rejoinSelectedAirport" style="display: none; padding: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; margin-top: 0.25rem;"></div>
+
+      <!-- STEP 2: Cabin Services -->
+      <div id="rejoinStep2" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
+          <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR CABIN SERVICES CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinCleaning" value="budget" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">QuickShine Aviation</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Fast and affordable cabin turnovers. Cuts corners but keeps costs low. 15% faster cleaning but occasional complaints.</div>
+              </div>
+              <span class="rejoin-cleaning-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$8,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinCleaning" value="standard" checked onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroClean International</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Reliable cabin maintenance you can count on. Industry-standard cleaning with consistent quality.</div>
+              </div>
+              <span class="rejoin-cleaning-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$18,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinCleaning" value="premium" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Prestige Cabin Care</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Five-star cabin presentation, every flight. Meticulous deep cleaning. 20% slower turnarounds but spotless cabins.</div>
+              </div>
+              <span class="rejoin-cleaning-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$35,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="rejoinContractorTotal">$73,000/mo</span>
+        </div>
       </div>
+
+      <!-- STEP 3: Ground Handling -->
+      <div id="rejoinStep3" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
+          <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR GROUND HANDLING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinGround" value="budget" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">TarmacFirst Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">No-frills ground ops at unbeatable prices. Quick turnarounds but sloppy service. 15% faster boarding, baggage issues common.</div>
+              </div>
+              <span class="rejoin-ground-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$12,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinGround" value="standard" checked onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">GlobalGate Ground Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Professional handling at every gate. Reliable ground operations with trained staff.</div>
+              </div>
+              <span class="rejoin-ground-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$25,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinGround" value="premium" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">SkyBridge Premium Handling</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Precision ground ops for premium airlines. Careful, attentive service. 15% slower but passengers notice the difference.</div>
+              </div>
+              <span class="rejoin-ground-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$45,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="rejoinContractorTotal2">$73,000/mo</span>
+        </div>
+      </div>
+
+      <!-- STEP 4: Engineering -->
+      <div id="rejoinStep4" style="display: none;">
+        <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
+          <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
+          <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
+        </div>
+        <label style="font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; color: var(--accent-color); margin-bottom: 0.5rem; display: block;">SELECT YOUR ENGINEERING CONTRACTOR</label>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinEngineering" value="budget" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #22c55e; font-size: 0.9rem;">EconTech MRO</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Cost-effective maintenance solutions. Meets minimum standards. 20% cheaper maintenance but 25% faster wear between checks.</div>
+              </div>
+              <span class="rejoin-engineering-budget-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$15,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinEngineering" value="standard" checked onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.9rem;">AeroParts Technical Services</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Trusted engineering for your fleet. Standard MRO work with OEM parts and procedures.</div>
+              </div>
+              <span class="rejoin-engineering-standard-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$30,000/mo</span>
+            </div>
+          </label>
+          <label class="difficulty-option">
+            <input type="radio" name="rejoinEngineering" value="premium" onchange="updateRejoinContractorPreview()">
+            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-weight: 600; color: #3b82f6; font-size: 0.9rem;">Apex Aviation Engineering</span>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Engineering excellence, zero compromise. Premium MRO with extended component life. 30% pricier but 25% slower wear.</div>
+              </div>
+              <span class="rejoin-engineering-premium-cost" style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; margin-left: 1rem; font-weight: 600;">$55,000/mo</span>
+            </div>
+          </label>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); padding: 0.5rem 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.75rem;">
+          Total Monthly Contract Cost: <span id="rejoinContractorTotal3">$73,000/mo</span>
+        </div>
+      </div>
+
       <div id="rejoinError" class="error-message" style="display: none;"></div>
     </div>
-    <div class="modal-footer">
+    <div id="rejoinModalFooter" class="modal-footer">
       <button class="btn btn-secondary" onclick="closeRejoinModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmRejoin()">Create Airline</button>
+      <button class="btn btn-primary" onclick="showModalStep('rejoin', 2)">Next</button>
     </div>
   </div>
 </div>
