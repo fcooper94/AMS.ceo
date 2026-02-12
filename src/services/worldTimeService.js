@@ -692,9 +692,11 @@ class WorldTimeService {
       const distance = parseFloat(route.distance) || 500;
       const worldYear = currentGameTime.getFullYear();
 
-      // Get competitive load factor
+      // Get demand-influenced competitive load factor
       let loadFactor = 0.7; // Default
       try {
+        const routeDemandService = require('./routeDemandService');
+
         // Count competing routes on this airport pair
         const competingRoutes = await Route.count({
           where: {
@@ -717,9 +719,22 @@ class WorldTimeService {
 
         const totalCompetitors = competingRoutes + reverseCompeting;
 
-        // Base load factor from demand + era
-        const expectedLF = eraEconomicService.getExpectedLoadFactor(worldYear);
-        loadFactor = expectedLF;
+        // Base load factor ceiling from era
+        const expectedLF = eraEconomicService.getExpectedLoadFactor(worldYear) / 100;
+
+        // Modulate by route demand: high demand routes fill planes, low demand don't
+        // demand 100 -> factor 1.0, demand 50 -> factor 0.65, demand 0 -> factor 0.3
+        let demandFactor = 1.0;
+        try {
+          const routeDemand = await routeDemandService.getRouteDemand(
+            route.departureAirportId, route.arrivalAirportId, worldYear
+          );
+          demandFactor = 0.3 + 0.7 * (routeDemand.demand / 100);
+        } catch (demandErr) {
+          // Demand lookup failed, use full factor
+        }
+
+        loadFactor = expectedLF * demandFactor;
 
         // Reduce load factor based on competition
         if (totalCompetitors > 0) {
@@ -730,7 +745,7 @@ class WorldTimeService {
 
         // Add some randomness (±10%)
         loadFactor *= (0.9 + Math.random() * 0.2);
-        loadFactor = Math.max(0.2, Math.min(0.98, loadFactor));
+        loadFactor = Math.max(0.15, Math.min(0.98, loadFactor));
       } catch (err) {
         // Competition check failed, use default
       }

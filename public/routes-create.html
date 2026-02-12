@@ -9,6 +9,69 @@
   .day-button:active {
     transform: scale(0.95);
   }
+  /* Airport list table layout */
+  .airport-row {
+    display: grid;
+    grid-template-columns: 1fr 52px 78px 44px 72px 54px;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .airport-row:hover { background: var(--surface-elevated); }
+  .airport-row.selected { background: var(--accent-color-dim); }
+  .airport-list-header {
+    display: grid;
+    grid-template-columns: 1fr 52px 78px 44px 72px 54px;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--surface-elevated);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .airport-list-header > span:not(:first-child) { text-align: center; }
+
+  /* Indicator hover tooltips */
+  .indicator-hover {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .indicator-tooltip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: -8px;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+    min-width: 190px;
+    max-width: 230px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+  .indicator-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    right: 16px;
+    border: 5px solid transparent;
+    border-bottom-color: #333;
+  }
+  .indicator-hover:hover .indicator-tooltip {
+    display: block;
+  }
 </style>
 
 <div class="dashboard-container">
@@ -115,54 +178,6 @@
               >
                 <option value="">-- All countries --</option>
               </select>
-            </div>
-
-            <div>
-              <label style="display: block; margin-bottom: 0.25rem; color: var(--text-secondary); font-size: 0.75rem;">Infrastructure level</label>
-              <div style="display: flex; gap: 0.4rem;">
-                <select
-                  id="infraOperator"
-                  onchange="applyDestinationFilters()"
-                  style="width: 50px; padding: 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.85rem;"
-                >
-                  <option value="=">=</option>
-                  <option value=">=">&ge;</option>
-                  <option value="<=">&le;</option>
-                </select>
-                <input
-                  type="number"
-                  id="infraLevel"
-                  oninput="applyDestinationFilters()"
-                  placeholder="All"
-                  min="1"
-                  max="20"
-                  style="flex: 1; padding: 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.85rem;"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label style="display: block; margin-bottom: 0.25rem; color: var(--text-secondary); font-size: 0.75rem;">Operations level</label>
-              <div style="display: flex; gap: 0.4rem;">
-                <select
-                  id="trafficOperator"
-                  onchange="applyDestinationFilters()"
-                  style="width: 50px; padding: 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.85rem;"
-                >
-                  <option value="=">=</option>
-                  <option value=">=">&ge;</option>
-                  <option value="<=">&le;</option>
-                </select>
-                <input
-                  type="number"
-                  id="trafficLevel"
-                  oninput="applyDestinationFilters()"
-                  placeholder="All"
-                  min="1"
-                  max="20"
-                  style="flex: 1; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);"
-                />
-              </div>
             </div>
 
             <div>

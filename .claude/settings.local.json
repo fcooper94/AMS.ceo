@@ -31,7 +31,10 @@
       "Bash(timeout:*)",
       "Bash(gh repo view:*)",
       "Bash(dir:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(copy:*)",
+      "Bash(cd:*)"
     ]
   }
 }

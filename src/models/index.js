@@ -13,6 +13,8 @@ const AirportRouteDemand = require('./AirportRouteDemand');
 const SystemSettings = require('./SystemSettings');
 const UsedAircraftForSale = require('./UsedAircraftForSale');
 const Notification = require('./Notification');
+const MetroZone = require('./MetroZone');
+const AirportZoneMapping = require('./AirportZoneMapping');
 
 // Define associations
 User.belongsToMany(World, {
@@ -77,6 +79,12 @@ Airport.hasMany(AirportRouteDemand, { foreignKey: 'to_airport_id', as: 'demandTo
 AirportRouteDemand.belongsTo(Airport, { foreignKey: 'from_airport_id', as: 'fromAirport' });
 AirportRouteDemand.belongsTo(Airport, { foreignKey: 'to_airport_id', as: 'toAirport' });
 
+// MetroZone and AirportZoneMapping associations
+MetroZone.hasMany(AirportZoneMapping, { foreignKey: 'zone_id', as: 'airportMappings' });
+AirportZoneMapping.belongsTo(MetroZone, { foreignKey: 'zone_id', as: 'zone' });
+Airport.hasMany(AirportZoneMapping, { foreignKey: 'airport_id', as: 'zoneMappings' });
+AirportZoneMapping.belongsTo(Airport, { foreignKey: 'airport_id', as: 'airport' });
+
 // UsedAircraftForSale associations
 World.hasMany(UsedAircraftForSale, { foreignKey: 'world_id', as: 'usedAircraftForSale' });
 UsedAircraftForSale.belongsTo(World, { foreignKey: 'world_id', as: 'world' });
@@ -102,5 +110,7 @@ module.exports = {
   AirportRouteDemand,
   SystemSettings,
   UsedAircraftForSale,
-  Notification
+  Notification,
+  MetroZone,
+  AirportZoneMapping
 };

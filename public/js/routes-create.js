@@ -713,7 +713,8 @@ async function loadDemandForAirports(airports) {
             demandDataCache[dest.airport.id] = {
               demand: dest.demand,
               demandCategory: dest.demandCategory,
-              routeType: dest.routeType
+              routeType: dest.routeType,
+              indicators: dest.indicators || null
             };
           }
         });
@@ -816,10 +817,6 @@ function applyDestinationFilters() {
   const searchKeyword = document.getElementById('searchKeyword').value.toLowerCase();
   const continent = document.getElementById('continentFilter').value;
   const country = document.getElementById('countryFilter').value;
-  const infraOperator = document.getElementById('infraOperator').value;
-  const infraLevel = parseInt(document.getElementById('infraLevel').value) || null;
-  const trafficOperator = document.getElementById('trafficOperator').value;
-  const trafficLevel = parseInt(document.getElementById('trafficLevel').value) || null;
   const timezone = document.getElementById('timezoneFilter').value;
   const minRange = parseFloat(document.getElementById('minRange').value) || 0;
   const maxRange = parseFloat(document.getElementById('maxRange').value) || 0;
@@ -847,22 +844,6 @@ function applyDestinationFilters() {
     // Country filter
     if (country && airport.country !== country) {
       return false;
-    }
-
-    // Spare capacity filter
-    if (infraLevel !== null) {
-      const airportCapacity = airport.spareCapacity || 0;
-      if (infraOperator === '=' && airportCapacity !== infraLevel) return false;
-      if (infraOperator === '>=' && airportCapacity < infraLevel) return false;
-      if (infraOperator === '<=' && airportCapacity > infraLevel) return false;
-    }
-
-    // Operations level filter (movements index)
-    if (trafficLevel !== null) {
-      const airportOperations = airport.movementsIndex || airport.trafficDemand || 0;
-      if (trafficOperator === '=' && airportOperations !== trafficLevel) return false;
-      if (trafficOperator === '>=' && airportOperations < trafficLevel) return false;
-      if (trafficOperator === '<=' && airportOperations > trafficLevel) return false;
     }
 
     // Timezone filter
@@ -914,147 +895,230 @@ function applyDestinationFilters() {
   displayAvailableAirports(filtered);
 }
 
-// Generate visual level scale (like world selection)
-function generateLevelScaleCompact(level) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    let color;
-    if (i <= 6) color = '#ef4444'; // Red for low
-    else if (i <= 12) color = '#f59e0b'; // Orange for medium
-    else if (i <= 16) color = '#eab308'; // Yellow for medium-high
-    else color = '#22c55e'; // Green for high
+// Helper: factor bar for tooltip breakdowns (renders a small colored bar)
+function tooltipFactorBar(value, max, label, color) {
+  const pct = Math.round((value / max) * 100);
+  return `
+    <div style="display: flex; align-items: center; gap: 0.4rem; margin: 0.2rem 0;">
+      <span style="width: 75px; font-size: 0.65rem; color: #ccc; text-align: right;">${label}</span>
+      <div style="flex: 1; height: 5px; background: #333; border-radius: 2px; min-width: 60px;">
+        <div style="width: ${pct}%; height: 100%; background: ${color}; border-radius: 2px;"></div>
+      </div>
+      <span style="font-size: 0.6rem; color: #aaa; width: 28px;">${value.toFixed ? value.toFixed(2) : value}</span>
+    </div>`;
+}
 
-    const isFilled = i <= level;
-    dots.push(`
-      <div style="
-        width: 10px;
-        height: 10px;
-        border-radius: 1px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1px solid ${color};
-        opacity: ${isFilled ? '1' : '0.25'};
-      "></div>
-    `);
+// Generate yield indicator (compact, no label)
+function generateYieldIndicator(airport) {
+  const demandData = demandDataCache[airport.id];
+  const indicators = demandData?.indicators;
+
+  if (!indicators) {
+    return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
   }
 
+  const score = indicators.yieldScore;
+  const b = indicators.yieldBreakdown || {};
+  let label, color;
+  if (score >= 75) { label = '$$$$'; color = '#22c55e'; }
+  else if (score >= 50) { label = '$$$'; color = '#84cc16'; }
+  else if (score >= 25) { label = '$$'; color = '#f59e0b'; }
+  else { label = '$'; color = '#ef4444'; }
+
+  const tooltipContent = b.incomeFactor != null ? `
+    <div style="font-weight: 600; margin-bottom: 0.3rem; font-size: 0.7rem; color: #fff;">Yield (Score: ${score})</div>
+    ${tooltipFactorBar(b.incomeFactor, 2.0, 'Wealth', '#60a5fa')}
+    ${tooltipFactorBar(b.distanceFactor, 1.2, 'Range', '#a78bfa')}
+    <div style="margin-top: 0.3rem; font-size: 0.6rem; color: #888;">
+      ${b.originCountry || '??'} $${(b.originGdp || 0).toLocaleString()} / ${b.destCountry || '??'} $${(b.destGdp || 0).toLocaleString()}<br>
+      ${(b.distKm || 0).toLocaleString()} km
+    </div>
+  ` : '';
+
   return `
-    <div style="display: flex; gap: 1px; align-items: center;">
-      ${dots.join('')}
-      <span style="margin-left: 0.35rem; font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${level}/20</span>
+    <div class="indicator-hover" style="cursor: help;">
+      <span style="font-size: 0.8rem; font-weight: 700; color: ${color}; letter-spacing: 0.5px;">${label}</span>
+      ${tooltipContent ? `<div class="indicator-tooltip">${tooltipContent}</div>` : ''}
     </div>
   `;
 }
 
-function generateCapacityScaleCompact(percentage) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    const threshold = (i / 20) * 100;
-    let color;
-    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
-    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
-    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
-    else color = '#ef4444'; // Red for very high (little spare capacity)
+// Generate class mix indicator (compact stacked bar with tooltip)
+function generateClassMixIndicator(airport) {
+  const demandData = demandDataCache[airport.id];
+  const indicators = demandData?.indicators;
 
-    const isFilled = threshold <= percentage;
-    dots.push(`
-      <div style="
-        width: 10px;
-        height: 10px;
-        border-radius: 1px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1px solid ${color};
-        opacity: ${isFilled ? '1' : '0.25'};
-      "></div>
-    `);
+  if (!indicators || !indicators.classMix) {
+    return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
   }
 
+  const cm = indicators.classMix;
+  const pe = cm.premiumEconomy || 0;
+
+  // Label by dominant class character
+  let label, color;
+  const totalPremium = (cm.first || 0) + (cm.business || 0) + pe;
+  if (cm.first >= 20) { label = 'First'; color = '#f59e0b'; }
+  else if (cm.business >= 20) { label = 'Bus'; color = '#a78bfa'; }
+  else if (totalPremium >= 15) { label = 'Mix'; color = '#60a5fa'; }
+  else { label = 'Eco'; color = '#84cc16'; }
+
+  const tooltipContent = `
+    <div style="font-weight: 600; margin-bottom: 0.4rem; font-size: 0.7rem; color: #fff;">Cabin Class Mix</div>
+    <div style="display: flex; height: 10px; border-radius: 3px; overflow: hidden; margin-bottom: 0.4rem;">
+      ${cm.first > 0 ? `<div style="width: ${cm.first}%; background: #f59e0b;"></div>` : ''}
+      ${cm.business > 0 ? `<div style="width: ${cm.business}%; background: #a78bfa;"></div>` : ''}
+      ${pe > 0 ? `<div style="width: ${pe}%; background: #22d3ee;"></div>` : ''}
+      <div style="width: ${cm.economy}%; background: #60a5fa;"></div>
+    </div>
+    <div style="font-size: 0.65rem; color: #ccc; line-height: 1.6;">
+      ${cm.first > 0 ? `<div style="display: flex; justify-content: space-between;">
+        <span><span style="display: inline-block; width: 7px; height: 7px; background: #f59e0b; border-radius: 1px; margin-right: 4px;"></span>First</span>
+        <span style="font-weight: 600;">${cm.first}%</span>
+      </div>` : ''}
+      ${cm.business > 0 ? `<div style="display: flex; justify-content: space-between;">
+        <span><span style="display: inline-block; width: 7px; height: 7px; background: #a78bfa; border-radius: 1px; margin-right: 4px;"></span>Business</span>
+        <span style="font-weight: 600;">${cm.business}%</span>
+      </div>` : ''}
+      ${pe > 0 ? `<div style="display: flex; justify-content: space-between;">
+        <span><span style="display: inline-block; width: 7px; height: 7px; background: #22d3ee; border-radius: 1px; margin-right: 4px;"></span>Prem Eco</span>
+        <span style="font-weight: 600;">${pe}%</span>
+      </div>` : ''}
+      <div style="display: flex; justify-content: space-between;">
+        <span><span style="display: inline-block; width: 7px; height: 7px; background: #60a5fa; border-radius: 1px; margin-right: 4px;"></span>Economy</span>
+        <span style="font-weight: 600;">${cm.economy}%</span>
+      </div>
+    </div>
+  `;
+
   return `
-    <div style="display: flex; gap: 1px; align-items: center;">
-      ${dots.join('')}
-      <span style="margin-left: 0.35rem; font-size: 0.7rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${percentage}%</span>
+    <div class="indicator-hover" style="cursor: help;">
+      <span style="font-size: 0.7rem; font-weight: 600; color: ${color};">${label}</span>
+      <div class="indicator-tooltip">${tooltipContent}</div>
     </div>
   `;
 }
 
-// Generate demand indicator
+// Generate competition indicator (compact, no label)
+function generateCompetitionIndicator(airport) {
+  const demandData = demandDataCache[airport.id];
+  const indicators = demandData?.indicators;
+
+  if (!indicators) {
+    return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
+  }
+
+  const score = indicators.competitionScore;
+  const count = indicators.competitorCount || 0;
+  const b = indicators.competitionBreakdown || {};
+  let label, color;
+  if (count === 0) { label = 'None'; color = '#22c55e'; }
+  else if (score >= 67) { label = 'High'; color = '#ef4444'; }
+  else if (score >= 34) { label = 'Med'; color = '#f59e0b'; }
+  else { label = 'Low'; color = '#22c55e'; }
+
+  const tooltipContent = `
+    <div style="font-weight: 600; margin-bottom: 0.3rem; font-size: 0.7rem; color: #fff;">Competition (Score: ${score})</div>
+    <div style="font-size: 0.65rem; color: #ccc; line-height: 1.6;">
+      <div style="display: flex; justify-content: space-between;">
+        <span>Airlines on route:</span>
+        <span style="color: ${count === 0 ? '#22c55e' : count >= 3 ? '#ef4444' : '#f59e0b'}; font-weight: 600;">${count}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>Rival hub here:</span>
+        <span style="color: ${b.hasHub ? '#ef4444' : '#22c55e'}; font-weight: 600;">${b.hasHub ? 'Yes' : 'No'}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>Slot congestion:</span>
+        <span style="color: ${(b.congestion || 0) > 0 ? '#f59e0b' : '#22c55e'}; font-weight: 600;">${b.congestion || 0}%</span>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="indicator-hover" style="cursor: help;">
+      <span style="font-size: 0.75rem; font-weight: 600; color: ${color};">${label}</span>
+      <div class="indicator-tooltip">${tooltipContent}</div>
+    </div>
+  `;
+}
+
+// Generate access indicator (compact, no label)
+function generateAccessIndicator(airport) {
+  const demandData = demandDataCache[airport.id];
+  const indicators = demandData?.indicators;
+
+  if (!indicators) {
+    return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
+  }
+
+  const score = indicators.accessScore;
+  const b = indicators.accessBreakdown || {};
+  let label, color;
+  if (score >= 67) { label = 'Hard'; color = '#ef4444'; }
+  else if (score >= 34) { label = 'Med'; color = '#f59e0b'; }
+  else { label = 'Easy'; color = '#22c55e'; }
+
+  const tooltipContent = `
+    <div style="font-weight: 600; margin-bottom: 0.3rem; font-size: 0.7rem; color: #fff;">Access (Score: ${score})</div>
+    <div style="font-size: 0.65rem; color: #ccc; line-height: 1.6;">
+      <div style="display: flex; justify-content: space-between;">
+        <span>Airport type:</span>
+        <span style="font-weight: 600;">${b.airportType || '?'}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>Type restriction:</span>
+        <span style="color: ${(b.typeRisk || 0) > 15 ? '#ef4444' : (b.typeRisk || 0) > 5 ? '#f59e0b' : '#22c55e'}; font-weight: 600;">${b.typeRisk || 0}%</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>Congestion risk:</span>
+        <span style="color: ${(b.congestionRisk || 0) > 0 ? '#f59e0b' : '#22c55e'}; font-weight: 600;">${b.congestionRisk || 0}%</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span>Spare capacity:</span>
+        <span style="font-weight: 600;">${b.spareCapacity != null ? b.spareCapacity + '%' : '?'}</span>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="indicator-hover" style="cursor: help;">
+      <span style="font-size: 0.75rem; font-weight: 600; color: ${color};">${label}</span>
+      <div class="indicator-tooltip">${tooltipContent}</div>
+    </div>
+  `;
+}
+
+// Generate demand indicator (compact bar + number)
 function generateDemandIndicator(airport) {
   const demandData = demandDataCache[airport.id];
 
   if (!demandData) {
-    // No demand data yet - show loading
-    return `
-      <div style="display: flex; align-items: center; gap: 0.5rem; opacity: 0.4;">
-        <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Demand:</span>
-        <span style="font-size: 0.7rem; color: var(--text-muted);">Loading...</span>
-      </div>
-    `;
+    return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
   }
 
-  // Check for cargo-only routes
   if (demandData.routeType === 'cargo') {
-    return `
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Demand:</span>
-        <div style="
-          display: flex;
-          align-items: center;
-          gap: 0.35rem;
-          padding: 0.15rem 0.5rem;
-          background: #6366f122;
-          border: 1px solid #6366f1;
-          border-radius: 3px;
-        ">
-          <div style="
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #6366f1;
-          "></div>
-          <span style="font-size: 0.7rem; color: #6366f1; font-weight: 600; white-space: nowrap;">Cargo</span>
-        </div>
-      </div>
-    `;
+    return `<div style="text-align: center; color: #6366f1; font-size: 0.75rem; font-weight: 600;">Cargo</div>`;
   }
 
-  // Color and label based on demand level
-  let color, label;
-  if (demandData.demand === 0 || demandData.demandCategory === 'none') {
-    color = '#6b7280'; // Gray - no demand
-    label = 'None';
-  } else if (demandData.demand >= 75) {
-    color = '#22c55e'; // Green - high
-    label = 'High';
-  } else if (demandData.demand >= 45) {
-    color = '#eab308'; // Yellow - medium
-    label = 'Medium';
-  } else if (demandData.demand >= 15) {
-    color = '#f59e0b'; // Orange - low
-    label = 'Low';
-  } else {
-    color = '#ef4444'; // Red - very low
-    label = 'Very Low';
-  }
+  const demand = demandData.demand || 0;
+  const fillPercent = demand === 0 ? 0 : Math.round(Math.sqrt(demand / 100) * 100);
+
+  let labelColor;
+  if (demand >= 60) labelColor = '#22c55e';
+  else if (demand >= 40) labelColor = '#84cc16';
+  else if (demand >= 25) labelColor = '#eab308';
+  else if (demand >= 12) labelColor = '#f59e0b';
+  else labelColor = '#ef4444';
 
   return `
-    <div style="display: flex; align-items: center; gap: 0.5rem;">
-      <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Demand:</span>
-      <div style="
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-        padding: 0.15rem 0.5rem;
-        background: ${color}22;
-        border: 1px solid ${color};
-        border-radius: 3px;
-      ">
-        <div style="
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: ${color};
-        "></div>
-        <span style="font-size: 0.7rem; color: ${color}; font-weight: 600; white-space: nowrap;">${label}</span>
+    <div style="display: flex; align-items: center; gap: 0.3rem; justify-content: center;">
+      <div style="position: relative; width: 48px; height: 7px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08);">
+        <div style="position: absolute; left: 0; top: 0; height: 100%; width: ${fillPercent}%;
+          background: linear-gradient(90deg, #ef4444 0%, #f59e0b 25%, #eab308 45%, #84cc16 65%, #22c55e 100%);
+          border-radius: 2px 0 0 2px;"></div>
       </div>
+      <span style="font-size: 0.75rem; color: ${labelColor}; font-weight: 700; min-width: 16px;">${demand}</span>
     </div>
   `;
 }
@@ -1070,53 +1134,19 @@ function renderAirportItem(airport) {
   const isSelected = selectedDestinationAirport?.id === airport.id;
   return `
     <div
-      class="airport-item"
+      class="airport-row${isSelected ? ' selected' : ''}"
       data-airport-id="${airport.id}"
       onclick="selectDestinationAirport('${airport.id}')"
-      style="
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--border-color);
-        cursor: pointer;
-        background: ${isSelected ? 'var(--accent-color-dim)' : 'transparent'};
-        transition: background 0.15s;
-      "
-      onmouseover="if (!${isSelected}) this.style.background='var(--surface-elevated)'"
-      onmouseout="if (!${isSelected}) this.style.background='transparent'"
     >
-      <div style="display: flex; align-items: center; gap: 1rem;">
-        <!-- Airport Info -->
-        <div style="flex: 1; min-width: 0;">
-          <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.25rem;">
-            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">
-              ${airport.icaoCode}${airport.iataCode ? ` (${airport.iataCode})` : ''}
-            </span>
-            <span style="color: var(--text-secondary); font-size: 0.85rem;">
-              ${airport.name}
-            </span>
-          </div>
-          <div style="color: var(--text-muted); font-size: 0.8rem;">
-            ${airport.city}, ${airport.country} • ${airport.type}
-          </div>
-        </div>
-
-        <!-- Spare Capacity, Operations & Demand -->
-        <div style="display: flex; gap: 1.5rem; align-items: center;">
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Capacity:</span>
-            ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
-          </div>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap;">Operations:</span>
-            ${generateLevelScaleCompact(airport.movementsIndex || airport.trafficDemand)}
-          </div>
-          ${generateDemandIndicator(airport)}
-        </div>
-
-        <!-- Distance -->
-        <div style="text-align: right; min-width: 80px;">
-          <div style="color: var(--accent-color); font-weight: 600; font-size: 1rem; white-space: nowrap;">${Math.round(airport.distance)} NM</div>
-        </div>
+      <div style="min-width: 0;">
+        <span style="color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">${airport.icaoCode}</span>
+        <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 0.4rem;">${airport.city}, ${airport.country}</span>
       </div>
+      <div style="text-align: center; color: var(--accent-color); font-weight: 600; font-size: 0.8rem; white-space: nowrap;">${Math.round(airport.distance)} <span style="font-weight: 400; font-size: 0.65rem; color: var(--text-muted);">nm</span></div>
+      ${generateDemandIndicator(airport)}
+      ${generateYieldIndicator(airport)}
+      ${generateClassMixIndicator(airport)}
+      ${generateCompetitionIndicator(airport)}
     </div>
   `;
 }
@@ -1193,7 +1223,17 @@ function displayAvailableAirports(airports) {
     </div>
   ` : '';
 
-  container.innerHTML = html + sentinelHtml;
+  const headerHtml = `
+    <div class="airport-list-header">
+      <span>Airport</span>
+      <span>Dist</span>
+      <span>Demand</span>
+      <span>Yield</span>
+      <span>Class</span>
+      <span>Comp</span>
+    </div>
+  `;
+  container.innerHTML = headerHtml + html + sentinelHtml;
 
   // Set up IntersectionObserver for infinite scroll
   if (remaining > 0) {

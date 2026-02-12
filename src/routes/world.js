@@ -6,6 +6,7 @@ const historicalCountryService = require('../services/historicalCountryService')
 const airportCacheService = require('../services/airportCacheService');
 const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
+const routeIndicatorService = require('../services/routeIndicatorService');
 const { World, WorldMembership, User, Airport, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault } = require('../models');
 
 /**
@@ -413,6 +414,30 @@ router.get('/airports/:id/demand', async (req, res) => {
       currentYear,
       parseInt(limit)
     );
+
+    // Compute route indicators (yield, competition, ops feasibility)
+    try {
+      let playerMembershipId = null;
+      if (req.user) {
+        const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+        if (user) {
+          const membership = await WorldMembership.findOne({ where: { userId: user.id, worldId } });
+          playerMembershipId = membership?.id || null;
+        }
+      }
+
+      const indicators = await routeIndicatorService.computeIndicators(
+        airport, destinations, currentYear, worldId, playerMembershipId
+      );
+
+      for (const dest of destinations) {
+        if (dest.airport) {
+          dest.indicators = indicators[dest.airport.id] || null;
+        }
+      }
+    } catch (indicatorErr) {
+      console.error('Route indicators error:', indicatorErr);
+    }
 
     res.json({
       airport,

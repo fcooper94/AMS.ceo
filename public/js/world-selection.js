@@ -2063,9 +2063,38 @@ async function createSinglePlayerWorld() {
     return;
   }
 
-  // Show loading overlay
+  // Show loading overlay with cycling funny messages
   closeCreateSPModal();
-  showLoadingOverlay('Creating your world...<br><small style="opacity: 0.7;">Spawning AI competitors...</small>');
+  const loadingMessages = [
+    'Spawning AI competitors...',
+    'Teaching AI pilots which end of the plane goes first...',
+    'Convincing air traffic control this is a good idea...',
+    'Printing tiny boarding passes...',
+    'Losing your luggage already...',
+    'Filling the vending machines in Terminal 2...',
+    'Calibrating the turbulence generator...',
+    'Negotiating peanut contracts...',
+    'Installing overhead bins that never quite close...',
+    'Training cabin crew to smile through delays...',
+    'Scheduling flights that definitely won\'t be late...',
+    'Placing "Wet Floor" signs in the terminal...',
+    'Hiding the good gates from budget airlines...',
+    'Stocking the duty-free with oversized Toblerones...',
+    'Assigning middle seats to your enemies...',
+    'Preparing passive-aggressive PA announcements...',
+    'Making sure the Wi-Fi barely works...',
+    'Brewing coffee that costs $14...',
+    'Removing all the armrests from economy...',
+  ];
+  let loadingMsgIndex = 0;
+  showLoadingOverlay(`Creating your world...<br><small style="opacity: 0.7;">${loadingMessages[0]}</small>`);
+  const loadingMsgInterval = setInterval(() => {
+    loadingMsgIndex = (loadingMsgIndex + 1) % loadingMessages.length;
+    const msgEl = document.getElementById('generalLoadingMessage');
+    if (msgEl) {
+      msgEl.innerHTML = `Creating your world...<br><small style="opacity: 0.7;">${loadingMessages[loadingMsgIndex]}</small>`;
+    }
+  }, 3000);
 
   try {
     const response = await fetch('/api/worlds/create-singleplayer', {
@@ -2081,15 +2110,18 @@ async function createSinglePlayerWorld() {
     const data = await response.json();
 
     if (response.ok) {
+      clearInterval(loadingMsgInterval);
       // Redirect to dashboard
       window.location.href = '/dashboard';
     } else {
+      clearInterval(loadingMsgInterval);
       hideLoadingOverlay();
       openCreateSPModal();
       errorDiv.textContent = data.error || 'Failed to create world';
       errorDiv.style.display = 'block';
     }
   } catch (error) {
+    clearInterval(loadingMsgInterval);
     console.error('Error creating SP world:', error);
     hideLoadingOverlay();
     openCreateSPModal();
