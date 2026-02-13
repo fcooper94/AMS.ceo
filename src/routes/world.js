@@ -7,7 +7,8 @@ const airportCacheService = require('../services/airportCacheService');
 const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
 const routeIndicatorService = require('../services/routeIndicatorService');
-const { World, WorldMembership, User, Airport, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault } = require('../models');
+const { Op } = require('sequelize');
+const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification } = require('../models');
 
 /**
  * Get current world information (from session)
@@ -452,6 +453,219 @@ router.get('/airports/:id/demand', async (req, res) => {
 });
 
 /**
+ * Get competing routes between two airports (both directions)
+ * Returns airline name, schedule, aircraft type, and pricing
+ */
+router.get('/routes/competitors/:fromId/:toId', async (req, res) => {
+  try {
+    const { fromId, toId } = req.params;
+    const worldId = req.session?.activeWorldId;
+
+    if (!worldId) {
+      return res.status(400).json({ error: 'No active world' });
+    }
+
+    // Find the player's membership to exclude their own routes
+    let playerMembershipId = null;
+    if (req.user) {
+      const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+      if (user) {
+        const membership = await WorldMembership.findOne({ where: { userId: user.id, worldId } });
+        playerMembershipId = membership?.id || null;
+      }
+    }
+
+    const whereClause = {
+      isActive: true,
+      [Op.or]: [
+        { departureAirportId: fromId, arrivalAirportId: toId },
+        { departureAirportId: toId, arrivalAirportId: fromId }
+      ]
+    };
+
+    // Get all memberships in this world to filter routes
+    const worldMemberships = await WorldMembership.findAll({
+      where: { worldId, isActive: true },
+      attributes: ['id']
+    });
+    const membershipIds = worldMemberships.map(m => m.id);
+    whereClause.worldMembershipId = { [Op.in]: membershipIds };
+
+    const routes = await Route.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: WorldMembership,
+          as: 'membership',
+          attributes: ['id', 'airlineName', 'airlineCode']
+        },
+        {
+          model: UserAircraft,
+          as: 'assignedAircraft',
+          attributes: ['id', 'registration'],
+          include: [{
+            model: Aircraft,
+            as: 'aircraft',
+            attributes: ['manufacturer', 'model', 'icaoCode', 'type']
+          }]
+        }
+      ],
+      attributes: [
+        'id', 'routeNumber', 'scheduledDepartureTime', 'frequency',
+        'daysOfWeek', 'distance', 'economyPrice', 'businessPrice',
+        'firstPrice', 'averageLoadFactor', 'totalFlights',
+        'departureAirportId', 'arrivalAirportId', 'worldMembershipId'
+      ],
+      order: [['scheduledDepartureTime', 'ASC']]
+    });
+
+    const competitors = routes.map(r => {
+      const isPlayer = r.worldMembershipId === playerMembershipId;
+      const isReverse = r.departureAirportId === toId;
+      return {
+        id: r.id,
+        airlineName: r.membership?.airlineName || 'Unknown',
+        airlineCode: r.membership?.airlineCode || '??',
+        routeNumber: r.routeNumber,
+        isPlayer,
+        isReverse,
+        departureTime: r.scheduledDepartureTime,
+        frequency: r.frequency,
+        daysOfWeek: r.daysOfWeek,
+        aircraft: r.assignedAircraft?.aircraft
+          ? `${r.assignedAircraft.aircraft.manufacturer} ${r.assignedAircraft.aircraft.model}`
+          : null,
+        aircraftIcao: r.assignedAircraft?.aircraft?.icaoCode || null,
+        aircraftType: r.assignedAircraft?.aircraft?.type || null,
+        economyPrice: r.economyPrice ? parseFloat(r.economyPrice) : null,
+        businessPrice: r.businessPrice ? parseFloat(r.businessPrice) : null,
+        firstPrice: r.firstPrice ? parseFloat(r.firstPrice) : null,
+        averageLoadFactor: r.averageLoadFactor ? parseFloat(r.averageLoadFactor) : null,
+        totalFlights: r.totalFlights || 0,
+        distanceNm: r.distance ? parseFloat(r.distance) : null
+      };
+    });
+
+    // Also fetch popular routes INTO the destination airport (from other origins)
+    const popularRoutes = await Route.findAll({
+      where: {
+        isActive: true,
+        arrivalAirportId: toId,
+        departureAirportId: { [Op.ne]: fromId },
+        worldMembershipId: { [Op.in]: membershipIds }
+      },
+      include: [
+        {
+          model: WorldMembership,
+          as: 'membership',
+          attributes: ['airlineName', 'airlineCode']
+        },
+        {
+          model: Airport,
+          as: 'departureAirport',
+          attributes: ['icaoCode', 'city', 'country']
+        }
+      ],
+      attributes: ['id', 'departureAirportId', 'frequency', 'daysOfWeek', 'worldMembershipId'],
+      order: [['totalFlights', 'DESC']],
+      limit: 15
+    });
+
+    // Group by origin airport, count airlines and routes
+    const originMap = {};
+    let totalInboundRoutes = 0;
+    for (const r of popularRoutes) {
+      const key = r.departureAirportId;
+      totalInboundRoutes++;
+      if (!originMap[key]) {
+        originMap[key] = {
+          icao: r.departureAirport?.icaoCode || '????',
+          city: r.departureAirport?.city || '',
+          country: r.departureAirport?.country || '',
+          airlines: [],
+          routeCount: 0
+        };
+      }
+      originMap[key].routeCount++;
+      const code = r.membership?.airlineCode || '??';
+      if (!originMap[key].airlines.includes(code)) {
+        originMap[key].airlines.push(code);
+      }
+    }
+
+    const popularOrigins = Object.values(originMap)
+      .sort((a, b) => b.routeCount - a.routeCount)
+      .slice(0, 10);
+
+    // Fetch all routes touching the destination airport for the time chart
+    const flightCalc = require('../utils/flightCalculations');
+    const allDestRoutes = await Route.findAll({
+      where: {
+        isActive: true,
+        worldMembershipId: { [Op.in]: membershipIds },
+        [Op.or]: [
+          { departureAirportId: toId },
+          { arrivalAirportId: toId }
+        ]
+      },
+      include: [
+        { model: Airport, as: 'departureAirport', attributes: ['latitude', 'longitude'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['latitude', 'longitude'] },
+        { model: UserAircraft, as: 'assignedAircraft', attributes: ['id'], include: [
+          { model: Aircraft, as: 'aircraft', attributes: ['cruiseSpeed'] }
+        ]}
+      ],
+      attributes: ['scheduledDepartureTime', 'distance', 'departureAirportId', 'arrivalAirportId']
+    });
+
+    // Build movements using the same flight duration calculation as the world map
+    const airportMovements = [];
+    for (const r of allDestRoutes) {
+      const depTime = r.scheduledDepartureTime;
+      if (!depTime) continue;
+      const depHour = parseInt(depTime.substring(0, 2));
+      const depMin = parseInt(depTime.substring(3, 5)) || 0;
+      const distNm = parseFloat(r.distance) || 0;
+      const cruiseSpeed = r.assignedAircraft?.aircraft?.cruiseSpeed || 450;
+      const depLat = parseFloat(r.departureAirport?.latitude) || 0;
+      const depLng = parseFloat(r.departureAirport?.longitude) || 0;
+      const arrLat = parseFloat(r.arrivalAirport?.latitude) || 0;
+      const arrLng = parseFloat(r.arrivalAirport?.longitude) || 0;
+
+      const flightHours = flightCalc.calculateFlightDuration(distNm, depLng, arrLng, depLat, arrLat, cruiseSpeed);
+      const flightMins = Math.round(flightHours * 60);
+      const arrTotalMin = (depHour * 60 + depMin + flightMins) % 1440;
+      const arrHour = Math.floor(arrTotalMin / 60);
+
+      if (r.departureAirportId === toId) {
+        airportMovements.push({ hour: depHour, type: 'dep' });
+      } else {
+        airportMovements.push({ hour: arrHour, type: 'arr' });
+      }
+    }
+
+    // Look up both airport coordinates for frontend flight time calculations
+    const [fromAirport, toAirport] = await Promise.all([
+      Airport.findByPk(fromId, { attributes: ['latitude', 'longitude'] }),
+      Airport.findByPk(toId, { attributes: ['latitude', 'longitude'] })
+    ]);
+
+    const routeCoords = {
+      fromLat: parseFloat(fromAirport?.latitude) || 0,
+      fromLng: parseFloat(fromAirport?.longitude) || 0,
+      toLat: parseFloat(toAirport?.latitude) || 0,
+      toLng: parseFloat(toAirport?.longitude) || 0
+    };
+
+    res.json({ competitors, popularOrigins, totalInboundRoutes, airportMovements, routeCoords });
+
+  } catch (error) {
+    console.error('Error fetching competitor routes:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Get detailed slot information for an airport
  */
 router.get('/airports/:id/slots', async (req, res) => {
@@ -605,7 +819,13 @@ router.post('/bankruptcy', async (req, res) => {
       transaction
     });
 
-    // 7. Delete the membership itself
+    // 7. Delete notifications
+    await Notification.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 8. Delete the membership itself
     await membership.destroy({ transaction });
 
     // Clear the active world from session
@@ -647,7 +867,6 @@ router.get('/competition', async (req, res) => {
       return res.status(404).json({ error: 'No active world selected' });
     }
 
-    const { Op } = require('sequelize');
     const sequelize = require('../config/database');
 
     // Get world info

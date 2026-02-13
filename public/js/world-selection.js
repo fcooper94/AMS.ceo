@@ -8,6 +8,7 @@ let selectedAirportId = null;
 let airportSearchTimeout = null;
 let allAirports = [];
 let filteredAirports = [];
+let _airportDataCache = {}; // Store full airport objects by id for selection
 
 // SP modal state
 let spSelectedAirportId = null;
@@ -761,17 +762,18 @@ async function searchAirports(query) {
       return;
     }
 
+    airports.slice(0, 10).forEach(a => { _airportDataCache[a.id] = a; });
     resultsDiv.innerHTML = airports.slice(0, 10).map(airport => `
-      <div class="airport-result-item" onclick="selectAirport('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1})" style="
+      <div class="airport-result-item" onclick="selectAirport('${airport.id}')" style="
         padding: 0.75rem 1rem;
         cursor: pointer;
         border-bottom: 1px solid var(--border-color);
       " onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='var(--surface-elevated)'">
         <div style="font-weight: 600; color: var(--text-primary);">${airport.name} (${airport.icaoCode})</div>
-        <div style="font-size: 0.85rem; color: var(--text-secondary);">${airport.city}, ${airport.country} • ${airport.type}</div>
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">${airport.city}, ${airport.country} &bull; ${airport.type}</div>
         <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; display: flex; gap: 1rem;">
-          <span>Demand: ${airport.trafficDemand || 10}/20</span>
-          <span>Spare Capacity: ${airport.spareCapacity || 0}%</span>
+          <span>${formatPax(airport.annualPassengers)} pax/yr</span>
+          <span>Runways: ${Math.ceil((airport.runways || 1) / 2)}</span>
           <span>Airlines: ${airport.airlinesBasedHere || 0}</span>
         </div>
       </div>
@@ -783,89 +785,66 @@ async function searchAirports(query) {
   }
 }
 
-// Generate colored scale visualization (1-20)
-function generateLevelScale(level) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    let color;
-    if (i <= 6) color = '#ef4444'; // Red for low (1-6)
-    else if (i <= 12) color = '#f59e0b'; // Orange for medium (7-12)
-    else if (i <= 16) color = '#eab308'; // Yellow for medium-high (13-16)
-    else color = '#22c55e'; // Green for high (17-20)
 
-    const isFilled = i <= level;
-    dots.push(`
-      <div style="
-        width: 14px;
-        height: 14px;
-        border-radius: 2px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1.5px solid ${color};
-        opacity: ${isFilled ? '1' : '0.3'};
-        flex-shrink: 0;
-      "></div>
-    `);
-  }
-
-  return `
-    <div style="display: flex; gap: 2px; align-items: center;">
-      ${dots.join('')}
-      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${level}/20</span>
-    </div>
-  `;
+// Format passenger count
+function formatPax(pax) {
+  if (!pax) return '?';
+  return pax >= 1 ? `${pax.toFixed(1)}M` : `${(pax * 1000).toFixed(0)}K`;
 }
 
-// Generate colored scale visualization for percentage (0-100%)
-function generateCapacityScale(percentage) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    const threshold = (i / 20) * 100; // Convert to percentage
-    let color;
-    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
-    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
-    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
-    else color = '#ef4444'; // Red for very high (little spare capacity)
-
-    const isFilled = threshold <= percentage;
-    dots.push(`
-      <div style="
-        width: 14px;
-        height: 14px;
-        border-radius: 2px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1.5px solid ${color};
-        opacity: ${isFilled ? '1' : '0.3'};
-        flex-shrink: 0;
-      "></div>
-    `);
+// Render airport stats grid for selected airport panel
+function renderAirportStats(airport, containerId, isNewWorld) {
+  const pax = formatPax(airport.annualPassengers);
+  const competitors = airport.airlinesBasedHere || 0;
+  let compColor, compLabel;
+  if (isNewWorld) {
+    compColor = 'var(--text-secondary)';
+    compLabel = 'None — world has not started';
+  } else if (competitors === 0) {
+    compColor = '#22c55e';
+    compLabel = 'None';
+  } else {
+    compColor = competitors <= 3 ? '#f59e0b' : '#ef4444';
+    compLabel = `${competitors} airline${competitors > 1 ? 's' : ''}`;
   }
 
-  return `
-    <div style="display: flex; gap: 2px; align-items: center;">
-      ${dots.join('')}
-      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600; white-space: nowrap;">${percentage}%</span>
+  document.getElementById(containerId).innerHTML = `
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; margin-top: 0.5rem;">
+      <div>
+        <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;">Type</div>
+        <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">${airport.type || 'Regional'}</div>
+      </div>
+      <div>
+        <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;">Passengers</div>
+        <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">${pax}/yr</div>
+      </div>
+      <div>
+        <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;">Runways</div>
+        <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">${Math.ceil((airport.runways || 1) / 2)}</div>
+      </div>
+      <div>
+        <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;">Daily Slots</div>
+        <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">${(airport.totalSlots || 0).toLocaleString()}</div>
+      </div>
+      <div style="grid-column: 1 / -1; margin-top: 0.15rem; padding-top: 0.4rem; border-top: 1px solid var(--border-color);">
+        <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;">Competitors based here</div>
+        <div style="font-size: 0.85rem; color: ${compColor}; font-weight: 600;">${compLabel}</div>
+      </div>
     </div>
   `;
 }
 
 // Select airport
-function selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers) {
+function selectAirport(id) {
+  const airport = _airportDataCache[id];
+  if (!airport) return;
+
   selectedAirportId = id;
   document.getElementById('baseAirport').value = id;
-  document.getElementById('selectedAirportName').textContent = `${name} (${icao})`;
-  document.getElementById('selectedAirportLocation').textContent = `${city}, ${country}`;
+  document.getElementById('selectedAirportName').textContent = `${airport.name} (${airport.icaoCode})`;
+  document.getElementById('selectedAirportLocation').textContent = `${airport.city}, ${airport.country}`;
 
-  // Set traffic demand scale
-  document.getElementById('selectedAirportTraffic').innerHTML = generateLevelScale(trafficDemand || 5, 'Traffic');
-
-  // Display annual passengers
-  const paxText = annualPassengers >= 1
-    ? `${annualPassengers.toFixed(1)}M passengers/year`
-    : `${(annualPassengers * 1000).toFixed(0)}K passengers/year`;
-  document.getElementById('selectedAirportPassengers').textContent = paxText;
-
-  // Set spare capacity scale
-  document.getElementById('selectedAirportInfrastructure').innerHTML = generateCapacityScale(spareCapacity || 0);
+  renderAirportStats(airport, 'selectedAirportStats');
 
   document.getElementById('selectedAirportDisplay').style.display = 'block';
   document.getElementById('airportSearch').style.display = 'none';
@@ -1616,8 +1595,13 @@ function renderAirportBrowser() {
     return;
   }
 
-  listDiv.innerHTML = filteredAirports.map(airport => `
-    <div onclick="selectAirportFromBrowser('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1}, '${(airport.type || 'Regional').replace(/'/g, "\\'")}')" style="
+  filteredAirports.forEach(a => { _airportDataCache[a.id] = a; });
+  const competitors = filteredAirports.map(a => a.airlinesBasedHere || 0);
+  listDiv.innerHTML = filteredAirports.map(airport => {
+    const comp = airport.airlinesBasedHere || 0;
+    const compColor = comp === 0 ? '#22c55e' : comp <= 3 ? '#f59e0b' : '#ef4444';
+    return `
+    <div onclick="selectAirportFromBrowser('${airport.id}')" style="
       padding: 1rem;
       margin-bottom: 0.75rem;
       background: var(--surface-elevated);
@@ -1626,109 +1610,39 @@ function renderAirportBrowser() {
       cursor: pointer;
       transition: all 0.2s;
     " onmouseover="this.style.borderColor='var(--primary-color)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateY(0)'">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div style="flex: 1;">
           <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary); margin-bottom: 0.25rem;">
             ${airport.name} (${airport.icaoCode})
           </div>
           <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            ${airport.city}, ${airport.country} • ${airport.type}
+            ${airport.city}, ${airport.country} &bull; ${airport.type}
           </div>
         </div>
         <div style="text-align: right;">
-          <div style="font-size: 0.75rem; color: var(--text-secondary);">Airlines</div>
-          <div style="font-weight: 600; color: var(--text-primary);">${airport.airlinesBasedHere || 0}</div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary);">Competitors</div>
+          <div style="font-weight: 600; color: ${compColor};">${comp}</div>
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem;">
-        <div>
-          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Traffic Demand</div>
-          ${generateLevelScaleCompact(airport.trafficDemand || 5)}
-          <div style="margin-top: 0.25rem; font-size: 0.7rem; color: var(--text-secondary);">
-            ${airport.annualPassengers >= 1
-              ? `${airport.annualPassengers.toFixed(1)}M pax/year`
-              : `${(airport.annualPassengers * 1000).toFixed(0)}K pax/year`}
-          </div>
-        </div>
-        <div>
-          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Spare Capacity</div>
-          ${generateCapacityScaleCompact(airport.spareCapacity || 0)}
-        </div>
+      <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+        <span>${formatPax(airport.annualPassengers)} pax/yr</span>
+        <span>Runways: ${Math.ceil((airport.runways || 1) / 2)}</span>
+        <span>Slots: ${(airport.totalSlots || 0).toLocaleString()}</span>
       </div>
     </div>
-  `).join('');
-}
-
-function generateLevelScaleCompact(level) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    let color;
-    if (i <= 6) color = '#ef4444';
-    else if (i <= 12) color = '#f59e0b';
-    else if (i <= 16) color = '#eab308';
-    else color = '#22c55e';
-
-    const isFilled = i <= level;
-    dots.push(`
-      <div style="
-        width: 14px;
-        height: 14px;
-        border-radius: 2px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1px solid ${color};
-        opacity: ${isFilled ? '1' : '0.3'};
-      "></div>
-    `);
-  }
-
-  return `
-    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap;">
-      ${dots.join('')}
-      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600;">${level}/20</span>
-    </div>
   `;
+  }).join('');
 }
 
-function generateCapacityScaleCompact(percentage) {
-  const dots = [];
-  for (let i = 1; i <= 20; i++) {
-    const threshold = (i / 20) * 100;
-    let color;
-    if (threshold <= 30) color = '#22c55e'; // Green for low capacity (more spare)
-    else if (threshold <= 60) color = '#eab308'; // Yellow for medium
-    else if (threshold <= 80) color = '#f59e0b'; // Orange for high
-    else color = '#ef4444'; // Red for very high (little spare capacity)
-
-    const isFilled = threshold <= percentage;
-    dots.push(`
-      <div style="
-        width: 14px;
-        height: 14px;
-        border-radius: 2px;
-        background: ${isFilled ? color : 'transparent'};
-        border: 1px solid ${color};
-        opacity: ${isFilled ? '1' : '0.3'};
-      "></div>
-    `);
-  }
-
-  return `
-    <div style="display: flex; gap: 2px; align-items: center; flex-wrap: wrap;">
-      ${dots.join('')}
-      <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-primary); font-weight: 600;">${percentage}%</span>
-    </div>
-  `;
-}
-
-function selectAirportFromBrowser(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType) {
+function selectAirportFromBrowser(id) {
   // Close the browser modal
   closeAirportBrowser();
 
   if (airportBrowserContext === 'sp') {
-    selectSPAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType);
+    selectSPAirport(id);
   } else {
-    selectAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers);
+    selectAirport(id);
   }
 }
 
@@ -1960,8 +1874,9 @@ async function searchSPAirports(query) {
       return;
     }
 
+    airports.slice(0, 10).forEach(a => { _airportDataCache[a.id] = a; });
     resultsDiv.innerHTML = airports.slice(0, 10).map(airport => `
-      <div class="airport-result-item" onclick="selectSPAirport('${airport.id}', '${airport.name.replace(/'/g, "\\'")}', '${airport.city}', '${airport.country}', '${airport.icaoCode}', ${airport.trafficDemand || 10}, ${airport.spareCapacity || 0}, ${airport.annualPassengers || 1}, '${(airport.type || 'Regional').replace(/'/g, "\\'")}')" style="
+      <div class="airport-result-item" onclick="selectSPAirport('${airport.id}')" style="
         padding: 0.75rem 1rem;
         cursor: pointer;
         border-bottom: 1px solid var(--border-color);
@@ -1977,19 +1892,17 @@ async function searchSPAirports(query) {
   }
 }
 
-function selectSPAirport(id, name, city, country, icao, trafficDemand, spareCapacity, annualPassengers, airportType) {
+function selectSPAirport(id) {
+  const airport = _airportDataCache[id];
+  if (!airport) return;
+
   spSelectedAirportId = id;
   document.getElementById('spBaseAirport').value = id;
-  document.getElementById('spBaseAirportType').value = airportType || 'Regional';
-  document.getElementById('spSelectedAirportName').textContent = `${name} (${icao})`;
-  document.getElementById('spSelectedAirportLocation').textContent = `${city}, ${country}`;
-  document.getElementById('spSelectedAirportTraffic').innerHTML = generateLevelScale(trafficDemand || 5);
+  document.getElementById('spBaseAirportType').value = airport.type || 'Regional';
+  document.getElementById('spSelectedAirportName').textContent = `${airport.name} (${airport.icaoCode})`;
+  document.getElementById('spSelectedAirportLocation').textContent = `${airport.city}, ${airport.country}`;
 
-  const paxText = annualPassengers >= 1
-    ? `${annualPassengers.toFixed(1)}M passengers/year`
-    : `${(annualPassengers * 1000).toFixed(0)}K passengers/year`;
-  document.getElementById('spSelectedAirportPassengers').textContent = paxText;
-  document.getElementById('spSelectedAirportInfrastructure').innerHTML = generateCapacityScale(spareCapacity || 0);
+  renderAirportStats(airport, 'spSelectedAirportStats', true);
 
   document.getElementById('spSelectedAirportDisplay').style.display = 'block';
   document.getElementById('spAirportSearch').style.display = 'none';

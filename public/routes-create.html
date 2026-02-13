@@ -17,11 +17,15 @@
     gap: 0.25rem;
     padding: 0.4rem 0.75rem;
     border-bottom: 1px solid var(--border-color);
-    cursor: pointer;
     transition: background 0.15s;
   }
-  .airport-row:hover { background: var(--surface-elevated); }
+  .airport-row:hover { background: rgba(255,255,255,0.03); }
   .airport-row.selected { background: var(--accent-color-dim); }
+  .airport-row .airport-select-zone {
+    cursor: pointer;
+    min-width: 0;
+  }
+  .airport-row .airport-select-zone:hover { opacity: 0.8; }
   .airport-list-header {
     display: grid;
     grid-template-columns: 1fr 52px 78px 44px 72px 54px;
@@ -103,22 +107,78 @@
       <div id="selectedDestinationPanelStep1" class="ops-panel full-width" style="margin-bottom: 0.75rem; display: none; border: 2px solid var(--accent-color);">
         <div class="panel-header" style="background: var(--accent-color-dim); padding: 0.5rem 0.75rem;">
           <h2 style="color: var(--accent-color); font-size: 0.85rem; margin: 0;">SELECTED DESTINATION</h2>
-          <button onclick="clearDestinationStep1()" class="btn btn-secondary btn-sm">CHANGE</button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button onclick="clearDestinationStep1()" class="btn btn-secondary btn-sm">CHANGE</button>
+            <button onclick="proceedToStep2()" class="btn btn-primary btn-sm">NEXT →</button>
+          </div>
         </div>
         <div class="panel-body" style="padding: 0.75rem;">
-          <div style="display: grid; grid-template-columns: 2fr auto; gap: 1.5rem; align-items: center;">
+          <!-- Row 1: Airport info -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
-              <h3 id="selectedDestNameStep1" style="color: var(--text-primary); margin: 0 0 0.25rem 0; font-size: 1.05rem; font-weight: 600;">--</h3>
+              <h3 id="selectedDestNameStep1" style="color: var(--text-primary); margin: 0 0 0.2rem 0; font-size: 1.05rem; font-weight: 600;">--</h3>
               <p id="selectedDestDetailsStep1" style="color: var(--text-secondary); margin: 0; font-size: 0.85rem;">--</p>
             </div>
-            <div style="text-align: right; display: flex; align-items: center; gap: 1rem;">
-              <div>
-                <div style="color: var(--text-muted); font-size: 0.75rem;">Distance</div>
-                <div id="selectedDestDistanceStep1" style="color: var(--accent-color); font-weight: 700; font-size: 1.4rem; line-height: 1;">-- NM</div>
+            <div id="selectedDestDistanceStep1" style="color: var(--accent-color); font-weight: 700; font-size: 1.4rem; line-height: 1; white-space: nowrap;">-- NM</div>
+          </div>
+
+          <!-- Row 2: Route stats -->
+          <div id="selectedDestStats" style="display: grid; grid-template-columns: 1fr 1fr 2fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Demand</div>
+              <div id="statDemand" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+            </div>
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Yield</div>
+              <div id="statYield" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+            </div>
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Class Mix</div>
+              <div id="statClassMix" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">--</div>
+            </div>
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Competition</div>
+              <div id="statCompetition" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+            </div>
+          </div>
+
+          <!-- Row 3: Yield breakdown (pros/cons) -->
+          <div id="selectedDestYieldBreakdown" style="margin-bottom: 0.75rem; display: none;">
+            <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">Yield Factors</div>
+            <div id="yieldFactorsList" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+          </div>
+
+          <!-- Row 4: Airport movements chart -->
+          <div id="selectedDestTimeChart" style="display: none; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; margin-bottom: 0.75rem;">
+            <div style="background: var(--surface-elevated); padding: 0.4rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+              <span>Airport traffic by hour</span>
+              <div style="display: flex; gap: 0.6rem; font-size: 0.6rem; text-transform: none; font-weight: 500;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; background: #f59e0b; border-radius: 2px; vertical-align: middle; margin-right: 3px;"></span>Departures</span>
+                <span><span style="display: inline-block; width: 8px; height: 8px; background: #22d3ee; border-radius: 2px; vertical-align: middle; margin-right: 3px;"></span>Arrivals</span>
               </div>
-              <button onclick="proceedToStep2()" class="btn btn-primary" style="padding: 0.6rem 1.5rem; font-size: 0.95rem; white-space: nowrap;">
-                NEXT →
-              </button>
+            </div>
+            <div style="padding: 0.5rem 0.6rem;">
+              <div id="timeChartBars" style="display: flex; align-items: flex-end; gap: 1px; height: 48px;"></div>
+              <div id="timeChartLabels" style="display: flex; gap: 1px; margin-top: 2px;"></div>
+            </div>
+          </div>
+
+          <!-- Row 5: Competitors + Popular Origins side by side -->
+          <div id="selectedDestRouteInfo" style="display: none; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div id="selectedDestCompetitors" style="border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
+              <div style="background: var(--surface-elevated); padding: 0.4rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color);">
+                Airlines on this route <span id="competitorCount" style="color: var(--text-secondary);"></span>
+              </div>
+              <div id="competitorsList" style="max-height: 220px; overflow-y: auto;"></div>
+            </div>
+            <div id="selectedDestPopularOrigins" style="border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
+              <div style="background: var(--surface-elevated); padding: 0.4rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color);">
+                Other routes into this airport <span id="popularOriginsCount" style="color: var(--text-secondary);"></span>
+              </div>
+              <div style="display: grid; grid-template-columns: 50px 1fr 40px; gap: 0 0.4rem; padding: 0.25rem 0.6rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-color); font-weight: 600;">
+                <span>Origin</span><span>Airlines</span><span style="text-align: right;">Rts</span>
+              </div>
+              <div id="popularOriginsList" style="max-height: 180px; overflow-y: auto;"></div>
             </div>
           </div>
         </div>

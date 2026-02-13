@@ -925,11 +925,42 @@ function generateYieldIndicator(airport) {
   else if (score >= 25) { label = '$$'; color = '#f59e0b'; }
   else { label = '$'; color = '#ef4444'; }
 
-  const tooltipContent = b.incomeFactor != null ? `
-    <div style="font-weight: 600; margin-bottom: 0.3rem; font-size: 0.7rem; color: #fff;">Yield (Score: ${score})</div>
-    ${tooltipFactorBar(b.incomeFactor, 2.0, 'Wealth', '#60a5fa')}
-    ${tooltipFactorBar(b.distanceFactor, 1.2, 'Range', '#a78bfa')}
-    <div style="margin-top: 0.3rem; font-size: 0.6rem; color: #888;">
+  // Build pros/cons list for yield tooltip
+  const yieldPoints = [];
+  if (b.incomeFactor != null) {
+    // Wealth assessment
+    if (b.incomeFactor >= 1.4) yieldPoints.push({ good: true, text: 'Wealthy markets' });
+    else if (b.incomeFactor >= 1.0) yieldPoints.push({ good: true, text: 'Good economies' });
+    else if (b.incomeFactor >= 0.7) yieldPoints.push({ good: null, text: 'Average income' });
+    else yieldPoints.push({ good: false, text: 'Low income markets' });
+
+    // Hub/airport type assessment
+    if (b.hubPremium != null) {
+      if (b.hubPremium >= 1.10) yieldPoints.push({ good: true, text: 'Major destination airport' });
+      else if (b.hubPremium <= 0.85) yieldPoints.push({ good: false, text: 'Small destination airport' });
+    }
+
+    // Distance assessment
+    const dk = b.distKm || 0;
+    if (dk < 500) yieldPoints.push({ good: false, text: 'Very short route' });
+    else if (dk < 1200) yieldPoints.push({ good: null, text: 'Short haul' });
+    else if (dk < 1800) yieldPoints.push({ good: true, text: 'Medium haul' });
+    else if (dk < 4000) yieldPoints.push({ good: true, text: 'Ideal range' });
+    else if (dk < 7000) yieldPoints.push({ good: null, text: 'Long haul' });
+    else yieldPoints.push({ good: false, text: 'Ultra long haul' });
+  }
+
+  const tooltipContent = yieldPoints.length > 0 ? `
+    <div style="font-weight: 600; margin-bottom: 0.4rem; font-size: 0.7rem; color: #fff;">Yield</div>
+    ${yieldPoints.map(p => {
+      const icon = p.good === true ? '+' : p.good === false ? '−' : '~';
+      const col = p.good === true ? '#22c55e' : p.good === false ? '#ef4444' : '#f59e0b';
+      return `<div style="display: flex; align-items: center; gap: 0.35rem; margin: 0.15rem 0;">
+        <span style="font-size: 0.75rem; font-weight: 700; color: ${col}; width: 10px; text-align: center;">${icon}</span>
+        <span style="font-size: 0.65rem; color: #ccc;">${p.text}</span>
+      </div>`;
+    }).join('')}
+    <div style="margin-top: 0.35rem; font-size: 0.6rem; color: #888;">
       ${b.originCountry || '??'} $${(b.originGdp || 0).toLocaleString()} / ${b.destCountry || '??'} $${(b.destGdp || 0).toLocaleString()}<br>
       ${(b.distKm || 0).toLocaleString()} km
     </div>
@@ -1136,9 +1167,8 @@ function renderAirportItem(airport) {
     <div
       class="airport-row${isSelected ? ' selected' : ''}"
       data-airport-id="${airport.id}"
-      onclick="selectDestinationAirport('${airport.id}')"
     >
-      <div style="min-width: 0;">
+      <div class="airport-select-zone" onclick="selectDestinationAirport('${airport.id}')">
         <span style="color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">${airport.icaoCode}</span>
         <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 0.4rem;">${airport.city}, ${airport.country}</span>
       </div>
@@ -1253,6 +1283,11 @@ function displayAvailableAirports(airports) {
 function selectDestinationAirport(airportId) {
   selectedDestinationAirport = availableAirports.find(a => a.id === airportId);
 
+  // Update row selection visuals
+  document.querySelectorAll('.airport-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.airportId === airportId);
+  });
+
   // Clear any existing tech stop when changing destination
   if (selectedTechStopAirport) {
     selectedTechStopAirport = null;
@@ -1280,8 +1315,283 @@ function selectDestinationAirport(airportId) {
     document.getElementById('selectedDestDistanceStep1').textContent =
       `${Math.round(selectedDestinationAirport.distance)} NM`;
 
+    // Populate route stats from cached indicator data
+    populateRouteStats(selectedDestinationAirport);
+
+    // Fetch and display competing airlines
+    fetchCompetitors(baseAirport.id, selectedDestinationAirport.id);
+
     // Scroll to selected destination panel
     panelStep1.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// Populate route stats from cached indicator data
+function populateRouteStats(airport) {
+  const demandData = demandDataCache[airport.id];
+  const indicators = demandData?.indicators;
+
+  // Demand stat
+  const demand = demandData?.demand;
+  const demandEl = document.getElementById('statDemand');
+  if (demand != null) {
+    const cat = demandData.demandCategory || 'very_low';
+    const catColors = { very_high: '#22c55e', high: '#3b82f6', medium: '#f59e0b', low: '#9ca3af', very_low: '#6b7280' };
+    demandEl.style.color = catColors[cat] || '#9ca3af';
+    demandEl.textContent = demand;
+  } else {
+    demandEl.textContent = '--';
+    demandEl.style.color = 'var(--text-primary)';
+  }
+
+  // Yield stat
+  const yieldEl = document.getElementById('statYield');
+  if (indicators?.yieldScore != null) {
+    const s = indicators.yieldScore;
+    let label, color;
+    if (s >= 75) { label = '$$$$'; color = '#22c55e'; }
+    else if (s >= 50) { label = '$$$'; color = '#84cc16'; }
+    else if (s >= 25) { label = '$$'; color = '#f59e0b'; }
+    else { label = '$'; color = '#ef4444'; }
+    yieldEl.textContent = label;
+    yieldEl.style.color = color;
+  } else {
+    yieldEl.textContent = '--';
+    yieldEl.style.color = 'var(--text-primary)';
+  }
+
+  // Class mix stat — stacked bar with labels
+  const classEl = document.getElementById('statClassMix');
+  if (indicators?.classMix) {
+    const cm = indicators.classMix;
+    const segments = [];
+    if (cm.first > 0) segments.push({ pct: cm.first, label: 'First', color: '#f59e0b' });
+    if (cm.business > 0) segments.push({ pct: cm.business, label: 'Bus', color: '#a78bfa' });
+    if (cm.premiumEconomy > 0) segments.push({ pct: cm.premiumEconomy, label: 'Prm', color: '#22d3ee' });
+    segments.push({ pct: cm.economy, label: 'Eco', color: '#84cc16' });
+
+    const bar = segments.map(s =>
+      `<div style="width: ${s.pct}%; background: ${s.color}; height: 100%; min-width: 2px;" title="${s.label} ${s.pct}%"></div>`
+    ).join('');
+
+    const labels = segments.map(s =>
+      `<span style="color: ${s.color}; font-size: 0.65rem;">${s.label} <b>${s.pct}%</b></span>`
+    ).join('<span style="color: var(--border-color); margin: 0 0.15rem;">·</span>');
+
+    classEl.innerHTML = `
+      <div style="display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #333; margin-bottom: 0.3rem;">${bar}</div>
+      <div style="display: flex; justify-content: center; flex-wrap: wrap; gap: 0.1rem;">${labels}</div>
+    `;
+  } else {
+    classEl.innerHTML = '--';
+  }
+
+  // Competition stat
+  const compEl = document.getElementById('statCompetition');
+  if (indicators?.competitionScore != null) {
+    const cs = indicators.competitionScore;
+    let label, color;
+    if (cs >= 67) { label = 'High'; color = '#ef4444'; }
+    else if (cs >= 34) { label = 'Medium'; color = '#f59e0b'; }
+    else { label = 'Low'; color = '#22c55e'; }
+    compEl.textContent = label;
+    compEl.style.color = color;
+  } else {
+    compEl.textContent = '--';
+    compEl.style.color = 'var(--text-primary)';
+  }
+
+  // Yield breakdown (pros/cons)
+  const breakdownContainer = document.getElementById('selectedDestYieldBreakdown');
+  const factorsList = document.getElementById('yieldFactorsList');
+  if (indicators?.yieldBreakdown) {
+    const b = indicators.yieldBreakdown;
+    const points = [];
+
+    // Wealth
+    if (b.incomeFactor >= 1.4) points.push({ good: true, text: 'Wealthy markets' });
+    else if (b.incomeFactor >= 1.0) points.push({ good: true, text: 'Good economies' });
+    else if (b.incomeFactor >= 0.7) points.push({ good: null, text: 'Average income' });
+    else points.push({ good: false, text: 'Low income markets' });
+
+    // Hub type
+    if (b.hubPremium >= 1.10) points.push({ good: true, text: 'Major destination' });
+    else if (b.hubPremium <= 0.85) points.push({ good: false, text: 'Small airport' });
+
+    // Distance
+    const dk = b.distKm || 0;
+    if (dk < 500) points.push({ good: false, text: 'Very short route' });
+    else if (dk < 1200) points.push({ good: null, text: 'Short haul' });
+    else if (dk < 1800) points.push({ good: true, text: 'Medium haul' });
+    else if (dk < 4000) points.push({ good: true, text: 'Ideal range' });
+    else if (dk < 7000) points.push({ good: null, text: 'Long haul' });
+    else points.push({ good: false, text: 'Ultra long haul' });
+
+    factorsList.innerHTML = points.map(p => {
+      const icon = p.good === true ? '+' : p.good === false ? '−' : '~';
+      const col = p.good === true ? '#22c55e' : p.good === false ? '#ef4444' : '#f59e0b';
+      return `<span style="display: inline-flex; align-items: center; gap: 0.2rem; background: var(--surface-elevated); border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+        <span style="font-weight: 700; color: ${col};">${icon}</span>
+        <span style="color: var(--text-secondary);">${p.text}</span>
+      </span>`;
+    }).join('');
+    breakdownContainer.style.display = 'block';
+  } else {
+    breakdownContainer.style.display = 'none';
+  }
+}
+
+// Render 24-hour airport movements chart (departures + arrivals)
+function renderTimeChart(movements) {
+  const chartEl = document.getElementById('selectedDestTimeChart');
+  const barsEl = document.getElementById('timeChartBars');
+  const labelsEl = document.getElementById('timeChartLabels');
+
+  if (!movements || movements.length === 0) {
+    chartEl.style.display = 'none';
+    return;
+  }
+
+  chartEl.style.display = 'block';
+
+  // Bucket by hour
+  const deps = new Array(24).fill(0);
+  const arrs = new Array(24).fill(0);
+  for (const m of movements) {
+    if (m.hour >= 0 && m.hour < 24) {
+      if (m.type === 'dep') deps[m.hour]++;
+      else arrs[m.hour]++;
+    }
+  }
+
+  const maxCount = Math.max(1, ...deps.map((d, i) => d + arrs[i]));
+
+  barsEl.innerHTML = Array.from({ length: 24 }, (_, h) => {
+    const d = deps[h];
+    const a = arrs[h];
+    const total = d + a;
+    const depPct = (d / maxCount) * 100;
+    const arrPct = (a / maxCount) * 100;
+    const totalPct = total > 0 ? Math.max(6, depPct + arrPct) : 0;
+    const tooltip = `${String(h).padStart(2, '0')}:00 — ${d} dep, ${a} arr (${total} total)`;
+    // Stacked bar: arrivals on bottom (cyan), departures on top (amber)
+    return `<div title="${tooltip}" style="flex: 1; height: ${totalPct}%; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; border-radius: 2px 2px 0 0; overflow: hidden; transition: opacity 0.15s;" onmouseenter="this.style.opacity='0.7'" onmouseleave="this.style.opacity='1'">${total > 0 ? `<div style="height: ${total > 0 ? (depPct / totalPct * 100) : 0}%; background: #f59e0b;"></div><div style="height: ${total > 0 ? (arrPct / totalPct * 100) : 0}%; background: #22d3ee;"></div>` : ''}</div>`;
+  }).join('');
+
+  labelsEl.innerHTML = Array.from({ length: 24 }, (_, h) => {
+    const show = h % 3 === 0;
+    return `<div style="flex: 1; text-align: center; font-size: 0.55rem; color: var(--text-muted); min-width: 0; overflow: hidden;">${show ? String(h).padStart(2, '0') : ''}</div>`;
+  }).join('');
+}
+
+// Fetch and display competing airlines + popular origins
+async function fetchCompetitors(fromAirportId, toAirportId) {
+  const wrapper = document.getElementById('selectedDestRouteInfo');
+  const list = document.getElementById('competitorsList');
+  const countEl = document.getElementById('competitorCount');
+  const originsList = document.getElementById('popularOriginsList');
+  const originsCountEl = document.getElementById('popularOriginsCount');
+
+  // Show loading state
+  wrapper.style.display = 'grid';
+  document.getElementById('selectedDestTimeChart').style.display = 'none';
+  list.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 0.3rem 0;">Loading...</div>';
+  originsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 0.3rem 0;">Loading...</div>';
+  countEl.textContent = '';
+  originsCountEl.textContent = '';
+
+  try {
+    const resp = await fetch(`/api/world/routes/competitors/${fromAirportId}/${toAirportId}`);
+    if (!resp.ok) throw new Error('Failed to fetch');
+    const data = await resp.json();
+
+    // Competitors
+    const competitors = data.competitors || [];
+    countEl.textContent = `(${competitors.length})`;
+
+    if (competitors.length === 0) {
+      list.innerHTML = '<div style="color: var(--text-muted); font-size: 0.78rem; padding: 0.5rem 0.6rem;">No airlines on this route</div>';
+    } else {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const baseIcao = baseAirport?.icaoCode || '????';
+      const destIcao = selectedDestinationAirport?.icaoCode || '????';
+      const rc = data.routeCoords || {};
+      list.innerHTML = competitors.map(c => {
+        const depTime = c.departureTime ? c.departureTime.substring(0, 5) : '??:??';
+        const fromIcao = c.isReverse ? destIcao : baseIcao;
+        const toIcao = c.isReverse ? baseIcao : destIcao;
+        const daysStr = c.daysOfWeek && c.daysOfWeek.length < 7
+          ? c.daysOfWeek.map(d => dayNames[d]).join(' ')
+          : 'Daily';
+        const acft = c.aircraftIcao || '';
+        const playerTag = c.isPlayer ? ' <span style="color: var(--accent-color); font-size: 0.6rem; font-weight: 600;">YOU</span>' : '';
+
+        // Calculate arrival time using the same flight-timing.js as world map
+        let arrTime = '??:??';
+        if (c.departureTime && c.distanceNm && typeof calculateFlightMinutes === 'function') {
+          const dh = parseInt(c.departureTime.substring(0, 2));
+          const dm = parseInt(c.departureTime.substring(3, 5)) || 0;
+          const cruiseSpeed = 450; // default; per-aircraft speed not available here
+          const dLat = c.isReverse ? rc.toLat : rc.fromLat;
+          const dLng = c.isReverse ? rc.toLng : rc.fromLng;
+          const aLat = c.isReverse ? rc.fromLat : rc.toLat;
+          const aLng = c.isReverse ? rc.fromLng : rc.toLng;
+          const flightMins = calculateFlightMinutes(c.distanceNm, cruiseSpeed, dLng, aLng, dLat, aLat);
+          const arrTotalMin = (dh * 60 + dm + flightMins) % 1440;
+          arrTime = String(Math.floor(arrTotalMin / 60)).padStart(2, '0') + ':' + String(arrTotalMin % 60).padStart(2, '0');
+        }
+
+        return `
+          <div style="padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.15rem;">
+              <span style="font-size: 0.78rem;"><span style="color: var(--text-primary); font-weight: 600;">${c.airlineCode}</span>${playerTag} <span style="color: var(--text-muted); font-size: 0.72rem;">${c.routeNumber || ''}</span>${acft ? `<span style="color: var(--text-muted); font-size: 0.68rem;"> · ${acft}</span>` : ''}</span>
+              <span style="color: var(--text-muted); font-size: 0.68rem;">${daysStr}</span>
+            </div>
+            <div style="font-family: monospace; font-size: 0.72rem; display: flex; align-items: center; gap: 0.25rem;">
+              <span style="color: var(--text-secondary);">${fromIcao}</span>
+              <span style="color: var(--accent-color); font-weight: 600;">${depTime}</span>
+              <span style="color: var(--text-muted);">→</span>
+              <span style="color: var(--text-secondary);">${toIcao}</span>
+              <span style="color: var(--accent-color); font-weight: 600;">${arrTime}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Airport movements time chart (departures + arrivals)
+    renderTimeChart(data.airportMovements || []);
+
+    // Popular origins
+    const origins = data.popularOrigins || [];
+    const totalInbound = data.totalInboundRoutes || 0;
+    originsCountEl.textContent = totalInbound > 0 ? `(${totalInbound} routes)` : '';
+
+    if (origins.length === 0) {
+      originsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.78rem; padding: 0.5rem 0.6rem;">No other routes into this airport</div>';
+    } else {
+      originsList.innerHTML = origins.map(o => {
+        const airlineTags = o.airlines.map(a =>
+          `<span style="background: var(--surface-elevated); color: var(--text-secondary); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.6rem; font-weight: 600;">${a}</span>`
+        ).join(' ');
+
+        return `
+          <div style="display: grid; grid-template-columns: 50px 1fr 40px; gap: 0 0.4rem; align-items: center; padding: 0.3rem 0.6rem; border-bottom: 1px solid var(--border-color); font-size: 0.78rem;">
+            <span style="color: var(--text-primary); font-weight: 600; white-space: nowrap;">${o.icao}</span>
+            <div style="display: flex; gap: 0.15rem; flex-wrap: wrap;">${airlineTags}</div>
+            <span style="color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap; text-align: right;">${o.routeCount}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+  } catch (err) {
+    console.error('Error fetching competitors:', err);
+    list.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 0.3rem 0;">Could not load</div>';
+    originsList.innerHTML = '';
+    countEl.textContent = '';
+    originsCountEl.textContent = '';
+    document.getElementById('selectedDestTimeChart').style.display = 'none';
   }
 }
 
