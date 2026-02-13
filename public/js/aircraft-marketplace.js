@@ -1,3 +1,62 @@
+// Build list of ICAO codes to try for aircraft images (specific first, then common base)
+function getAircraftImageCodes(aircraft) {
+  const codes = [];
+  if (aircraft.icaoCode) codes.push(aircraft.icaoCode);
+
+  // Common base codes - maps model families to their base image code on doc8643
+  const BASE_CODES = {
+    '737': 'B737', '747': 'B747', '757': 'B757', '767': 'B767', '777': 'B777', '787': 'B787',
+    '707': 'B707', '727': 'B727',
+    'A300': 'A300', 'A310': 'A310', 'A318': 'A318', 'A319': 'A319', 'A320': 'A320', 'A321': 'A321',
+    'A330': 'A330', 'A340': 'A340', 'A350': 'A350', 'A380': 'A380', 'A220': 'A220',
+    'DC-3': 'DC3', 'DC-4': 'DC4', 'DC-6': 'DC6', 'DC-7': 'DC7',
+    'DC-8': 'DC8', 'DC-9': 'DC9', 'DC-10': 'DC10',
+    'MD-80': 'MD80', 'MD-81': 'MD80', 'MD-82': 'MD80', 'MD-83': 'MD83',
+    'MD-87': 'MD80', 'MD-88': 'MD80', 'MD-90': 'MD90', 'MD-11': 'MD11',
+    'CRJ-100': 'CRJ1', 'CRJ-200': 'CRJ2', 'CRJ-700': 'CRJ7', 'CRJ-900': 'CRJ9', 'CRJ-1000': 'CRJX',
+    'ERJ 135': 'E135', 'ERJ 140': 'E140', 'ERJ 145': 'E145',
+    'E-170': 'E170', 'E-175': 'E170', 'E-190': 'E190', 'E-195': 'E195', 'E195-E2': 'E190',
+    '42': 'AT45', '72': 'AT76',
+    'DHC-6': 'DHC6', 'DHC-7': 'DHC7', 'DHC-8': 'DH8D', 'DHC-2': 'DH2T', 'DHC-3': 'DHC3', 'DHC-515': 'CL15',
+    'L-1011': 'L101', 'L-1049': 'CONI', 'L-188': 'L188',
+    '240': 'CVLP', '340': 'SF34', '440': 'CVLP', '580': 'CVLT', '4-0-4': 'M404',
+    'Viscount': 'VISC', 'Comet 4': 'COMT',
+    'Tu-134': 'T134', 'Tu-154': 'T154', 'Tu-104': 'T104', 'Tu-204': 'T204',
+    'Il-14': 'IL14', 'Il-18': 'IL18', 'Il-62': 'IL62', 'Il-76': 'IL76', 'Il-86': 'IL86', 'Il-96': 'IL96',
+    'An-24': 'AN24', 'An-2': 'AN2', 'An-140': 'A140', 'An-148': 'A148', 'An-158': 'A158',
+    'Yak-40': 'YK40', 'Yak-42': 'YK42',
+    'F28': 'F28', 'F-27': 'F27', 'F27': 'F27', '100': 'F100', '70': 'F70', '50': 'F50', '60': 'F60',
+    '2000': 'SB20',
+    'Q400': 'DH8D', 'Concorde': 'CONC',
+    '146': 'B463', 'One-Eleven': 'BA11',
+    'RJ70': 'RJ70', 'RJ85': 'RJ85', 'RJ100': 'RJ1H',
+    'Superjet 100': 'SU95', 'SSJ-100': 'SU95', 'MC-21': 'MC23',
+    'PC-6': 'PC6T', 'PC-12': 'PC12', 'PC-24': 'PC24',
+    '208': 'C208', '208B': 'C208', '408': 'C408', '441': 'C441',
+    'BN-2': 'BN2P', 'BN-2A': 'TRIS',
+    '328': 'D328', 'SC.7': 'SC7', '330': 'SH33', '360': 'SH36',
+    '1900': 'B190', 'Beech 1900D': 'B190', '99': 'BE99',
+    'Jetstream': 'JS31', 'ATP': 'ATP',
+  };
+
+  const baseCode = BASE_CODES[aircraft.model];
+  if (baseCode && !codes.includes(baseCode)) codes.push(baseCode);
+
+  // For freighter/cargo variants, also try the passenger version
+  if (aircraft.type === 'Cargo' || (aircraft.variant && /\bF\b|Freighter|Cargo/i.test(aircraft.variant))) {
+    const FREIGHT_TO_PAX = {
+      'B77L': 'B777', 'B748': 'B747', 'A332': 'A330', 'B763': 'B767', 'MD11': 'MD11',
+      'B77F': 'B777', 'B74F': 'B747', 'A33F': 'A330', 'B76F': 'B767',
+    };
+    if (aircraft.icaoCode && FREIGHT_TO_PAX[aircraft.icaoCode]) {
+      const paxCode = FREIGHT_TO_PAX[aircraft.icaoCode];
+      if (!codes.includes(paxCode)) codes.push(paxCode);
+    }
+  }
+
+  return codes;
+}
+
 let allAircraft = [];
 let currentCategory = '';
 let selectedAircraft = null;
@@ -290,6 +349,7 @@ async function loadAircraft() {
     }
 
     allAircraft = aircraft;
+    populateManufacturerFilter(allAircraft);
     displayAircraft(allAircraft);
     updateActiveTab(); // Update the active tab after loading
   } catch (error) {
@@ -413,7 +473,7 @@ function displayAircraft(aircraftArray) {
         const labelColor = playerType === 'sale' ? '#f59e0b' : '#a855f7';
         const labelText = playerType === 'sale' ? 'Seller' : 'Lessor';
         sellerLabel = `<div style="font-size: 0.55rem; color: ${labelColor}; margin-top: 0.1rem;">${labelText}: ${lessorName}</div>`;
-      } else if (lessorName) {
+      } else if (lessorName && currentCategory !== 'new') {
         sellerLabel = `<div style="font-size: 0.55rem; color: var(--accent-color); margin-top: 0.1rem;">Lease: ${lessorName}</div>`;
       }
 
@@ -474,6 +534,20 @@ function formatCurrency(amount) {
   return numAmount.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
+  });
+}
+
+// Populate manufacturer filter dropdown from loaded aircraft data
+function populateManufacturerFilter(aircraft) {
+  const select = document.getElementById('manufacturerFilter');
+  const manufacturers = [...new Set(aircraft.map(a => a.manufacturer).filter(Boolean))].sort();
+  // Keep the "All Manufacturers" option, remove any old dynamic options
+  select.length = 1;
+  manufacturers.forEach(m => {
+    const option = document.createElement('option');
+    option.value = m;
+    option.textContent = m;
+    select.appendChild(option);
   });
 }
 
@@ -541,12 +615,24 @@ function showAircraftDetails(aircraftId) {
   const isNew = currentCategory === 'new';
 
   const detailContent = document.getElementById('aircraftDetailContent');
+  const acImgBase = '/api/aircraft/image/';
+  const acImgCodes = getAircraftImageCodes(aircraft);
   detailContent.innerHTML = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-      <!-- Left Column: Aircraft Info -->
-      <div>
+    <!-- Main content: Image left, details right -->
+    <div style="display: flex; gap: 1.25rem; margin-bottom: 1rem;">
+      <div style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+        ${acImgCodes.length > 0 ? `
+        <div id="acImageContainer" style="width: 320px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
+          <img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"
+            data-fallbacks='${JSON.stringify(acImgCodes.slice(1))}' data-base-url="${acImgBase}"
+            onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color: var(--text-muted); font-size: 0.75rem;\\'>Image not available</div>';}">
+        </div>
+        ` : ''}
+        ${aircraft.description ? `<div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">${aircraft.description}</div>` : ''}
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 0.6rem;">
         <!-- Type Badges -->
-        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
           <span style="background: rgba(59, 130, 246, 0.15); color: var(--accent-color); padding: 0.25rem 0.6rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600;">${aircraft.type}</span>
           <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 0.25rem 0.6rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600;">${aircraft.rangeCategory}</span>
           ${aircraft.icaoCode ? `<span style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6; padding: 0.25rem 0.6rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; font-family: monospace;">${aircraft.icaoCode}</span>` : ''}
@@ -570,7 +656,7 @@ function showAircraftDetails(aircraftId) {
             </div>
             <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
               <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Fuel</div>
-              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${aircraft.fuelBurnPerHour || 'N/A'}<span style="font-size: 0.55rem; font-weight: 400;">L/h</span></div>
+              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${aircraft.fuelBurnPerHour ? Math.round(aircraft.fuelBurnPerHour) : 'N/A'}<span style="font-size: 0.55rem; font-weight: 400;">L/h</span></div>
             </div>
             <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
               <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Cargo</div>
@@ -585,7 +671,7 @@ function showAircraftDetails(aircraftId) {
 
         <!-- Condition & Checks (for used aircraft) -->
         ${!isNew ? `
-        <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem; margin-top: 0.75rem;">
+        <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
           <h4 style="margin: 0 0 0.4rem 0; color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.5px;">Condition</h4>
           <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
             <div style="flex: 1; text-align: center; padding: 0.4rem; background: var(--surface); border-radius: 3px;">
@@ -609,90 +695,54 @@ function showAircraftDetails(aircraftId) {
           </div>
         </div>
         ` : ''}
+
       </div>
+    </div>
 
-      <!-- Right Column: Acquisition Options -->
-      <div>
-        ${aircraft.isPlayerListing ? `
-        <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; font-size: 0.7rem; color: #a855f7;">
-          <strong>Player Listing</strong> — ${aircraft.seller?.name || 'Another airline'}
-        </div>
-        ` : ''}
+    ${aircraft.isPlayerListing ? `
+    <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; font-size: 0.7rem; color: #a855f7;">
+      <strong>Player Listing</strong> — ${aircraft.seller?.name || 'Another airline'}
+    </div>
+    ` : ''}
 
-        <!-- Purchase Option -->
-        ${aircraft.purchasePrice ? `
-        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processPurchase()">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <div>
-              <div style="color: #10b981; font-weight: 700; font-size: 0.85rem;">PURCHASE</div>
-              <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.isPlayerListing ? 'Buy from ' + (aircraft.seller?.name || 'player') : 'Own outright'}</div>
-            </div>
-            <div style="text-align: right;">
-              <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.purchasePrice)}</div>
-            </div>
+    <!-- Bottom: Purchase & Lease side by side -->
+    <div style="display: grid; grid-template-columns: ${aircraft.purchasePrice && aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.75rem;">
+      ${aircraft.purchasePrice ? `
+      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processPurchase()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+          <div>
+            <div style="color: #10b981; font-weight: 700; font-size: 0.85rem;">PURCHASE</div>
+            <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.isPlayerListing ? 'Buy from ' + (aircraft.seller?.name || 'player') : 'Own outright'}</div>
+            ${aircraft.seller && !isNew ? `<div style="color: var(--text-muted); font-size: 0.6rem; margin-top: 0.15rem;">Purchase from: <strong style="color: var(--text-primary);">${aircraft.seller.shortName}</strong> ${aircraft.seller.country ? `<span style="font-size: 0.55rem;">${aircraft.seller.country}</span>` : ''}</div>` : ''}
           </div>
-          <div style="font-size: 0.65rem; color: var(--text-secondary);">
-            ✓ Full ownership &nbsp; ✓ No monthly fees &nbsp; ✓ Sell anytime
-          </div>
+          <div style="color: #10b981; font-weight: 700; font-size: 1.2rem;">$${formatCurrencyShort(aircraft.purchasePrice)}</div>
         </div>
-        ` : ''}
-
-        <!-- Lease Option -->
-        ${aircraft.leasePrice ? `
-        <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processLease()">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <div>
-              <div style="color: #3b82f6; font-weight: 700; font-size: 0.85rem;">LEASE</div>
-              <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.isPlayerListing ? 'Lease from ' + (aircraft.lessor?.name || 'player') : '12 month minimum'}</div>
-            </div>
-            <div style="text-align: right;">
-              <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.7rem; font-weight: 400;">/mo</span></div>
-            </div>
-          </div>
-          ${aircraft.lessor ? `
-          <div style="font-size: 0.65rem; color: var(--text-muted); margin-bottom: 0.3rem; padding: 0.25rem 0.4rem; background: rgba(0,0,0,0.2); border-radius: 3px; display: inline-block;">
-            <span style="color: var(--text-secondary);">${aircraft.lessor.isPlayer ? 'Owner:' : 'Lessor:'}</span> <strong style="color: var(--text-primary);">${aircraft.lessor.shortName}</strong>
-            ${aircraft.lessor.country ? `<span style="color: var(--text-muted); font-size: 0.55rem;">${aircraft.lessor.country}</span>` : ''}
-          </div>
-          ` : ''}
-          <div style="font-size: 0.65rem; color: var(--text-secondary);">
-            ✓ Lower upfront &nbsp; ✓ Flexible &nbsp; ✓ Maint included
-          </div>
+        <div style="font-size: 0.6rem; color: var(--text-secondary);">
+          ✓ Full ownership &nbsp; ✓ No monthly fees &nbsp; ✓ Sell anytime
         </div>
-        ` : ''}
-
-        <!-- Maintenance Auto-Schedule Info -->
-        <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
-          <h4 style="margin: 0 0 0.4rem 0; color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.5px;">Maintenance Scheduling</h4>
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem;">
-            <div style="padding: 0.3rem; background: var(--surface); border-radius: 3px; text-align: center;">
-              <div style="color: #FFA500; font-size: 0.6rem; font-weight: 600;">Daily</div>
-              <div style="color: var(--text-muted); font-size: 0.5rem;">Walk-around</div>
-            </div>
-            <div style="padding: 0.3rem; background: var(--surface); border-radius: 3px; text-align: center;">
-              <div style="color: #8B5CF6; font-size: 0.6rem; font-weight: 600;">Weekly</div>
-              <div style="color: var(--text-muted); font-size: 0.5rem;">7-8 days</div>
-            </div>
-            <div style="padding: 0.3rem; background: var(--surface); border-radius: 3px; text-align: center;">
-              <div style="color: #3B82F6; font-size: 0.6rem; font-weight: 600;">A Check</div>
-              <div style="color: var(--text-muted); font-size: 0.5rem;">800-1000h</div>
-            </div>
-          </div>
-          <div style="margin-top: 0.4rem; padding: 0.3rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 3px;">
-            <div style="font-size: 0.55rem; color: #f59e0b;">
-              <strong>C & D checks</strong> require manual scheduling
-            </div>
-          </div>
-        </div>
-
-        <!-- Description -->
-        ${aircraft.description ? `
-        <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem; margin-top: 0.6rem;">
-          <h4 style="margin: 0 0 0.3rem 0; color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase;">About</h4>
-          <div style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.3;">${aircraft.description}</div>
-        </div>
-        ` : ''}
       </div>
+      ` : ''}
+
+      ${aircraft.leasePrice ? `
+      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processLease()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+          <div>
+            <div style="color: #3b82f6; font-weight: 700; font-size: 0.85rem;">LEASE</div>
+            <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.isPlayerListing ? 'Lease from ' + (aircraft.lessor?.name || 'player') : '12 month minimum'}</div>
+          </div>
+          <div style="color: #3b82f6; font-weight: 700; font-size: 1.2rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.7rem; font-weight: 400;">/mo</span></div>
+        </div>
+        ${aircraft.lessor && !isNew ? `
+        <div style="font-size: 0.6rem; color: var(--text-muted); margin-bottom: 0.3rem;">
+          <span style="color: var(--text-secondary);">${aircraft.lessor.isPlayer ? 'Owner:' : 'Lessor:'}</span> <strong style="color: var(--text-primary);">${aircraft.lessor.shortName}</strong>
+          ${aircraft.lessor.country ? `<span style="color: var(--text-muted); font-size: 0.55rem;">${aircraft.lessor.country}</span>` : ''}
+        </div>
+        ` : ''}
+        <div style="font-size: 0.6rem; color: var(--text-secondary);">
+          ✓ Lower upfront &nbsp; ✓ Flexible
+        </div>
+      </div>
+      ` : ''}
     </div>
   `;
 

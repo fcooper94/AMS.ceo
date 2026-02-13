@@ -1,3 +1,61 @@
+// Build list of ICAO codes to try for aircraft images (specific first, then common base)
+function getAircraftImageCodes(aircraft) {
+  const codes = [];
+  if (aircraft.icaoCode) codes.push(aircraft.icaoCode);
+
+  const BASE_CODES = {
+    '737': 'B737', '747': 'B747', '757': 'B757', '767': 'B767', '777': 'B777', '787': 'B787',
+    '707': 'B707', '727': 'B727',
+    'A300': 'A300', 'A310': 'A310', 'A318': 'A318', 'A319': 'A319', 'A320': 'A320', 'A321': 'A321',
+    'A330': 'A330', 'A340': 'A340', 'A350': 'A350', 'A380': 'A380', 'A220': 'A220',
+    'DC-3': 'DC3', 'DC-4': 'DC4', 'DC-6': 'DC6', 'DC-7': 'DC7',
+    'DC-8': 'DC8', 'DC-9': 'DC9', 'DC-10': 'DC10',
+    'MD-80': 'MD80', 'MD-81': 'MD80', 'MD-82': 'MD80', 'MD-83': 'MD83',
+    'MD-87': 'MD80', 'MD-88': 'MD80', 'MD-90': 'MD90', 'MD-11': 'MD11',
+    'CRJ-100': 'CRJ1', 'CRJ-200': 'CRJ2', 'CRJ-700': 'CRJ7', 'CRJ-900': 'CRJ9', 'CRJ-1000': 'CRJX',
+    'ERJ 135': 'E135', 'ERJ 140': 'E140', 'ERJ 145': 'E145',
+    'E-170': 'E170', 'E-175': 'E170', 'E-190': 'E190', 'E-195': 'E195', 'E195-E2': 'E190',
+    '42': 'AT45', '72': 'AT76',
+    'DHC-6': 'DHC6', 'DHC-7': 'DHC7', 'DHC-8': 'DH8D', 'DHC-2': 'DH2T', 'DHC-3': 'DHC3', 'DHC-515': 'CL15',
+    'L-1011': 'L101', 'L-1049': 'CONI', 'L-188': 'L188',
+    '240': 'CVLP', '340': 'SF34', '440': 'CVLP', '580': 'CVLT', '4-0-4': 'M404',
+    'Viscount': 'VISC', 'Comet 4': 'COMT',
+    'Tu-134': 'T134', 'Tu-154': 'T154', 'Tu-104': 'T104', 'Tu-204': 'T204',
+    'Il-14': 'IL14', 'Il-18': 'IL18', 'Il-62': 'IL62', 'Il-76': 'IL76', 'Il-86': 'IL86', 'Il-96': 'IL96',
+    'An-24': 'AN24', 'An-2': 'AN2', 'An-140': 'A140', 'An-148': 'A148', 'An-158': 'A158',
+    'Yak-40': 'YK40', 'Yak-42': 'YK42',
+    'F28': 'F28', 'F-27': 'F27', 'F27': 'F27', '100': 'F100', '70': 'F70', '50': 'F50', '60': 'F60',
+    '2000': 'SB20',
+    'Q400': 'DH8D', 'Concorde': 'CONC',
+    '146': 'B463', 'One-Eleven': 'BA11',
+    'RJ70': 'RJ70', 'RJ85': 'RJ85', 'RJ100': 'RJ1H',
+    'Superjet 100': 'SU95', 'SSJ-100': 'SU95', 'MC-21': 'MC23',
+    'PC-6': 'PC6T', 'PC-12': 'PC12', 'PC-24': 'PC24',
+    '208': 'C208', '208B': 'C208', '408': 'C408', '441': 'C441',
+    'BN-2': 'BN2P', 'BN-2A': 'TRIS',
+    '328': 'D328', 'SC.7': 'SC7', '330': 'SH33', '360': 'SH36',
+    '1900': 'B190', 'Beech 1900D': 'B190', '99': 'BE99',
+    'Jetstream': 'JS31', 'ATP': 'ATP',
+  };
+
+  const baseCode = BASE_CODES[aircraft.model];
+  if (baseCode && !codes.includes(baseCode)) codes.push(baseCode);
+
+  // For freighter/cargo variants, also try the passenger version
+  if (aircraft.type === 'Cargo' || (aircraft.variant && /\bF\b|Freighter|Cargo/i.test(aircraft.variant))) {
+    const FREIGHT_TO_PAX = {
+      'B77L': 'B777', 'B748': 'B747', 'A332': 'A330', 'B763': 'B767', 'MD11': 'MD11',
+      'B77F': 'B777', 'B74F': 'B747', 'A33F': 'A330', 'B76F': 'B767',
+    };
+    if (aircraft.icaoCode && FREIGHT_TO_PAX[aircraft.icaoCode]) {
+      const paxCode = FREIGHT_TO_PAX[aircraft.icaoCode];
+      if (!codes.includes(paxCode)) codes.push(paxCode);
+    }
+  }
+
+  return codes;
+}
+
 let fleetData = [];
 let filteredFleet = [];
 
@@ -225,13 +283,21 @@ async function showAircraftDetails(userAircraftId) {
   overlay.id = 'aircraftDetailOverlay';
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:2000;display:flex;justify-content:center;align-items:center;padding:1rem;';
 
+  const acCodes = getAircraftImageCodes(aircraft);
+  const acImgBase = '/api/aircraft/image/';
+  const acName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.model.endsWith('-') || aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}`;
+
   overlay.innerHTML = `
-    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px; width: 100%; max-width: 1100px;">
+    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px; width: 100%; max-width: 1100px; max-height: 95vh; overflow-y: auto;">
       <!-- Header -->
       <div style="padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
         <div>
-          <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">${aircraft.type} • ${aircraft.rangeCategory}</span>
-          <h2 style="margin: 0.25rem 0 0 0; color: var(--text-primary); font-size: 1.5rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? (aircraft.model.endsWith('-') || aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant) : ''}</h2>
+          <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.3rem;">
+            <span style="background: rgba(59, 130, 246, 0.15); color: var(--accent-color); padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600;">${aircraft.type}</span>
+            <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600;">${aircraft.rangeCategory}</span>
+            ${aircraft.icaoCode ? `<span style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6; padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; font-family: monospace;">${aircraft.icaoCode}</span>` : ''}
+          </div>
+          <h2 style="margin: 0; color: var(--text-primary); font-size: 1.5rem;">${acName}</h2>
         </div>
         <div style="text-align: right;">
           <div style="font-size: 1.8rem; font-weight: 700; color: var(--accent-color); font-family: monospace;">${userAircraft.registration}</div>
@@ -239,94 +305,144 @@ async function showAircraftDetails(userAircraftId) {
         </div>
       </div>
 
-      <!-- Content -->
+      <!-- Main content: Image left, details right -->
       <div style="padding: 1rem 1.5rem;">
-        <!-- Stats Row -->
-        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Condition</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: ${getConditionColor(conditionPercent)};">${conditionPercent}%</div>
-          </div>
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Age</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);">${userAircraft.ageYears || 0} yrs</div>
-          </div>
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Capacity</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);">${aircraft.passengerCapacity} pax</div>
-          </div>
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Location</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--accent-color);">${userAircraft.currentAirport || 'N/A'}</div>
-          </div>
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Flight Hours</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);">${formatCurrency(parseFloat(userAircraft.totalFlightHours) || 0)}</div>
-          </div>
-          <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Routes</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);" id="routeCount">...</div>
-          </div>
-        </div>
+        <div style="display: flex; gap: 1.25rem; margin-bottom: 1rem;">
+          <!-- Left: Image + Ownership -->
+          <div style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.6rem;">
+            ${acCodes.length > 0 ? `
+            <div style="width: 320px; height: 240px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
+              <img src="${acImgBase}${acCodes[0]}" alt="${acName}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"
+                data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${acImgBase}"
+                onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color: var(--text-muted); font-size: 0.75rem;\\'>Image not available</div>';}">
+            </div>
+            ` : ''}
 
-        <!-- Main Grid -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1.3fr 1.3fr; gap: 0.75rem; font-size: 0.95rem;">
-          <!-- Col 1: Specs -->
-          <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.75rem;">
-            <div style="font-size: 0.8rem; color: var(--accent-color); text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35rem;">Specifications</div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Range</span><span style="font-weight: 500;">${formatCurrency(aircraft.rangeNm)} nm</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Speed</span><span style="font-weight: 500;">${aircraft.cruiseSpeed} kts</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Fuel Cap</span><span style="font-weight: 500;">${formatCurrency(aircraft.fuelCapacityLiters)} L</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Burn Rate</span><span style="font-weight: 500;">${formatCurrency(fuelBurnPerHour)} L/hr</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0; border-top: 1px solid var(--border-color); margin-top: 0.2rem;"><span style="color: var(--text-muted);">Crew</span><span style="font-weight: 500;">${aircraft.requiredPilots || 2} pilots, ${aircraft.requiredCabinCrew || 0} cabin</span></div>
+            <!-- Key Stats under image -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem;">
+              <div style="background: var(--surface-elevated); padding: 0.5rem; border-radius: 4px; text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Condition</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: ${getConditionColor(conditionPercent)};">${conditionPercent}%</div>
+              </div>
+              <div style="background: var(--surface-elevated); padding: 0.5rem; border-radius: 4px; text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Age</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${userAircraft.ageYears || 0}<span style="font-size: 0.65rem; font-weight: 400;">y</span></div>
+              </div>
+              <div style="background: var(--surface-elevated); padding: 0.5rem; border-radius: 4px; text-align: center;">
+                <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Location</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--accent-color);">${userAircraft.currentAirport || 'N/A'}</div>
+              </div>
+            </div>
+
+            <!-- Ownership Info -->
+            <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem; font-size: 0.85rem;">
+              ${userAircraft.status === 'listed_sale' ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--warning-color); font-weight: 600;">Listed for Sale</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.listingPrice || 0)}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Listed</span><span>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+              ` : userAircraft.status === 'listed_lease' ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #a855f7; font-weight: 600;">Listed for Lease</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.listingPrice || 0)}/mo</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Listed</span><span>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+              ` : userAircraft.status === 'leased_out' ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #14b8a6; font-weight: 600;">Leased Out</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.leaseOutMonthlyRate || 0)}/mo</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Tenant</span><span>${userAircraft.leaseOutTenantName || 'NPC Airline'}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Until</span><span>${userAircraft.leaseOutEndDate ? new Date(userAircraft.leaseOutEndDate).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+              ` : userAircraft.status === 'recalling' ? `
+                <div style="padding: 0.2rem 0;"><span style="color: #60a5fa; font-weight: 600;">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? `Ferrying to ${userAircraft.storageAirportCode}` : `Recalling from ${userAircraft.storageAirportCode || 'Storage'}`}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? 'Reaches Storage' : 'Back at Base'}</span><span style="color: var(--accent-color); font-weight: 600;">${userAircraft.recallAvailableAt ? new Date(userAircraft.recallAvailableAt).toLocaleDateString('en-GB') : 'Soon'}</span></div>
+              ` : userAircraft.status === 'storage' ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #94a3b8; font-weight: 600;">In Storage</span><span>${userAircraft.storageAirportCode || 'N/A'}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Since</span><span>${userAircraft.storedAt ? new Date(userAircraft.storedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Cost</span><span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(calculateStorageMonthlyCost(userAircraft))}/mo</span></div>
+              ` : isLeased ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Lease</span><span>${userAircraft.leaseDurationMonths} months @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseMonthly)}/mo</span></span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Ends</span><span style="font-weight: 600;">${new Date(userAircraft.leaseEndDate).toLocaleDateString('en-GB')}</span></div>
+              ` : `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Purchased for</span><span style="color: var(--success-color); font-weight: 600;">$${formatCurrency(userAircraft.purchasePrice || 0)}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Acquired</span><span style="font-weight: 600;">${new Date(userAircraft.acquiredAt).toLocaleDateString('en-GB')}</span></div>
+              `}
+            </div>
           </div>
 
-          <!-- Col 2: Costs -->
-          <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.75rem;">
-            <div style="font-size: 0.8rem; color: var(--warning-color); text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35rem;">Operating Costs</div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Fuel/hr</span><span style="font-weight: 500;">$${formatCurrency(fuelCostPerHour)}</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Maint/hr</span><span style="font-weight: 500;">$${formatCurrency(maintenanceCostPerHour)}</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.4rem 0; border-top: 1px solid var(--border-color); margin-top: 0.2rem;"><span style="font-weight: 600;">Total/hr</span><span style="color: var(--warning-color); font-weight: 700; font-size: 1.05rem;">$${formatCurrency(totalHourlyCost)}</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="font-weight: 600;">Monthly</span><span style="color: var(--danger-color); font-weight: 700; font-size: 1.05rem;">$${formatCurrency(totalMonthlyCost)}</span></div>
-          </div>
+          <!-- Right: Specs, Costs, Performance -->
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 0.6rem;">
+            <!-- Specifications -->
+            <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--accent-color); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Specifications</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.35rem;">
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Pax</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${aircraft.passengerCapacity || 'N/A'}</div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Range</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${formatCurrency(aircraft.rangeNm)}<span style="font-size: 0.55rem; font-weight: 400;">nm</span></div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Speed</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${aircraft.cruiseSpeed}<span style="font-size: 0.55rem; font-weight: 400;">kts</span></div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Fuel Cap</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${formatCurrency(aircraft.fuelCapacityLiters)}<span style="font-size: 0.55rem; font-weight: 400;">L</span></div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Burn Rate</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${formatCurrency(fuelBurnPerHour)}<span style="font-size: 0.55rem; font-weight: 400;">L/h</span></div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Crew</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">${aircraft.requiredPilots || 2}+${aircraft.requiredCabinCrew || 0}</div>
+                </div>
+              </div>
+            </div>
 
-          <!-- Col 3: Routes -->
-          <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.75rem;">
-            <div style="font-size: 0.8rem; color: var(--success-color); text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35rem;">Route Performance</div>
-            <div id="routeInfo" style="color: var(--text-muted);">Loading...</div>
-          </div>
+            <!-- Operating Costs -->
+            <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--warning-color); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Operating Costs</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.35rem;">
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Fuel/hr</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(fuelCostPerHour)}</div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Maint/hr</div>
+                  <div style="color: var(--text-primary); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(maintenanceCostPerHour)}</div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Total/hr</div>
+                  <div style="color: var(--warning-color); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(totalHourlyCost)}</div>
+                </div>
+                <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Monthly</div>
+                  <div style="color: var(--danger-color); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(totalMonthlyCost)}</div>
+                </div>
+              </div>
+            </div>
 
-          <!-- Col 4: Maintenance -->
-          <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.75rem;">
-            <div style="font-size: 0.8rem; color: var(--primary-color); text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35rem;">Heavy Checks Due</div>
-            <div id="maintInfo" style="color: var(--text-muted);">Loading...</div>
-          </div>
-        </div>
+            <!-- Route Performance & Maintenance side by side -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; flex: 1;">
+              <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: var(--success-color); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Routes <span id="routeCount" style="color: var(--text-primary);">...</span></h4>
+                <div id="routeInfo" style="color: var(--text-muted); font-size: 0.85rem;">Loading...</div>
+              </div>
+              <div style="background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: var(--primary-color); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Heavy Checks</h4>
+                <div id="maintInfo" style="color: var(--text-muted); font-size: 0.85rem;">Loading...</div>
+              </div>
+            </div>
 
-        <!-- Bottom Row: Ownership / Listing Info -->
-        <div style="margin-top: 0.75rem; background: var(--surface-elevated); border-radius: 6px; padding: 0.6rem 1rem; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
-          ${userAircraft.status === 'listed_sale' ? `
-            <span><span style="color: var(--warning-color); font-weight: 600;">Listed for Sale</span> @ <strong>$${formatCurrency(userAircraft.listingPrice || 0)}</strong></span>
-            <span><span style="color: var(--text-muted);">Listed:</span> <strong>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
-          ` : userAircraft.status === 'listed_lease' ? `
-            <span><span style="color: #a855f7; font-weight: 600;">Listed for Lease</span> @ <strong>$${formatCurrency(userAircraft.listingPrice || 0)}/mo</strong></span>
-            <span><span style="color: var(--text-muted);">Listed:</span> <strong>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
-          ` : userAircraft.status === 'leased_out' ? `
-            <span><span style="color: #14b8a6; font-weight: 600;">Leased to ${userAircraft.leaseOutTenantName || 'NPC Airline'}</span> @ <strong>$${formatCurrency(userAircraft.leaseOutMonthlyRate || 0)}/mo</strong></span>
-            <span><span style="color: var(--text-muted);">Until:</span> <strong>${userAircraft.leaseOutEndDate ? new Date(userAircraft.leaseOutEndDate).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
-          ` : userAircraft.status === 'recalling' ? `
-            <span><span style="color: #60a5fa; font-weight: 600;">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? `Ferrying to ${userAircraft.storageAirportCode} for Storage` : `Recalling from ${userAircraft.storageAirportCode || 'Storage'}`}</span></span>
-            <span><span style="color: var(--text-muted);">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? 'Reaches Storage:' : 'Back at Base:'}</span> <strong style="color: var(--accent-color);">${userAircraft.recallAvailableAt ? new Date(userAircraft.recallAvailableAt).toLocaleDateString('en-GB') : 'Soon'}</strong></span>
-          ` : userAircraft.status === 'storage' ? `
-            <span><span style="color: #94a3b8; font-weight: 600;">In Storage</span> at <strong>${userAircraft.storageAirportCode || 'N/A'}</strong> since <strong>${userAircraft.storedAt ? new Date(userAircraft.storedAt).toLocaleDateString('en-GB') : 'N/A'}</strong></span>
-            <span><span style="color: var(--text-muted);">Storage Cost:</span> <strong style="color: var(--warning-color);">$${formatCurrency(calculateStorageMonthlyCost(userAircraft))}/mo</strong></span>
-          ` : isLeased ? `
-            <span><span style="color: var(--text-muted);">Lease:</span> <strong>${userAircraft.leaseDurationMonths} months</strong> @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseMonthly)}/mo</span></span>
-            <span><span style="color: var(--text-muted);">Ends:</span> <strong>${new Date(userAircraft.leaseEndDate).toLocaleDateString('en-GB')}</strong></span>
-          ` : `
-            <span><span style="color: var(--text-muted);">Purchased for:</span> <span style="color: var(--success-color); font-weight: 600;">$${formatCurrency(userAircraft.purchasePrice || 0)}</span></span>
-            <span><span style="color: var(--text-muted);">Acquired:</span> <strong>${new Date(userAircraft.acquiredAt).toLocaleDateString('en-GB')}</strong></span>
-          `}
+            <!-- Flight Hours -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+              <div style="background: var(--surface-elevated); padding: 0.5rem 0.6rem; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-muted); font-size: 0.75rem;">Flight Hours</span>
+                <span style="font-weight: 700; font-size: 1rem;">${formatCurrency(parseFloat(userAircraft.totalFlightHours) || 0)}</span>
+              </div>
+              <div style="background: var(--surface-elevated); padding: 0.5rem 0.6rem; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-muted); font-size: 0.75rem;">Capacity</span>
+                <span style="font-weight: 700; font-size: 1rem;">${aircraft.passengerCapacity} pax</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

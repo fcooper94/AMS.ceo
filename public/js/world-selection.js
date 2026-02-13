@@ -582,8 +582,8 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     ${endingBannerHtml}
 
     <div class="world-card-body">
-      <div class="world-card-name">${world.name || 'Unnamed World'}</div>
-      ${isMember && world.airlineName ? `
+      <div class="world-card-name">${isSP && isMember && world.airlineName ? `${world.airlineName} (${world.airlineCode})` : (world.name || 'Unnamed World')}</div>
+      ${!isSP && isMember && world.airlineName ? `
         <div class="world-card-airline">${world.airlineName} (${world.airlineCode})</div>
       ` : ''}
       ${!isSP && world.description ? `

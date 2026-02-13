@@ -136,7 +136,7 @@ router.get('/', async (req, res) => {
             cCheckRemaining: listing.cCheckRemainingDays ? formatDaysRemaining(listing.cCheckRemainingDays) : 'Unknown',
             dCheckRemaining: listing.dCheckRemainingDays ? formatDaysRemaining(listing.dCheckRemainingDays) : 'Unknown',
 
-            // Seller info
+            // Same entity offers both purchase and lease
             seller: {
               type: listing.sellerType,
               name: listing.sellerName,
@@ -144,7 +144,12 @@ router.get('/', async (req, res) => {
               country: listing.sellerCountry,
               reason: listing.sellerReason
             },
-            lessor: getRandomLessor(variant.type)
+            lessor: {
+              type: listing.sellerType,
+              name: listing.sellerName,
+              shortName: listing.sellerName,
+              country: listing.sellerCountry
+            }
           };
 
           usedAircraft.push(usedAc);
@@ -273,13 +278,12 @@ router.get('/', async (req, res) => {
 
       console.log(`Found ${newAircraft.length} aircraft variants available for year ${currentYear || 'any'} (new category)`);
 
-      // Add manufacturer/seller info and lessor info to each aircraft
+      // Add seller/lessor info to each aircraft (same entity offers both purchase and lease)
       const aircraftWithSellers = newAircraft.map(ac => {
         const acData = ac.toJSON();
-        // For new aircraft, seller is the manufacturer
-        acData.seller = getManufacturer(ac.manufacturer);
-        // Lessor is a random leasing company
-        acData.lessor = getRandomLessor(ac.type);
+        const lessor = getRandomLessor(ac.type);
+        acData.lessor = lessor;
+        acData.seller = lessor;
         return acData;
       });
 
@@ -450,11 +454,12 @@ function generateUsedAircraft(variants, currentYear = null) {
         cCheckRemaining: formatDaysRemaining(cCheckRemainingDays),
         dCheckRemaining: formatDaysRemaining(dCheckRemainingDays),
 
-        // Seller info (who's selling this used aircraft)
-        seller: getUsedAircraftSeller(age, condition),
-        // Lessor info (who you'd lease from)
-        lessor: getRandomLessor(variant.type)
       };
+
+      // Same entity offers both purchase and lease
+      const entity = getRandomLessor(variant.type);
+      usedAc.seller = entity;
+      usedAc.lessor = entity;
 
       usedAircraft.push(usedAc);
     }
@@ -462,6 +467,41 @@ function generateUsedAircraft(variants, currentYear = null) {
 
   return usedAircraft;
 }
+
+/**
+ * Proxy aircraft images from doc8643.com (they block hotlinking)
+ * Caches images in memory to avoid repeated requests
+ */
+const imageCache = new Map();
+router.get('/image/:icaoCode', async (req, res) => {
+  const code = req.params.icaoCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (!code || code.length > 6) return res.status(400).send('Invalid code');
+
+  if (imageCache.has(code)) {
+    const cached = imageCache.get(code);
+    if (cached === null) return res.status(404).send('Not found');
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=604800');
+    return res.send(cached);
+  }
+
+  try {
+    const url = `https://doc8643.com/static/img/aircraft/3D/${code}.jpg`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      imageCache.set(code, null);
+      return res.status(404).send('Not found');
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    imageCache.set(code, buffer);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=604800');
+    res.send(buffer);
+  } catch (err) {
+    imageCache.set(code, null);
+    res.status(404).send('Not found');
+  }
+});
 
 /**
  * Get single aircraft by ID
