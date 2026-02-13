@@ -93,7 +93,19 @@
     <div id="airlineInfo" style="display: none;">
       <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">MY AIRLINE</div>
       <div id="airlineName" style="font-size: 1rem; font-weight: 700; color: var(--accent-color); margin-bottom: 0.25rem;">--</div>
-      <div id="airlineCode" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'Courier New', monospace;">--</div>
+      <div id="airlineCode" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">--</div>
+      <div id="airlineReputation" style="display: none; cursor: pointer;" onmouseenter="showReputationTooltip(this)" onmouseleave="document.getElementById('reputationTooltip').style.display='none'">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
+          <span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Reputation</span>
+          <span id="reputationValue" style="font-size: 0.75rem; font-weight: 700;">--</span>
+        </div>
+        <div style="width: 100%; height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden;">
+          <div id="reputationBar" style="height: 100%; border-radius: 2px; transition: width 0.5s ease, background-color 0.5s ease; width: 50%;"></div>
+        </div>
+      </div>
+      <div id="reputationTooltip" style="display:none; position:fixed; width:230px; background:var(--surface-elevated); border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.4); z-index:9999; pointer-events:none;">
+        <div style="font-size:0.7rem; color:var(--text-muted);">Loading...</div>
+      </div>
     </div>
   </div>
   <div class="sidebar-footer" style="display: flex; justify-content: space-around; align-items: center; padding: 0.75rem; border-top: 1px solid var(--border-color);">

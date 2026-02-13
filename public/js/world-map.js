@@ -1217,7 +1217,7 @@ function showFlightInfo(flight) {
         ${!isOtherAirline ? `
         <div class="stat-row">
           <span class="stat-label">Load Factor</span>
-          <span class="stat-value ${loadFactor >= 80 ? 'high' : loadFactor >= 50 ? 'medium' : 'low'}">${loadFactor.toFixed(1)}%</span>
+          <span class="stat-value ${loadFactor >= 0.80 ? 'high' : loadFactor >= 0.50 ? 'medium' : 'low'}">${(loadFactor * 100).toFixed(1)}%</span>
         </div>
         ` : ''}
       </div>

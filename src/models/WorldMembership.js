@@ -72,8 +72,14 @@ const WorldMembership = sequelize.define('WorldMembership', {
   },
   reputation: {
     type: DataTypes.INTEGER,
-    defaultValue: 50,
+    defaultValue: 25,
     comment: 'Airline reputation score (0-100)'
+  },
+  reputationBreakdown: {
+    type: DataTypes.JSONB,
+    defaultValue: null,
+    field: 'reputation_breakdown',
+    comment: 'Breakdown of reputation score components'
   },
   joinedAt: {
     type: DataTypes.DATE,

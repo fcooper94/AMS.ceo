@@ -340,6 +340,25 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Auto-calculate ticket prices if not provided
+    let finalEconomyPrice = parseFloat(economyPrice) || 0;
+    let finalEconomyPlusPrice = parseFloat(economyPlusPrice) || 0;
+    let finalBusinessPrice = parseFloat(businessPrice) || 0;
+    let finalFirstPrice = parseFloat(firstPrice) || 0;
+
+    if (!finalEconomyPrice && distance) {
+      const eraEconomicService = require('../services/eraEconomicService');
+      const World = require('../models/World');
+      const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
+      const worldYear = world?.currentTime ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
+      const routeDistance = parseFloat(distance) || 500;
+
+      finalEconomyPrice = eraEconomicService.calculateTicketPrice(routeDistance, worldYear, 'economy');
+      finalEconomyPlusPrice = Math.round(finalEconomyPrice * 1.3);
+      finalBusinessPrice = Math.round(finalEconomyPrice * 2.5);
+      finalFirstPrice = Math.round(finalEconomyPrice * 4);
+    }
+
     // Create the route
     const route = await Route.create({
       worldMembershipId: membership.id,
@@ -354,12 +373,12 @@ router.post('/', async (req, res) => {
       turnaroundTime: turnaroundTime || 45,
       frequency: frequency || 'daily',
       daysOfWeek: daysOfWeek || [0, 1, 2, 3, 4, 5, 6],
-      ticketPrice,
+      ticketPrice: ticketPrice || finalEconomyPrice,
       demand: demand || 0,
-      economyPrice: economyPrice || 0,
-      economyPlusPrice: economyPlusPrice || 0,
-      businessPrice: businessPrice || 0,
-      firstPrice: firstPrice || 0,
+      economyPrice: finalEconomyPrice,
+      economyPlusPrice: finalEconomyPlusPrice || Math.round(finalEconomyPrice * 1.3),
+      businessPrice: finalBusinessPrice || Math.round(finalEconomyPrice * 2.5),
+      firstPrice: finalFirstPrice || Math.round(finalEconomyPrice * 4),
       cargoLightRate: cargoLightRate || 0,
       cargoStandardRate: cargoStandardRate || 0,
       cargoHeavyRate: cargoHeavyRate || 0,

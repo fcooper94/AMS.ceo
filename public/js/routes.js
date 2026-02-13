@@ -145,7 +145,7 @@ function displayAllRoutes(routes) {
                 ${profit >= 0 ? '+' : ''}$${Math.round(profit).toLocaleString('en-US')}
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
-                ${route.averageLoadFactor.toFixed(1)}%
+                ${(route.averageLoadFactor * 100).toFixed(1)}%
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
                 <span style="color: ${statusColor}; font-weight: 600; font-size: 0.8rem;">

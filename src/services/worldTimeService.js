@@ -42,6 +42,10 @@ class WorldTimeService {
     this.lastRecallCheck = 0;
     this.recallCheckInterval = 30000; // Check recalls every 30 seconds (real time)
     this.isProcessingRecalls = false;
+    // Reputation processing
+    this.lastReputationCheck = 0;
+    this.reputationCheckInterval = 60000; // Recalculate reputation every 60 seconds (real time)
+    this.isProcessingReputation = false;
   }
 
   /**
@@ -390,6 +394,15 @@ class WorldTimeService {
         .finally(() => { this.isProcessingAI = false; });
     }
 
+    // Recalculate airline reputation scores
+    if (!this.isProcessingReputation && now - this.lastReputationCheck >= this.reputationCheckInterval) {
+      this.lastReputationCheck = now;
+      this.isProcessingReputation = true;
+      this.processReputation(worldId, gameTime)
+        .catch(err => console.error('Error processing reputation:', err.message))
+        .finally(() => { this.isProcessingReputation = false; });
+    }
+
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
 
     // Emit notification refresh signal (throttled to every 30 real seconds)
@@ -692,23 +705,116 @@ class WorldTimeService {
       const distance = parseFloat(route.distance) || 500;
       const worldYear = currentGameTime.getFullYear();
 
-      // Get demand-influenced competitive load factor
-      let loadFactor = 0.7; // Default
+      // ── Load Factor Model ──
+      // finalLF = baseLF × demand × maturity × prestige × price × competition × time × reputation × variance
+      let loadFactor = 0.7; // Default fallback
       try {
         const routeDemandService = require('./routeDemandService');
 
-        // Count competing routes on this airport pair
-        const competingRoutes = await Route.count({
+        // 1. Base load factor ceiling from era (0.65–0.84)
+        const baseLF = eraEconomicService.getExpectedLoadFactor(worldYear) / 100;
+
+        // 2. Demand factor: gentle curve — even low-demand routes fill well if right-sized
+        //    demand 100 → 1.00, demand 50 → 0.91, demand 35 → 0.87, demand 0 → 0.78
+        let demandFactor = 1.0;
+        let routeDemandValue = 50;
+        try {
+          const routeDemand = await routeDemandService.getRouteDemand(
+            route.departureAirportId, route.arrivalAirportId, worldYear
+          );
+          routeDemandValue = routeDemand.demand;
+          demandFactor = 0.78 + 0.22 * (routeDemandValue / 100);
+        } catch (demandErr) {
+          // Demand lookup failed, use defaults
+        }
+
+        // 3. Route maturity factor: new routes ramp up over game-weeks (0.35–1.00)
+        // Exponential ramp: ~0.50 at 2wk, ~0.75 at 4wk, ~0.92 at 8wk, ~1.0 at 12wk
+        let maturityFactor = 1.0;
+        if (route.createdAt) {
+          const routeAgeMs = currentGameTime.getTime() - new Date(route.createdAt).getTime();
+          const routeAgeWeeks = routeAgeMs / (7 * 24 * 60 * 60 * 1000);
+          maturityFactor = Math.min(1.0, 0.35 + 0.65 * (1 - Math.exp(-routeAgeWeeks / 4)));
+        }
+
+        // 4. Aircraft prestige factor: newer/right-sized aircraft attract more passengers
+        let prestigeFactor = 1.0;
+        if (aircraft) {
+          // Age bonus: newer aircraft are more attractive
+          const acAge = parseFloat(aircraft.ageYears) || 0;
+          let ageFactor = 1.0;
+          if (acAge <= 3) ageFactor = 1.08;
+          else if (acAge <= 8) ageFactor = 1.04;
+          else if (acAge <= 15) ageFactor = 1.00;
+          else if (acAge <= 25) ageFactor = 0.96;
+          else ageFactor = 0.92;
+
+          // Size-fit: penalise oversized aircraft for the route demand
+          let sizeFactor = 1.0;
+          if (routeDemandValue < 30 && paxCapacity > 200) {
+            sizeFactor = 0.92; // Big plane on low-demand route
+          } else if (routeDemandValue < 50 && paxCapacity > 300) {
+            sizeFactor = 0.90; // Widebody on medium-demand route
+          }
+
+          prestigeFactor = ageFactor * sizeFactor;
+        }
+
+        // 5. Pricing factor: compares your ticket price to the "fair" market price
+        //    Overpricing loses passengers, underpricing gains them
+        //    Price sensitivity varies by era and market (developing vs developed)
+        let priceFactor = 1.0;
+        const myEconomyPrice = parseFloat(route.economyPrice) || 0;
+        const fairPrice = eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy');
+
+        if (myEconomyPrice > 0 && fairPrice > 0) {
+          const priceRatio = myEconomyPrice / fairPrice; // 1.0 = fair, 2.0 = double, 0.5 = half
+
+          // Era-based price sensitivity: modern travelers are more price-conscious
+          // 1950s: luxury travel, less sensitive | 2020s: budget airlines, very sensitive
+          let sensitivity = 0.5; // default
+          if (worldYear < 1970) sensitivity = 0.25;      // Golden age — price matters less
+          else if (worldYear < 1990) sensitivity = 0.35;  // Deregulation starting
+          else if (worldYear < 2010) sensitivity = 0.45;  // Growing budget market
+          else sensitivity = 0.55;                         // Modern — very price conscious
+
+          // Market adjustment: developing country routes are more price sensitive
+          const depCountry = route.departureAirport?.country || '';
+          const arrCountry = route.arrivalAirport?.country || '';
+          const developedMarkets = ['United States', 'United Kingdom', 'Germany', 'France', 'Japan',
+            'Canada', 'Australia', 'Netherlands', 'Switzerland', 'Sweden', 'Norway', 'Denmark',
+            'Singapore', 'South Korea', 'Italy', 'Spain', 'Belgium', 'Austria', 'Ireland',
+            'Finland', 'New Zealand', 'Luxembourg', 'Iceland', 'Israel', 'UAE'];
+          const isDeveloped = developedMarkets.includes(depCountry) || developedMarkets.includes(arrCountry);
+          if (!isDeveloped) sensitivity += 0.10; // Developing markets: +10% more price sensitive
+
+          // priceFactor: below fair = bonus, above fair = penalty
+          // At fair price (ratio 1.0) → factor 1.0
+          // At 50% of fair → factor ~1.25 (cheap flights fill up)
+          // At 150% of fair → factor ~0.75 (expensive flights lose passengers)
+          // At 200% of fair → factor ~0.50 (way too expensive)
+          if (priceRatio <= 1.0) {
+            // Underpriced: bonus capped at 1.25
+            priceFactor = 1.0 + (1.0 - priceRatio) * sensitivity * 0.5;
+            priceFactor = Math.min(1.25, priceFactor);
+          } else {
+            // Overpriced: steeper penalty
+            priceFactor = 1.0 - (priceRatio - 1.0) * sensitivity;
+            priceFactor = Math.max(0.35, priceFactor);
+          }
+        }
+
+        // 6. Competition factor: other airlines on this route + price-based passenger steal
+        const competingRoutesList = await Route.findAll({
           where: {
             departureAirportId: route.departureAirportId,
             arrivalAirportId: route.arrivalAirportId,
             isActive: true,
             worldMembershipId: { [Op.ne]: route.worldMembershipId }
-          }
+          },
+          attributes: ['economyPrice']
         });
-
-        // Also count reverse direction
-        const reverseCompeting = await Route.count({
+        const reverseCompetingCount = await Route.count({
           where: {
             departureAirportId: route.arrivalAirportId,
             arrivalAirportId: route.departureAirportId,
@@ -717,37 +823,73 @@ class WorldTimeService {
           }
         });
 
-        const totalCompetitors = competingRoutes + reverseCompeting;
+        // Base competition: each competitor takes market share
+        const competitorCount = competingRoutesList.length;
+        const basePenalty = Math.min(0.35, competitorCount * 0.07 + reverseCompetingCount * 0.02);
 
-        // Base load factor ceiling from era
-        const expectedLF = eraEconomicService.getExpectedLoadFactor(worldYear) / 100;
+        // Price-based steal: if competitors are cheaper, they steal extra passengers
+        let priceSteal = 0;
+        if (competitorCount > 0 && myEconomyPrice > 0) {
+          const avgCompPrice = competingRoutesList.reduce((sum, r) =>
+            sum + (parseFloat(r.economyPrice) || 0), 0) / competitorCount;
 
-        // Modulate by route demand: high demand routes fill planes, low demand don't
-        // demand 100 -> factor 1.0, demand 50 -> factor 0.65, demand 0 -> factor 0.3
-        let demandFactor = 1.0;
+          if (avgCompPrice > 0 && myEconomyPrice > avgCompPrice) {
+            // We're more expensive than competitors — lose extra passengers
+            const priceDiff = (myEconomyPrice - avgCompPrice) / avgCompPrice;
+            priceSteal = Math.min(0.20, priceDiff * 0.30); // Up to 20% extra loss
+          } else if (avgCompPrice > 0 && myEconomyPrice < avgCompPrice) {
+            // We're cheaper — steal passengers from them (reduce the penalty)
+            const priceDiff = (avgCompPrice - myEconomyPrice) / avgCompPrice;
+            priceSteal = -Math.min(0.15, priceDiff * 0.25); // Recover up to 15%
+          }
+        }
+
+        const competitionFactor = Math.max(0.40, 1 - basePenalty - priceSteal);
+
+        // 7. Time-of-day factor: antisocial departure times reduce load factor
+        //    Estimate local hour from departure airport longitude (15° per hour)
+        let timeFactor = 1.0;
         try {
-          const routeDemand = await routeDemandService.getRouteDemand(
-            route.departureAirportId, route.arrivalAirportId, worldYear
-          );
-          demandFactor = 0.3 + 0.7 * (routeDemand.demand / 100);
-        } catch (demandErr) {
-          // Demand lookup failed, use full factor
+          const depTime = route.scheduledDepartureTime; // "HH:MM" or "HH:MM:SS"
+          if (depTime) {
+            const [depH, depM] = depTime.split(':').map(Number);
+            const depUtcHour = depH + (depM / 60);
+
+            const depLng = parseFloat(route.departureAirport?.longitude) || 0;
+            const utcOffset = Math.round(depLng / 15);
+            let localHour = (depUtcHour + utcOffset + 24) % 24;
+
+            if (localHour >= 6 && localHour < 10) timeFactor = 1.05;       // Morning peak
+            else if (localHour >= 16 && localHour < 20) timeFactor = 1.05;  // Evening peak
+            else if (localHour >= 10 && localHour < 16) timeFactor = 1.00;  // Midday
+            else if (localHour >= 20 && localHour < 22) timeFactor = 0.95;  // Late evening
+            else if (localHour >= 22 || localHour < 4) timeFactor = 0.70;   // Red-eye
+            else timeFactor = 0.80;                                          // Early morning 04-06
+          }
+        } catch (timeErr) {
+          // Time calculation failed, use default
         }
 
-        loadFactor = expectedLF * demandFactor;
+        // 8. Random daily variance ±10%
+        const variance = 0.9 + Math.random() * 0.2;
 
-        // Reduce load factor based on competition
-        if (totalCompetitors > 0) {
-          // Each competitor reduces share (diminishing returns)
-          const competitionPenalty = Math.min(0.4, totalCompetitors * 0.08);
-          loadFactor *= (1 - competitionPenalty);
+        // 9. Airline reputation factor: rep 0→0.90, rep 50→1.00, rep 100→1.10
+        let reputationFactor = 1.0;
+        try {
+          const membership = await WorldMembership.findByPk(route.worldMembershipId, {
+            attributes: ['reputation']
+          });
+          const rep = parseInt(membership?.reputation) || 50;
+          reputationFactor = 0.90 + (rep / 100) * 0.20;
+        } catch (repErr) {
+          // Reputation lookup failed, use neutral factor
         }
 
-        // Add some randomness (±10%)
-        loadFactor *= (0.9 + Math.random() * 0.2);
+        // Combine all factors
+        loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * reputationFactor * variance;
         loadFactor = Math.max(0.15, Math.min(0.98, loadFactor));
       } catch (err) {
-        // Competition check failed, use default
+        // Load factor calculation failed, use default
       }
 
       // Calculate passengers and revenue
@@ -776,7 +918,7 @@ class WorldTimeService {
       const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier); // $3.50/nm base, round trip
       const crewCost = Math.round(distance * 2 * 0.8); // ~$0.80/nm crew cost
       const maintenanceCost = Math.round(distance * 2 * 0.5); // ~$0.50/nm maint cost
-      const airportFees = Math.round(2000 + paxCapacity * 5); // Landing + handling fees
+      const airportFees = Math.round(1500 + paxCapacity * 3); // Landing + handling fees
       const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
 
       const profit = totalRevenue - totalCosts;
@@ -813,6 +955,165 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error processing flight revenue:', error.message);
+    }
+  }
+
+  /**
+   * Process airline reputation for all memberships in a world
+   * Reputation (0-100) based on: fleet age, maintenance, route profitability, fleet size
+   */
+  async processReputation(worldId, currentGameTime) {
+    try {
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true }
+      });
+
+      for (const membership of memberships) {
+        try {
+          // Get fleet
+          const fleet = await UserAircraft.findAll({
+            where: { worldMembershipId: membership.id, status: { [Op.notIn]: ['sold', 'returned'] } },
+            include: [{ model: Aircraft, as: 'aircraft' }]
+          });
+
+          // Get routes
+          const routes = await Route.findAll({
+            where: { worldMembershipId: membership.id, isActive: true }
+          });
+
+          // No fleet or routes = keep starting reputation, don't recalculate
+          if (fleet.length === 0 && routes.length === 0) continue;
+
+          // 1. Establishment score (0-20): airlines naturally gain reputation over time
+          //    Uses joinedAt (when they joined the world) vs current game time
+          //    Week 0: 0, Week 4: ~7, Week 8: ~11, Week 16: ~15, Week 24+: ~18-20
+          let establishmentScore = 0;
+          if (membership.joinedAt) {
+            const ageMs = currentGameTime.getTime() - new Date(membership.joinedAt).getTime();
+            const ageWeeks = ageMs / (7 * 24 * 60 * 60 * 1000);
+            establishmentScore = Math.min(20, 20 * (1 - Math.exp(-ageWeeks / 10)));
+          }
+
+          // 2. Fleet age score (0-20): newer fleet = higher score
+          let fleetAgeScore = 0;
+          if (fleet.length > 0) {
+            const avgAge = fleet.reduce((sum, ua) => sum + (parseFloat(ua.ageYears) || 0), 0) / fleet.length;
+            // Age 0 → 20, Age 5 → 16, Age 15 → 8, Age 25+ → 4
+            fleetAgeScore = Math.max(4, Math.min(20, 20 - avgAge * 0.64));
+          }
+
+          // 3. Maintenance score (0-20): well-maintained fleet = higher score
+          let maintScore = 0;
+          if (fleet.length > 0) {
+            let totalCondition = 0;
+            let overdueChecks = 0;
+
+            for (const ua of fleet) {
+              totalCondition += (ua.conditionPercentage || 100);
+
+              // Check for overdue C-checks (every ~18 months)
+              if (ua.lastCCheckDate) {
+                const daysSinceC = (currentGameTime.getTime() - new Date(ua.lastCCheckDate).getTime()) / (24 * 60 * 60 * 1000);
+                if (daysSinceC > 540) overdueChecks++;
+              }
+              // Check for overdue D-checks (every ~6 years)
+              if (ua.lastDCheckDate) {
+                const daysSinceD = (currentGameTime.getTime() - new Date(ua.lastDCheckDate).getTime()) / (24 * 60 * 60 * 1000);
+                if (daysSinceD > 2190) overdueChecks++;
+              }
+            }
+
+            const avgCondition = totalCondition / fleet.length;
+            const overdueRatio = overdueChecks / fleet.length;
+
+            // Condition: 100% → 20, 80% → 16, 60% → 12
+            maintScore = Math.max(0, Math.min(20, avgCondition * 0.20));
+            // Penalise overdue checks
+            maintScore = Math.max(0, maintScore - overdueRatio * 8);
+          }
+
+          // 4. Route performance score (0-20): profitable routes with good LF
+          let routeScore = 0;
+          if (routes.length > 0) {
+            let profitableCount = 0;
+            let totalLF = 0;
+            let routesWithData = 0;
+
+            for (const r of routes) {
+              const rev = parseFloat(r.totalRevenue) || 0;
+              const cost = parseFloat(r.totalCosts) || 0;
+              if (rev > 0) {
+                routesWithData++;
+                if (rev > cost) profitableCount++;
+                totalLF += (parseFloat(r.averageLoadFactor) || 0);
+              }
+            }
+
+            if (routesWithData > 0) {
+              const profitRatio = profitableCount / routesWithData;
+              const avgLF = totalLF / routesWithData;
+              // Profit ratio 100% → 12, 50% → 6 | LF 0.8+ → 8, 0.5 → 5
+              routeScore = profitRatio * 12 + Math.min(8, avgLF * 10);
+            }
+          }
+
+          // 5. Fleet size score (0-10): larger fleets = more established
+          let sizeScore = 0;
+          if (fleet.length >= 1) sizeScore = 2;
+          if (fleet.length >= 3) sizeScore = 4;
+          if (fleet.length >= 6) sizeScore = 6;
+          if (fleet.length >= 10) sizeScore = 8;
+          if (fleet.length >= 20) sizeScore = 10;
+
+          // 6. Network score (0-10): more routes = more connected
+          let networkScore = 0;
+          if (routes.length >= 1) networkScore = 2;
+          if (routes.length >= 3) networkScore = 4;
+          if (routes.length >= 6) networkScore = 6;
+          if (routes.length >= 10) networkScore = 8;
+          if (routes.length >= 20) networkScore = 10;
+
+          // Total: up to 100 (20+20+20+20+10+10)
+          const rawReputation = Math.round(establishmentScore + fleetAgeScore + maintScore + routeScore + sizeScore + networkScore);
+          const newReputation = Math.max(1, Math.min(100, rawReputation));
+
+          // Smooth the transition: move 10% toward target each tick to avoid jumps
+          const currentRep = membership.reputation || 25;
+          const smoothed = Math.round(currentRep + (newReputation - currentRep) * 0.10);
+          const finalReputation = Math.max(1, Math.min(100, smoothed));
+
+          // Build breakdown for tooltip display
+          const ratingOf = (score, max) => {
+            const pct = score / max;
+            if (pct >= 0.8) return 'Excellent';
+            if (pct >= 0.6) return 'Good';
+            if (pct >= 0.4) return 'Average';
+            if (pct >= 0.2) return 'Poor';
+            return 'Very Poor';
+          };
+
+          const breakdown = [
+            { label: 'Establishment', score: Math.round(establishmentScore), max: 20, rating: ratingOf(establishmentScore, 20) },
+            { label: 'Fleet Age', score: Math.round(fleetAgeScore), max: 20, rating: ratingOf(fleetAgeScore, 20) },
+            { label: 'Maintenance', score: Math.round(maintScore), max: 20, rating: ratingOf(maintScore, 20) },
+            { label: 'Route Performance', score: Math.round(routeScore), max: 20, rating: ratingOf(routeScore, 20) },
+            { label: 'Fleet Size', score: Math.round(sizeScore), max: 10, rating: ratingOf(sizeScore, 10) },
+            { label: 'Network', score: Math.round(networkScore), max: 10, rating: ratingOf(networkScore, 10) }
+          ];
+
+          const updateData = { reputation: finalReputation, reputationBreakdown: breakdown };
+          if (finalReputation !== currentRep) {
+            await membership.update(updateData);
+          } else {
+            // Still update breakdown even if score unchanged
+            await membership.update({ reputationBreakdown: breakdown });
+          }
+        } catch (memberErr) {
+          // Skip this membership on error
+        }
+      }
+    } catch (error) {
+      console.error('Error processing reputation:', error.message);
     }
   }
 

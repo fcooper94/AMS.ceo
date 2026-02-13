@@ -1,5 +1,23 @@
 // Common layout functionality for the application
 
+// Position and show reputation tooltip next to the hovered element
+function showReputationTooltip(el) {
+  const tooltip = document.getElementById('reputationTooltip');
+  if (!tooltip) return;
+  const rect = el.getBoundingClientRect();
+  tooltip.style.display = 'block';
+  tooltip.style.left = (rect.right + 10) + 'px';
+  tooltip.style.top = (rect.top + rect.height / 2 - tooltip.offsetHeight / 2) + 'px';
+  // Keep tooltip on screen
+  const tooltipRect = tooltip.getBoundingClientRect();
+  if (tooltipRect.bottom > window.innerHeight - 10) {
+    tooltip.style.top = (window.innerHeight - tooltipRect.height - 10) + 'px';
+  }
+  if (tooltipRect.top < 10) {
+    tooltip.style.top = '10px';
+  }
+}
+
 // WebSocket connection for real-time updates
 let socket = null;
 
@@ -338,6 +356,49 @@ async function loadWorldInfo() {
           if (worldInfo.iataCode) codes.push(worldInfo.iataCode);
           if (worldInfo.airlineCode) codes.push(worldInfo.airlineCode);
           airlineCodeEl.textContent = codes.length > 0 ? codes.join(' / ') : '--';
+        }
+
+        // Update reputation display
+        const repEl = document.getElementById('airlineReputation');
+        const repValue = document.getElementById('reputationValue');
+        const repBar = document.getElementById('reputationBar');
+        if (repEl && worldInfo.reputation !== undefined) {
+          repEl.style.display = 'block';
+          const rep = Math.round(worldInfo.reputation) || 0;
+          repValue.textContent = rep + '/100';
+          repBar.style.width = rep + '%';
+          // Color: red < 30, orange < 50, yellow < 70, green >= 70
+          if (rep >= 70) { repValue.style.color = 'var(--success-color)'; repBar.style.backgroundColor = 'var(--success-color)'; }
+          else if (rep >= 50) { repValue.style.color = 'var(--accent-color)'; repBar.style.backgroundColor = 'var(--accent-color)'; }
+          else if (rep >= 30) { repValue.style.color = 'var(--warning-color)'; repBar.style.backgroundColor = 'var(--warning-color)'; }
+          else { repValue.style.color = 'var(--danger-color)'; repBar.style.backgroundColor = 'var(--danger-color)'; }
+
+          // Build breakdown tooltip
+          const tooltip = document.getElementById('reputationTooltip');
+          if (tooltip) {
+            if (worldInfo.reputationBreakdown && worldInfo.reputationBreakdown.length > 0) {
+              const ratingColor = (rating) => {
+                if (rating === 'Excellent') return 'var(--success-color)';
+                if (rating === 'Good') return 'var(--accent-color)';
+                if (rating === 'Average') return 'var(--warning-color)';
+                return 'var(--danger-color)';
+              };
+              let html = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div>';
+              for (const item of worldInfo.reputationBreakdown) {
+                const pct = Math.round((item.score / item.max) * 100);
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                  <span style="font-size:0.7rem;color:var(--text-secondary);">${item.label}</span>
+                  <span style="font-size:0.65rem;font-weight:600;color:${ratingColor(item.rating)};">${item.score}/${item.max}</span>
+                </div>
+                <div style="width:100%;height:3px;background:var(--surface);border-radius:2px;overflow:hidden;margin-bottom:6px;">
+                  <div style="height:100%;width:${pct}%;background:${ratingColor(item.rating)};border-radius:2px;"></div>
+                </div>`;
+              }
+              tooltip.innerHTML = html;
+            } else {
+              tooltip.innerHTML = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div><div style="font-size:0.7rem;color:var(--text-muted);">Breakdown will appear after your airline has been operating for a while.</div>';
+            }
+          }
         }
       }
 

@@ -117,6 +117,7 @@ router.get('/info', async (req, res) => {
       iataCode: membership?.iataCode,
       balance: membership?.balance || 0,
       reputation: membership?.reputation || 0,
+      reputationBreakdown: membership?.reputationBreakdown || null,
       worldType: world.worldType || 'multiplayer',
       difficulty: world.difficulty || null,
       endDate: world.endDate || null,
