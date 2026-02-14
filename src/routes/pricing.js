@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PricingDefault, WorldMembership, User } = require('../models');
+const { PricingDefault, WorldMembership, User, World } = require('../models');
+const eraEconomicService = require('../services/eraEconomicService');
 
 /**
  * Get global pricing defaults for the current world membership
@@ -38,15 +39,23 @@ router.get('/global', async (req, res) => {
     });
 
     if (!pricing) {
-      // Return default values
+      // Return era-appropriate defaults based on a typical ~1000nm route
+      const world = await World.findByPk(activeWorldId);
+      const gameYear = world?.currentTime ? new Date(world.currentTime).getFullYear() : 2024;
+      const typicalDistance = 1000;
+
+      const econ = eraEconomicService.calculateTicketPrice(typicalDistance, gameYear, 'economy');
+      const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+
       return res.json({
-        economyPrice: 0,
-        economyPlusPrice: 0,
-        businessPrice: 0,
-        firstPrice: 0,
-        cargoLightRate: 0,
-        cargoStandardRate: 0,
-        cargoHeavyRate: 0
+        economyPrice: econ,
+        economyPlusPrice: Math.round(econ * 1.3),
+        businessPrice: Math.round(econ * 2.5),
+        firstPrice: Math.round(econ * 4),
+        cargoLightRate: Math.round(80 * eraMultiplier),
+        cargoStandardRate: Math.round(120 * eraMultiplier),
+        cargoHeavyRate: Math.round(200 * eraMultiplier),
+        isEraDefault: true
       });
     }
 
