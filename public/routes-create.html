@@ -3,6 +3,61 @@
 <!-- SCRIPTS: /js/flight-timing.js, /js/routes-create.js -->
 
 <style>
+  .btn-custom-atc {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted, #8b949e);
+    background: none;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    transition: all 0.15s;
+  }
+  .btn-custom-atc:hover {
+    color: var(--accent-color, #58a6ff);
+    border-color: var(--accent-color, #58a6ff);
+    background: rgba(88, 166, 255, 0.08);
+  }
+  .atc-stat-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .atc-stat-badge.resolved {
+    background: rgba(63, 185, 80, 0.1);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+  }
+  .atc-stat-badge.unresolved {
+    background: rgba(227, 179, 65, 0.1);
+    color: #e3b341;
+    border: 1px solid rgba(227, 179, 65, 0.3);
+  }
+  .atc-stat-badge.airway {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-color, #58a6ff);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+  }
+  .atc-waypoint-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #30363d);
+    font-family: 'Courier New', monospace;
+  }
+  .atc-waypoint-row:last-child { border-bottom: none; }
+  .atc-waypoint-row .wp-name { font-weight: 700; color: var(--text-primary); }
+  .atc-waypoint-row .wp-coords { font-size: 0.7rem; color: var(--text-muted); }
+  .atc-waypoint-row .wp-index { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.5rem; min-width: 20px; }
   .day-button:hover {
     opacity: 0.85;
   }
@@ -634,10 +689,22 @@
 
           <!-- Route Map Preview (Right) -->
           <div id="routeMapSection" style="min-width: 0; display: flex; flex-direction: column;">
-            <div style="margin-bottom: 0.5rem;">
+            <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
               <h3 style="color: var(--text-primary); font-weight: 600; font-size: 0.85rem; margin: 0;">ROUTE MAP</h3>
+              <button type="button" id="customAtcBtn" onclick="openCustomAtcModal()" class="btn-custom-atc">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.3rem;">
+                  <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+                Set Custom ATC Route
+              </button>
             </div>
             <div id="routePreviewMap" style="width: 100%; flex: 1; min-height: 200px; border-radius: 6px; border: 1px solid var(--border-color); background: #0d1117;"></div>
+            <!-- Custom ATC route indicator -->
+            <div id="customAtcIndicator" style="display: none; margin-top: 0.5rem; padding: 0.4rem 0.75rem; background: rgba(63, 185, 80, 0.08); border: 1px solid rgba(63, 185, 80, 0.3); border-radius: 4px; font-size: 0.75rem; color: #3fb950; align-items: center; gap: 0.4rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span id="customAtcIndicatorText">Custom ATC route set</span>
+              <button onclick="clearCustomAtcRoute()" style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.7rem; text-decoration: underline;">Clear</button>
+            </div>
           </div>
         </div>
       </div>
@@ -848,4 +915,76 @@
       </div>
     </div>
   </main>
+
+  <!-- Custom ATC Route Modal -->
+  <div id="customAtcModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9000; align-items: center; justify-content: center;">
+    <div style="background: var(--surface, #0d1117); border: 1px solid var(--border-color, #30363d); border-radius: 8px; width: 90%; max-width: 580px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #30363d);">
+        <div>
+          <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-primary);">Custom ATC Route</h2>
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; display: block;">Paste a raw ATC route to override the auto-generated waypoints</span>
+        </div>
+        <button onclick="closeCustomAtcModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 0.25rem; line-height: 1;">&times;</button>
+      </div>
+      <div style="padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1;">
+        <!-- Input -->
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">ATC Route String</label>
+          <textarea
+            id="atcRouteInput"
+            rows="3"
+            placeholder="e.g. KEA UN132 LAPSO GUDIS KAVOS EVORA LAKTO L560 SERMA L550 KARIK B411 DEESA Y415 TAMRO N318 HAYYA"
+            style="width: 100%; padding: 0.6rem 0.75rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; font-size: 0.85rem; resize: vertical; box-sizing: border-box; line-height: 1.5;"
+          ></textarea>
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.35rem 0 0 0;">Waypoints and airway identifiers separated by spaces. Airways (e.g. UN132, L560) will be noted but only fix coordinates are used.</p>
+        </div>
+
+        <!-- Resolve button -->
+        <button type="button" id="resolveAtcBtn" onclick="resolveCustomAtcRoute()" style="padding: 0.45rem 1rem; background: var(--accent-color, #58a6ff); color: #000; border: none; border-radius: 4px; font-weight: 700; font-size: 0.8rem; cursor: pointer; text-transform: uppercase; letter-spacing: 0.3px;">
+          Resolve Route
+        </button>
+
+        <!-- Results (hidden until resolved) -->
+        <div id="atcResolveResults" style="display: none; margin-top: 1.25rem;">
+          <!-- Summary -->
+          <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+            <div id="atcResolvedCount" class="atc-stat-badge resolved">0 resolved</div>
+            <div id="atcUnresolvedCount" class="atc-stat-badge unresolved" style="display: none;">0 unresolved</div>
+            <div id="atcAirwayCount" class="atc-stat-badge airway">0 airways</div>
+          </div>
+
+          <!-- Unresolved warnings -->
+          <div id="atcUnresolvedSection" style="display: none; margin-bottom: 1rem; padding: 0.6rem 0.75rem; background: rgba(227, 179, 65, 0.08); border: 1px solid rgba(227, 179, 65, 0.25); border-radius: 6px;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #e3b341; margin-bottom: 0.3rem;">Unresolved Fixes</div>
+            <div id="atcUnresolvedList" style="font-size: 0.8rem; color: #e3b341; font-family: 'Courier New', monospace;"></div>
+            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0 0;">These fixes were not found in the navigation database and will be skipped.</p>
+          </div>
+
+          <!-- Airspace restriction warnings -->
+          <div id="atcRestrictionSection" style="display: none; margin-bottom: 1rem; padding: 0.6rem 0.75rem; background: rgba(248, 81, 73, 0.08); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 6px;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #f85149; margin-bottom: 0.3rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 0.3rem; vertical-align: -1px;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              Route Crosses Restricted Airspace
+            </div>
+            <div id="atcRestrictionList" style="font-size: 0.8rem; color: #f85149;"></div>
+            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0 0;">This route will be created as suspended if you proceed.</p>
+          </div>
+
+          <!-- Waypoint list -->
+          <div style="margin-bottom: 0.5rem;">
+            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Resolved Waypoints</label>
+            <div id="atcWaypointList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color, #30363d); border-radius: 6px; font-size: 0.8rem;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #30363d); display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button onclick="closeCustomAtcModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">Cancel</button>
+        <button id="applyAtcBtn" onclick="applyCustomAtcRoute()" disabled style="padding: 0.5rem 1rem; background: #3fb950; border: 1px solid #3fb950; color: #000; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; opacity: 0.5;">Apply Route</button>
+      </div>
+    </div>
+  </div>
 </div>

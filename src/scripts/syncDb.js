@@ -97,6 +97,7 @@ async function syncDatabase() {
         { table: 'user_aircraft', column: 'status', enumName: 'enum_user_aircraft_status', values: "'active','maintenance','storage','recalling','sold','listed_sale','listed_lease','leased_out'", dflt: 'active' },
         { table: 'recurring_maintenance', column: 'check_type', enumName: 'enum_recurring_maintenance_check_type', values: "'daily','weekly','A','C','D'", dflt: null },
         { table: 'recurring_maintenance', column: 'status', enumName: 'enum_recurring_maintenance_status', values: "'active','inactive','completed'", dflt: 'active' },
+        { table: 'airspace_restrictions', column: 'restriction_type', enumName: 'enum_airspace_restrictions_restriction_type', values: "'until_further_notice','date_range'", dflt: null },
       ];
       for (const { table, column, enumName, values, dflt } of enumFixups) {
         try {

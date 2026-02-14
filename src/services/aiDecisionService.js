@@ -405,6 +405,18 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         isActive: true
       });
 
+      // Compute airway waypoints
+      try {
+        const airwayService = require('./airwayService');
+        if (airwayService.isReady()) {
+          const wps = airwayService.computeRoute(
+            parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
+            parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
+          );
+          if (wps) await route.update({ waypoints: wps });
+        }
+      } catch (wpErr) { /* non-critical */ }
+
       // Create weekly flight templates
       await scheduleAIFlights(route, aircraft);
 

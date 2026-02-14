@@ -1,0 +1,140 @@
+<!-- TITLE: Airspace Configuration - AMS.ceo -->
+<!-- SUBTITLE: Flight Operations -->
+<!-- SCRIPTS: /js/airspace-config.js -->
+<!-- STYLES: /css/airspace-config.css -->
+
+<div class="dashboard-container">
+  <main class="main-content airspace-map-content">
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Active Restrictions Panel (left side) -->
+    <div id="restrictionsPanel" class="restrictions-panel">
+      <div class="restrictions-header">
+        <h3>ACTIVE RESTRICTIONS</h3>
+        <span id="restrictionCount" class="restriction-count">0</span>
+      </div>
+      <div id="restrictionsList" class="restrictions-list">
+        <div class="empty-state">No active airspace restrictions</div>
+      </div>
+    </div>
+
+    <!-- Map Legend -->
+    <div class="airspace-legend">
+      <div class="legend-item">
+        <span class="legend-swatch" style="background: rgba(88, 166, 255, 0.3); border: 1px solid rgba(88, 166, 255, 0.5);"></span>
+        <span>FIR Boundary</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch" style="background: rgba(248, 81, 73, 0.3); border: 1px solid rgba(248, 81, 73, 0.6);"></span>
+        <span>Restricted Airspace</span>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+  </main>
+
+  <!-- Restriction Modal -->
+  <div id="restrictionModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 560px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="modalFirTitle">Avoid Airspace</h2>
+          <span class="modal-subtitle">Restrict airline operations in this FIR</span>
+        </div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- FIR Code Badge -->
+        <div class="fir-info-row">
+          <div class="fir-info-badge" id="modalFirCode">EGTT</div>
+          <div class="fir-info-detail">
+            <span class="fir-info-label">FIR Code</span>
+          </div>
+        </div>
+
+        <!-- Restriction Type - segmented control style -->
+        <div class="form-group">
+          <label class="form-label">Duration</label>
+          <div class="segmented-control">
+            <label class="segment active" id="segUntilFurther">
+              <input type="radio" name="restrictionType" value="until_further_notice" checked onchange="toggleDateRange()">
+              <span>Until further notice</span>
+            </label>
+            <label class="segment" id="segDateRange">
+              <input type="radio" name="restrictionType" value="date_range" onchange="toggleDateRange()">
+              <span>Date range</span>
+            </label>
+          </div>
+          <div id="dateRangeFields" class="date-range-fields" style="display: none;">
+            <div class="date-field">
+              <label>From</label>
+              <input type="date" id="startDate">
+            </div>
+            <div class="date-field">
+              <label>To</label>
+              <input type="date" id="endDate">
+            </div>
+          </div>
+        </div>
+
+        <!-- Affected Routes -->
+        <div class="affected-routes-section">
+          <div class="affected-routes-header">
+            <span>Affected Routes</span>
+            <span id="affectedCount" class="affected-count">--</span>
+          </div>
+          <div id="affectedRoutesLoading" class="loading-indicator">
+            <div class="spinner"></div>
+            <span>Checking routes...</span>
+          </div>
+          <div id="affectedRoutesList" class="affected-routes-list" style="display: none;"></div>
+          <div id="noAffectedRoutes" class="no-affected" style="display: none;">
+            No active routes are affected by this restriction.
+          </div>
+        </div>
+
+        <!-- Warning Banner -->
+        <div id="warningBanner" class="warning-banner" style="display: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span id="warningText">Routes will be suspended when this restriction is applied.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">CANCEL</button>
+        <button class="btn btn-danger" id="confirmBtn" onclick="confirmRestriction()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.4rem;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+          </svg>
+          AVOID AIRSPACE
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remove Confirmation Modal -->
+  <div id="removeModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header" style="border-bottom-color: var(--accent-color, #58a6ff);">
+        <h2>Lift Restriction</h2>
+        <button class="modal-close" onclick="closeRemoveModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="removeModalMessage" style="color: var(--text-primary); line-height: 1.6; margin: 0 0 1rem 0;"></p>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">
+          Affected routes will be reactivated unless covered by another active restriction.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRemoveModal()">CANCEL</button>
+        <button class="btn btn-primary" id="removeConfirmBtn" onclick="confirmRemoveRestriction()">LIFT RESTRICTION</button>
+      </div>
+    </div>
+  </div>
+</div>

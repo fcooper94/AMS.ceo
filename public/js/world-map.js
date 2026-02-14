@@ -11,6 +11,7 @@ let airlineFilterMode = 'mine'; // 'mine', 'hq', or 'all'
 let hqAirportCode = null; // Player's HQ airport ICAO code (set on init)
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
 let flightsListOpen = false; // Hidden by default, user can toggle open
+let waypointMarkers = []; // Waypoint dot markers for selected flight
 
 // FIR boundary overlay state
 let firLayerGroup = null;    // L.layerGroup holding FIR polygons
@@ -60,8 +61,18 @@ function syncUpdateAllPositions() {
     }
   });
 
-  // Update info panel if a flight is selected (only progress/status, not full rebuild)
+  // Detect phase change for selected flight and redraw route if needed
   if (selectedFlightId) {
+    const selectedFlight = activeFlights.find(f => f.id === selectedFlightId);
+    if (selectedFlight) {
+      const pos = calculateFlightPosition(selectedFlight);
+      if (selectedFlight._lastDrawnPhase !== undefined && selectedFlight._lastDrawnPhase !== pos.phase) {
+        // Phase changed - redraw route and info panel for new sector
+        redrawSelectedFlightRoute(selectedFlight);
+        showFlightInfo(selectedFlight);
+      }
+      selectedFlight._lastDrawnPhase = pos.phase;
+    }
     updateFlightInfoProgress();
   }
 
@@ -436,6 +447,97 @@ function updateFlightsOnMap(flights) {
   });
 }
 
+// Calculate total path distance along waypoints (in nautical miles)
+function calculateWaypointPathDistance(waypoints) {
+  let total = 0;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    total += haversineDistanceNm(waypoints[i].lat, waypoints[i].lng, waypoints[i + 1].lat, waypoints[i + 1].lng);
+  }
+  return total;
+}
+
+// Haversine distance in nautical miles
+function haversineDistanceNm(lat1, lng1, lat2, lng2) {
+  const toRad = deg => deg * Math.PI / 180;
+  const R = 3440.065; // Earth radius in nautical miles
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Interpolate position along a waypoint path given a fraction (0-1)
+// Returns {lat, lng, destLat, destLng} where dest is the next waypoint ahead
+function interpolateAlongWaypoints(waypoints, fraction) {
+  if (!waypoints || waypoints.length < 2) return null;
+  if (fraction <= 0) return { lat: waypoints[0].lat, lng: waypoints[0].lng, destLat: waypoints[1].lat, destLng: waypoints[1].lng };
+  if (fraction >= 1) {
+    const last = waypoints[waypoints.length - 1];
+    const prev = waypoints[waypoints.length - 2];
+    return { lat: last.lat, lng: last.lng, destLat: last.lat, destLng: last.lng };
+  }
+
+  // Compute cumulative segment distances
+  const segDists = [];
+  let totalDist = 0;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const d = haversineDistanceNm(waypoints[i].lat, waypoints[i].lng, waypoints[i + 1].lat, waypoints[i + 1].lng);
+    segDists.push(d);
+    totalDist += d;
+  }
+
+  const targetDist = fraction * totalDist;
+  let cumDist = 0;
+
+  for (let i = 0; i < segDists.length; i++) {
+    if (cumDist + segDists[i] >= targetDist) {
+      // Interpolate within this segment
+      const segFraction = (targetDist - cumDist) / segDists[i];
+      const pos = interpolateGreatCircle(waypoints[i].lat, waypoints[i].lng, waypoints[i + 1].lat, waypoints[i + 1].lng, segFraction);
+      return {
+        lat: pos.lat,
+        lng: pos.lng,
+        destLat: waypoints[i + 1].lat,
+        destLng: waypoints[i + 1].lng
+      };
+    }
+    cumDist += segDists[i];
+  }
+
+  // Fallback: at end
+  const last = waypoints[waypoints.length - 1];
+  return { lat: last.lat, lng: last.lng, destLat: last.lat, destLng: last.lng };
+}
+
+// Optimized version with pre-computed segment distances (avoids recalculating on every tick)
+function interpolateAlongWaypointsCached(waypoints, fraction, segDists, totalDist) {
+  if (fraction <= 0) return { lat: waypoints[0].lat, lng: waypoints[0].lng, destLat: waypoints[1].lat, destLng: waypoints[1].lng };
+  if (fraction >= 1) {
+    const last = waypoints[waypoints.length - 1];
+    return { lat: last.lat, lng: last.lng, destLat: last.lat, destLng: last.lng };
+  }
+
+  const targetDist = fraction * totalDist;
+  let cumDist = 0;
+
+  for (let i = 0; i < segDists.length; i++) {
+    if (cumDist + segDists[i] >= targetDist) {
+      const segFraction = (targetDist - cumDist) / segDists[i];
+      const pos = interpolateGreatCircle(waypoints[i].lat, waypoints[i].lng, waypoints[i + 1].lat, waypoints[i + 1].lng, segFraction);
+      return {
+        lat: pos.lat,
+        lng: pos.lng,
+        destLat: waypoints[i + 1].lat,
+        destLng: waypoints[i + 1].lng
+      };
+    }
+    cumDist += segDists[i];
+  }
+
+  const last = waypoints[waypoints.length - 1];
+  return { lat: last.lat, lng: last.lng, destLat: last.lat, destLng: last.lng };
+}
+
 // Calculate current flight position based on departure time and flight duration
 // Handles both outbound and return legs of a round-trip flight
 // Includes wind adjustment (eastbound flights faster, westbound slower)
@@ -587,8 +689,12 @@ function calculateFlightPosition(flight) {
     }
   } else {
     // Standard direct route - cache durations
+    const waypoints = flight.route?.waypoints;
     if (!flight._durationsCached) {
-      const distanceNm = parseFloat(flight.route.distance) || 500;
+      // Use actual path distance if waypoints exist, otherwise great circle distance
+      const distanceNm = (waypoints && waypoints.length >= 2)
+        ? calculateWaypointPathDistance(waypoints)
+        : (parseFloat(flight.route.distance) || 500);
       flight._outboundFlightMs = calculateFlightDurationMs(distanceNm, depLng, arrLng, depLat, arrLat, speedKnots);
       flight._returnFlightMs = calculateFlightDurationMs(distanceNm, arrLng, depLng, arrLat, depLat, speedKnots);
       flight._durationsCached = true;
@@ -602,9 +708,28 @@ function calculateFlightPosition(flight) {
       phase = 'outbound';
       routeNumber = flight.route.routeNumber;
       progress = Math.max(0, Math.min(1, elapsedMs / outboundFlightMs));
-      position = interpolateGreatCircle(depLat, depLng, arrLat, arrLng, progress);
-      destLat = arrLat;
-      destLng = arrLng;
+      if (waypoints && waypoints.length >= 2) {
+        // Cache waypoint segment distances for performance
+        if (!flight._wpSegDists) {
+          const segDists = [];
+          let total = 0;
+          for (let i = 0; i < waypoints.length - 1; i++) {
+            const d = haversineDistanceNm(waypoints[i].lat, waypoints[i].lng, waypoints[i + 1].lat, waypoints[i + 1].lng);
+            segDists.push(d);
+            total += d;
+          }
+          flight._wpSegDists = segDists;
+          flight._wpTotalDist = total;
+        }
+        const wpResult = interpolateAlongWaypointsCached(waypoints, progress, flight._wpSegDists, flight._wpTotalDist);
+        position = { lat: wpResult.lat, lng: wpResult.lng };
+        destLat = wpResult.destLat;
+        destLng = wpResult.destLng;
+      } else {
+        position = interpolateGreatCircle(depLat, depLng, arrLat, arrLng, progress);
+        destLat = arrLat;
+        destLng = arrLng;
+      }
     } else if (elapsedMs < outboundFlightMs + turnaroundMs) {
       // TURNAROUND: at arrival airport
       phase = 'turnaround';
@@ -619,9 +744,30 @@ function calculateFlightPosition(flight) {
       routeNumber = flight.route.returnRouteNumber || flight.route.routeNumber;
       const returnElapsedMs = elapsedMs - outboundFlightMs - turnaroundMs;
       progress = Math.max(0, Math.min(1, returnElapsedMs / returnFlightMs));
-      position = interpolateGreatCircle(arrLat, arrLng, depLat, depLng, progress);
-      destLat = depLat;
-      destLng = depLng;
+      if (waypoints && waypoints.length >= 2) {
+        // Cache reversed waypoint segment distances for performance
+        if (!flight._wpRevSegDists) {
+          const revWp = [...waypoints].reverse();
+          const segDists = [];
+          let total = 0;
+          for (let i = 0; i < revWp.length - 1; i++) {
+            const d = haversineDistanceNm(revWp[i].lat, revWp[i].lng, revWp[i + 1].lat, revWp[i + 1].lng);
+            segDists.push(d);
+            total += d;
+          }
+          flight._wpRevSegDists = segDists;
+          flight._wpRevTotalDist = total;
+          flight._wpReversed = revWp;
+        }
+        const wpResult = interpolateAlongWaypointsCached(flight._wpReversed, progress, flight._wpRevSegDists, flight._wpRevTotalDist);
+        position = { lat: wpResult.lat, lng: wpResult.lng };
+        destLat = wpResult.destLat;
+        destLng = wpResult.destLng;
+      } else {
+        position = interpolateGreatCircle(arrLat, arrLng, depLat, depLng, progress);
+        destLat = depLat;
+        destLng = depLng;
+      }
     }
   }
 
@@ -807,15 +953,59 @@ function createFlightMarker(flight, position) {
   flightMarkers.set(flight.id, marker);
 }
 
-// Create route line for selected flight
-// Draws on main world and adjacent copies for seamless scrolling
+// Redraw route line and airport markers for selected flight (on phase change)
+function redrawSelectedFlightRoute(flight) {
+  // Remove existing route lines
+  const existingLines = routeLines.get(flight.id);
+  if (existingLines) {
+    if (Array.isArray(existingLines)) {
+      existingLines.forEach(l => map.removeLayer(l));
+    } else {
+      map.removeLayer(existingLines);
+    }
+  }
+  routeLines.delete(flight.id);
+
+  // Remove waypoint markers
+  waypointMarkers.forEach(m => map.removeLayer(m));
+  waypointMarkers = [];
+
+  // Remove and recreate airport markers
+  airportMarkers.forEach(marker => map.removeLayer(marker));
+  airportMarkers.clear();
+
+  // Redraw for new phase
+  createRouteLine(flight);
+  createAirportMarkers(flight);
+}
+
+// Determine if a flight is currently in the return sector
+function isReturnSector(flight) {
+  const position = calculateFlightPosition(flight);
+  const phase = position.phase;
+
+  if (phase === 'turnaround' || phase === 'return') return true;
+
+  if (phase === 'techstop' && flight._t3 !== undefined) {
+    const currentTime = window.getGlobalWorldTime ? window.getGlobalWorldTime() : new Date();
+    if (!flight._depDateTime) {
+      flight._depDateTime = new Date(`${flight.scheduledDate}T${flight.departureTime}`);
+    }
+    const elapsed = currentTime - flight._depDateTime;
+    return elapsed >= flight._t3;
+  }
+
+  return false;
+}
+
+// Create route line for selected flight - only draws current sector
 function createRouteLine(flight) {
   const depLat = parseFloat(flight.departureAirport.latitude);
   const depLng = parseFloat(flight.departureAirport.longitude);
   const arrLat = parseFloat(flight.arrivalAirport.latitude);
   const arrLng = parseFloat(flight.arrivalAirport.longitude);
 
-  // Check if there's a tech stop
+  const isReturn = isReturnSector(flight);
   const hasTechStop = flight.route?.techStopAirport;
 
   const lineStyle = {
@@ -827,22 +1017,67 @@ function createRouteLine(flight) {
   };
 
   const allPolylines = [];
+  const waypoints = flight.route?.waypoints;
 
   if (hasTechStop) {
     const techLat = parseFloat(flight.route.techStopAirport.latitude);
     const techLng = parseFloat(flight.route.techStopAirport.longitude);
 
-    const segments1 = generateGreatCirclePath(depLat, depLng, techLat, techLng, 30);
-    const segments2 = generateGreatCirclePath(techLat, techLng, arrLat, arrLng, 30);
+    if (isReturn) {
+      // Return sector: ARR → TECH → DEP
+      const segments1 = generateGreatCirclePath(arrLat, arrLng, techLat, techLng, 30);
+      const segments2 = generateGreatCirclePath(techLat, techLng, depLat, depLng, 30);
+      segments1.forEach(segment => {
+        allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+      });
+      segments2.forEach(segment => {
+        allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+      });
+    } else {
+      // Outbound sector: DEP → TECH → ARR
+      const segments1 = generateGreatCirclePath(depLat, depLng, techLat, techLng, 30);
+      const segments2 = generateGreatCirclePath(techLat, techLng, arrLat, arrLng, 30);
+      segments1.forEach(segment => {
+        allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+      });
+      segments2.forEach(segment => {
+        allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+      });
+    }
+  } else if (waypoints && waypoints.length >= 2) {
+    // Draw route through airway waypoints in current sector direction
+    const wpToUse = isReturn ? [...waypoints].reverse() : waypoints;
 
-    segments1.forEach(segment => {
-      allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
-    });
-    segments2.forEach(segment => {
-      allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
-    });
+    for (let i = 0; i < wpToUse.length - 1; i++) {
+      const segments = generateGreatCirclePath(
+        wpToUse[i].lat, wpToUse[i].lng,
+        wpToUse[i + 1].lat, wpToUse[i + 1].lng, 10
+      );
+      segments.forEach(segment => {
+        allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
+      });
+    }
+
+    // Show waypoint dot markers (skip first and last which are the airports)
+    if (wpToUse.length > 2) {
+      wpToUse.slice(1, -1).forEach(wp => {
+        const wpMarker = L.circleMarker([wp.lat, wp.lng], {
+          radius: 2,
+          color: '#58a6ff',
+          fillColor: '#58a6ff',
+          fillOpacity: 0.6,
+          weight: 0,
+          interactive: false
+        }).addTo(map);
+        waypointMarkers.push(wpMarker);
+      });
+    }
   } else {
-    const segments = generateGreatCirclePath(depLat, depLng, arrLat, arrLng, 50);
+    // Great circle in current sector direction
+    const [fromLat, fromLng, toLat, toLng] = isReturn
+      ? [arrLat, arrLng, depLat, depLng]
+      : [depLat, depLng, arrLat, arrLng];
+    const segments = generateGreatCirclePath(fromLat, fromLng, toLat, toLng, 50);
     segments.forEach(segment => {
       allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
     });
@@ -979,6 +1214,9 @@ function showFlightInfo(flight) {
   } else if (phase === 'turnaround') {
     phaseStatus = 'TURNAROUND';
     progressPercent = 100;
+  } else if (phase === 'techstop') {
+    phaseStatus = 'TECH STOP';
+    progressPercent = 100;
   } else {
     phaseStatus = 'RETURN';
     progressPercent = Math.round((position.progress || 0) * 100);
@@ -1039,77 +1277,93 @@ function showFlightInfo(flight) {
     const totalReturnMin = leg3Minutes + techStopMinutes + leg4Minutes;
     const totalReturnStr = `${Math.floor(totalReturnMin / 60)}h ${String(totalReturnMin % 60).padStart(2, '0')}m`;
 
-    sectorsHtml = `
-      <!-- Outbound Sector with Tech Stop -->
-      <div class="sector-card ${phase === 'outbound' ? 'active' : phase === 'turnaround' || phase === 'return' ? 'completed' : ''}">
-        <div class="sector-header">
-          <span class="sector-flight-num">${outboundRouteNum}</span>
-          <span class="sector-label">OUTBOUND</span>
-          <span class="sector-total-time">${totalOutboundStr}</span>
-        </div>
-        <div class="sector-route tech-stop-route">
-          <div class="sector-airport">
-            <div class="airport-code">${depCode}</div>
-            <div class="airport-time">${depTime}</div>
-          </div>
-          <div class="sector-arrow small">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${leg1DurationStr}</div>
-          </div>
-          <div class="sector-airport techstop">
-            <div class="airport-code" style="color: #d29922;">${techCode}</div>
-            <div class="airport-time">${leg1ArrivalTime}</div>
-            <div class="tech-label">TECH</div>
-          </div>
-          <div class="sector-arrow small">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${leg2DurationStr}</div>
-          </div>
-          <div class="sector-airport">
-            <div class="airport-code">${arrCode}</div>
-            <div class="airport-time">${leg2ArrivalTime}</div>
-          </div>
-        </div>
-      </div>
+    // Determine tech stop sector: outbound vs return
+    let techSector = 'outbound';
+    if (phase === 'turnaround') {
+      techSector = 'turnaround';
+    } else if (phase === 'return') {
+      techSector = 'return';
+    } else if (phase === 'techstop' && flight._t3 !== undefined) {
+      const currentTime = window.getGlobalWorldTime ? window.getGlobalWorldTime() : new Date();
+      const elapsed = currentTime - depDateTime;
+      techSector = elapsed >= flight._t3 ? 'return' : 'outbound';
+    }
 
-      <!-- Turnaround -->
-      <div class="turnaround-indicator ${phase === 'turnaround' ? 'active' : phase === 'return' ? 'completed' : ''}">
-        <span class="turnaround-icon">⟳</span>
-        <span class="turnaround-text">${turnaroundTime} min turnaround at ${arrCode}</span>
-      </div>
-
-      <!-- Return Sector with Tech Stop -->
-      <div class="sector-card ${phase === 'return' ? 'active' : ''}">
-        <div class="sector-header">
-          <span class="sector-flight-num">${returnRouteNum}</span>
-          <span class="sector-label">RETURN</span>
-          <span class="sector-total-time">${totalReturnStr}</span>
-        </div>
-        <div class="sector-route tech-stop-route">
-          <div class="sector-airport">
-            <div class="airport-code">${arrCode}</div>
-            <div class="airport-time">${returnDepTime}</div>
+    // Show only current sector
+    if (techSector === 'outbound') {
+      sectorsHtml = `
+        <div class="sector-card active">
+          <div class="sector-header">
+            <span class="sector-flight-num">${outboundRouteNum}</span>
+            <span class="sector-label">OUTBOUND</span>
+            <span class="sector-total-time">${totalOutboundStr}</span>
           </div>
-          <div class="sector-arrow small">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${leg3DurationStr}</div>
-          </div>
-          <div class="sector-airport techstop">
-            <div class="airport-code" style="color: #d29922;">${techCode}</div>
-            <div class="airport-time">${leg3ArrivalTime}</div>
-            <div class="tech-label">TECH</div>
-          </div>
-          <div class="sector-arrow small">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${leg4DurationStr}</div>
-          </div>
-          <div class="sector-airport">
-            <div class="airport-code">${depCode}</div>
-            <div class="airport-time">${leg4ArrivalTime}</div>
+          <div class="sector-route tech-stop-route">
+            <div class="sector-airport">
+              <div class="airport-code">${depCode}</div>
+              <div class="airport-time">${depTime}</div>
+            </div>
+            <div class="sector-arrow small">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${leg1DurationStr}</div>
+            </div>
+            <div class="sector-airport techstop">
+              <div class="airport-code" style="color: #d29922;">${techCode}</div>
+              <div class="airport-time">${leg1ArrivalTime}</div>
+              <div class="tech-label">TECH</div>
+            </div>
+            <div class="sector-arrow small">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${leg2DurationStr}</div>
+            </div>
+            <div class="sector-airport">
+              <div class="airport-code">${arrCode}</div>
+              <div class="airport-time">${leg2ArrivalTime}</div>
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
+    } else if (techSector === 'turnaround') {
+      sectorsHtml = `
+        <div class="turnaround-indicator active">
+          <span class="turnaround-icon">⟳</span>
+          <span class="turnaround-text">${turnaroundTime} min turnaround at ${arrCode}</span>
+        </div>
+      `;
+    } else {
+      sectorsHtml = `
+        <div class="sector-card active">
+          <div class="sector-header">
+            <span class="sector-flight-num">${returnRouteNum}</span>
+            <span class="sector-label">RETURN</span>
+            <span class="sector-total-time">${totalReturnStr}</span>
+          </div>
+          <div class="sector-route tech-stop-route">
+            <div class="sector-airport">
+              <div class="airport-code">${arrCode}</div>
+              <div class="airport-time">${returnDepTime}</div>
+            </div>
+            <div class="sector-arrow small">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${leg3DurationStr}</div>
+            </div>
+            <div class="sector-airport techstop">
+              <div class="airport-code" style="color: #d29922;">${techCode}</div>
+              <div class="airport-time">${leg3ArrivalTime}</div>
+              <div class="tech-label">TECH</div>
+            </div>
+            <div class="sector-arrow small">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${leg4DurationStr}</div>
+            </div>
+            <div class="sector-airport">
+              <div class="airport-code">${depCode}</div>
+              <div class="airport-time">${leg4ArrivalTime}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
   } else {
     // Standard route without tech stop
     // Outbound duration (with wind effect, rounded to nearest 5 minutes)
@@ -1134,57 +1388,61 @@ function showFlightInfo(flight) {
     const returnArrival = new Date(returnDep.getTime() + returnFlightMs);
     const returnArrivalTime = roundTimeToNearest5(returnArrival.toTimeString().substring(0, 5));
 
-    sectorsHtml = `
-      <!-- Outbound Sector -->
-      <div class="sector-card ${phase === 'outbound' ? 'active' : phase === 'turnaround' || phase === 'return' ? 'completed' : ''}">
-        <div class="sector-header">
-          <span class="sector-flight-num">${outboundRouteNum}</span>
-          <span class="sector-label">OUTBOUND</span>
-        </div>
-        <div class="sector-route">
-          <div class="sector-airport">
-            <div class="airport-code">${depCode}</div>
-            <div class="airport-time">${depTime}</div>
+    // Show only the current sector
+    if (phase === 'outbound') {
+      sectorsHtml = `
+        <div class="sector-card active">
+          <div class="sector-header">
+            <span class="sector-flight-num">${outboundRouteNum}</span>
+            <span class="sector-label">OUTBOUND</span>
           </div>
-          <div class="sector-arrow">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${outboundDurationStr}</div>
-          </div>
-          <div class="sector-airport">
-            <div class="airport-code">${arrCode}</div>
-            <div class="airport-time">${outboundArrivalTime}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Turnaround -->
-      <div class="turnaround-indicator ${phase === 'turnaround' ? 'active' : phase === 'return' ? 'completed' : ''}">
-        <span class="turnaround-icon">⟳</span>
-        <span class="turnaround-text">${turnaroundTime} min turnaround at ${arrCode}</span>
-      </div>
-
-      <!-- Return Sector -->
-      <div class="sector-card ${phase === 'return' ? 'active' : ''}">
-        <div class="sector-header">
-          <span class="sector-flight-num">${returnRouteNum}</span>
-          <span class="sector-label">RETURN</span>
-        </div>
-        <div class="sector-route">
-          <div class="sector-airport">
-            <div class="airport-code">${arrCode}</div>
-            <div class="airport-time">${returnDepTime}</div>
-          </div>
-          <div class="sector-arrow">
-            <div class="arrow-line"></div>
-            <div class="flight-duration">${returnDurationStr}</div>
-          </div>
-          <div class="sector-airport">
-            <div class="airport-code">${depCode}</div>
-            <div class="airport-time">${returnArrivalTime}</div>
+          <div class="sector-route">
+            <div class="sector-airport">
+              <div class="airport-code">${depCode}</div>
+              <div class="airport-time">${depTime}</div>
+            </div>
+            <div class="sector-arrow">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${outboundDurationStr}</div>
+            </div>
+            <div class="sector-airport">
+              <div class="airport-code">${arrCode}</div>
+              <div class="airport-time">${outboundArrivalTime}</div>
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
+    } else if (phase === 'turnaround') {
+      sectorsHtml = `
+        <div class="turnaround-indicator active">
+          <span class="turnaround-icon">⟳</span>
+          <span class="turnaround-text">${turnaroundTime} min turnaround at ${arrCode}</span>
+        </div>
+      `;
+    } else {
+      sectorsHtml = `
+        <div class="sector-card active">
+          <div class="sector-header">
+            <span class="sector-flight-num">${returnRouteNum}</span>
+            <span class="sector-label">RETURN</span>
+          </div>
+          <div class="sector-route">
+            <div class="sector-airport">
+              <div class="airport-code">${arrCode}</div>
+              <div class="airport-time">${returnDepTime}</div>
+            </div>
+            <div class="sector-arrow">
+              <div class="arrow-line"></div>
+              <div class="flight-duration">${returnDurationStr}</div>
+            </div>
+            <div class="sector-airport">
+              <div class="airport-code">${depCode}</div>
+              <div class="airport-time">${returnArrivalTime}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
   }
 
   // Check if this is another airline's flight
@@ -1242,7 +1500,7 @@ function showFlightInfo(flight) {
   if (dropdown) dropdown.classList.add('shifted');
 }
 
-// Lightweight update of just the progress/status in the flight info panel (called every 1s)
+// Lightweight update of just the progress/status in the flight info panel (called every 2s tick)
 function updateFlightInfoProgress() {
   const flight = activeFlights.find(f => f.id === selectedFlightId);
   if (!flight) return;
@@ -1253,7 +1511,8 @@ function updateFlightInfoProgress() {
   // Update status badge
   const statusBadge = document.querySelector('.status-badge');
   if (statusBadge) {
-    const phaseStatus = phase === 'outbound' ? 'OUTBOUND' : phase === 'turnaround' ? 'TURNAROUND' : 'RETURN';
+    const phaseStatus = phase === 'outbound' ? 'OUTBOUND' : phase === 'turnaround' ? 'TURNAROUND'
+      : phase === 'techstop' ? 'TECH STOP' : 'RETURN';
     statusBadge.textContent = phaseStatus;
     statusBadge.className = `status-badge ${phase}`;
   }
@@ -1261,23 +1520,8 @@ function updateFlightInfoProgress() {
   // Update progress text
   const progressText = document.querySelector('.progress-text');
   if (progressText) {
-    const progressPercent = phase === 'turnaround' ? 100 : Math.round((position.progress || 0) * 100);
+    const progressPercent = (phase === 'turnaround' || phase === 'techstop') ? 100 : Math.round((position.progress || 0) * 100);
     progressText.textContent = `${progressPercent}% complete`;
-  }
-
-  // Update sector card active states
-  const sectorCards = document.querySelectorAll('.sector-card');
-  if (sectorCards.length >= 2) {
-    // Outbound card
-    sectorCards[0].className = `sector-card ${phase === 'outbound' ? 'active' : phase === 'turnaround' || phase === 'return' ? 'completed' : ''}`;
-    // Return card
-    sectorCards[1].className = `sector-card ${phase === 'return' ? 'active' : ''}`;
-  }
-
-  // Update turnaround indicator
-  const turnaround = document.querySelector('.turnaround-indicator');
-  if (turnaround) {
-    turnaround.className = `turnaround-indicator ${phase === 'turnaround' ? 'active' : phase === 'return' ? 'completed' : ''}`;
   }
 }
 
@@ -1320,6 +1564,10 @@ function clearSelectedFlightElements() {
   // Remove airport markers
   airportMarkers.forEach((marker) => map.removeLayer(marker));
   airportMarkers.clear();
+
+  // Remove waypoint markers
+  waypointMarkers.forEach(m => map.removeLayer(m));
+  waypointMarkers = [];
 }
 
 // Select a flight
@@ -1339,7 +1587,11 @@ function selectFlight(flightId) {
   const flight = activeFlights.find(f => f.id === flightId);
   if (!flight) return;
 
-  // Create route line and airport markers for selected flight
+  // Store initial phase for change detection
+  const position = calculateFlightPosition(flight);
+  flight._lastDrawnPhase = position.phase;
+
+  // Create route line and airport markers for selected flight (current sector only)
   createRouteLine(flight);
   createAirportMarkers(flight);
 

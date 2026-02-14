@@ -2316,6 +2316,193 @@ function adjustAllCargoRates(percentage) {
   adjustPrice('cargoHeavyRate', percentage);
 }
 
+// ── Custom ATC Route ──────────────────────────────────────────────────────────
+
+let customAtcWaypoints = null; // [{name, lat, lng}, ...] — set when user applies a custom route
+let customAtcRouteString = '';
+
+function openCustomAtcModal() {
+  const modal = document.getElementById('customAtcModal');
+  modal.style.display = 'flex';
+  // Pre-fill with previous value if exists
+  if (customAtcRouteString) {
+    document.getElementById('atcRouteInput').value = customAtcRouteString;
+  }
+}
+
+function closeCustomAtcModal() {
+  document.getElementById('customAtcModal').style.display = 'none';
+}
+
+async function resolveCustomAtcRoute() {
+  const input = document.getElementById('atcRouteInput').value.trim();
+  if (!input) return;
+
+  const resolveBtn = document.getElementById('resolveAtcBtn');
+  resolveBtn.disabled = true;
+  resolveBtn.textContent = 'RESOLVING...';
+
+  try {
+    const response = await fetch('/api/routes/resolve-atc-route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ atcRouteString: input })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to resolve route');
+    }
+
+    const data = await response.json();
+
+    // Show results section
+    document.getElementById('atcResolveResults').style.display = 'block';
+
+    // Update counts
+    document.getElementById('atcResolvedCount').textContent = `${data.resolved.length} resolved`;
+    document.getElementById('atcAirwayCount').textContent = `${data.airways.length} airways`;
+
+    // Unresolved
+    const unresolvedSection = document.getElementById('atcUnresolvedSection');
+    const unresolvedBadge = document.getElementById('atcUnresolvedCount');
+    if (data.unresolved.length > 0) {
+      unresolvedBadge.textContent = `${data.unresolved.length} unresolved`;
+      unresolvedBadge.style.display = '';
+      unresolvedSection.style.display = '';
+      document.getElementById('atcUnresolvedList').textContent = data.unresolved.join(', ');
+    } else {
+      unresolvedBadge.style.display = 'none';
+      unresolvedSection.style.display = 'none';
+    }
+
+    // Restriction warnings
+    const restrictionSection = document.getElementById('atcRestrictionSection');
+    if (data.restrictionWarnings && data.restrictionWarnings.length > 0) {
+      restrictionSection.style.display = '';
+      document.getElementById('atcRestrictionList').innerHTML = data.restrictionWarnings.map(w =>
+        `<div style="margin: 0.2rem 0;">Waypoint <strong>${w.waypointName}</strong> is inside restricted FIR <strong>${w.firCode}</strong> (${w.firName || w.firCode})</div>`
+      ).join('');
+    } else {
+      restrictionSection.style.display = 'none';
+    }
+
+    // Waypoint list
+    const wpList = document.getElementById('atcWaypointList');
+    if (data.resolved.length > 0) {
+      wpList.innerHTML = data.resolved.map((wp, i) =>
+        `<div class="atc-waypoint-row">
+          <div style="display: flex; align-items: center;">
+            <span class="wp-index">${i + 1}</span>
+            <span class="wp-name">${wp.name}</span>
+          </div>
+          <span class="wp-coords">${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}</span>
+        </div>`
+      ).join('');
+
+      // Enable apply button
+      const applyBtn = document.getElementById('applyAtcBtn');
+      applyBtn.disabled = false;
+      applyBtn.style.opacity = '1';
+    } else {
+      wpList.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-muted);">No fixes could be resolved from this route string.</div>';
+      document.getElementById('applyAtcBtn').disabled = true;
+      document.getElementById('applyAtcBtn').style.opacity = '0.5';
+    }
+
+    // Store temporarily for apply
+    window._pendingAtcResolved = data.resolved;
+    window._pendingAtcRouteString = input;
+    window._pendingAtcRestrictionWarnings = data.restrictionWarnings || [];
+
+  } catch (err) {
+    console.error('[CustomATC] Resolve failed:', err);
+    showWarningModal(err.message);
+  } finally {
+    resolveBtn.disabled = false;
+    resolveBtn.textContent = 'RESOLVE ROUTE';
+  }
+}
+
+function applyCustomAtcRoute() {
+  if (!window._pendingAtcResolved || window._pendingAtcResolved.length === 0) return;
+
+  customAtcWaypoints = window._pendingAtcResolved;
+  customAtcRouteString = window._pendingAtcRouteString;
+
+  // Show indicator below map
+  const indicator = document.getElementById('customAtcIndicator');
+  indicator.style.display = 'flex';
+  document.getElementById('customAtcIndicatorText').textContent =
+    `Custom ATC route set — ${customAtcWaypoints.length} waypoints`;
+
+  // Update route preview with custom waypoints
+  updateRoutePreviewWithCustomWaypoints();
+
+  closeCustomAtcModal();
+}
+
+function clearCustomAtcRoute() {
+  customAtcWaypoints = null;
+  customAtcRouteString = '';
+  document.getElementById('customAtcIndicator').style.display = 'none';
+  // Reset to standard route preview
+  updateRoutePreview();
+}
+
+function updateRoutePreviewWithCustomWaypoints() {
+  if (!routePreviewMap || !baseAirport || !selectedDestinationAirport || !customAtcWaypoints) return;
+
+  // Clear existing markers and lines
+  routePreviewMarkers.forEach(m => routePreviewMap.removeLayer(m));
+  routePreviewMarkers = [];
+  if (routePreviewLine) {
+    routePreviewLine.forEach(l => routePreviewMap.removeLayer(l));
+  }
+
+  const dep = [parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude)];
+  const arr = [parseFloat(selectedDestinationAirport.latitude), parseFloat(selectedDestinationAirport.longitude)];
+
+  // Departure marker
+  const depMarker = L.circleMarker(dep, {
+    radius: 8, fillColor: '#3fb950', fillOpacity: 1, color: '#fff', weight: 2
+  }).addTo(routePreviewMap).bindPopup(`<b>${baseAirport.iataCode || baseAirport.icaoCode}</b><br>${baseAirport.name}`);
+  routePreviewMarkers.push(depMarker);
+
+  // Arrival marker
+  const arrMarker = L.circleMarker(arr, {
+    radius: 8, fillColor: '#58a6ff', fillOpacity: 1, color: '#fff', weight: 2
+  }).addTo(routePreviewMap).bindPopup(`<b>${selectedDestinationAirport.iataCode || selectedDestinationAirport.icaoCode}</b><br>${selectedDestinationAirport.name}`);
+  routePreviewMarkers.push(arrMarker);
+
+  // Build polyline through all waypoints
+  const routeCoords = [dep];
+  for (const wp of customAtcWaypoints) {
+    const pt = [wp.lat, wp.lng];
+    routeCoords.push(pt);
+
+    // Small waypoint marker
+    const wpMarker = L.circleMarker(pt, {
+      radius: 3, fillColor: '#e3b341', fillOpacity: 1, color: 'rgba(227, 179, 65, 0.5)', weight: 1
+    }).addTo(routePreviewMap).bindPopup(`<b>${wp.name}</b><br>${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}`);
+    routePreviewMarkers.push(wpMarker);
+  }
+  routeCoords.push(arr);
+
+  // Draw the route line through waypoints
+  const line = L.polyline(routeCoords, {
+    color: '#e3b341',
+    weight: 2,
+    opacity: 0.9,
+    dashArray: null
+  }).addTo(routePreviewMap);
+  routePreviewLine = [line];
+
+  // Fit bounds
+  const bounds = L.latLngBounds(routeCoords);
+  routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
+}
+
 // Submit new route
 async function submitNewRoute() {
   const prefix = worldInfo?.iataCode || '';
@@ -2430,7 +2617,8 @@ async function submitNewRoute() {
             cargoStandardRate: parseFloat(document.getElementById('cargoStandardRate').value) || 0,
             cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
             transportType: transportType,
-            demand: 0
+            demand: 0,
+            customWaypoints: customAtcWaypoints || undefined
           })
         });
 
@@ -2480,7 +2668,8 @@ async function submitNewRoute() {
           cargoStandardRate: parseFloat(document.getElementById('cargoStandardRate').value) || 0,
           cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
           transportType: transportType,
-          demand: 0
+          demand: 0,
+          customWaypoints: customAtcWaypoints || undefined
         })
       });
 

@@ -133,9 +133,11 @@ const contactRoutes = require('./routes/contact');
 const dashboardRoutes = require('./routes/dashboard');
 const staffRoutes = require('./routes/staff');
 const loansRoutes = require('./routes/loans');
+const airspaceRoutes = require('./routes/airspace');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
+const airwayService = require('./services/airwayService');
 
 // Helper function to render pages with base layout
 async function renderPage(pagePath, requestPath) {
@@ -285,6 +287,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', requireWorld, dashboardRoutes);
 app.use('/api/staff', requireWorld, staffRoutes);
 app.use('/api/loans', requireWorld, loansRoutes);
+app.use('/api/airspace', requireWorld, airspaceRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -417,6 +420,15 @@ app.get('/scheduling', requireWorld, async (req, res) => {
   }
 });
 
+app.get('/airspace-config', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/airspace-config.html'), '/airspace-config');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
 app.get('/pricing', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/pricing.html'), '/pricing');
@@ -507,6 +519,9 @@ server.listen(PORT, async () => {
   } else {
     console.log(`Server running on port ${PORT}`);
   }
+
+  // Initialize airway routing graph (non-blocking, loads in background)
+  airwayService.initialize();
 
   // Start world time service for all active worlds
   const worldStarted = await worldTimeService.startAll();

@@ -82,6 +82,12 @@ const Route = sequelize.define('Route', {
     allowNull: false,
     comment: 'Distance in nautical miles'
   },
+  waypoints: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'waypoints',
+    comment: 'Airway route waypoints [{lat, lng, name}]'
+  },
   scheduledDepartureTime: {
     type: DataTypes.TIME,
     allowNull: false,

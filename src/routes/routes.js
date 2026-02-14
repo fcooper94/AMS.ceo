@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Route, WorldMembership, Airport, UserAircraft, Aircraft, User } = require('../models');
+const { Route, WorldMembership, Airport, UserAircraft, Aircraft, User, AirspaceRestriction } = require('../models');
 const { Op } = require('sequelize');
 const airportSlotService = require('../services/airportSlotService');
 
@@ -229,6 +229,102 @@ router.get('/summary', async (req, res) => {
 });
 
 /**
+ * Resolve a raw ATC route string to waypoint coordinates.
+ * Input: "KEA UN132 LAPSO GUDIS KAVOS ..." → extracts fix names, looks up lat/lng.
+ * Also checks if the route crosses any restricted airspace.
+ */
+router.post('/resolve-atc-route', async (req, res) => {
+  try {
+    const { atcRouteString } = req.body;
+    if (!atcRouteString || typeof atcRouteString !== 'string') {
+      return res.status(400).json({ error: 'atcRouteString is required' });
+    }
+
+    const airwayService = require('../services/airwayService');
+    if (!airwayService.isReady()) {
+      return res.status(503).json({ error: 'Airway data is still loading. Please try again shortly.' });
+    }
+
+    // Parse the ATC route string: split by whitespace, separate fixes from airways
+    // Airways match patterns like: UN132, L560, B411, Y415, N318, UL607, UT140, etc.
+    const airwayPattern = /^[A-Z]{1,3}\d{1,4}$/;
+    const tokens = atcRouteString.trim().toUpperCase().split(/\s+/);
+
+    const fixes = [];
+    const airways = [];
+    for (const token of tokens) {
+      if (airwayPattern.test(token)) {
+        airways.push(token);
+      } else {
+        fixes.push(token);
+      }
+    }
+
+    // Resolve each fix name to coordinates
+    const resolved = [];
+    const unresolved = [];
+    for (const fixName of fixes) {
+      const coords = airwayService.fixes.get(fixName);
+      if (coords) {
+        resolved.push({ name: fixName, lat: coords.lat, lng: coords.lng });
+      } else {
+        unresolved.push(fixName);
+      }
+    }
+
+    // Check airspace restrictions
+    let restrictionWarnings = [];
+    try {
+      const activeWorldId = req.session?.activeWorldId;
+      if (activeWorldId && req.user) {
+        const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+        if (user) {
+          const membership = await WorldMembership.findOne({
+            where: { userId: user.id, worldId: activeWorldId }
+          });
+          if (membership) {
+            const restrictions = await AirspaceRestriction.findAll({
+              where: { worldMembershipId: membership.id, isActive: true }
+            });
+            if (restrictions.length > 0 && resolved.length > 0) {
+              const { isPointInFir } = require('../services/geoService');
+              for (const restriction of restrictions) {
+                for (const wp of resolved) {
+                  if (isPointInFir(wp.lat, wp.lng, restriction.firCode)) {
+                    restrictionWarnings.push({
+                      firCode: restriction.firCode,
+                      firName: restriction.firName,
+                      waypointName: wp.name
+                    });
+                    break; // One warning per FIR is enough
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Non-critical
+    }
+
+    res.json({
+      rawRoute: atcRouteString,
+      tokens,
+      airways,
+      fixes: fixes,
+      resolved,
+      unresolved,
+      waypointCount: resolved.length,
+      restrictionWarnings
+    });
+  } catch (error) {
+    console.error('Error resolving ATC route:', error);
+    res.status(500).json({ error: 'Failed to resolve ATC route' });
+  }
+});
+
+/**
  * Create a new route
  */
 router.post('/', async (req, res) => {
@@ -254,7 +350,8 @@ router.post('/', async (req, res) => {
       cargoLightRate,
       cargoStandardRate,
       cargoHeavyRate,
-      transportType
+      transportType,
+      customWaypoints
     } = req.body;
 
     // Get active world from session
@@ -384,6 +481,78 @@ router.post('/', async (req, res) => {
       cargoHeavyRate: cargoHeavyRate || 0,
       transportType: transportType || 'both'
     });
+
+    // Apply custom waypoints or compute automatically
+    try {
+      if (customWaypoints && Array.isArray(customWaypoints) && customWaypoints.length > 0) {
+        // Use user-provided custom ATC route waypoints
+        await route.update({ waypoints: customWaypoints });
+      } else {
+        // Compute airway waypoints automatically (non-blocking, best-effort)
+        const airwayService = require('../services/airwayService');
+        if (airwayService.isReady()) {
+          const [depApt, arrApt] = await Promise.all([
+            Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude'] }),
+            Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude'] })
+          ]);
+          if (depApt && arrApt) {
+            const waypoints = airwayService.computeRoute(
+              parseFloat(depApt.latitude), parseFloat(depApt.longitude),
+              parseFloat(arrApt.latitude), parseFloat(arrApt.longitude)
+            );
+            if (waypoints) {
+              await route.update({ waypoints });
+            }
+          }
+        }
+      }
+    } catch (wpErr) {
+      console.error('[Routes] Waypoint computation failed (non-critical):', wpErr.message);
+    }
+
+    // Check airspace restrictions (non-blocking, best-effort)
+    try {
+      const restrictions = await AirspaceRestriction.findAll({
+        where: { worldMembershipId: membership.id, isActive: true }
+      });
+      if (restrictions.length > 0) {
+        const { isPointInFir, doesRouteCrossFir, doesGreatCircleCrossFir } = require('../services/geoService');
+        const [depApt, arrApt] = await Promise.all([
+          Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude'] }),
+          Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude'] })
+        ]);
+        if (depApt && arrApt) {
+          const updatedRoute = await Route.findByPk(route.id, { attributes: ['id', 'waypoints'] });
+          const waypoints = updatedRoute?.waypoints;
+          for (const restriction of restrictions) {
+            const fir = restriction.firCode;
+            // Check airports
+            if (isPointInFir(parseFloat(depApt.latitude), parseFloat(depApt.longitude), fir) ||
+                isPointInFir(parseFloat(arrApt.latitude), parseFloat(arrApt.longitude), fir)) {
+              await route.update({ isActive: false });
+              break;
+            }
+            // Check waypoints or great circle
+            if (waypoints && waypoints.length > 0) {
+              if (doesRouteCrossFir(waypoints, fir)) {
+                await route.update({ isActive: false });
+                break;
+              }
+            } else {
+              if (doesGreatCircleCrossFir(
+                parseFloat(depApt.latitude), parseFloat(depApt.longitude),
+                parseFloat(arrApt.latitude), parseFloat(arrApt.longitude), fir
+              )) {
+                await route.update({ isActive: false });
+                break;
+              }
+            }
+          }
+        }
+      }
+    } catch (restrictErr) {
+      console.error('[Routes] Airspace restriction check failed (non-critical):', restrictErr.message);
+    }
 
     // Fetch the created route with associations
     const createdRoute = await Route.findByPk(route.id, {

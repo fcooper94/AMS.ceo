@@ -2096,7 +2096,8 @@ router.get('/active', async (req, res) => {
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
+          waypoints: template.route.waypoints || null
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
@@ -2187,7 +2188,8 @@ router.get('/active-all', async (req, res) => {
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
+          waypoints: template.route.waypoints || null
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
@@ -2288,7 +2290,8 @@ router.get('/active-hq', async (req, res) => {
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
+          waypoints: template.route.waypoints || null
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
