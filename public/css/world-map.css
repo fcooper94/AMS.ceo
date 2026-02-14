@@ -910,6 +910,81 @@
   line-height: 1.3;
 }
 
+/* FIR Boundaries Toggle Button */
+.fir-toggle {
+  position: absolute;
+  top: 1rem;
+  left: 16rem;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 6px;
+  color: var(--text-primary, #e6edf3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.fir-toggle-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-secondary, #8b949e);
+}
+
+.fir-toggle:hover {
+  border-color: var(--accent-color, #58a6ff);
+}
+
+.fir-toggle.active {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: var(--accent-color, #58a6ff);
+}
+
+.fir-toggle svg {
+  opacity: 0.8;
+}
+
+/* FIR Boundary Labels */
+.fir-label {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.fir-label-text {
+  font-family: 'Consolas', 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(88, 166, 255, 0.55);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8), 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* FIR Legend Icon */
+.legend-icon.fir-icon {
+  position: relative;
+}
+
+.legend-icon.fir-icon::before {
+  content: '';
+  width: 14px;
+  height: 10px;
+  border: 1px solid rgba(88, 166, 255, 0.5);
+  border-radius: 2px;
+  background: rgba(88, 166, 255, 0.05);
+}
+
 /* Live Flights List Panel */
 .flights-list-panel {
   position: absolute;
@@ -1112,6 +1187,16 @@
   }
 
   .flights-list-label {
+    display: none;
+  }
+
+  .fir-toggle {
+    top: auto;
+    bottom: 40%;
+    left: 1rem;
+  }
+
+  .fir-toggle-label {
     display: none;
   }
 

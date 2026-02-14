@@ -12,6 +12,13 @@ let hqAirportCode = null; // Player's HQ airport ICAO code (set on init)
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
 let flightsListOpen = false; // Hidden by default, user can toggle open
 
+// FIR boundary overlay state
+let firLayerGroup = null;    // L.layerGroup holding FIR polygons
+let firLabelGroup = null;    // L.layerGroup holding FIR code labels
+let firVisible = false;
+let firDataLoaded = false;
+let firGeoJsonData = null;
+
 // Synchronized position updates - all aircraft jump together on each tick
 let positionUpdateInterval = null;
 
@@ -295,6 +302,12 @@ function initMap() {
   const flightsToggle = document.getElementById('flightsListToggle');
   if (flightsToggle) {
     flightsToggle.addEventListener('click', toggleFlightsList);
+  }
+
+  // FIR boundaries toggle button
+  const firToggle = document.getElementById('firToggle');
+  if (firToggle) {
+    firToggle.addEventListener('click', toggleFirBoundaries);
   }
 
   // Set initial flights list state based on screen size
@@ -1515,6 +1528,113 @@ function focusFlight(flightId) {
 
 // Make focusFlight available globally for onclick
 window.focusFlight = focusFlight;
+
+// ===== FIR Boundary Overlay =====
+
+// Load FIR boundary GeoJSON (lazy-loaded on first toggle)
+async function loadFirBoundaries() {
+  if (firDataLoaded) return;
+  try {
+    console.log('[WorldMap] Loading FIR boundaries...');
+    const response = await fetch('/data/fir-boundaries.geojson');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    firGeoJsonData = await response.json();
+    firDataLoaded = true;
+    console.log('[WorldMap] FIR boundaries loaded:', firGeoJsonData.features.length, 'regions');
+    renderFirBoundaries();
+  } catch (error) {
+    console.error('[WorldMap] Failed to load FIR boundaries:', error);
+  }
+}
+
+// Render FIR polygons and labels on map
+function renderFirBoundaries() {
+  if (!firGeoJsonData || !map) return;
+
+  firLayerGroup = L.layerGroup();
+  firLabelGroup = L.layerGroup();
+
+  L.geoJSON(firGeoJsonData, {
+    style: function(feature) {
+      const isOceanic = feature.properties.oceanic === '1' || feature.properties.oceanic === 1;
+      return {
+        color: isOceanic ? 'rgba(88, 166, 255, 0.25)' : 'rgba(88, 166, 255, 0.4)',
+        weight: isOceanic ? 0.5 : 1,
+        fillColor: 'rgba(88, 166, 255, 0.03)',
+        fillOpacity: 1,
+        dashArray: isOceanic ? '4, 4' : null,
+        interactive: false
+      };
+    },
+    onEachFeature: function(feature, layer) {
+      firLayerGroup.addLayer(layer);
+
+      const props = feature.properties;
+      if (props.label_lat && props.label_lon) {
+        const label = L.marker(
+          [parseFloat(props.label_lat), parseFloat(props.label_lon)],
+          {
+            icon: L.divIcon({
+              className: 'fir-label',
+              html: `<span class="fir-label-text">${props.id}</span>`,
+              iconSize: [60, 20],
+              iconAnchor: [30, 10]
+            }),
+            interactive: false
+          }
+        );
+        firLabelGroup.addLayer(label);
+      }
+    }
+  });
+
+  firLayerGroup.addTo(map);
+  updateFirLabelVisibility();
+  map.on('zoomend', updateFirLabelVisibility);
+}
+
+// Show/hide FIR labels based on zoom level
+function updateFirLabelVisibility() {
+  if (!firLabelGroup || !firVisible) return;
+
+  const zoom = map.getZoom();
+  if (zoom >= 4) {
+    if (!map.hasLayer(firLabelGroup)) {
+      firLabelGroup.addTo(map);
+    }
+  } else {
+    if (map.hasLayer(firLabelGroup)) {
+      map.removeLayer(firLabelGroup);
+    }
+  }
+}
+
+// Toggle FIR boundary layer on/off
+function toggleFirBoundaries() {
+  firVisible = !firVisible;
+
+  const toggle = document.getElementById('firToggle');
+  if (toggle) toggle.classList.toggle('active', firVisible);
+
+  const firLegend = document.querySelector('.fir-legend');
+  if (firLegend) firLegend.style.display = firVisible ? 'flex' : 'none';
+
+  if (firVisible) {
+    if (!firDataLoaded) {
+      loadFirBoundaries();
+    } else {
+      if (firLayerGroup) firLayerGroup.addTo(map);
+      updateFirLabelVisibility();
+    }
+  } else {
+    if (firLayerGroup && map.hasLayer(firLayerGroup)) {
+      map.removeLayer(firLayerGroup);
+    }
+    if (firLabelGroup && map.hasLayer(firLabelGroup)) {
+      map.removeLayer(firLabelGroup);
+    }
+  }
+}
 
 // Initialize the world map
 async function initializeWorldMap() {
