@@ -1,159 +1,243 @@
-// Load financial data
+// Financial Reports — week-by-week P&L with route performance
+
+let allWeeks = [];
+let weekPage = 0;
+const WEEKS_PER_PAGE = 4;
+
 async function loadFinancialData() {
   try {
-    const weekOffset = parseInt(document.getElementById('weekSelector').value) || 0;
-    const response = await fetch(`/api/finances?weekOffset=${weekOffset}`);
-    const data = await response.json();
+    const res = await fetch('/api/finances');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load');
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to load financial data');
-    }
-
-    displayFinancialData(data);
-  } catch (error) {
-    console.error('Error loading financial data:', error);
-    document.getElementById('financialTable').innerHTML = `
-      <tr><td colspan="5" style="padding: 2rem; text-align: center; color: var(--warning-color);">Error loading financial data</td></tr>
-    `;
+    renderSummary(data);
+    allWeeks = data.weeks || [];
+    weekPage = 0;
+    renderWeeklyPL();
+    renderRoutes(data.routes);
+  } catch (err) {
+    console.error('Error loading financial data:', err);
+    document.getElementById('weeklyBody').innerHTML =
+      '<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:var(--warning-color);">Error loading data</td></tr>';
   }
 }
 
-// Display financial data
-function displayFinancialData(data) {
-  const table = document.getElementById('financialTable');
+// ── Summary bar ──────────────────────────────────────────────────────────────
 
+function renderSummary(data) {
+  setText('statBalance', fmtMoney(data.balance));
+  setText('statRevenue', fmtMoney(data.allTime.totalRevenue));
+  setText('statCosts', fmtMoney(data.allTime.totalCosts));
+  setText('statFlights', data.allTime.totalFlights.toLocaleString());
+  setText('statPax', data.allTime.totalPassengers.toLocaleString());
+  setText('statOverhead', fmtMoney(data.monthlyOverheads.total) + '/mo');
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+function changeWeekPage(dir) {
+  const maxPage = Math.max(0, Math.ceil(allWeeks.length / WEEKS_PER_PAGE) - 1);
+  weekPage = Math.max(0, Math.min(maxPage, weekPage + dir));
+  renderWeeklyPL();
+}
+
+// ── Weekly P&L table ─────────────────────────────────────────────────────────
+
+function renderWeeklyPL() {
+  const thead = document.getElementById('weeklyHead');
+  const tbody = document.getElementById('weeklyBody');
+  const prevBtn = document.getElementById('weekPrev');
+  const nextBtn = document.getElementById('weekNext');
+  const rangeEl = document.getElementById('weekRange');
+
+  if (!allWeeks || allWeeks.length === 0) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="2" style="padding:1.5rem;text-align:center;color:var(--text-secondary);">No weekly data yet. Financial data will appear after flights operate.</td></tr>';
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (rangeEl) rangeEl.textContent = '';
+    return;
+  }
+
+  const totalPages = Math.ceil(allWeeks.length / WEEKS_PER_PAGE);
+  const start = weekPage * WEEKS_PER_PAGE;
+  const weeks = allWeeks.slice(start, start + WEEKS_PER_PAGE);
+
+  // Update nav buttons
+  if (prevBtn) {
+    prevBtn.disabled = weekPage >= totalPages - 1;
+    prevBtn.style.opacity = prevBtn.disabled ? '0.3' : '1';
+  }
+  if (nextBtn) {
+    nextBtn.disabled = weekPage <= 0;
+    nextBtn.style.opacity = nextBtn.disabled ? '0.3' : '1';
+  }
+  if (prevBtn) prevBtn.style.display = '';
+  if (nextBtn) nextBtn.style.display = '';
+
+  // Range label with page indicator
+  if (rangeEl) {
+    const pageNum = weekPage + 1;
+    if (totalPages <= 1) {
+      rangeEl.textContent = `${allWeeks.length} week${allWeeks.length !== 1 ? 's' : ''} of data`;
+    } else {
+      rangeEl.textContent = `Page ${pageNum} of ${totalPages}`;
+    }
+  }
+
+  // Header: Category | Week1 | Week2 | ...
+  const cols = weeks.length + 1;
+  let head = '<tr style="background:var(--surface-elevated);border-bottom:1px solid var(--border-color);">';
+  head += '<th style="padding:0.4rem 0.6rem;text-align:left;color:var(--text-muted);font-size:0.7rem;font-weight:600;min-width:140px;">Category</th>';
+  for (const w of weeks) {
+    head += `<th style="padding:0.4rem 0.6rem;text-align:right;color:var(--text-muted);font-size:0.7rem;font-weight:600;white-space:nowrap;">Wk of ${fmtDate(w.weekStart)}</th>`;
+  }
+  head += '</tr>';
+  thead.innerHTML = head;
+
+  // Rows
   let rows = '';
+  rows += wkSection('REVENUE');
+  rows += wkRow('Flight Revenue', weeks, 'flightRevenue', false);
+  rows += wkTotal('Total Revenue', weeks, 'flightRevenue', false);
+  rows += wkSpacer(cols);
 
-  // Operating Revenues Section
-  rows += createSectionHeader('OPERATING REVENUES');
-  rows += createDataRow('Sold tickets (economy)', data.weeks.map(w => w.revenues.economy));
-  rows += createDataRow('Sold tickets (business)', data.weeks.map(w => w.revenues.business));
-  rows += createDataRow('Sold tickets (first)', data.weeks.map(w => w.revenues.first));
-  rows += createDataRow('Transported cargo (light)', data.weeks.map(w => w.revenues.cargoLight));
-  rows += createDataRow('Transported cargo (standard)', data.weeks.map(w => w.revenues.cargoStandard));
-  rows += createDataRow('Transported cargo (heavy)', data.weeks.map(w => w.revenues.cargoHeavy));
-  rows += createTotalRow('Total operating revenues', data.weeks.map(w => w.revenues.total), true);
-  rows += createSpacer();
+  rows += wkSection('OPERATING COSTS');
+  rows += wkRow('Fuel', weeks, 'fuelCosts', true);
+  rows += wkRow('Crew', weeks, 'crewCosts', true);
+  rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true);
+  rows += wkRow('Airport Fees', weeks, 'airportFees', true);
+  rows += wkTotal('Total Op. Costs', weeks, 'operatingCosts', true);
+  rows += wkSpacer(cols);
 
-  // Operating Expenses Section
-  rows += createSectionHeader('OPERATING EXPENSES');
-  rows += createDataRow('Staff salaries', data.weeks.map(w => w.expenses.staffSalaries), true);
-  rows += createDataRow('Staff training', data.weeks.map(w => w.expenses.staffTraining), true);
-  rows += createDataRow('Fuel', data.weeks.map(w => w.expenses.fuel), true);
-  rows += createDataRow('Fuel contract and hedge fees', data.weeks.map(w => w.expenses.fuelFees), true);
-  rows += createDataRow('Aircraft maintenance', data.weeks.map(w => w.expenses.maintenance), true);
-  rows += createDataRow('Aircraft leases', data.weeks.map(w => w.expenses.leases), true);
-  rows += createDataRow('Aircraft insurance', data.weeks.map(w => w.expenses.insurance), true);
-  rows += createDataRow('Aircraft parking', data.weeks.map(w => w.expenses.parking), true);
-  rows += createDataRow('Passenger fees', data.weeks.map(w => w.expenses.passengerFees), true);
-  rows += createDataRow('Navigation fees', data.weeks.map(w => w.expenses.navigationFees), true);
-  rows += createDataRow('Landing fees', data.weeks.map(w => w.expenses.landingFees), true);
-  rows += createDataRow('Ground handling', data.weeks.map(w => w.expenses.groundHandling), true);
-  rows += createDataRow('Ground handling (cargo)', data.weeks.map(w => w.expenses.groundHandlingCargo), true);
-  rows += createDataRow('Depreciation', data.weeks.map(w => w.expenses.depreciation), true);
-  rows += createDataRow('Marketing', data.weeks.map(w => w.expenses.marketing), true);
-  rows += createDataRow('Office rent', data.weeks.map(w => w.expenses.officeRent), true);
-  rows += createDataRow('Fines', data.weeks.map(w => w.expenses.fines), true);
-  rows += createDataRow('Alliance fees', data.weeks.map(w => w.expenses.allianceFees), true);
-  rows += createTotalRow('Total operating expenses', data.weeks.map(w => w.expenses.total), true);
-  rows += createSpacer();
+  rows += wkSection('OVERHEADS');
+  rows += wkRow('Staff', weeks, 'staffCosts', true);
+  rows += wkRow('Leases', weeks, 'leaseCosts', true);
+  rows += wkRow('Contractors', weeks, 'contractorCosts', true);
+  rows += wkTotal('Total Overheads', weeks, 'overheads', true);
+  rows += wkSpacer(cols);
 
-  // Operating Profit
-  rows += createTotalRow('Operating profit / loss', data.weeks.map(w => w.operatingProfit), false, 'bold');
-  rows += createMarginRow('Operating profit margin', data.weeks.map(w => w.operatingMargin));
-  rows += createSpacer();
+  // Net Profit highlight
+  rows += wkHighlight('NET PROFIT', weeks, 'netProfit');
 
-  // Other Revenues/Expenses
-  rows += createSectionHeader('OTHER REVENUES / EXPENSES');
-  rows += createDataRow('Aircraft lease fees', data.weeks.map(w => w.other.leaseFees), true);
-  rows += createDataRow('Aircraft lease income', data.weeks.map(w => w.other.leaseIncome));
-  rows += createDataRow('Profit on sold aircraft', data.weeks.map(w => w.other.profitOnSales));
-  rows += createDataRow('Loss on sold aircraft', data.weeks.map(w => w.other.lossOnSales), true);
-  rows += createDataRow('Airport slot fees', data.weeks.map(w => w.other.slotFees), true);
-  rows += createDataRow('Bank fees', data.weeks.map(w => w.other.bankFees), true);
-  rows += createDataRow('Interest', data.weeks.map(w => w.other.interest), true);
-  rows += createTotalRow('Total other revenues / expenses', data.weeks.map(w => w.other.total), false);
-  rows += createSpacer();
+  // Stats
+  rows += wkSpacer(cols);
+  rows += wkSection('STATS');
+  rows += wkStatRow('Flights', weeks, 'flights');
+  rows += wkStatRow('Passengers', weeks, 'passengers');
 
-  // Net Profit
-  rows += createTotalRow('Profit / loss before taxes', data.weeks.map(w => w.profitBeforeTaxes), false, 'bold');
-  rows += createDataRow('Income taxes', data.weeks.map(w => w.taxes), true);
-  rows += createTotalRow('Net profit / loss', data.weeks.map(w => w.netProfit), false, 'large');
-  rows += createMarginRow('Net profit margin', data.weeks.map(w => w.netMargin));
-
-  table.innerHTML = rows;
+  tbody.innerHTML = rows;
 }
 
-// Helper functions to create table rows
-function createSectionHeader(title) {
-  return `
-    <tr style="background: var(--surface-elevated);">
-      <td colspan="5" style="padding: 1rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; font-size: 0.875rem; letter-spacing: 1px; border-top: 2px solid var(--border-color);">${title}</td>
-    </tr>
-  `;
+function wkSection(title) {
+  return `<tr style="background:var(--surface-elevated);">
+    <td colspan="99" style="padding:0.35rem 0.6rem;font-weight:700;color:var(--accent-color);font-size:0.7rem;letter-spacing:0.5px;border-top:1px solid var(--border-color);">${title}</td></tr>`;
 }
 
-function createDataRow(label, values, isNegative = false) {
-  return `
-    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
-      <td style="padding: 0.75rem 1rem; color: var(--text-secondary);">${label}</td>
-      ${values.map((val, index) => {
-        const amount = val || 0;
-        const displayValue = formatCurrency(Math.abs(amount));
-        const prefix = (isNegative && amount !== 0) ? '-' : '';
-        const color = amount === 0 ? 'var(--text-muted)' : (index === 0 ? 'var(--text-primary)' : 'var(--text-secondary)');
-        return `<td style="padding: 0.75rem 1rem; text-align: right; color: ${color}; font-family: 'Courier New', monospace;">${prefix}$${displayValue}</td>`;
-      }).join('')}
-    </tr>
-  `;
+function wkRow(label, weeks, key, isExpense) {
+  let cells = `<td style="padding:0.3rem 0.6rem;color:var(--text-secondary);font-size:0.8rem;">${label}</td>`;
+  for (const w of weeks) {
+    const v = w[key] || 0;
+    const prefix = isExpense && v > 0 ? '-' : '';
+    const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
+    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
+  }
+  return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
 }
 
-function createTotalRow(label, values, isNegative = false, weight = 'normal') {
-  const fontSize = weight === 'large' ? '1.1rem' : '0.875rem';
-  const fontWeight = (weight === 'bold' || weight === 'large') ? '700' : '600';
-
-  return `
-    <tr style="background: rgba(255, 255, 255, 0.02); border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color);">
-      <td style="padding: 1rem; font-weight: ${fontWeight}; color: var(--text-primary); font-size: ${fontSize};">${label}</td>
-      ${values.map((val, index) => {
-        const amount = val || 0;
-        const displayValue = formatCurrency(Math.abs(amount));
-        const prefix = (isNegative && amount !== 0) ? '-' : '';
-        let color;
-        if (amount > 0) color = 'var(--success-color)';
-        else if (amount < 0) color = 'var(--warning-color)';
-        else color = 'var(--text-muted)';
-
-        return `<td style="padding: 1rem; text-align: right; color: ${color}; font-weight: ${fontWeight}; font-size: ${fontSize}; font-family: 'Courier New', monospace;">${prefix}$${displayValue}</td>`;
-      }).join('')}
-    </tr>
-  `;
+function wkTotal(label, weeks, key, isExpense) {
+  let cells = `<td style="padding:0.4rem 0.6rem;font-weight:600;color:var(--text-primary);font-size:0.8rem;">${label}</td>`;
+  for (const w of weeks) {
+    const v = w[key] || 0;
+    const prefix = isExpense && v > 0 ? '-' : '';
+    cells += `<td style="padding:0.4rem 0.6rem;text-align:right;font-weight:600;font-family:'Courier New',monospace;color:var(--text-primary);font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
+  }
+  return `<tr style="background:rgba(255,255,255,0.02);border-top:1px solid var(--border-color);border-bottom:1px solid var(--border-color);">${cells}</tr>`;
 }
 
-function createMarginRow(label, values) {
-  return `
-    <tr style="background: rgba(255, 255, 255, 0.01);">
-      <td style="padding: 0.5rem 1rem 1rem 2rem; color: var(--text-muted); font-size: 0.875rem; font-style: italic;">${label}</td>
-      ${values.map((val, index) => {
-        const margin = val || 0;
-        const color = index === 0 ? 'var(--text-secondary)' : 'var(--text-muted)';
-        return `<td style="padding: 0.5rem 1rem 1rem; text-align: right; color: ${color}; font-size: 0.875rem; font-style: italic;">${margin}%</td>`;
-      }).join('')}
-    </tr>
-  `;
+function wkHighlight(label, weeks, key) {
+  let cells = `<td style="padding:0.5rem 0.6rem;font-weight:700;color:var(--text-primary);font-size:0.85rem;">${label}</td>`;
+  for (const w of weeks) {
+    const v = w[key] || 0;
+    const color = v > 0 ? 'var(--success-color)' : v < 0 ? '#f85149' : 'var(--text-muted)';
+    const sign = v < 0 ? '-' : '';
+    cells += `<td style="padding:0.5rem 0.6rem;text-align:right;font-weight:700;font-family:'Courier New',monospace;color:${color};font-size:0.85rem;">${sign}$${fmtNum(Math.abs(v))}</td>`;
+  }
+  return `<tr style="background:rgba(255,255,255,0.03);border-top:2px solid var(--border-color);border-bottom:2px solid var(--border-color);">${cells}</tr>`;
 }
 
-function createSpacer() {
-  return `<tr style="height: 1rem;"><td colspan="5"></td></tr>`;
+function wkStatRow(label, weeks, key) {
+  let cells = `<td style="padding:0.3rem 0.6rem;color:var(--text-secondary);font-size:0.8rem;">${label}</td>`;
+  for (const w of weeks) {
+    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);font-size:0.8rem;">${(w[key] || 0).toLocaleString()}</td>`;
+  }
+  return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
 }
 
-// Format currency
-function formatCurrency(amount) {
-  const numAmount = Number(amount) || 0;
-  return Math.round(numAmount).toLocaleString('en-US');
+function wkSpacer(cols) {
+  return `<tr style="height:0.3rem;"><td colspan="${cols}"></td></tr>`;
 }
 
-// Initialize when page loads
+// ── Route Performance ────────────────────────────────────────────────────────
+
+function renderRoutes(routes) {
+  const tbody = document.getElementById('routeTableBody');
+
+  if (!routes || routes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text-secondary);">No routes yet.</td></tr>';
+    return;
+  }
+
+  const sorted = [...routes].sort((a, b) => b.profit - a.profit);
+  let rows = '';
+  for (const r of sorted) {
+    const pc = r.profit > 0 ? 'var(--success-color)' : r.profit < 0 ? '#f85149' : 'var(--text-muted)';
+    const mc = r.profitMargin > 0 ? 'var(--success-color)' : r.profitMargin < 0 ? '#f85149' : 'var(--text-muted)';
+    const tag = r.isActive ? '' : '<span style="color:var(--text-muted);font-size:0.65rem;"> off</span>';
+    rows += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+      <td style="padding:0.35rem 0.6rem;white-space:nowrap;"><span style="color:var(--accent-color);font-family:'Courier New',monospace;">${r.routeNumber}</span> <span style="color:var(--text-muted);font-size:0.75rem;">${r.departure}→${r.arrival}</span>${tag}</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${r.totalFlights}</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--success-color);">$${fmtNum(r.totalRevenue)}</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--warning-color);">$${fmtNum(r.totalCosts)}</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${pc};">${r.profit<0?'-':''}$${fmtNum(Math.abs(r.profit))}</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${mc};">${r.profitMargin}%</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${r.averageLoadFactor}%</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">$${fmtNum(r.revenuePerFlight)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = rows;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtMoney(n) {
+  const v = parseFloat(n) || 0;
+  if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
+  if (Math.abs(v) >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
+  return '$' + Math.round(v).toLocaleString();
+}
+
+function fmtNum(n) {
+  return Math.round(Number(n) || 0).toLocaleString('en-US');
+}
+
+function fmtDate(weekStart) {
+  const d = new Date(weekStart + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDateShort(weekStart) {
+  const d = new Date(weekStart + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('weekPrev').addEventListener('click', () => changeWeekPage(1));
+  document.getElementById('weekNext').addEventListener('click', () => changeWeekPage(-1));
   loadFinancialData();
 });

@@ -4,42 +4,65 @@
 
 <div class="dashboard-container">
   <main class="main-content">
-    <div class="page-header">
+    <div class="page-header" style="margin-bottom: 1rem;">
       <h1>FINANCIAL REPORTS</h1>
-      <p class="subtitle">WEEKLY BREAKDOWN</p>
     </div>
 
-    <div class="ops-panel full-width" style="margin-bottom: 2rem;">
-      <div class="panel-header">
-        <h2>TIME PERIOD</h2>
-        <div style="display: flex; gap: 1rem;">
-          <select id="weekSelector" onchange="loadFinancialData()" style="padding: 0.5rem; background: var(--surface); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
-            <option value="0">Current Week</option>
-            <option value="1">Last Week</option>
-            <option value="2">2 Weeks Ago</option>
-            <option value="3">3 Weeks Ago</option>
-          </select>
+    <!-- Compact summary bar -->
+    <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 0.75rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px;">
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Balance</span><div id="statBalance" style="font-size: 1rem; font-weight: 700; color: var(--accent-color);">$0</div></div>
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">All-time Revenue</span><div id="statRevenue" style="font-size: 1rem; font-weight: 700; color: var(--success-color);">$0</div></div>
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">All-time Costs</span><div id="statCosts" style="font-size: 1rem; font-weight: 700; color: var(--warning-color);">$0</div></div>
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Flights</span><div id="statFlights" style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">0</div></div>
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Passengers</span><div id="statPax" style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">0</div></div>
+      <div><span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Monthly Overhead</span><div id="statOverhead" style="font-size: 1rem; font-weight: 700; color: var(--warning-color);">$0</div></div>
+    </div>
+
+    <!-- Weekly P&L Table -->
+    <div class="ops-panel full-width" style="margin-bottom: 1.25rem;">
+      <div class="panel-header" style="padding: 0.5rem 1rem; display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 0.8rem; margin: 0;">WEEKLY P&L</h2>
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span id="weekRange" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+          <button id="weekPrev" style="background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; line-height: 1;" title="Older weeks">&#9664;</button>
+          <button id="weekNext" style="background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; line-height: 1;" title="Newer weeks">&#9654;</button>
         </div>
       </div>
-    </div>
-
-    <div class="ops-panel full-width">
-      <div class="panel-body" style="padding: 0;">
-        <table style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color);">
-              <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-primary);">CATEGORY</th>
-              <th style="padding: 1rem; text-align: right; font-weight: 600; color: var(--text-primary);" id="week0Header">Week 0</th>
-              <th style="padding: 1rem; text-align: right; font-weight: 600; color: var(--text-secondary);">Week -1</th>
-              <th style="padding: 1rem; text-align: right; font-weight: 600; color: var(--text-secondary);">Week -2</th>
-              <th style="padding: 1rem; text-align: right; font-weight: 600; color: var(--text-secondary);">Week -3</th>
-            </tr>
-          </thead>
-          <tbody id="financialTable">
-            <tr><td colspan="5" style="padding: 2rem; text-align: center; color: var(--text-secondary);">Loading financial data...</td></tr>
+      <div class="panel-body" style="padding: 0; overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;" id="weeklyTable">
+          <thead id="weeklyHead"></thead>
+          <tbody id="weeklyBody">
+            <tr><td colspan="9" style="padding: 1.5rem; text-align: center; color: var(--text-secondary);">Loading...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
+
+    <!-- Route Performance -->
+    <div class="ops-panel full-width" style="margin-bottom: 1.25rem;">
+      <div class="panel-header" style="padding: 0.5rem 1rem;">
+        <h2 style="font-size: 0.8rem;">ROUTE PERFORMANCE</h2>
+      </div>
+      <div class="panel-body" style="padding: 0; overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+          <thead>
+            <tr style="background: var(--surface-elevated); border-bottom: 1px solid var(--border-color);">
+              <th style="padding: 0.4rem 0.6rem; text-align: left; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Route</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Flights</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Revenue</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Costs</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Profit</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">Margin</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">LF</th>
+              <th style="padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.7rem; font-weight: 600;">$/Flight</th>
+            </tr>
+          </thead>
+          <tbody id="routeTableBody">
+            <tr><td colspan="8" style="padding: 1.5rem; text-align: center; color: var(--text-secondary);">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </main>
 </div>

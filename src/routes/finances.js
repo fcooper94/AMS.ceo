@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { WorldMembership, UserAircraft, User, World } = require('../models');
+const { WorldMembership, UserAircraft, User, World, Route, Airport, Aircraft, WeeklyFinancial } = require('../models');
+const eraEconomicService = require('../services/eraEconomicService');
+const { computeStaffRoster } = require('../data/staffConfig');
+const { getContractor } = require('../data/contractorConfig');
 
 /**
- * Get financial data for current world
+ * GET / — Financial overview with weekly progression
  */
 router.get('/', async (req, res) => {
   try {
@@ -16,9 +19,6 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'No active world selected' });
     }
 
-    const weekOffset = parseInt(req.query.weekOffset) || 0;
-
-    // Get user's membership
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -27,7 +27,6 @@ router.get('/', async (req, res) => {
     const membership = await WorldMembership.findOne({
       where: { userId: user.id, worldId: activeWorldId }
     });
-
     if (!membership) {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
@@ -37,89 +36,150 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'World not found' });
     }
 
-    // Get fleet for lease expenses
+    const gameYear = world.currentTime ? new Date(world.currentTime).getFullYear() : 2024;
+    const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+
+    // ── 1. Weekly financial records (all weeks) ──────────────────────────────
+    const weeklyRecords = await WeeklyFinancial.findAll({
+      where: { worldMembershipId: membership.id },
+      order: [['week_start', 'DESC']]
+    });
+
+    const weeks = weeklyRecords.map(w => {
+      const rev = parseFloat(w.flightRevenue) || 0;
+      const fuel = parseFloat(w.fuelCosts) || 0;
+      const crew = parseFloat(w.crewCosts) || 0;
+      const maint = parseFloat(w.maintenanceCosts) || 0;
+      const fees = parseFloat(w.airportFees) || 0;
+      const staff = parseFloat(w.staffCosts) || 0;
+      const leases = parseFloat(w.leaseCosts) || 0;
+      const contractors = parseFloat(w.contractorCosts) || 0;
+      const opCosts = fuel + crew + maint + fees;
+      const overheads = staff + leases + contractors;
+      const totalCosts = opCosts + overheads;
+      const netProfit = rev - totalCosts;
+
+      return {
+        weekStart: w.weekStart,
+        flightRevenue: Math.round(rev),
+        fuelCosts: Math.round(fuel),
+        crewCosts: Math.round(crew),
+        maintenanceCosts: Math.round(maint),
+        airportFees: Math.round(fees),
+        operatingCosts: Math.round(opCosts),
+        staffCosts: Math.round(staff),
+        leaseCosts: Math.round(leases),
+        contractorCosts: Math.round(contractors),
+        overheads: Math.round(overheads),
+        totalCosts: Math.round(totalCosts),
+        netProfit: Math.round(netProfit),
+        flights: w.flights || 0,
+        passengers: w.passengers || 0
+      };
+    });
+
+    // ── 2. All-time route performance ────────────────────────────────────────
+    const routes = await Route.findAll({
+      where: { worldMembershipId: membership.id },
+      include: [
+        { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'iataCode', 'city'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'iataCode', 'city'] }
+      ]
+    });
+
+    let totalRevenue = 0;
+    let totalCosts = 0;
+    let totalFlights = 0;
+    let totalPassengers = 0;
+
+    const routeDetails = routes.map(r => {
+      const rev = parseFloat(r.totalRevenue) || 0;
+      const costs = parseFloat(r.totalCosts) || 0;
+      const flights = r.totalFlights || 0;
+      const pax = r.totalPassengers || 0;
+      const lf = parseFloat(r.averageLoadFactor) || 0;
+      const profit = rev - costs;
+
+      totalRevenue += rev;
+      totalCosts += costs;
+      totalFlights += flights;
+      totalPassengers += pax;
+
+      const dep = r.departureAirport;
+      const arr = r.arrivalAirport;
+
+      return {
+        routeNumber: r.routeNumber,
+        departure: dep ? (dep.iataCode || dep.icaoCode) : '??',
+        arrival: arr ? (arr.iataCode || arr.icaoCode) : '??',
+        isActive: r.isActive,
+        totalRevenue: Math.round(rev),
+        totalCosts: Math.round(costs),
+        profit: Math.round(profit),
+        profitMargin: rev > 0 ? parseFloat(((profit / rev) * 100).toFixed(1)) : 0,
+        totalFlights: flights,
+        totalPassengers: pax,
+        averageLoadFactor: lf,
+        revenuePerFlight: flights > 0 ? Math.round(rev / flights) : 0
+      };
+    });
+
+    // ── 3. Current monthly overheads (for info panel) ────────────────────────
     const fleet = await UserAircraft.findAll({
       where: { worldMembershipId: membership.id }
     });
+    const activeFleet = fleet.filter(a => a.status === 'active');
+    const leasedAircraft = fleet.filter(a => a.acquisitionType === 'lease' && a.status === 'active');
+    const monthlyLeases = leasedAircraft.reduce((sum, a) => sum + (parseFloat(a.leaseMonthlyPayment) || 0), 0);
 
-    // Calculate lease expenses
-    const leaseExpenses = fleet
-      .filter(a => a.acquisitionType === 'lease' && a.status === 'active')
-      .reduce((sum, a) => sum + Number(a.leaseMonthlyPayment || 0), 0);
-
-    // Since we don't have actual weekly data yet, generate placeholder data
-    // In the future, this would query actual financial transactions
-    const weeks = [];
-    for (let i = 0; i < 4; i++) {
-      const week = {
-        weekNumber: i - weekOffset,
-        revenues: {
-          economy: 0,
-          business: 0,
-          first: 0,
-          cargoLight: 0,
-          cargoStandard: 0,
-          cargoHeavy: 0,
-          total: 0
-        },
-        expenses: {
-          staffSalaries: -2907,
-          staffTraining: 0,
-          fuel: 0,
-          fuelFees: 0,
-          maintenance: 0,
-          leases: -leaseExpenses,
-          insurance: 0,
-          parking: 0,
-          passengerFees: 0,
-          navigationFees: 0,
-          landingFees: 0,
-          groundHandling: 0,
-          groundHandlingCargo: 0,
-          depreciation: 0,
-          marketing: 0,
-          officeRent: -348,
-          fines: 0,
-          allianceFees: 0,
-          total: -2907 - 348 - leaseExpenses
-        },
-        other: {
-          leaseFees: 0,
-          leaseIncome: 0,
-          profitOnSales: 0,
-          lossOnSales: 0,
-          slotFees: 0,
-          bankFees: -1000,
-          interest: 0,
-          total: -1000
-        },
-        operatingProfit: 0,
-        operatingMargin: 0,
-        profitBeforeTaxes: 0,
-        taxes: 0,
-        netProfit: 0,
-        netMargin: 0
-      };
-
-      // Calculate totals
-      week.expenses.total = Object.values(week.expenses).reduce((sum, val) => {
-        if (typeof val === 'number') return sum + val;
-        return sum;
-      }, 0);
-
-      week.other.total = Object.values(week.other).reduce((sum, val) => {
-        if (typeof val === 'number') return sum + val;
-        return sum;
-      }, 0);
-
-      week.operatingProfit = week.revenues.total + week.expenses.total;
-      week.profitBeforeTaxes = week.operatingProfit + week.other.total;
-      week.netProfit = week.profitBeforeTaxes - week.taxes;
-
-      weeks.push(week);
+    // Staff
+    const pilotsByType = {};
+    let routeCabinCrew = 0;
+    for (const route of routes) {
+      if (route.assignedAircraft?.aircraft) {
+        const ac = route.assignedAircraft.aircraft;
+        if (!pilotsByType[ac.id]) pilotsByType[ac.id] = { typeName: ac.model, routePilots: 0, routes: 0 };
+        pilotsByType[ac.id].routePilots += ac.requiredPilots || 0;
+        pilotsByType[ac.id].routes += 1;
+        routeCabinCrew += ac.requiredCabinCrew || 0;
+      }
+    }
+    const roster = computeStaffRoster(activeFleet.length, gameYear, membership.staffSalaryModifiers || {}, {
+      pilotsByType: Object.values(pilotsByType).map(t => ({ typeName: t.typeName, routes: t.routes, totalPilots: Math.ceil(t.routePilots * 1.2) })),
+      totalCabinCrew: Math.ceil(routeCabinCrew * 1.2)
+    });
+    let monthlyStaff = 0;
+    for (const dept of roster.departments) {
+      for (const role of dept.roles) {
+        monthlyStaff += Math.round(role.adjustedSalary * eraMultiplier) * role.count;
+      }
     }
 
-    res.json({ weeks });
+    // Contractors
+    const cleaningCost = Math.round((getContractor('cleaning', membership.cleaningContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
+    const groundCost = Math.round((getContractor('ground', membership.groundContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
+    const engineeringCost = Math.round((getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
+    const monthlyContractors = cleaningCost + groundCost + engineeringCost;
+    const monthlyOverheads = monthlyStaff + Math.round(monthlyLeases) + monthlyContractors;
+
+    // ── Build response ───────────────────────────────────────────────────────
+    res.json({
+      balance: parseFloat(membership.balance) || 0,
+      weeks,
+      routes: routeDetails,
+      allTime: {
+        totalRevenue: Math.round(totalRevenue),
+        totalCosts: Math.round(totalCosts),
+        totalFlights,
+        totalPassengers
+      },
+      monthlyOverheads: {
+        staff: Math.round(monthlyStaff),
+        leases: Math.round(monthlyLeases),
+        contractors: monthlyContractors,
+        total: Math.round(monthlyOverheads)
+      }
+    });
   } catch (error) {
     console.error('Error fetching financial data:', error);
     res.status(500).json({ error: 'Failed to fetch financial data' });

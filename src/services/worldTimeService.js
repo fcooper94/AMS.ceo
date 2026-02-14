@@ -46,6 +46,9 @@ class WorldTimeService {
     this.lastReputationCheck = 0;
     this.reputationCheckInterval = 60000; // Recalculate reputation every 60 seconds (real time)
     this.isProcessingReputation = false;
+    // Weekly overhead recording
+    this.lastOverheadWeek = {}; // Map of worldId -> last game week (Monday date) overheads were recorded
+    this.isProcessingOverheads = false;
   }
 
   /**
@@ -401,6 +404,18 @@ class WorldTimeService {
       this.processReputation(worldId, gameTime)
         .catch(err => console.error('Error processing reputation:', err.message))
         .finally(() => { this.isProcessingReputation = false; });
+    }
+
+    // Record weekly overhead costs (staff, leases, contractors) once per game week
+    const WeeklyFinancial = require('../models/WeeklyFinancial');
+    const currentWeekStart = WeeklyFinancial.getWeekStart(gameTime);
+    const lastOverheadWeek = this.lastOverheadWeek[worldId] || '';
+    if (!this.isProcessingOverheads && currentWeekStart !== lastOverheadWeek) {
+      this.lastOverheadWeek[worldId] = currentWeekStart;
+      this.isProcessingOverheads = true;
+      this.recordWeeklyOverheads(worldId, gameTime, currentWeekStart)
+        .catch(err => console.error('Error recording weekly overheads:', err.message))
+        .finally(() => { this.isProcessingOverheads = false; });
     }
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
@@ -947,6 +962,27 @@ class WorldTimeService {
         await membership.save();
       }
 
+      // Record to weekly financials
+      try {
+        const WeeklyFinancial = require('../models/WeeklyFinancial');
+        const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
+        const [weekRecord] = await WeeklyFinancial.findOrCreate({
+          where: { worldMembershipId: route.worldMembershipId, weekStart },
+          defaults: {}
+        });
+        await weekRecord.increment({
+          flightRevenue: totalRevenue,
+          fuelCosts: fuelCost,
+          crewCosts: crewCost,
+          maintenanceCosts: maintenanceCost,
+          airportFees: airportFees,
+          flights: 1,
+          passengers: passengers
+        });
+      } catch (wfErr) {
+        // Non-critical — don't break revenue processing
+      }
+
       // Update aircraft flight hours
       if (aircraft) {
         const flightHours = (distance * 2 / (aircraft.aircraft?.cruiseSpeed || 450));
@@ -955,6 +991,82 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error processing flight revenue:', error.message);
+    }
+  }
+
+  /**
+   * Record weekly overhead costs (staff, leases, contractors) for all memberships
+   * Called once per game week. Prorates monthly costs to weekly (÷ 4.33).
+   */
+  async recordWeeklyOverheads(worldId, gameTime, weekStart) {
+    try {
+      const eraEconomicService = require('./eraEconomicService');
+      const { computeStaffRoster } = require('../data/staffConfig');
+      const { getContractor } = require('../data/contractorConfig');
+      const WeeklyFinancial = require('../models/WeeklyFinancial');
+
+      const world = await World.findByPk(worldId);
+      if (!world) return;
+      const gameYear = gameTime.getFullYear();
+      const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true }
+      });
+
+      for (const membership of memberships) {
+        try {
+          // Fleet count
+          const fleet = await UserAircraft.findAll({
+            where: { worldMembershipId: membership.id, status: 'active' }
+          });
+          const fleetCount = fleet.length;
+
+          // Lease costs
+          const leaseCosts = fleet
+            .filter(a => a.acquisitionType === 'lease')
+            .reduce((sum, a) => sum + (parseFloat(a.leaseMonthlyPayment) || 0), 0);
+
+          // Staff costs (simplified — no crew-from-routes for overhead snapshot)
+          const modifiers = membership.staffSalaryModifiers || {};
+          const roster = computeStaffRoster(fleetCount, gameYear, modifiers, {});
+          let staffCost = 0;
+          for (const dept of roster.departments) {
+            for (const role of dept.roles) {
+              staffCost += Math.round(role.adjustedSalary * eraMultiplier) * role.count;
+            }
+          }
+
+          // Contractor costs
+          const cleaningCost = (getContractor('cleaning', membership.cleaningContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
+          const groundCost = (getContractor('ground', membership.groundContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
+          const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
+          const contractorCost = Math.round(cleaningCost + groundCost + engineeringCost);
+
+          // Prorate monthly to weekly (÷ 4.33)
+          const weeklyStaff = Math.round(staffCost / 4.33);
+          const weeklyLeases = Math.round(leaseCosts / 4.33);
+          const weeklyContractors = Math.round(contractorCost / 4.33);
+
+          const [record] = await WeeklyFinancial.findOrCreate({
+            where: { worldMembershipId: membership.id, weekStart },
+            defaults: {}
+          });
+
+          if (!record.overheadRecorded) {
+            await record.update({
+              staffCosts: weeklyStaff,
+              leaseCosts: weeklyLeases,
+              contractorCosts: weeklyContractors,
+              overheadRecorded: true
+            });
+          }
+        } catch (mErr) {
+          // Skip individual membership errors
+        }
+      }
+    } catch (error) {
+      console.error('Error recording weekly overheads:', error.message);
     }
   }
 
