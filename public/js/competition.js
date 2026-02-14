@@ -2,6 +2,8 @@
  * Competition Page - Market Intelligence & Rankings
  */
 
+let _playerAirlineId = null;
+
 async function loadCompetitionData() {
   try {
     const response = await fetch('/api/world/competition');
@@ -10,6 +12,7 @@ async function loadCompetitionData() {
     }
 
     const data = await response.json();
+    _playerAirlineId = data.playerAirlineId;
     renderDifficultyBadge(data);
     renderLeaderboard(data.topAirlines, data.playerAirlineId, data.playerRank, data.totalAirlines);
     renderBaseAirportAirlines(data.baseAirportAirlines, data.playerBaseAirport);
@@ -83,7 +86,10 @@ function renderLeaderboard(airlines, playerAirlineId, playerRank, totalAirlines)
     const rank = airline.rank;
 
     html += `
-      <tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">
+      <tr style="border-bottom: 1px solid var(--border-color); ${rowBg} cursor: pointer;"
+          onclick="openAirlineModal('${airline.id}')"
+          onmouseover="this.style.background='var(--surface-elevated)'"
+          onmouseout="this.style.background='${isPlayer ? 'rgba(59, 130, 246, 0.1)' : ''}'">
         <td style="padding: 0.75rem; font-weight: 700; color: ${rank <= 3 ? '#fbbf24' : 'var(--text-secondary)'};">
           ${rank}
         </td>
@@ -124,12 +130,14 @@ function renderBaseAirportAirlines(airlines, playerBaseAirport) {
 
   for (const airline of airlines) {
     html += `
-      <div style="
+      <div onclick="openAirlineModal('${airline.id}')" style="
         padding: 0.75rem 1rem;
         background: var(--surface-elevated);
         border: 1px solid var(--border-color);
         border-radius: 6px;
-      ">
+        cursor: pointer;
+        transition: border-color 0.15s;
+      " onmouseover="this.style.borderColor='var(--accent-color)'" onmouseout="this.style.borderColor='var(--border-color)'">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
           <div>
             <span style="font-weight: 700; color: var(--text-primary);">${airline.airlineName}</span>
@@ -207,6 +215,176 @@ function renderCompetitiveRoutes(competitiveRoutes) {
 
   container.innerHTML = html;
 }
+
+// ── Airline Detail Modal ────────────────────────────────────────────────────
+
+async function openAirlineModal(airlineId) {
+  const modal = document.getElementById('airlineModal');
+  const nameEl = document.getElementById('airlineModalName');
+  const codesEl = document.getElementById('airlineModalCodes');
+  const bodyEl = document.getElementById('airlineModalBody');
+
+  // Show modal with loading state
+  nameEl.textContent = 'Loading...';
+  codesEl.textContent = '';
+  bodyEl.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">Loading airline data...</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const response = await fetch(`/api/world/competition/${airlineId}`);
+    if (!response.ok) throw new Error('Failed to load airline');
+    const data = await response.json();
+
+    renderAirlineModal(data);
+  } catch (err) {
+    console.error('Error loading airline detail:', err);
+    bodyEl.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--warning-color);">Failed to load airline data.</div>';
+  }
+}
+
+function closeAirlineModal() {
+  document.getElementById('airlineModal').style.display = 'none';
+}
+
+function renderAirlineModal(data) {
+  const nameEl = document.getElementById('airlineModalName');
+  const codesEl = document.getElementById('airlineModalCodes');
+  const bodyEl = document.getElementById('airlineModalBody');
+
+  const isPlayer = data.id === _playerAirlineId;
+
+  // Header
+  nameEl.innerHTML = data.airlineName +
+    (isPlayer ? '<span class="airline-header-badge" style="background: rgba(59,130,246,0.15); color: var(--accent-color);">YOU</span>' : '') +
+    (data.isAI ? '<span class="airline-header-badge" style="background: rgba(200,210,225,0.08); color: var(--text-muted);">AI</span>' : '');
+
+  const baseInfo = data.baseAirport
+    ? `${data.baseAirport.icaoCode} - ${data.baseAirport.city}, ${data.baseAirport.country}`
+    : 'Unknown base';
+  codesEl.innerHTML = `${data.airlineCode} / ${data.iataCode} &middot; ${baseInfo}`;
+
+  // Build body
+  let html = '';
+
+  // Reputation bar
+  const rep = data.reputation || 0;
+  const repColor = rep >= 70 ? '#22c55e' : rep >= 40 ? '#f59e0b' : '#ef4444';
+  html += `
+    <div style="margin-bottom: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+        <span style="color: var(--text-secondary); font-weight: 600;">REPUTATION</span>
+        <span style="color: ${repColor}; font-weight: 700;">${rep}/100</span>
+      </div>
+      <div class="reputation-bar">
+        <div class="reputation-bar-fill" style="width: ${rep}%; background: ${repColor};"></div>
+      </div>
+    </div>
+  `;
+
+  // Stats grid
+  const f = data.financials;
+  const profitColor = f.profit >= 0 ? '#22c55e' : '#ef4444';
+  html += `
+    <div class="airline-stats-grid">
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Fleet</div>
+        <div class="airline-stat-value">${data.fleetCount}</div>
+      </div>
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Routes</div>
+        <div class="airline-stat-value">${data.routeCount}</div>
+      </div>
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Flights</div>
+        <div class="airline-stat-value">${f.totalFlights.toLocaleString()}</div>
+      </div>
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Passengers</div>
+        <div class="airline-stat-value">${f.totalPassengers.toLocaleString()}</div>
+      </div>
+    </div>
+  `;
+
+  // Financial summary
+  html += `
+    <div class="airline-stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Revenue</div>
+        <div class="airline-stat-value" style="color: #22c55e;">${formatCurrency(f.totalRevenue)}</div>
+      </div>
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Profit</div>
+        <div class="airline-stat-value" style="color: ${profitColor};">${formatCurrency(f.profit)}</div>
+      </div>
+      <div class="airline-stat-card">
+        <div class="airline-stat-label">Balance</div>
+        <div class="airline-stat-value" style="color: ${data.balance >= 0 ? 'var(--text-primary)' : '#ef4444'};">${formatCurrency(data.balance)}</div>
+      </div>
+    </div>
+  `;
+
+  // Fleet breakdown
+  if (data.fleet && data.fleet.length > 0) {
+    html += `<div class="airline-section-title" style="margin-top: 0.5rem;">Fleet (${data.fleetCount} aircraft)</div>`;
+    for (const ac of data.fleet) {
+      html += `
+        <div class="airline-fleet-row">
+          <div>
+            <div class="airline-fleet-model">${ac.manufacturer} ${ac.model}</div>
+            <div class="airline-fleet-detail">${ac.capacity} pax &middot; ${ac.range.toLocaleString()} nm range</div>
+          </div>
+          <span class="airline-fleet-count">&times;${ac.count}</span>
+        </div>
+      `;
+    }
+  } else {
+    html += `<div class="airline-section-title" style="margin-top: 0.5rem;">Fleet</div>`;
+    html += `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0;">No active aircraft</div>`;
+  }
+
+  // Route network
+  if (data.routes && data.routes.length > 0) {
+    html += `<div class="airline-section-title" style="margin-top: 1rem;">Routes (${data.routeCount})</div>`;
+    html += `
+      <table class="airline-route-table">
+        <thead>
+          <tr>
+            <th>Route</th>
+            <th>Distance</th>
+            <th>Economy</th>
+            <th>LF</th>
+            <th>Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    for (const r of data.routes) {
+      html += `
+        <tr>
+          <td>
+            <div class="airline-route-pair">${r.departure} - ${r.arrival}</div>
+            <div class="airline-route-city">${r.departureCity} - ${r.arrivalCity}</div>
+          </td>
+          <td>${r.distance.toLocaleString()} nm</td>
+          <td>$${r.economyPrice}</td>
+          <td>${Math.round(r.loadFactor * 100)}%</td>
+          <td>${formatCurrency(r.totalRevenue)}</td>
+        </tr>
+      `;
+    }
+    html += '</tbody></table>';
+  } else {
+    html += `<div class="airline-section-title" style="margin-top: 1rem;">Routes</div>`;
+    html += `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0;">No active routes</div>`;
+  }
+
+  bodyEl.innerHTML = html;
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeAirlineModal();
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {

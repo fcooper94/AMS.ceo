@@ -2,6 +2,87 @@
 <!-- SUBTITLE: Market Intelligence -->
 <!-- SCRIPTS: /js/competition.js -->
 
+<style>
+  .airline-modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 2000;
+  }
+  .airline-modal-content {
+    background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px;
+    width: 92%; max-width: 600px; max-height: 85vh; display: flex; flex-direction: column;
+  }
+  .airline-modal-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);
+  }
+  .airline-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text-primary); }
+  .airline-modal-close {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 1.3rem; padding: 0; line-height: 1;
+  }
+  .airline-modal-close:hover { color: var(--text-primary); }
+  .airline-modal-body { padding: 1.25rem; overflow-y: auto; flex: 1; }
+
+  .airline-header-codes {
+    font-size: 0.75rem; color: var(--text-secondary); font-family: monospace; margin-top: 0.15rem;
+  }
+  .airline-header-badge {
+    display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; margin-left: 0.5rem;
+  }
+
+  .airline-stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1rem;
+  }
+  .airline-stat-card {
+    background: var(--surface-elevated); border: 1px solid var(--border-color);
+    border-radius: 5px; padding: 0.5rem 0.6rem; text-align: center;
+  }
+  .airline-stat-label { font-size: 0.55rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+  .airline-stat-value { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-top: 0.15rem; }
+
+  .airline-section-title {
+    font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-color);
+  }
+
+  .airline-fleet-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.35rem 0; font-size: 0.8rem;
+  }
+  .airline-fleet-row + .airline-fleet-row { border-top: 1px solid var(--border-color); }
+  .airline-fleet-model { color: var(--text-primary); font-weight: 600; }
+  .airline-fleet-detail { color: var(--text-secondary); font-size: 0.7rem; }
+  .airline-fleet-count {
+    background: var(--surface-elevated); padding: 0.15rem 0.5rem;
+    border-radius: 3px; font-weight: 700; font-size: 0.75rem; color: var(--accent-color);
+  }
+
+  .airline-route-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+  .airline-route-table th {
+    text-align: left; padding: 0.3rem 0.4rem; font-size: 0.6rem; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color);
+  }
+  .airline-route-table th:last-child,
+  .airline-route-table td:last-child { text-align: right; }
+  .airline-route-table td {
+    padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border-color); color: var(--text-primary);
+  }
+  .airline-route-pair { font-weight: 600; }
+  .airline-route-city { font-size: 0.65rem; color: var(--text-muted); }
+
+  .reputation-bar {
+    width: 100%; height: 6px; background: var(--surface-elevated);
+    border-radius: 3px; overflow: hidden; margin-top: 0.3rem;
+  }
+  .reputation-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+  @media (max-width: 600px) {
+    .airline-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+
 <div class="dashboard-container">
   <main class="main-content">
     <div class="page-header">
@@ -48,4 +129,20 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Airline Detail Modal -->
+<div class="airline-modal" id="airlineModal" style="display: none;" onclick="if(event.target===this)closeAirlineModal()">
+  <div class="airline-modal-content">
+    <div class="airline-modal-header">
+      <div>
+        <h3 id="airlineModalName">Loading...</h3>
+        <div class="airline-header-codes" id="airlineModalCodes"></div>
+      </div>
+      <button class="airline-modal-close" onclick="closeAirlineModal()">&times;</button>
+    </div>
+    <div class="airline-modal-body" id="airlineModalBody">
+      <div style="text-align: center; padding: 2rem; color: var(--text-muted);">Loading airline data...</div>
+    </div>
+  </div>
 </div>

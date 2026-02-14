@@ -999,6 +999,109 @@ router.get('/competition', async (req, res) => {
   }
 });
 
+/**
+ * Get detailed airline profile for modal popup
+ */
+router.get('/competition/:airlineId', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(404).json({ error: 'No active world selected' });
+    }
+
+    const airline = await WorldMembership.findOne({
+      where: { id: req.params.airlineId, worldId: activeWorldId, isActive: true },
+      include: [{ model: Airport, as: 'baseAirport', attributes: ['icaoCode', 'iataCode', 'name', 'city', 'country'] }]
+    });
+
+    if (!airline) {
+      return res.status(404).json({ error: 'Airline not found' });
+    }
+
+    // Fleet breakdown by aircraft type
+    const fleet = await UserAircraft.findAll({
+      where: { worldMembershipId: airline.id, status: 'active' },
+      include: [{ model: Aircraft, as: 'aircraft', attributes: ['model', 'manufacturer', 'passengerCapacity', 'rangeNm'] }]
+    });
+
+    const fleetByType = {};
+    for (const ac of fleet) {
+      const model = ac.aircraft?.model || 'Unknown';
+      if (!fleetByType[model]) {
+        fleetByType[model] = {
+          model,
+          manufacturer: ac.aircraft?.manufacturer || '',
+          capacity: ac.aircraft?.passengerCapacity || 0,
+          range: ac.aircraft?.rangeNm || 0,
+          count: 0
+        };
+      }
+      fleetByType[model].count++;
+    }
+
+    // Routes with airport info
+    const routes = await Route.findAll({
+      where: { worldMembershipId: airline.id, isActive: true },
+      include: [
+        { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'iataCode', 'city'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'iataCode', 'city'] }
+      ],
+      order: [['totalRevenue', 'DESC']]
+    });
+
+    const routeList = routes.map(r => ({
+      routeNumber: r.routeNumber,
+      departure: r.departureAirport?.icaoCode || '??',
+      departureCity: r.departureAirport?.city || '',
+      arrival: r.arrivalAirport?.icaoCode || '??',
+      arrivalCity: r.arrivalAirport?.city || '',
+      distance: Math.round(parseFloat(r.distance) || 0),
+      economyPrice: parseFloat(r.economyPrice) || 0,
+      loadFactor: parseFloat(r.averageLoadFactor) || 0,
+      totalFlights: r.totalFlights || 0,
+      totalRevenue: parseFloat(r.totalRevenue) || 0
+    }));
+
+    // Financial summary
+    const totalRevenue = routes.reduce((sum, r) => sum + (parseFloat(r.totalRevenue) || 0), 0);
+    const totalCosts = routes.reduce((sum, r) => sum + (parseFloat(r.totalCosts) || 0), 0);
+    const totalFlights = routes.reduce((sum, r) => sum + (r.totalFlights || 0), 0);
+    const totalPassengers = routes.reduce((sum, r) => sum + (r.totalPassengers || 0), 0);
+
+    res.json({
+      id: airline.id,
+      airlineName: airline.airlineName,
+      airlineCode: airline.airlineCode,
+      iataCode: airline.iataCode,
+      isAI: airline.isAI,
+      reputation: airline.reputation || 0,
+      balance: parseFloat(airline.balance) || 0,
+      baseAirport: airline.baseAirport ? {
+        icaoCode: airline.baseAirport.icaoCode,
+        iataCode: airline.baseAirport.iataCode,
+        name: airline.baseAirport.name,
+        city: airline.baseAirport.city,
+        country: airline.baseAirport.country
+      } : null,
+      fleet: Object.values(fleetByType),
+      fleetCount: fleet.length,
+      routes: routeList,
+      routeCount: routes.length,
+      financials: {
+        totalRevenue: Math.round(totalRevenue),
+        totalCosts: Math.round(totalCosts),
+        profit: Math.round(totalRevenue - totalCosts),
+        profitMargin: totalRevenue > 0 ? parseFloat(((totalRevenue - totalCosts) / totalRevenue * 100).toFixed(1)) : 0,
+        totalFlights,
+        totalPassengers
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching airline detail:', error);
+    res.status(500).json({ error: 'Failed to fetch airline detail' });
+  }
+});
+
 function formatRankedAirline(row) {
   const totalRevenue = parseFloat(row.total_revenue) || 0;
   const totalCosts = parseFloat(row.total_costs) || 0;
