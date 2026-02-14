@@ -78,6 +78,13 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     comment: 'Whether weekly overhead costs have been snapshotted'
   },
 
+  // Loan payments (recorded by monthly loan processor)
+  loanPayments: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'loan_payments'
+  },
+
   // Stats
   flights: {
     type: DataTypes.INTEGER,

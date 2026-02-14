@@ -49,6 +49,9 @@ class WorldTimeService {
     // Weekly overhead recording
     this.lastOverheadWeek = {}; // Map of worldId -> last game week (Monday date) overheads were recorded
     this.isProcessingOverheads = false;
+    // Monthly loan payment processing
+    this.lastLoanMonth = {}; // Map of worldId -> last game month (YYYY-MM) loans were processed
+    this.isProcessingLoans = false;
   }
 
   /**
@@ -416,6 +419,17 @@ class WorldTimeService {
       this.recordWeeklyOverheads(worldId, gameTime, currentWeekStart)
         .catch(err => console.error('Error recording weekly overheads:', err.message))
         .finally(() => { this.isProcessingOverheads = false; });
+    }
+
+    // Process monthly loan payments once per game month
+    const currentLoanMonth = gameTime.toISOString().slice(0, 7); // 'YYYY-MM'
+    const lastLoanMonth = this.lastLoanMonth[worldId] || '';
+    if (!this.isProcessingLoans && currentLoanMonth !== lastLoanMonth) {
+      this.lastLoanMonth[worldId] = currentLoanMonth;
+      this.isProcessingLoans = true;
+      this.processLoanPayments(worldId, gameTime)
+        .catch(err => console.error('Error processing loan payments:', err.message))
+        .finally(() => { this.isProcessingLoans = false; });
     }
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
@@ -1067,6 +1081,196 @@ class WorldTimeService {
       }
     } catch (error) {
       console.error('Error recording weekly overheads:', error.message);
+    }
+  }
+
+  /**
+   * Process monthly loan payments for all active loans in a world
+   * Called once per game month. Deducts payments from balance, updates loan state.
+   */
+  async processLoanPayments(worldId, gameTime) {
+    try {
+      const Loan = require('../models/Loan');
+      const WeeklyFinancial = require('../models/WeeklyFinancial');
+      const Notification = require('../models/Notification');
+      const { getBank } = require('../data/bankConfig');
+
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true }
+      });
+
+      const gameDate = gameTime.toISOString().split('T')[0];
+      const weekStart = WeeklyFinancial.getWeekStart(gameTime);
+
+      for (const membership of memberships) {
+        try {
+          const loans = await Loan.findAll({
+            where: { worldMembershipId: membership.id, status: 'active' }
+          });
+
+          if (loans.length === 0) continue;
+
+          let totalPaymentThisMonth = 0;
+
+          for (const loan of loans) {
+            try {
+              const remaining = parseFloat(loan.remainingPrincipal) || 0;
+              if (remaining <= 0) {
+                loan.status = 'paid_off';
+                loan.monthsRemaining = 0;
+                await loan.save();
+                continue;
+              }
+
+              const annualRate = parseFloat(loan.interestRate) || 0;
+              const monthlyRate = annualRate / 100 / 12;
+              const monthlyInterest = remaining * monthlyRate;
+
+              // Payment holiday: accrue interest, skip payment
+              if (loan.isOnHoliday) {
+                loan.remainingPrincipal = remaining + monthlyInterest;
+                loan.isOnHoliday = false;
+                loan.monthsRemaining = Math.max(0, loan.monthsRemaining - 1);
+                loan.lastPaymentGameDate = gameDate;
+                await loan.save();
+                continue;
+              }
+
+              let payment = 0;
+              let principalPortion = 0;
+              let interestPortion = monthlyInterest;
+
+              if (loan.repaymentStrategy === 'fixed') {
+                payment = parseFloat(loan.monthlyPayment) || 0;
+                principalPortion = payment - interestPortion;
+                // On final months, adjust to avoid overpaying
+                if (principalPortion > remaining) {
+                  principalPortion = remaining;
+                  payment = principalPortion + interestPortion;
+                }
+              } else if (loan.repaymentStrategy === 'reducing') {
+                principalPortion = parseFloat(loan.principalAmount) / loan.termMonths;
+                if (principalPortion > remaining) principalPortion = remaining;
+                payment = principalPortion + interestPortion;
+              } else {
+                // Interest only — pay interest each month, balloon on final month
+                if (loan.monthsRemaining <= 1) {
+                  principalPortion = remaining;
+                  payment = remaining + interestPortion;
+                } else {
+                  principalPortion = 0;
+                  payment = interestPortion;
+                }
+              }
+
+              payment = Math.round(payment * 100) / 100;
+              principalPortion = Math.round(principalPortion * 100) / 100;
+              interestPortion = Math.round(interestPortion * 100) / 100;
+
+              // Check if airline can afford the payment
+              const balance = parseFloat(membership.balance) || 0;
+              if (balance < payment) {
+                loan.missedPayments = (loan.missedPayments || 0) + 1;
+                loan.lastPaymentGameDate = gameDate;
+
+                // Default at 3 missed payments
+                if (loan.missedPayments >= 3) {
+                  loan.status = 'defaulted';
+                  // Reputation penalty
+                  membership.reputation = Math.max(0, (membership.reputation || 0) - 10);
+                  await membership.save();
+
+                  const bank = getBank(loan.bankId);
+                  try {
+                    await Notification.create({
+                      worldMembershipId: membership.id,
+                      type: 'loan_defaulted',
+                      icon: 'alert-triangle',
+                      title: `Loan Defaulted — ${bank?.shortName || loan.bankId}`,
+                      message: `Your loan has defaulted after 3 missed payments. Reputation penalty applied.`,
+                      link: '/loans',
+                      priority: 1,
+                      gameTime
+                    });
+                  } catch (nErr) { /* non-critical */ }
+                } else {
+                  try {
+                    const bank = getBank(loan.bankId);
+                    await Notification.create({
+                      worldMembershipId: membership.id,
+                      type: 'loan_missed_payment',
+                      icon: 'alert-circle',
+                      title: `Missed Payment — ${bank?.shortName || loan.bankId}`,
+                      message: `Insufficient funds for loan payment ($${Math.round(payment).toLocaleString()}). ${3 - loan.missedPayments} missed payment(s) until default.`,
+                      link: '/loans',
+                      priority: 1,
+                      gameTime
+                    });
+                  } catch (nErr) { /* non-critical */ }
+                }
+
+                await loan.save();
+                continue;
+              }
+
+              // Deduct payment
+              membership.balance = balance - payment;
+              totalPaymentThisMonth += payment;
+
+              // Update loan
+              loan.remainingPrincipal = Math.max(0, remaining - principalPortion);
+              loan.totalInterestPaid = (parseFloat(loan.totalInterestPaid) || 0) + interestPortion;
+              loan.totalPrincipalPaid = (parseFloat(loan.totalPrincipalPaid) || 0) + principalPortion;
+              loan.monthsRemaining = Math.max(0, loan.monthsRemaining - 1);
+              loan.missedPayments = 0; // Reset on successful payment
+              loan.lastPaymentGameDate = gameDate;
+
+              // Check if paid off
+              if (loan.remainingPrincipal <= 0.01 || loan.monthsRemaining <= 0) {
+                loan.status = 'paid_off';
+                loan.remainingPrincipal = 0;
+                loan.monthsRemaining = 0;
+
+                const bank = getBank(loan.bankId);
+                try {
+                  await Notification.create({
+                    worldMembershipId: membership.id,
+                    type: 'loan_paid_off',
+                    icon: 'check-circle',
+                    title: `Loan Paid Off — ${bank?.shortName || loan.bankId}`,
+                    message: `Your loan has been fully repaid. Total interest paid: $${Math.round(parseFloat(loan.totalInterestPaid)).toLocaleString()}`,
+                    link: '/loans',
+                    priority: 2,
+                    gameTime
+                  });
+                } catch (nErr) { /* non-critical */ }
+              }
+
+              await loan.save();
+            } catch (lErr) {
+              console.error(`Error processing loan ${loan.id}:`, lErr.message);
+            }
+          }
+
+          // Save membership balance after all loans processed
+          await membership.save();
+
+          // Record total loan payments in weekly financial
+          if (totalPaymentThisMonth > 0) {
+            try {
+              const [weekRecord] = await WeeklyFinancial.findOrCreate({
+                where: { worldMembershipId: membership.id, weekStart },
+                defaults: {}
+              });
+              await weekRecord.increment({ loanPayments: totalPaymentThisMonth });
+            } catch (wfErr) { /* non-critical */ }
+          }
+        } catch (mErr) {
+          // Skip individual membership errors
+        }
+      }
+    } catch (error) {
+      console.error('Error processing loan payments:', error.message);
     }
   }
 

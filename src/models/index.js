@@ -16,6 +16,7 @@ const Notification = require('./Notification');
 const MetroZone = require('./MetroZone');
 const AirportZoneMapping = require('./AirportZoneMapping');
 const WeeklyFinancial = require('./WeeklyFinancial');
+const Loan = require('./Loan');
 
 // Define associations
 User.belongsToMany(World, {
@@ -96,6 +97,10 @@ UsedAircraftForSale.belongsTo(World, { foreignKey: 'world_id', as: 'world' });
 Aircraft.hasMany(UsedAircraftForSale, { foreignKey: 'aircraft_id', as: 'usedListings' });
 UsedAircraftForSale.belongsTo(Aircraft, { foreignKey: 'aircraft_id', as: 'aircraft' });
 
+// Loan associations
+WorldMembership.hasMany(Loan, { foreignKey: 'world_membership_id', as: 'loans' });
+Loan.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
+
 // Notification associations
 WorldMembership.hasMany(Notification, { foreignKey: 'world_membership_id', as: 'notifications' });
 Notification.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
@@ -118,5 +123,6 @@ module.exports = {
   Notification,
   MetroZone,
   AirportZoneMapping,
-  WeeklyFinancial
+  WeeklyFinancial,
+  Loan
 };

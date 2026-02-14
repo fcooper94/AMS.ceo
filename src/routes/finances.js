@@ -54,8 +54,9 @@ router.get('/', async (req, res) => {
       const staff = parseFloat(w.staffCosts) || 0;
       const leases = parseFloat(w.leaseCosts) || 0;
       const contractors = parseFloat(w.contractorCosts) || 0;
+      const loanPay = parseFloat(w.loanPayments) || 0;
       const opCosts = fuel + crew + maint + fees;
-      const overheads = staff + leases + contractors;
+      const overheads = staff + leases + contractors + loanPay;
       const totalCosts = opCosts + overheads;
       const netProfit = rev - totalCosts;
 
@@ -70,6 +71,7 @@ router.get('/', async (req, res) => {
         staffCosts: Math.round(staff),
         leaseCosts: Math.round(leases),
         contractorCosts: Math.round(contractors),
+        loanPayments: Math.round(loanPay),
         overheads: Math.round(overheads),
         totalCosts: Math.round(totalCosts),
         netProfit: Math.round(netProfit),
@@ -162,16 +164,28 @@ router.get('/', async (req, res) => {
     const monthlyContractors = cleaningCost + groundCost + engineeringCost;
     const monthlyOverheads = monthlyStaff + Math.round(monthlyLeases) + monthlyContractors;
 
+    // ── 4. All-time totals from weekly data (includes overheads + loans) ────
+    let allTimeRevenue = 0;
+    let allTimeCosts = 0;
+    let allTimeFlights = 0;
+    let allTimePassengers = 0;
+    for (const w of weeks) {
+      allTimeRevenue += w.flightRevenue;
+      allTimeCosts += w.totalCosts;
+      allTimeFlights += w.flights;
+      allTimePassengers += w.passengers;
+    }
+
     // ── Build response ───────────────────────────────────────────────────────
     res.json({
       balance: parseFloat(membership.balance) || 0,
       weeks,
       routes: routeDetails,
       allTime: {
-        totalRevenue: Math.round(totalRevenue),
-        totalCosts: Math.round(totalCosts),
-        totalFlights,
-        totalPassengers
+        totalRevenue: Math.round(allTimeRevenue),
+        totalCosts: Math.round(allTimeCosts),
+        totalFlights: allTimeFlights,
+        totalPassengers: allTimePassengers
       },
       monthlyOverheads: {
         staff: Math.round(monthlyStaff),

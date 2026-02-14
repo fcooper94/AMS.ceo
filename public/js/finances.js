@@ -52,7 +52,7 @@ function renderWeeklyPL() {
 
   if (!allWeeks || allWeeks.length === 0) {
     thead.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="2" style="padding:1.5rem;text-align:center;color:var(--text-secondary);">No weekly data yet. Financial data will appear after flights operate.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="2" style="padding:1.5rem;text-align:center;color:var(--text-secondary);">No weekly data yet. Data will appear once the first game week completes.</td></tr>';
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = 'none';
     if (rangeEl) rangeEl.textContent = '';
@@ -114,6 +114,7 @@ function renderWeeklyPL() {
   rows += wkRow('Staff', weeks, 'staffCosts', true);
   rows += wkRow('Leases', weeks, 'leaseCosts', true);
   rows += wkRow('Contractors', weeks, 'contractorCosts', true);
+  rows += wkRow('Loan Payments', weeks, 'loanPayments', true);
   rows += wkTotal('Total Overheads', weeks, 'overheads', true);
   rows += wkSpacer(cols);
 

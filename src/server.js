@@ -132,6 +132,7 @@ const pricingRoutes = require('./routes/pricing');
 const contactRoutes = require('./routes/contact');
 const dashboardRoutes = require('./routes/dashboard');
 const staffRoutes = require('./routes/staff');
+const loansRoutes = require('./routes/loans');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -283,6 +284,7 @@ app.use('/api/admin', requireAuth, adminRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', requireWorld, dashboardRoutes);
 app.use('/api/staff', requireWorld, staffRoutes);
+app.use('/api/loans', requireWorld, loansRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -364,6 +366,15 @@ app.get('/finances', requireWorld, async (req, res) => {
 app.get('/staff', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/staff.html'), '/staff');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/loans', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/loans.html'), '/loans');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
