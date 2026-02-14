@@ -333,7 +333,8 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
           const reg = generateRegistration(regPrefix, existingRegs);
           existingRegs.add(reg);
           const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
-          balance -= purchasePrice;
+          // AI starting fleet is pre-existing — don't deduct full price (just 10% deposit)
+          balance -= Math.round(purchasePrice * 0.10);
           const fleetId = crypto.randomUUID();
           airlineFleet.push({ id: fleetId, aircraftId: ac.id, registration: reg, purchasePrice, aircraft: ac });
         }
@@ -520,7 +521,8 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
             const reg = generateRegistration(regPrefix, existingRegs);
             existingRegs.add(reg);
             const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
-            balance -= purchasePrice;
+            // AI starting fleet is pre-existing — don't deduct full price (just 10% deposit)
+            balance -= Math.round(purchasePrice * 0.10);
             const fleetId = crypto.randomUUID();
             airlineFleet.push({ id: fleetId, aircraftId: ac.id, registration: reg, purchasePrice, aircraft: ac });
           }

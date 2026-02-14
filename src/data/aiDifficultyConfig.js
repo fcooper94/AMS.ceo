@@ -45,8 +45,8 @@ const AI_DIFFICULTY = {
     expansionRate: 'slow',
 
     // Pricing
-    pricingStrategy: 'premium',          // Prices 10-20% above market
-    pricingModifier: 1.15,               // Multiplier applied to base ticket price
+    pricingStrategy: 'premium',          // Prices slightly above market
+    pricingModifier: 1.05,               // Multiplier applied to base ticket price (was 1.15 — too high, killed AI revenue)
     neverUndercuts: true,                // Won't undercut the player
 
     // Efficiency
@@ -114,7 +114,7 @@ const AI_DIFFICULTY = {
     expansionRate: 'fast',
 
     pricingStrategy: 'aggressive',
-    pricingModifier: 0.9,               // Prices 10% below market
+    pricingModifier: 0.92,              // Prices 8% below market (was 0.9 — too aggressive)
     neverUndercuts: false,
 
     maintenanceEfficiency: 0.95,

@@ -200,8 +200,8 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
   const totalCosts = routes.reduce((sum, r) => sum + (parseFloat(r.totalCosts) || 0), 0);
   const isProfitable = totalRevenue > totalCosts || routes.length === 0; // No routes = just starting
 
-  // Decision: Try to create routes for unassigned aircraft
-  if (unassignedAircraft.length > 0 && balance > 0) {
+  // Decision: Try to create routes for unassigned aircraft (allow even with negative balance — idle fleet earns nothing)
+  if (unassignedAircraft.length > 0) {
     await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear);
   }
 
@@ -226,12 +226,12 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     const deficit = Math.abs(balance);
 
     // Stage 1: Sell aircraft from unprofitable routes
-    if (routes.length > 0 && deficit > startingCapital * 0.3) {
+    if (routes.length > 0 && deficit > startingCapital * 0.5) {
       await tryContractNetwork(airline, routes, config, world, gameTime);
     }
 
-    // Stage 2: Full bankruptcy - no routes, no money
-    if (balance < -startingCapital * 0.5 || (routes.length === 0 && fleet.length === 0)) {
+    // Stage 2: Full bankruptcy - deeply in debt or no operations at all
+    if (balance < -startingCapital * 1.5 || (routes.length === 0 && fleet.length === 0)) {
       console.log(`[AI-DECISION] ${airline.airlineName} has gone bankrupt (balance: $${Math.round(balance)})`);
       airline.isActive = false;
       await airline.save();

@@ -757,13 +757,13 @@ class WorldTimeService {
           // Demand lookup failed, use defaults
         }
 
-        // 3. Route maturity factor: new routes ramp up over game-weeks (0.35–1.00)
-        // Exponential ramp: ~0.50 at 2wk, ~0.75 at 4wk, ~0.92 at 8wk, ~1.0 at 12wk
+        // 3. Route maturity factor: new routes ramp up over game-weeks (0.55–1.00)
+        // Exponential ramp: ~0.68 at 2wk, ~0.82 at 4wk, ~0.95 at 8wk, ~1.0 at 12wk
         let maturityFactor = 1.0;
         if (route.createdAt) {
           const routeAgeMs = currentGameTime.getTime() - new Date(route.createdAt).getTime();
           const routeAgeWeeks = routeAgeMs / (7 * 24 * 60 * 60 * 1000);
-          maturityFactor = Math.min(1.0, 0.35 + 0.65 * (1 - Math.exp(-routeAgeWeeks / 4)));
+          maturityFactor = Math.min(1.0, 0.55 + 0.45 * (1 - Math.exp(-routeAgeWeeks / 3)));
         }
 
         // 4. Aircraft prestige factor: newer/right-sized aircraft attract more passengers
@@ -904,19 +904,24 @@ class WorldTimeService {
 
         // 9. Airline reputation factor: rep 0→0.90, rep 50→1.00, rep 100→1.10
         let reputationFactor = 1.0;
+        let isAIAirline = false;
         try {
           const membership = await WorldMembership.findByPk(route.worldMembershipId, {
-            attributes: ['reputation']
+            attributes: ['reputation', 'isAI']
           });
           const rep = parseInt(membership?.reputation) || 50;
           reputationFactor = 0.90 + (rep / 100) * 0.20;
+          isAIAirline = !!membership?.isAI;
         } catch (repErr) {
           // Reputation lookup failed, use neutral factor
         }
 
         // Combine all factors
         loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * reputationFactor * variance;
-        loadFactor = Math.max(0.15, Math.min(0.98, loadFactor));
+        // AI airlines get a higher floor (0.30) to ensure financial survival — represents
+        // established customer base, codeshare traffic, and corporate contracts
+        const minLoadFactor = isAIAirline ? 0.30 : 0.15;
+        loadFactor = Math.max(minLoadFactor, Math.min(0.98, loadFactor));
       } catch (err) {
         // Load factor calculation failed, use default
       }
@@ -942,12 +947,13 @@ class WorldTimeService {
 
       const totalRevenue = ticketRevenue + cargoRevenue;
 
-      // Calculate costs
+      // Calculate costs (all scaled by era multipliers)
       const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
+      const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
       const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier); // $3.50/nm base, round trip
-      const crewCost = Math.round(distance * 2 * 0.8); // ~$0.80/nm crew cost
-      const maintenanceCost = Math.round(distance * 2 * 0.5); // ~$0.50/nm maint cost
-      const airportFees = Math.round(1500 + paxCapacity * 3); // Landing + handling fees
+      const crewCost = Math.round(distance * 2 * 0.8 * eraMultiplier); // ~$0.80/nm crew cost, era-scaled
+      const maintenanceCost = Math.round(distance * 2 * 0.5 * eraMultiplier); // ~$0.50/nm maint, era-scaled
+      const airportFees = Math.round((1500 + paxCapacity * 3) * eraMultiplier); // Landing + handling, era-scaled
       const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
 
       const profit = totalRevenue - totalCosts;
