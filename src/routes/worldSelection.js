@@ -574,6 +574,14 @@ router.post('/create-singleplayer', async (req, res) => {
       // World still created successfully, AI can be spawned later
     }
 
+    // Compute ATC route waypoints for all newly created routes (non-blocking)
+    try {
+      const airwayService = require('../services/airwayService');
+      if (airwayService.isReady()) {
+        airwayService.backfillMissingWaypoints();
+      }
+    } catch (e) { /* non-critical */ }
+
     // Start the world time service
     try {
       const worldTimeService = require('../services/worldTimeService');

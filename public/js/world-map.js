@@ -368,6 +368,15 @@ async function loadActiveFlights() {
 
     const data = await response.json();
 
+    // Merge deduplicated waypoints back into each flight's route
+    if (data.routeWaypoints) {
+      for (const flight of (data.flights || [])) {
+        if (flight.route && !flight.route.waypoints && data.routeWaypoints[flight.route.id]) {
+          flight.route.waypoints = data.routeWaypoints[flight.route.id];
+        }
+      }
+    }
+
     if (data.flights && Array.isArray(data.flights)) {
       activeFlights = data.flights;
       updateFlightsOnMap(data.flights);
@@ -1058,17 +1067,27 @@ function createRouteLine(flight) {
       });
     }
 
-    // Show waypoint dot markers (skip first and last which are the airports)
+    // Show waypoint fix markers with name tooltips (skip first/last which are airports)
     if (wpToUse.length > 2) {
       wpToUse.slice(1, -1).forEach(wp => {
+        const fixName = wp.name || '';
+        const showLabel = fixName && fixName !== 'DEP' && fixName !== 'ARR';
         const wpMarker = L.circleMarker([wp.lat, wp.lng], {
-          radius: 2,
+          radius: 3,
           color: '#58a6ff',
           fillColor: '#58a6ff',
-          fillOpacity: 0.6,
-          weight: 0,
-          interactive: false
+          fillOpacity: 0.8,
+          weight: 1,
+          interactive: true
         }).addTo(map);
+        if (showLabel) {
+          wpMarker.bindTooltip(fixName, {
+            permanent: false,
+            direction: 'top',
+            offset: [0, -6],
+            className: 'waypoint-tooltip'
+          });
+        }
         waypointMarkers.push(wpMarker);
       });
     }
@@ -1474,6 +1493,24 @@ function showFlightInfo(flight) {
       </div>
 
       ${sectorsHtml}
+
+      ${(() => {
+        const isReturn = phase === 'return';
+        const fromCode = isReturn ? arrCode : depCode;
+        const toCode = isReturn ? depCode : arrCode;
+        const wps = flight.route?.waypoints;
+        const fixes = (wps || []).filter(w => w.name && w.name !== 'DEP' && w.name !== 'ARR');
+        const ordered = isReturn ? fixes.reverse() : fixes;
+        const fixSpans = ordered.length > 0
+          ? ordered.map(w => `<span class="atc-fix">${w.name}</span>`).join(' ')
+          : '<span class="atc-fix" style="opacity: 0.5">DCT</span>';
+        return `
+          <div class="atc-route-section">
+            <div class="atc-route-label">ATC ROUTE</div>
+            <div class="atc-route-string"><span class="atc-fix atc-fix-apt">${fromCode}</span> ${fixSpans} <span class="atc-fix atc-fix-apt">${toCode}</span></div>
+          </div>
+        `;
+      })()}
 
       <!-- Flight Stats -->
       <div class="flight-stats">

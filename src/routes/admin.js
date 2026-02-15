@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
-const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale } = require('../models');
+const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, RecurringMaintenance } = require('../models');
 const airportCacheService = require('../services/airportCacheService');
 const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
 
@@ -497,13 +497,56 @@ router.delete('/worlds/:worldId', async (req, res) => {
       return res.status(404).json({ error: 'World not found' });
     }
 
-    // Delete all memberships in this world first
-    await WorldMembership.destroy({
-      where: { worldId: world.id }
-    });
+    // Use raw SQL in a transaction with FK checks disabled to avoid
+    // race conditions with background game tick inserting new rows
+    await sequelize.transaction(async (t) => {
+      // Disable FK trigger checks for this transaction
+      await sequelize.query(`SET session_replication_role = 'replica'`, { transaction: t });
 
-    // Then delete the world
-    await world.destroy();
+      const worldId = world.id;
+
+      const [mRows] = await sequelize.query(
+        `SELECT id FROM world_memberships WHERE world_id = :worldId`,
+        { replacements: { worldId }, transaction: t }
+      );
+      if (mRows.length > 0) {
+        const mIds = mRows.map(r => r.id);
+
+        const [rRows] = await sequelize.query(
+          `SELECT id FROM routes WHERE world_membership_id IN (:mIds)`,
+          { replacements: { mIds }, transaction: t }
+        );
+        const rIds = rRows.map(r => r.id);
+
+        const [aRows] = await sequelize.query(
+          `SELECT id FROM user_aircraft WHERE world_membership_id IN (:mIds)`,
+          { replacements: { mIds }, transaction: t }
+        );
+        const aIds = aRows.map(r => r.id);
+
+        if (rIds.length > 0) {
+          await sequelize.query(`DELETE FROM scheduled_flights WHERE route_id IN (:rIds)`, { replacements: { rIds }, transaction: t });
+        }
+        if (aIds.length > 0) {
+          await sequelize.query(`DELETE FROM scheduled_flights WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+          await sequelize.query(`DELETE FROM recurring_maintenance WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+        }
+        await sequelize.query(`DELETE FROM routes WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM user_aircraft WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM pricing_defaults WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM weekly_financials WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM loans WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM notifications WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM airspace_restrictions WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM world_memberships WHERE world_id = :worldId`, { replacements: { worldId }, transaction: t });
+      }
+
+      await sequelize.query(`DELETE FROM used_aircraft_for_sale WHERE world_id = :worldId`, { replacements: { worldId }, transaction: t });
+      await sequelize.query(`DELETE FROM worlds WHERE id = :worldId`, { replacements: { worldId }, transaction: t });
+
+      // Re-enable FK checks
+      await sequelize.query(`SET session_replication_role = 'origin'`, { transaction: t });
+    });
 
     res.json({ message: 'World deleted successfully' });
   } catch (error) {

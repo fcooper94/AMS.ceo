@@ -2346,7 +2346,11 @@ async function resolveCustomAtcRoute() {
     const response = await fetch('/api/routes/resolve-atc-route', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ atcRouteString: input })
+      body: JSON.stringify({
+        atcRouteString: input,
+        departureAirportId: baseAirport?.id || null,
+        arrivalAirportId: selectedDestinationAirport?.id || null
+      })
     });
 
     if (!response.ok) {

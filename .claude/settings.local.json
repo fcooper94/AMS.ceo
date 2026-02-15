@@ -54,7 +54,13 @@
       "WebFetch(domain:release-assets.githubusercontent.com)",
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:flightplandatabase.com)",
-      "WebFetch(domain:developer.x-plane.com)"
+      "WebFetch(domain:developer.x-plane.com)",
+      "Bash(xxd:*)",
+      "WebFetch(domain:grd.aero-nav.com)",
+      "WebFetch(domain:forum.navigraph.com)",
+      "WebFetch(domain:developers.navigraph.com)",
+      "WebFetch(domain:www.fly.faa.gov)",
+      "Bash(awk:*)"
     ]
   }
 }

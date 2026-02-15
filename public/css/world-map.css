@@ -614,31 +614,39 @@
   background: var(--surface, #21262d);
   border-radius: 6px;
   padding: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .atc-route-label {
   font-size: 0.65rem;
-  font-weight: 600;
+  color: var(--text-muted, #8b949e);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted, #8b949e);
+  font-weight: 600;
   margin-bottom: 0.4rem;
 }
 
-.atc-route-waypoints {
+.atc-route-string {
+  font-family: 'Courier New', monospace;
   font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-primary, #e6edf3);
-  font-family: 'Consolas', 'SF Mono', 'Roboto Mono', 'Source Code Pro', monospace;
-  letter-spacing: 0.03em;
-  line-height: 1.5;
-  word-break: break-word;
+  line-height: 1.6;
+  word-break: break-all;
 }
 
-.atc-route-waypoints .atc-dot {
-  color: var(--text-muted, #8b949e);
-  margin: 0 0.1rem;
+.atc-fix { color: #58a6ff; }
+.atc-fix-apt { color: #e6edf3; font-weight: 700; }
+
+/* Waypoint tooltips on map */
+.waypoint-tooltip {
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid #58a6ff;
+  color: #58a6ff;
+  font-family: 'Courier New', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* Map Legend */

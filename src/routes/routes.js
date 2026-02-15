@@ -235,7 +235,7 @@ router.get('/summary', async (req, res) => {
  */
 router.post('/resolve-atc-route', async (req, res) => {
   try {
-    const { atcRouteString } = req.body;
+    const { atcRouteString, departureAirportId, arrivalAirportId } = req.body;
     if (!atcRouteString || typeof atcRouteString !== 'string') {
       return res.status(400).json({ error: 'atcRouteString is required' });
     }
@@ -243,6 +243,20 @@ router.post('/resolve-atc-route', async (req, res) => {
     const airwayService = require('../services/airwayService');
     if (!airwayService.isReady()) {
       return res.status(503).json({ error: 'Airway data is still loading. Please try again shortly.' });
+    }
+
+    // Get departure/arrival coordinates for proximity-based fix disambiguation
+    let refLat = 0, refLng = 0;
+    if (departureAirportId && arrivalAirportId) {
+      const [depApt, arrApt] = await Promise.all([
+        Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude'] }),
+        Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude'] })
+      ]);
+      if (depApt && arrApt) {
+        // Use midpoint of the route as reference for disambiguation
+        refLat = (parseFloat(depApt.latitude) + parseFloat(arrApt.latitude)) / 2;
+        refLng = (parseFloat(depApt.longitude) + parseFloat(arrApt.longitude)) / 2;
+      }
     }
 
     // Parse the ATC route string: split by whitespace, separate fixes from airways
@@ -260,13 +274,19 @@ router.post('/resolve-atc-route', async (req, res) => {
       }
     }
 
-    // Resolve each fix name to coordinates
+    // Resolve each fix name to coordinates, picking closest when duplicates exist
     const resolved = [];
     const unresolved = [];
+    // Use a rolling reference point: start with route midpoint, update as we resolve
+    let currentRefLat = refLat;
+    let currentRefLng = refLng;
     for (const fixName of fixes) {
-      const coords = airwayService.fixes.get(fixName);
-      if (coords) {
-        resolved.push({ name: fixName, lat: coords.lat, lng: coords.lng });
+      const match = airwayService.findClosestFix(fixName, currentRefLat, currentRefLng);
+      if (match) {
+        resolved.push(match);
+        // Update reference to the last resolved fix for sequential proximity
+        currentRefLat = match.lat;
+        currentRefLng = match.lng;
       } else {
         unresolved.push(fixName);
       }
@@ -492,13 +512,14 @@ router.post('/', async (req, res) => {
         const airwayService = require('../services/airwayService');
         if (airwayService.isReady()) {
           const [depApt, arrApt] = await Promise.all([
-            Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude'] }),
-            Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude'] })
+            Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude', 'icaoCode'] }),
+            Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude', 'icaoCode'] })
           ]);
           if (depApt && arrApt) {
             const waypoints = airwayService.computeRoute(
               parseFloat(depApt.latitude), parseFloat(depApt.longitude),
-              parseFloat(arrApt.latitude), parseFloat(arrApt.longitude)
+              parseFloat(arrApt.latitude), parseFloat(arrApt.longitude),
+              depApt.icaoCode, arrApt.icaoCode
             );
             if (waypoints) {
               await route.update({ waypoints });

@@ -411,7 +411,8 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         if (airwayService.isReady()) {
           const wps = airwayService.computeRoute(
             parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
-            parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
+            parseFloat(destAirport.latitude), parseFloat(destAirport.longitude),
+            baseAirport.icaoCode, destAirport.icaoCode
           );
           if (wps) await route.update({ waypoints: wps });
         }

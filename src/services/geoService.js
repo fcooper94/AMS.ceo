@@ -7,6 +7,9 @@ const RAD_TO_DEG = 180 / Math.PI;
 
 let firData = null;
 let firFeaturesByCode = new Map();
+let firBboxGrid = new Map(); // Spatial grid of FIR bounding boxes for fast lookup
+const FIR_GRID_SIZE = 10; // degrees per grid cell
+const firPointCache = new Map(); // Memoize getFirForPoint by rounded coords
 
 function loadFirData() {
   if (firData) return;
@@ -15,6 +18,37 @@ function loadFirData() {
   firData.features.forEach(feature => {
     firFeaturesByCode.set(feature.properties.id, feature);
   });
+  // Build spatial grid for fast getFirForPoint lookups
+  firData.features.forEach(feature => {
+    const bbox = getFeatureBbox(feature);
+    feature._bbox = bbox;
+    const minCellX = Math.floor(bbox.minLat / FIR_GRID_SIZE);
+    const maxCellX = Math.floor(bbox.maxLat / FIR_GRID_SIZE);
+    const minCellY = Math.floor(bbox.minLng / FIR_GRID_SIZE);
+    const maxCellY = Math.floor(bbox.maxLng / FIR_GRID_SIZE);
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cy = minCellY; cy <= maxCellY; cy++) {
+        const key = `${cx},${cy}`;
+        if (!firBboxGrid.has(key)) firBboxGrid.set(key, []);
+        firBboxGrid.get(key).push(feature);
+      }
+    }
+  });
+}
+
+function getFeatureBbox(feature) {
+  let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+  for (const polygon of feature.geometry.coordinates) {
+    for (const ring of polygon) {
+      for (const coord of ring) {
+        if (coord[1] < minLat) minLat = coord[1];
+        if (coord[1] > maxLat) maxLat = coord[1];
+        if (coord[0] < minLng) minLng = coord[0];
+        if (coord[0] > maxLng) maxLng = coord[0];
+      }
+    }
+  }
+  return { minLat, maxLat, minLng, maxLng };
 }
 
 /**
@@ -115,9 +149,41 @@ function getFirFeature(firCode) {
   return firFeaturesByCode.get(firCode) || null;
 }
 
+/**
+ * Determine which non-oceanic FIR a point is in.
+ * Uses spatial grid for fast candidate lookup.
+ * Returns the FIR code string or null if not in any FIR.
+ */
+function getFirForPoint(lat, lng) {
+  loadFirData();
+  // Memoize by rounding to ~0.5 degree grid (~30nm) — same FIR within each cell
+  const cacheKey = `${(lat * 2 | 0)},${(lng * 2 | 0)}`;
+  if (firPointCache.has(cacheKey)) return firPointCache.get(cacheKey);
+
+  const cx = Math.floor(lat / FIR_GRID_SIZE);
+  const cy = Math.floor(lng / FIR_GRID_SIZE);
+  const candidates = firBboxGrid.get(`${cx},${cy}`) || [];
+  let result = null;
+  for (const feature of candidates) {
+    const bb = feature._bbox;
+    if (lat < bb.minLat || lat > bb.maxLat || lng < bb.minLng || lng > bb.maxLng) continue;
+    const multiPoly = feature.geometry.coordinates;
+    for (const polygon of multiPoly) {
+      if (pointInPolygon(lat, lng, polygon[0])) {
+        result = feature.properties.id;
+        break;
+      }
+    }
+    if (result) break;
+  }
+  firPointCache.set(cacheKey, result);
+  return result;
+}
+
 module.exports = {
   isPointInFir,
   doesRouteCrossFir,
   doesGreatCircleCrossFir,
-  getFirFeature
+  getFirFeature,
+  getFirForPoint
 };

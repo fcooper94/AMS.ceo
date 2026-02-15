@@ -937,6 +937,19 @@ function closeDeleteWorldModal() {
 async function confirmDeleteWorld() {
   if (!deleteWorldId) return;
 
+  // Show deleting overlay
+  const modalBody = document.querySelector('#deleteWorldModal .modal-body');
+  const modalFooter = document.querySelector('#deleteWorldModal .modal-footer');
+  const originalBody = modalBody.innerHTML;
+  const originalFooter = modalFooter.innerHTML;
+  modalBody.innerHTML = `
+    <div style="text-align: center; padding: 2rem 0;">
+      <div style="font-size: 1.5rem; font-weight: 600; color: var(--warning-color); margin-bottom: 0.5rem;">Deleting World...</div>
+      <div style="color: var(--text-secondary); font-size: 0.85rem;">Removing all associated data. This may take a moment.</div>
+    </div>
+  `;
+  modalFooter.innerHTML = '';
+
   try {
     const response = await fetch(`/api/admin/worlds/${deleteWorldId}`, {
       method: 'DELETE'
@@ -947,10 +960,14 @@ async function confirmDeleteWorld() {
       loadWorlds();
     } else {
       const data = await response.json();
+      modalBody.innerHTML = originalBody;
+      modalFooter.innerHTML = originalFooter;
       alert(data.error || 'Failed to delete world');
     }
   } catch (error) {
     console.error('Error deleting world:', error);
+    modalBody.innerHTML = originalBody;
+    modalFooter.innerHTML = originalFooter;
     alert('Network error. Please try again.');
   }
 }

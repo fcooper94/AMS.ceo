@@ -8,6 +8,10 @@ const { checkMaintenanceConflict, attemptMaintenanceReschedule, optimizeMaintena
 const maintenanceRefreshCache = new Map(); // membershipId -> timestamp
 const REFRESH_DEBOUNCE_MS = 60000; // 60 seconds real time (~1 game hour at 60x)
 
+// Short-lived cache for active flights responses (avoids re-querying 6-table join every 10s)
+const activeFlightsCache = new Map(); // `${worldId}-${mode}` -> { data, timestamp }
+const ACTIVE_FLIGHTS_CACHE_TTL = 5000; // 5 seconds
+
 // Wind and route variation constants (must match frontend scheduling-v3.js)
 const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
 const ROUTE_VARIATION_FACTOR = 0.035; // ±3.5% for natural-looking times
@@ -1991,6 +1995,8 @@ async function findActiveTemplates(worldTime, membershipFilter) {
         as: 'route',
         required: true,
         where: membershipFilter,
+        attributes: ['id', 'routeNumber', 'returnRouteNumber', 'distance', 'turnaroundTime',
+                     'demand', 'averageLoadFactor', 'waypoints', 'worldMembershipId'],
         include: [
           {
             model: Airport,
@@ -2012,10 +2018,12 @@ async function findActiveTemplates(worldTime, membershipFilter) {
       {
         model: UserAircraft,
         as: 'aircraft',
+        attributes: ['id', 'registration'],
         include: [
           {
             model: Aircraft,
-            as: 'aircraft'
+            as: 'aircraft',
+            attributes: ['model', 'variant', 'manufacturer', 'cruiseSpeed', 'passengerCapacity']
           }
         ]
       }
@@ -2079,8 +2087,17 @@ router.get('/active', async (req, res) => {
     });
 
     // Transform data for the map - compute virtual dates for compatibility
+    // Deduplicate waypoints: send once per route instead of per flight
+    const routeWaypoints = {};
     const flights = activeTemplates.map(template => {
       const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+      const routeId = template.route.id;
+
+      // Store waypoints once per route in a separate map
+      if (template.route.waypoints && !routeWaypoints[routeId]) {
+        routeWaypoints[routeId] = template.route.waypoints;
+      }
+
       return {
         id: template.id,
         scheduledDate,
@@ -2089,15 +2106,14 @@ router.get('/active', async (req, res) => {
         arrivalDate,
         status: 'in_progress',
         route: {
-          id: template.route.id,
+          id: routeId,
           routeNumber: template.route.routeNumber,
           returnRouteNumber: template.route.returnRouteNumber,
           distance: template.route.distance,
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
-          waypoints: template.route.waypoints || null
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
@@ -2110,7 +2126,7 @@ router.get('/active', async (req, res) => {
       };
     });
 
-    res.json({ flights });
+    res.json({ flights, routeWaypoints });
   } catch (error) {
     console.error('Error fetching active flights:', error);
     res.status(500).json({ error: error.message });
@@ -2130,6 +2146,13 @@ router.get('/active-all', async (req, res) => {
 
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Check cache first (avoids re-querying the heavy 6-table join every 10s)
+    const cacheKey = `${activeWorldId}-all`;
+    const cached = activeFlightsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < ACTIVE_FLIGHTS_CACHE_TTL) {
+      return res.json(cached.data);
     }
 
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
@@ -2164,11 +2187,18 @@ router.get('/active-all', async (req, res) => {
     });
 
     // Transform data for the map, including airline info
+    // Deduplicate waypoints: send once per route instead of per flight
+    const routeWaypoints = {};
     const flights = activeTemplates.map(template => {
       const membershipId = template.route.worldMembershipId;
       const airlineInfo = membershipMap.get(membershipId) || {};
       const isOwnFlight = membershipId === userMembershipId;
       const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+      const routeId = template.route.id;
+
+      if (template.route.waypoints && !routeWaypoints[routeId]) {
+        routeWaypoints[routeId] = template.route.waypoints;
+      }
 
       return {
         id: template.id,
@@ -2181,15 +2211,14 @@ router.get('/active-all', async (req, res) => {
         airlineName: airlineInfo.airlineName || 'Unknown Airline',
         airlineCode: airlineInfo.airlineCode || '??',
         route: {
-          id: template.route.id,
+          id: routeId,
           routeNumber: template.route.routeNumber,
           returnRouteNumber: template.route.returnRouteNumber,
           distance: template.route.distance,
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
-          waypoints: template.route.waypoints || null
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
@@ -2202,7 +2231,9 @@ router.get('/active-all', async (req, res) => {
       };
     });
 
-    res.json({ flights });
+    const responseData = { flights, routeWaypoints };
+    activeFlightsCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+    res.json(responseData);
   } catch (error) {
     console.error('Error fetching all active flights:', error);
     res.status(500).json({ error: error.message });
@@ -2266,11 +2297,17 @@ router.get('/active-hq', async (req, res) => {
       ]
     });
 
+    const routeWaypoints = {};
     const flights = activeTemplates.map(template => {
       const membershipId = template.route.worldMembershipId;
       const airlineInfo = membershipMap.get(membershipId) || {};
       const isOwnFlight = membershipId === userMembershipId;
       const { scheduledDate, arrivalDate } = computeVirtualDates(template, worldTime);
+      const routeId = template.route.id;
+
+      if (template.route.waypoints && !routeWaypoints[routeId]) {
+        routeWaypoints[routeId] = template.route.waypoints;
+      }
 
       return {
         id: template.id,
@@ -2283,15 +2320,14 @@ router.get('/active-hq', async (req, res) => {
         airlineName: airlineInfo.airlineName || 'Unknown Airline',
         airlineCode: airlineInfo.airlineCode || '??',
         route: {
-          id: template.route.id,
+          id: routeId,
           routeNumber: template.route.routeNumber,
           returnRouteNumber: template.route.returnRouteNumber,
           distance: template.route.distance,
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
-          waypoints: template.route.waypoints || null
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
@@ -2304,7 +2340,7 @@ router.get('/active-hq', async (req, res) => {
       };
     });
 
-    res.json({ flights });
+    res.json({ flights, routeWaypoints });
   } catch (error) {
     console.error('Error fetching HQ airport flights:', error);
     res.status(500).json({ error: error.message });
