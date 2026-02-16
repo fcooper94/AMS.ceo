@@ -180,10 +180,42 @@ function getFirForPoint(lat, lng) {
   return result;
 }
 
+/**
+ * Get the outer ring polygon coordinates for a FIR sector.
+ * Returns [[lng, lat], ...] (GeoJSON order) or null if not found.
+ * For MultiPolygon, returns the largest polygon's outer ring.
+ */
+function getFirBoundaryCoords(firCode) {
+  loadFirData();
+  const feature = firFeaturesByCode.get(firCode);
+  if (!feature) return null;
+
+  const polys = feature.geometry.coordinates;
+  if (polys.length === 1) return polys[0][0]; // outer ring of single polygon
+
+  // Multiple polygons — return the one with the largest bounding area
+  let best = null, bestArea = 0;
+  for (const poly of polys) {
+    const ring = poly[0];
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    for (const c of ring) {
+      if (c[1] < minLat) minLat = c[1];
+      if (c[1] > maxLat) maxLat = c[1];
+      if (c[0] < minLng) minLng = c[0];
+      if (c[0] > maxLng) maxLng = c[0];
+    }
+    const area = (maxLat - minLat) * (maxLng - minLng);
+    if (area > bestArea) { bestArea = area; best = ring; }
+  }
+  return best;
+}
+
 module.exports = {
   isPointInFir,
   doesRouteCrossFir,
   doesGreatCircleCrossFir,
   getFirFeature,
-  getFirForPoint
+  getFirForPoint,
+  getFirBoundaryCoords,
+  pointInPolygon
 };

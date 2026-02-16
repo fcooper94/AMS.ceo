@@ -175,6 +175,14 @@ router.get('/time', async (req, res) => {
 });
 
 /**
+ * Get ATC route computation status (used by world map loading overlay)
+ */
+router.get('/airway-status', (req, res) => {
+  const airwayService = require('../services/airwayService');
+  res.json(airwayService.getBackfillStatus());
+});
+
+/**
  * Pause the world
  */
 router.post('/pause', async (req, res) => {

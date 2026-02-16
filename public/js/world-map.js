@@ -149,6 +149,82 @@ function hideMapLoadingOverlay() {
   }
 }
 
+function updateMapLoadingOverlayText(text) {
+  const overlay = document.getElementById('mapLoadingOverlay');
+  if (overlay) {
+    const textEl = overlay.querySelector('div > div:last-child');
+    if (textEl) textEl.textContent = text;
+  }
+}
+
+function updateMapLoadingOverlayHtml(html) {
+  const overlay = document.getElementById('mapLoadingOverlay');
+  if (overlay) {
+    const textEl = overlay.querySelector('div > div:last-child');
+    if (textEl) textEl.innerHTML = html;
+  }
+}
+
+function showFlightsLoadingOverlay() {
+  const mapContainer = document.getElementById('map');
+  if (!mapContainer || document.getElementById('flightsLoadingOverlay')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'flightsLoadingOverlay';
+  overlay.innerHTML = `
+    <div style="
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(13, 17, 23, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      gap: 0.75rem;
+    ">
+      <div style="
+        width: 36px; height: 36px;
+        border: 3px solid rgba(88, 166, 255, 0.3);
+        border-top-color: #58a6ff;
+        border-radius: 50%;
+        animation: mapSpin 1s linear infinite;
+      "></div>
+      <div id="flightsLoadingQuip" style="
+        color: #e6edf3; font-size: 0.9rem; font-weight: 500;
+      "></div>
+    </div>
+  `;
+  mapContainer.style.position = 'relative';
+  mapContainer.appendChild(overlay);
+  startLoadingQuips('flightsLoadingQuip');
+}
+
+function hideFlightsLoadingOverlay() {
+  stopLoadingQuips();
+  const overlay = document.getElementById('flightsLoadingOverlay');
+  if (overlay) overlay.remove();
+}
+
+async function checkBackfillThenLoad() {
+  try {
+    const res = await fetch('/api/world/airway-status');
+    if (res.ok) {
+      const status = await res.json();
+      if (status.running) {
+        const pct = status.total > 0 ? Math.round(((status.computed + status.skipped) / status.total) * 100) : 0;
+        updateMapLoadingOverlayHtml(`Computing ATC routes for AI airlines (first time only)... ${pct}%<br><span style="font-size:0.8rem;opacity:0.7;">This runs in the background — feel free to come back when it's complete.</span>`);
+        setTimeout(checkBackfillThenLoad, 2000);
+        return;
+      }
+    }
+  } catch (e) { /* continue to load */ }
+
+  // Backfill done (or not running) — load flights normally
+  loadActiveFlights();
+  updateInterval = setInterval(loadActiveFlights, 10000);
+}
+
 // Wind adjustment for realistic flight times
 // Jet stream flows west to east at mid-latitudes, making eastbound flights faster
 const WIND_ADJUSTMENT_FACTOR = 0.13; // 13% variation for jet stream effect
@@ -285,11 +361,8 @@ function initMap() {
     })
     .catch(() => {}); // Non-critical, label stays as "HQ Airport"
 
-  // Load active flights
-  loadActiveFlights();
-
-  // Set up auto-refresh every 10 seconds (for new/removed flights)
-  updateInterval = setInterval(loadActiveFlights, 10000);
+  // Check if ATC routes are still being computed, then load flights
+  checkBackfillThenLoad();
 
   // Start synchronized position updates (all aircraft jump together)
   startPositionUpdates();
@@ -348,11 +421,12 @@ function handleAirlineFilterChange() {
   // Clear current flights and reload
   clearMap();
   deselectFlight();
+  showFlightsLoadingOverlay();
   loadActiveFlights();
 }
 
-// Expose handleAirlineFilterChange globally for onclick handlers
-window.handleAirlineFilterChange = handleAirlineFilterChange;
+// Attach filter change listener
+document.getElementById('airlineFilter')?.addEventListener('change', handleAirlineFilterChange);
 
 // Load active flights from API
 async function loadActiveFlights() {
@@ -380,8 +454,9 @@ async function loadActiveFlights() {
     if (data.flights && Array.isArray(data.flights)) {
       activeFlights = data.flights;
       updateFlightsOnMap(data.flights);
-      // Hide loading overlay after first render
+      // Hide loading overlays after first render
       hideMapLoadingOverlay();
+      hideFlightsLoadingOverlay();
       // Update selected flight info if one is selected
       if (selectedFlightId) {
         const selectedFlight = activeFlights.find(f => f.id === selectedFlightId);
@@ -413,6 +488,7 @@ async function loadActiveFlights() {
       clearMap();
       hideFlightInfo();
       hideMapLoadingOverlay();
+      hideFlightsLoadingOverlay();
       if (flightsListOpen) updateFlightsList();
       const countEl = document.getElementById('flightsListCount');
       if (countEl) countEl.textContent = '0';
@@ -420,6 +496,7 @@ async function loadActiveFlights() {
   } catch (error) {
     console.error('[WorldMap] Error loading active flights:', error);
     hideMapLoadingOverlay();
+    hideFlightsLoadingOverlay();
   }
 }
 

@@ -345,6 +345,78 @@ router.post('/resolve-atc-route', async (req, res) => {
 });
 
 /**
+ * Preview the auto-computed ATC route for a departure/arrival pair,
+ * taking into account the player's active airspace avoid restrictions.
+ */
+router.post('/preview-atc', async (req, res) => {
+  try {
+    const { departureAirportId, arrivalAirportId } = req.body;
+    if (!departureAirportId || !arrivalAirportId) {
+      return res.status(400).json({ error: 'departureAirportId and arrivalAirportId are required' });
+    }
+
+    const airwayService = require('../services/airwayService');
+    if (!airwayService.isReady()) {
+      return res.status(503).json({ error: 'Airway data is still loading' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId || !req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+    if (!membership) return res.status(404).json({ error: 'Not a member of this world' });
+
+    // Fetch airport coordinates
+    const [depApt, arrApt] = await Promise.all([
+      Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude', 'icaoCode'] }),
+      Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude', 'icaoCode'] })
+    ]);
+    if (!depApt || !arrApt) {
+      return res.status(404).json({ error: 'Airport not found' });
+    }
+
+    // Build avoidFirs set from active restrictions
+    let avoidFirs = null;
+    const avoidedFirCodes = [];
+    try {
+      const restrictions = await AirspaceRestriction.findAll({
+        where: { worldMembershipId: membership.id, isActive: true }
+      });
+      if (restrictions.length > 0) {
+        avoidFirs = new Set(restrictions.map(r => r.firCode));
+        avoidedFirCodes.push(...restrictions.map(r => r.firCode));
+      }
+    } catch (e) { /* non-critical */ }
+
+    console.log(`[ATC Preview] ${depApt.icaoCode}-${arrApt.icaoCode}, avoidFirs: [${avoidedFirCodes.join(', ')}]`);
+
+    const waypoints = airwayService.computeRoute(
+      parseFloat(depApt.latitude), parseFloat(depApt.longitude),
+      parseFloat(arrApt.latitude), parseFloat(arrApt.longitude),
+      depApt.icaoCode, arrApt.icaoCode,
+      avoidFirs
+    );
+
+    console.log(`[ATC Preview] Result: ${waypoints ? waypoints.length + ' waypoints' : 'null'}`);
+
+    res.json({
+      waypoints: waypoints || [],
+      avoidedFirs: avoidedFirCodes
+    });
+  } catch (error) {
+    console.error('Error computing ATC route preview:', error);
+    res.status(500).json({ error: 'Failed to compute route preview' });
+  }
+});
+
+/**
  * Create a new route
  */
 router.post('/', async (req, res) => {
@@ -516,10 +588,22 @@ router.post('/', async (req, res) => {
             Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude', 'icaoCode'] })
           ]);
           if (depApt && arrApt) {
+            // Build avoidFirs from player's active restrictions
+            let avoidFirs = null;
+            try {
+              const restrictions = await AirspaceRestriction.findAll({
+                where: { worldMembershipId: membership.id, isActive: true }
+              });
+              if (restrictions.length > 0) {
+                avoidFirs = new Set(restrictions.map(r => r.firCode));
+              }
+            } catch (e) { /* non-critical */ }
+
             const waypoints = airwayService.computeRoute(
               parseFloat(depApt.latitude), parseFloat(depApt.longitude),
               parseFloat(arrApt.latitude), parseFloat(arrApt.longitude),
-              depApt.icaoCode, arrApt.icaoCode
+              depApt.icaoCode, arrApt.icaoCode,
+              avoidFirs
             );
             if (waypoints) {
               await route.update({ waypoints });

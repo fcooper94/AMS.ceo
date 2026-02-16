@@ -37,9 +37,17 @@ const DCT_SEARCH_RADIUS_NM = 150;
 const DCT_FALLBACK_COUNT = 5;
 const MAX_ROUTE_RATIO = 2.0;
 const CORRIDOR_PENALTY = 0.8;
-const SMOOTH_TURN_THRESHOLD = 85; // degrees — remove waypoints causing turns sharper than this
-const ZIGZAG_CUMULATIVE_THRESHOLD = 120; // degrees — max combined turn over 2 consecutive turns in opposite directions
+const SMOOTH_TURN_THRESHOLD = 70; // degrees — remove waypoints causing turns sharper than this
+const ZIGZAG_CUMULATIVE_THRESHOLD = 80; // degrees — max combined turn over 2 consecutive turns in opposite directions
 const MIN_WAYPOINT_SPACING_NM = 15; // minimum distance between consecutive waypoints
+
+// Distance-adaptive smoothing: closer waypoints get stricter turn limits
+const CLOSE_WP_DISTANCE_NM = 40; // waypoints closer than this get stricter turn limits
+const CLOSE_WP_TURN_THRESHOLD = 20; // max turn when waypoints are very close (<15nm)
+// Sliding window: detect gradual track drift across several close waypoints
+const DRIFT_WINDOW_SIZE = 7; // look-ahead window for track drift
+const DRIFT_WINDOW_DISTANCE_NM = 150; // only apply within this total span
+const DRIFT_MAX_HEADING_CHANGE = 50; // max total heading change across the window
 
 // FIR sampling for crossing detection
 const FIR_SAMPLE_INTERVAL_NM = 30;
@@ -85,6 +93,9 @@ class AirwayService {
     this._routeContext = null;    // Set during pathfinding for corridor bias
 
     this.ready = false;
+
+    // Backfill progress tracking
+    this._backfillStatus = { running: false, total: 0, computed: 0, skipped: 0 };
     this.routeCache = new Map();
     this.maxCacheSize = 5000;
   }
@@ -109,12 +120,16 @@ class AirwayService {
     });
   }
 
+  getBackfillStatus() {
+    return { ...this._backfillStatus };
+  }
+
   async backfillMissingWaypoints() {
     try {
-      const Route = require('../models/Route');
-      const Airport = require('../models/Airport');
+      // Import from models/index to get associations (departureAirport, arrivalAirport)
+      const { Route, Airport } = require('../models');
 
-      // Single joined query — fetches routes + airports in one go (instead of 2 queries per route)
+      // Single joined query — fetches routes + airports in one go
       const routes = await Route.findAll({
         where: { isActive: true, waypoints: null },
         attributes: ['id'],
@@ -126,13 +141,13 @@ class AirwayService {
 
       if (routes.length === 0) {
         console.log('[Airway] All active routes already have waypoints');
+        this._backfillStatus = { running: false, total: 0, computed: 0, skipped: 0 };
         return;
       }
 
       const startTime = Date.now();
       console.log(`[Airway] Backfilling waypoints for ${routes.length} routes...`);
-      let computed = 0;
-      let skipped = 0;
+      this._backfillStatus = { running: true, total: routes.length, computed: 0, skipped: 0 };
 
       // Compute waypoints and batch DB updates (10 at a time)
       const BATCH_SIZE = 10;
@@ -143,7 +158,7 @@ class AirwayService {
         for (const route of batch) {
           const dep = route.departureAirport;
           const arr = route.arrivalAirport;
-          if (!dep || !arr) { skipped++; continue; }
+          if (!dep || !arr) { this._backfillStatus.skipped++; continue; }
 
           try {
             const waypoints = this.computeRoute(
@@ -153,12 +168,12 @@ class AirwayService {
             );
             if (waypoints) {
               updates.push(route.update({ waypoints }));
-              computed++;
+              this._backfillStatus.computed++;
             } else {
-              skipped++;
+              this._backfillStatus.skipped++;
             }
           } catch (e) {
-            skipped++;
+            this._backfillStatus.skipped++;
           }
         }
 
@@ -166,9 +181,11 @@ class AirwayService {
         if (updates.length > 0) await Promise.all(updates);
       }
 
+      this._backfillStatus.running = false;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`[Airway] Backfill complete in ${elapsed}s: ${computed} computed, ${skipped} skipped`);
+      console.log(`[Airway] Backfill complete in ${elapsed}s: ${this._backfillStatus.computed} computed, ${this._backfillStatus.skipped} skipped`);
     } catch (err) {
+      this._backfillStatus.running = false;
       console.error('[Airway] Backfill failed:', err.message);
     }
   }
@@ -323,15 +340,18 @@ class AirwayService {
    * Compute a route between two coordinates using FIR-segment-based routing.
    * @returns {Array|null} [{lat, lng, name}, ...] or null
    */
-  computeRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao) {
+  computeRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, avoidFirs = null) {
     if (!this.ready) return null;
 
     const directDistance = this._haversine(depLat, depLng, arrLat, arrLng);
     if (directDistance < MIN_ROUTE_DISTANCE_NM) return null;
 
+    const avoidSuffix = avoidFirs && avoidFirs.size > 0
+      ? '|avoid:' + [...avoidFirs].sort().join(',')
+      : '';
     const cacheKey = depIcao && arrIcao
-      ? `${depIcao}-${arrIcao}`
-      : `${depLat.toFixed(2)},${depLng.toFixed(2)}-${arrLat.toFixed(2)},${arrLng.toFixed(2)}`;
+      ? `${depIcao}-${arrIcao}${avoidSuffix}`
+      : `${depLat.toFixed(2)},${depLng.toFixed(2)}-${arrLat.toFixed(2)},${arrLng.toFixed(2)}${avoidSuffix}`;
 
     if (this.routeCache.has(cacheKey)) {
       return this.routeCache.get(cacheKey);
@@ -343,7 +363,7 @@ class AirwayService {
     // Primary: FIR-segment-based routing
     if (this.graph && this.pathFinder) {
       try {
-        result = this._computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao);
+        result = this._computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, avoidFirs);
       } catch (err) {
         console.error(`[Airway] ${routeLabel}: FIR segment routing failed:`, err.message);
       }
@@ -371,14 +391,49 @@ class AirwayService {
    * 3. Route each segment (FRA = DCT, non-FRA = airway graph)
    * 4. Stitch together with deduplication
    */
-  _computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao) {
+  _computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, avoidFirs = null) {
     const crossings = this._detectFirCrossings(depLat, depLng, arrLat, arrLng);
     const segments = this._buildFirSegments(crossings, depLat, depLng, arrLat, arrLng);
 
-    // Route each segment
+    // Route each segment, merging consecutive avoided segments into bypass zones
     const rawWaypoints = [];
+    let i = 0;
 
-    for (const seg of segments) {
+    if (avoidFirs && avoidFirs.size > 0) {
+      console.log(`[Airway] Segments: ${segments.map(s => `${s.firCode || 'null'}${s.isDeparture ? '(DEP)' : ''}${s.isArrival ? '(ARR)' : ''}`).join(' → ')}`);
+      console.log(`[Airway] AvoidFirs: [${[...avoidFirs].join(', ')}]`);
+    }
+
+    while (i < segments.length) {
+      const seg = segments[i];
+      const isAvoided = avoidFirs && seg.firCode && avoidFirs.has(seg.firCode)
+        && !seg.isDeparture && !seg.isArrival;
+
+      if (isAvoided) {
+        // Merge consecutive avoided segments into one bypass zone
+        let j = i;
+        while (j < segments.length
+          && !segments[j].isDeparture && !segments[j].isArrival
+          && segments[j].firCode && avoidFirs.has(segments[j].firCode)) {
+          j++;
+        }
+        const mergedFirs = segments.slice(i, j).map(s => s.firCode).join(', ');
+        console.log(`[Airway] Bypassing avoided zone: [${mergedFirs}] (segments ${i}-${j - 1})`);
+
+        // Bypass from entry of first avoided to exit of last avoided
+        const bypassEntry = segments[i];
+        const bypassExit = segments[j - 1];
+        const bypassWps = this._routeAroundAvoidedZone(
+          bypassEntry.entryLat, bypassEntry.entryLng,
+          bypassExit.exitLat, bypassExit.exitLng,
+          avoidFirs
+        );
+        console.log(`[Airway] Bypass produced ${bypassWps.length} waypoints`);
+        rawWaypoints.push(...bypassWps);
+        i = j;
+        continue;
+      }
+
       const segDist = this._haversine(seg.entryLat, seg.entryLng, seg.exitLat, seg.exitLng);
       const isOceanic = !seg.firCode;
       const isFra = isOceanic || this._isFraFir(seg.firCode);
@@ -395,6 +450,7 @@ class AirwayService {
       }
 
       rawWaypoints.push(...segWps);
+      i++;
     }
 
     // Assemble with DEP/ARR markers and deduplicate
@@ -422,7 +478,8 @@ class AirwayService {
     for (let i = 0; i < smoothed.length - 1; i++) {
       totalDist += this._haversine(smoothed[i].lat, smoothed[i].lng, smoothed[i + 1].lat, smoothed[i + 1].lng);
     }
-    if (totalDist > directDistance * MAX_ROUTE_RATIO) {
+    const maxRatio = avoidFirs && avoidFirs.size > 0 ? MAX_ROUTE_RATIO * 1.5 : MAX_ROUTE_RATIO;
+    if (totalDist > directDistance * maxRatio) {
       console.warn(`[Airway] FIR segment route rejected: ${Math.round(totalDist)}nm vs ${Math.round(directDistance)}nm direct`);
       return null;
     }
@@ -781,8 +838,142 @@ class AirwayService {
   }
 
   /**
-   * Route a non-FRA FIR segment: graph pathfind between entry and exit fixes.
-   * Falls back to FRA-style DCT if pathfinding fails.
+   * Route AROUND an avoided zone by deflecting the route perpendicular to the
+   * great circle until it clears all avoided FIRs. Tries both sides (left/right)
+   * at increasing distances, picks the shorter valid detour.
+   *
+   * @param {number} entryLat/Lng — where we enter the avoided zone
+   * @param {number} exitLat/Lng  — where we exit the avoided zone
+   * @param {Set} avoidFirs       — set of FIR codes to avoid
+   */
+  _routeAroundAvoidedZone(entryLat, entryLng, exitLat, exitLng, avoidFirs) {
+    const directDist = this._haversine(entryLat, entryLng, exitLat, exitLng);
+    const bearing = this._bearing(entryLat, entryLng, exitLat, exitLng);
+
+    // Number of intermediate waypoints scales with distance
+    const numPoints = Math.max(2, Math.min(6, Math.ceil(directDist / 150)));
+    const fractions = [];
+    for (let i = 1; i <= numPoints; i++) {
+      fractions.push(i / (numPoints + 1));
+    }
+
+    // Try deflecting LEFT (bearing - 90) and RIGHT (bearing + 90)
+    let bestPath = null;
+    let bestDist = Infinity;
+
+    for (const side of [-90, 90]) {
+      const deflectBearing = (bearing + side + 360) % 360;
+
+      // Try increasing deflection distances: 30nm, 60nm, 90nm, ... up to 500nm
+      for (let deflectNm = 30; deflectNm <= 500; deflectNm += 30) {
+        const candidatePoints = [];
+        let allClear = true;
+
+        // Generate deflected waypoints at each fraction along the route
+        for (const frac of fractions) {
+          const gcPt = this._interpolateGreatCircle(entryLat, entryLng, exitLat, exitLng, frac);
+          // Scale deflection: max at midpoint, less at edges (elliptical shape)
+          const scale = Math.sin(frac * Math.PI);
+          const pt = this._destinationPoint(gcPt.lat, gcPt.lng, deflectBearing, deflectNm * scale);
+          candidatePoints.push(pt);
+        }
+
+        // Verify NO point along the path crosses any avoided FIR
+        // Check the deflected waypoints themselves
+        for (const pt of candidatePoints) {
+          const fir = getFirForPoint(pt.lat, pt.lng);
+          if (fir && avoidFirs.has(fir)) { allClear = false; break; }
+        }
+
+        if (!allClear) continue;
+
+        // Also sample the legs between consecutive points
+        const allPts = [
+          { lat: entryLat, lng: entryLng },
+          ...candidatePoints,
+          { lat: exitLat, lng: exitLng }
+        ];
+        for (let i = 0; i < allPts.length - 1 && allClear; i++) {
+          for (let s = 0.2; s <= 0.8; s += 0.2) {
+            const sample = this._interpolateGreatCircle(
+              allPts[i].lat, allPts[i].lng,
+              allPts[i + 1].lat, allPts[i + 1].lng, s
+            );
+            const fir = getFirForPoint(sample.lat, sample.lng);
+            if (fir && avoidFirs.has(fir)) { allClear = false; break; }
+          }
+        }
+
+        if (!allClear) continue;
+
+        // Compute total path distance
+        let totalDist = 0;
+        for (let i = 0; i < allPts.length - 1; i++) {
+          totalDist += this._haversine(allPts[i].lat, allPts[i].lng, allPts[i + 1].lat, allPts[i + 1].lng);
+        }
+
+        // Cap at 3x direct distance
+        if (totalDist > directDist * 3) continue;
+
+        if (totalDist < bestDist) {
+          bestDist = totalDist;
+          bestPath = candidatePoints;
+        }
+
+        // Found a valid path for this side, no need to try larger deflections
+        break;
+      }
+    }
+
+    if (!bestPath) {
+      // No valid detour found — fall back to DCT through (route will be flagged)
+      console.warn(`[Airway] No valid bypass found for avoided zone (${Math.round(directDist)}nm, bearing ${Math.round(bearing)}°) — falling back to DCT`);
+      const entryFix = this._findBestBoundaryFix(entryLat, entryLng);
+      const exitFix = this._findBestBoundaryFix(exitLat, exitLng);
+      const wps = [];
+      if (entryFix) wps.push({ lat: entryFix.lat, lng: entryFix.lng, name: entryFix.id });
+      if (exitFix && (!entryFix || exitFix.id !== entryFix.id)) {
+        wps.push({ lat: exitFix.lat, lng: exitFix.lng, name: exitFix.id });
+      }
+      return wps;
+    }
+
+    console.log(`[Airway] Found bypass: ${Math.round(bestDist)}nm (direct ${Math.round(directDist)}nm), ${bestPath.length} deflection points`);
+
+    // Snap deflected waypoints to nearest airway fixes
+    const waypoints = [];
+    const entryFix = this._findBestBoundaryFix(entryLat, entryLng);
+    if (entryFix) waypoints.push({ lat: entryFix.lat, lng: entryFix.lng, name: entryFix.id });
+
+    for (const pt of bestPath) {
+      const fix = this._findBestBoundaryFix(pt.lat, pt.lng);
+      if (fix) {
+        const lastWp = waypoints[waypoints.length - 1];
+        if (!lastWp || fix.id !== lastWp.name) {
+          waypoints.push({ lat: fix.lat, lng: fix.lng, name: fix.id });
+        }
+      } else {
+        waypoints.push({ lat: pt.lat, lng: pt.lng, name: this._coordLabel(pt.lat, pt.lng) });
+      }
+    }
+
+    const exitFix = this._findBestBoundaryFix(exitLat, exitLng);
+    if (exitFix) {
+      const lastWp = waypoints[waypoints.length - 1];
+      if (!lastWp || exitFix.id !== lastWp.name) {
+        waypoints.push({ lat: exitFix.lat, lng: exitFix.lng, name: exitFix.id });
+      }
+    }
+
+    return waypoints;
+  }
+
+  /**
+   * Route a non-FRA FIR segment using stepping-stone approach.
+   * Instead of one long graph pathfind (which can detour wildly), we:
+   * 1. Sample corridor fixes every ~100nm along the great circle
+   * 2. Chain short pathfind hops between consecutive stepping stones
+   * 3. If any hop deviates too far or fails, go DCT to the next stone
    */
   _routeAirwaySegment(seg) {
     const entryFix = this._findBestBoundaryFix(seg.entryLat, seg.entryLng);
@@ -796,15 +987,72 @@ class AirwayService {
       return [{ lat: entryFix.lat, lng: entryFix.lng, name: entryFix.id, type: 'enroute' }];
     }
 
-    // Use segment-local corridor (entry→exit) instead of overall GC
-    const path = this._graphPathfindSegment(entryFix.id, exitFix.id, seg.entryLat, seg.entryLng, seg.exitLat, seg.exitLng);
+    const segDist = this._haversine(entryFix.lat, entryFix.lng, exitFix.lat, exitFix.lng);
 
-    if (path && path.waypoints.length > 0) {
-      return path.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name, type: 'enroute' }));
+    // Short segments: single graph pathfind is fine
+    if (segDist < 200) {
+      const path = this._graphPathfindSegment(entryFix.id, exitFix.id, seg.entryLat, seg.entryLng, seg.exitLat, seg.exitLng);
+      if (path && path.waypoints.length > 0) {
+        return path.waypoints.map(w => ({ lat: w.lat, lng: w.lng, name: w.name, type: 'enroute' }));
+      }
+      return this._routeFraSegment(seg);
     }
 
-    // Graph pathfind failed - fall back to FRA-style DCT for this segment
-    return this._routeFraSegment(seg);
+    // Long segments: build stepping stones along the corridor
+    const STEP_NM = 120;
+    const steps = Math.max(1, Math.round(segDist / STEP_NM));
+    const stones = [{ id: entryFix.id, lat: entryFix.lat, lng: entryFix.lng }];
+
+    for (let s = 1; s < steps; s++) {
+      const frac = s / steps;
+      const pt = this._interpolateGreatCircle(entryFix.lat, entryFix.lng, exitFix.lat, exitFix.lng, frac);
+      // Find the nearest graph-connected fix to this corridor point
+      const fixes = this._findNearestAirwayFixes(pt.lat, pt.lng, 60, 3);
+      if (fixes.length > 0) {
+        // Skip if same as previous stone
+        const prev = stones[stones.length - 1];
+        if (fixes[0].id !== prev.id) {
+          stones.push({ id: fixes[0].id, lat: fixes[0].lat, lng: fixes[0].lng });
+        }
+      }
+    }
+
+    // Add exit fix if not already the last stone
+    const lastStone = stones[stones.length - 1];
+    if (lastStone.id !== exitFix.id) {
+      stones.push({ id: exitFix.id, lat: exitFix.lat, lng: exitFix.lng });
+    }
+
+    // Chain short pathfind hops between consecutive stones
+    const waypoints = [];
+    for (let i = 0; i < stones.length - 1; i++) {
+      const from = stones[i];
+      const to = stones[i + 1];
+
+      const hopPath = this._graphPathfindSegment(from.id, to.id, from.lat, from.lng, to.lat, to.lng);
+
+      if (hopPath && hopPath.waypoints.length > 0) {
+        // Check if the hop stays near the corridor (max 1.5x direct distance)
+        const hopDirect = this._haversine(from.lat, from.lng, to.lat, to.lng);
+        if (hopPath.cost <= hopDirect * 1.5) {
+          // Good hop — add waypoints (skip first if duplicate of last added)
+          for (const w of hopPath.waypoints) {
+            if (waypoints.length === 0 || waypoints[waypoints.length - 1].name !== w.name) {
+              waypoints.push({ lat: w.lat, lng: w.lng, name: w.name, type: 'enroute' });
+            }
+          }
+          continue;
+        }
+      }
+
+      // Hop failed or deviated — go DCT to the target stone
+      if (waypoints.length === 0 || waypoints[waypoints.length - 1].name !== from.id) {
+        waypoints.push({ lat: from.lat, lng: from.lng, name: from.id, type: 'enroute' });
+      }
+      waypoints.push({ lat: to.lat, lng: to.lng, name: to.id, type: 'enroute' });
+    }
+
+    return waypoints.length > 0 ? waypoints : this._routeFraSegment(seg);
   }
 
   // ─── Boundary Fix & Segment Pathfinding Helpers ────────────────────────────
@@ -835,7 +1083,7 @@ class AirwayService {
 
     let result = waypoints;
 
-    // Pass 1: Remove individual sharp turns and zigzag patterns
+    // Pass A: Remove sharp turns, zigzags, and distance-adaptive violations (up to 3 iterations)
     for (let pass = 0; pass < 3; pass++) {
       const filtered = [result[0]]; // Always keep DEP
       let removed = 0;
@@ -851,20 +1099,28 @@ class AirwayService {
         let turnAngle = Math.abs(bearingOut - bearingIn);
         if (turnAngle > 180) turnAngle = 360 - turnAngle;
 
-        // Check 1: Individual sharp turn
-        if (turnAngle > SMOOTH_TURN_THRESHOLD) {
+        // Check 1: Distance-adaptive turn limit — closer waypoints get stricter thresholds
+        const distPrev = this._haversine(prev.lat, prev.lng, curr.lat, curr.lng);
+        const distNext = this._haversine(curr.lat, curr.lng, next.lat, next.lng);
+        const minDist = Math.min(distPrev, distNext);
+
+        let effectiveThreshold = SMOOTH_TURN_THRESHOLD;
+        if (minDist < CLOSE_WP_DISTANCE_NM) {
+          // Linearly interpolate: at 0nm → CLOSE_WP_TURN_THRESHOLD, at CLOSE_WP_DISTANCE_NM → SMOOTH_TURN_THRESHOLD
+          const t = Math.max(0, minDist / CLOSE_WP_DISTANCE_NM);
+          effectiveThreshold = CLOSE_WP_TURN_THRESHOLD + t * (SMOOTH_TURN_THRESHOLD - CLOSE_WP_TURN_THRESHOLD);
+        }
+
+        if (turnAngle > effectiveThreshold) {
           removed++;
           continue;
         }
 
         // Check 2: Zigzag detection — two consecutive turns in opposite directions
-        // If this turn + the next turn are in opposite directions and combined > threshold,
-        // this waypoint is part of a zigzag pattern
         if (i < result.length - 2) {
           const next2 = result[i + 2];
           const bearingOut2 = this._bearing(next.lat, next.lng, next2.lat, next2.lng);
 
-          // Signed turns to detect direction (positive = right, negative = left)
           let signedTurn1 = bearingOut - bearingIn;
           if (signedTurn1 > 180) signedTurn1 -= 360;
           if (signedTurn1 < -180) signedTurn1 += 360;
@@ -873,7 +1129,7 @@ class AirwayService {
           if (signedTurn2 > 180) signedTurn2 -= 360;
           if (signedTurn2 < -180) signedTurn2 += 360;
 
-          const isZigzag = signedTurn1 * signedTurn2 < 0; // opposite directions
+          const isZigzag = signedTurn1 * signedTurn2 < 0;
           if (isZigzag && (Math.abs(signedTurn1) + Math.abs(signedTurn2)) > ZIGZAG_CUMULATIVE_THRESHOLD) {
             removed++;
             continue;
@@ -885,7 +1141,102 @@ class AirwayService {
 
       filtered.push(result[result.length - 1]); // Always keep ARR
       result = filtered;
+      if (removed === 0) break;
+    }
 
+    // Pass B: Sliding-window track drift — catch gradual heading changes across clusters of close waypoints
+    for (let pass = 0; pass < 2; pass++) {
+      const filtered = [result[0]];
+      let removed = 0;
+
+      for (let i = 1; i < result.length - 1; i++) {
+        // Look ahead up to DRIFT_WINDOW_SIZE waypoints, bounded by DRIFT_WINDOW_DISTANCE_NM
+        let windowEnd = Math.min(i + DRIFT_WINDOW_SIZE, result.length - 1);
+        let totalDist = 0;
+        for (let j = i; j < windowEnd; j++) {
+          totalDist += this._haversine(result[j].lat, result[j].lng, result[j + 1].lat, result[j + 1].lng);
+          if (totalDist > DRIFT_WINDOW_DISTANCE_NM) { windowEnd = j + 1; break; }
+        }
+
+        if (windowEnd - i >= 3) {
+          // Measure overall heading change from entry bearing to exit bearing
+          const entryBearing = this._bearing(
+            filtered[filtered.length - 1].lat, filtered[filtered.length - 1].lng,
+            result[i].lat, result[i].lng
+          );
+          const exitBearing = this._bearing(
+            result[windowEnd - 1].lat, result[windowEnd - 1].lng,
+            result[windowEnd].lat, result[windowEnd].lng
+          );
+          let drift = Math.abs(exitBearing - entryBearing);
+          if (drift > 180) drift = 360 - drift;
+
+          if (drift > DRIFT_MAX_HEADING_CHANGE) {
+            removed++;
+            continue;
+          }
+        }
+
+        filtered.push(result[i]);
+      }
+
+      filtered.push(result[result.length - 1]);
+      result = filtered;
+      if (removed === 0) break;
+    }
+
+    // Pass C: Final neighbour-aware cleanup — re-check turns AND zigzags using actual final neighbours.
+    for (let pass = 0; pass < 4; pass++) {
+      let removed = 0;
+      const cleaned = [result[0]];
+
+      for (let i = 1; i < result.length - 1; i++) {
+        const prev = cleaned[cleaned.length - 1];
+        const curr = result[i];
+        const next = result[i + 1];
+
+        const bIn = this._bearing(prev.lat, prev.lng, curr.lat, curr.lng);
+        const bOut = this._bearing(curr.lat, curr.lng, next.lat, next.lng);
+        let turn = Math.abs(bOut - bIn);
+        if (turn > 180) turn = 360 - turn;
+
+        const distPrev = this._haversine(prev.lat, prev.lng, curr.lat, curr.lng);
+        const distNext = this._haversine(curr.lat, curr.lng, next.lat, next.lng);
+        const minDist = Math.min(distPrev, distNext);
+
+        // Distance-adaptive turn threshold
+        let thresh = SMOOTH_TURN_THRESHOLD;
+        if (minDist < CLOSE_WP_DISTANCE_NM) {
+          const t = Math.max(0, minDist / CLOSE_WP_DISTANCE_NM);
+          thresh = CLOSE_WP_TURN_THRESHOLD + t * (SMOOTH_TURN_THRESHOLD - CLOSE_WP_TURN_THRESHOLD);
+        }
+
+        if (turn > thresh) { removed++; continue; }
+
+        // Zigzag detection using actual final neighbours
+        if (i < result.length - 2) {
+          const next2 = result[i + 2];
+          const bOut2 = this._bearing(next.lat, next.lng, next2.lat, next2.lng);
+
+          let st1 = bOut - bIn;
+          if (st1 > 180) st1 -= 360;
+          if (st1 < -180) st1 += 360;
+
+          let st2 = bOut2 - bOut;
+          if (st2 > 180) st2 -= 360;
+          if (st2 < -180) st2 += 360;
+
+          if (st1 * st2 < 0 && (Math.abs(st1) + Math.abs(st2)) > ZIGZAG_CUMULATIVE_THRESHOLD) {
+            removed++;
+            continue;
+          }
+        }
+
+        cleaned.push(curr);
+      }
+
+      cleaned.push(result[result.length - 1]);
+      result = cleaned;
       if (removed === 0) break;
     }
 
@@ -1226,6 +1577,27 @@ class AirwayService {
               Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
 
     return ((Math.atan2(y, x) * RAD_TO_DEG) + 360) % 360;
+  }
+
+  /**
+   * Compute a destination point given start, bearing (degrees), and distance (nm).
+   */
+  _destinationPoint(lat, lng, bearingDeg, distNm) {
+    const phi1 = lat * DEG_TO_RAD;
+    const lambda1 = lng * DEG_TO_RAD;
+    const brng = bearingDeg * DEG_TO_RAD;
+    const angDist = distNm / EARTH_RADIUS_NM;
+
+    const phi2 = Math.asin(
+      Math.sin(phi1) * Math.cos(angDist) +
+      Math.cos(phi1) * Math.sin(angDist) * Math.cos(brng)
+    );
+    const lambda2 = lambda1 + Math.atan2(
+      Math.sin(brng) * Math.sin(angDist) * Math.cos(phi1),
+      Math.cos(angDist) - Math.sin(phi1) * Math.sin(phi2)
+    );
+
+    return { lat: phi2 * RAD_TO_DEG, lng: lambda2 * RAD_TO_DEG };
   }
 
   _crossTrackNm(ptLat, ptLng, startLat, startLng, _endLat, _endLng, bearing12) {

@@ -256,6 +256,12 @@ async function initRoutePreviewMap() {
 function updateRoutePreview() {
   if (!routePreviewMap || !baseAirport || !selectedDestinationAirport) return;
 
+  // If custom ATC is set, defer to that renderer
+  if (customAtcWaypoints) {
+    updateRoutePreviewWithCustomWaypoints();
+    return;
+  }
+
   // Clear existing markers and lines
   routePreviewMarkers.forEach(m => routePreviewMap.removeLayer(m));
   routePreviewMarkers = [];
@@ -300,18 +306,47 @@ function updateRoutePreview() {
     routePreviewMarkers.push(techMarker);
   }
 
-  // Draw route line
-  routePreviewLine = drawRoutePreviewLine(dep, arr, selectedTechStopAirport);
+  // If auto ATC waypoints are available, draw the computed route
+  if (autoAtcWaypoints && autoAtcWaypoints.length > 2) {
+    const routeCoords = [dep];
+    // Skip first (DEP) and last (ARR) — they are the airports
+    const innerWps = autoAtcWaypoints.filter(wp => wp.name !== 'DEP' && wp.name !== 'ARR');
+    for (const wp of innerWps) {
+      const pt = [wp.lat, wp.lng];
+      routeCoords.push(pt);
 
-  // Fit bounds to show entire route
-  const bounds = L.latLngBounds([dep, arr]);
-  if (selectedTechStopAirport) {
-    bounds.extend([parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)]);
+      // Small cyan waypoint marker
+      const wpMarker = L.circleMarker(pt, {
+        radius: 3, fillColor: '#22d3ee', fillOpacity: 1, color: 'rgba(34, 211, 238, 0.5)', weight: 1
+      }).addTo(routePreviewMap).bindPopup(`<b>${wp.name}</b>`);
+      routePreviewMarkers.push(wpMarker);
+    }
+    routeCoords.push(arr);
+
+    // Solid cyan line through waypoints
+    const line = L.polyline(routeCoords, {
+      color: '#22d3ee',
+      weight: 2,
+      opacity: 0.8
+    }).addTo(routePreviewMap);
+    routePreviewLine = [line];
+
+    // Fit bounds to all points
+    const bounds = L.latLngBounds(routeCoords);
+    routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
+  } else {
+    // Fallback: dashed straight line
+    routePreviewLine = drawRoutePreviewLine(dep, arr, selectedTechStopAirport);
+
+    const bounds = L.latLngBounds([dep, arr]);
+    if (selectedTechStopAirport) {
+      bounds.extend([parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)]);
+    }
+    routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
   }
-  routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
 }
 
-// Draw route line (handles tech stop)
+// Draw route line (handles tech stop) — fallback dashed line
 function drawRoutePreviewLine(dep, arr, techStop) {
   const style = {
     color: '#58a6ff',
@@ -1288,6 +1323,13 @@ function selectDestinationAirport(airportId) {
     row.classList.toggle('selected', row.dataset.airportId === airportId);
   });
 
+  // Clear auto ATC waypoints and fetch new preview for new destination
+  autoAtcWaypoints = null;
+  autoAtcAvoidedFirs = [];
+  if (selectedDestinationAirport) {
+    fetchAtcRoutePreview();
+  }
+
   // Clear any existing tech stop when changing destination
   if (selectedTechStopAirport) {
     selectedTechStopAirport = null;
@@ -1598,6 +1640,10 @@ async function fetchCompetitors(fromAirportId, toAirportId) {
 // Clear destination selection in step 1
 function clearDestinationStep1() {
   selectedDestinationAirport = null;
+  autoAtcWaypoints = null;
+  autoAtcAvoidedFirs = [];
+  const autoInfo = document.getElementById('autoAtcInfo');
+  if (autoInfo) autoInfo.style.display = 'none';
   document.getElementById('selectedDestinationPanelStep1').style.display = 'none';
 
   // Show the search panel again
@@ -2320,6 +2366,77 @@ function adjustAllCargoRates(percentage) {
 
 let customAtcWaypoints = null; // [{name, lat, lng}, ...] — set when user applies a custom route
 let customAtcRouteString = '';
+let autoAtcWaypoints = null; // [{name, lat, lng}, ...] — auto-computed from server
+let autoAtcAvoidedFirs = []; // FIR codes that were avoided
+let _atcPreviewAbort = null; // AbortController for in-flight preview requests
+
+async function fetchAtcRoutePreview() {
+  if (!baseAirport || !selectedDestinationAirport) return;
+
+  // Abort any in-flight request
+  if (_atcPreviewAbort) _atcPreviewAbort.abort();
+  _atcPreviewAbort = new AbortController();
+
+  try {
+    const response = await fetch('/api/routes/preview-atc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        departureAirportId: baseAirport.id,
+        arrivalAirportId: selectedDestinationAirport.id
+      }),
+      signal: _atcPreviewAbort.signal
+    });
+
+    if (!response.ok) {
+      autoAtcWaypoints = null;
+      autoAtcAvoidedFirs = [];
+      return;
+    }
+
+    const data = await response.json();
+    autoAtcWaypoints = data.waypoints && data.waypoints.length > 2 ? data.waypoints : null;
+    autoAtcAvoidedFirs = data.avoidedFirs || [];
+
+    // Update the info panel
+    updateAutoAtcInfoPanel();
+
+    // Update the map if no custom route is set
+    if (!customAtcWaypoints) {
+      updateRoutePreview();
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      autoAtcWaypoints = null;
+      autoAtcAvoidedFirs = [];
+      updateAutoAtcInfoPanel();
+    }
+  }
+}
+
+function updateAutoAtcInfoPanel() {
+  const infoEl = document.getElementById('autoAtcInfo');
+  const textEl = document.getElementById('autoAtcInfoText');
+  const avoidEl = document.getElementById('autoAtcAvoidInfo');
+  if (!infoEl) return;
+
+  if (autoAtcWaypoints && autoAtcWaypoints.length > 2) {
+    const innerWps = autoAtcWaypoints.filter(wp => wp.name !== 'DEP' && wp.name !== 'ARR');
+    const routeStr = innerWps.map(wp => wp.name).join(' ');
+    textEl.textContent = `ATC Route: ${routeStr} (${innerWps.length} waypoints)`;
+    infoEl.style.display = 'block';
+  } else {
+    textEl.textContent = 'ATC Route: Direct (too short for waypoints)';
+    infoEl.style.display = 'block';
+  }
+
+  if (autoAtcAvoidedFirs.length > 0) {
+    avoidEl.textContent = `Avoiding: ${autoAtcAvoidedFirs.join(', ')}`;
+    avoidEl.style.display = 'block';
+  } else {
+    avoidEl.style.display = 'none';
+  }
+}
 
 function openCustomAtcModal() {
   const modal = document.getElementById('customAtcModal');
@@ -2622,7 +2739,7 @@ async function submitNewRoute() {
             cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
             transportType: transportType,
             demand: 0,
-            customWaypoints: customAtcWaypoints || undefined
+            customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined
           })
         });
 
@@ -2673,7 +2790,7 @@ async function submitNewRoute() {
           cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
           transportType: transportType,
           demand: 0,
-          customWaypoints: customAtcWaypoints || undefined
+          customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined
         })
       });
 
