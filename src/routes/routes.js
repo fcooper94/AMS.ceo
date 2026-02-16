@@ -406,9 +406,22 @@ router.post('/preview-atc', async (req, res) => {
 
     console.log(`[ATC Preview] Result: ${waypoints ? waypoints.length + ' waypoints' : 'null'}`);
 
+    // Extract NAT track info from tagged waypoints
+    let natTrack = null;
+    if (waypoints) {
+      const natWp = waypoints.find(wp => wp.natTrack);
+      if (natWp) {
+        const trackId = natWp.natTrack;
+        const natTracks = airwayService.natTracks || [];
+        const track = natTracks.find(t => t.id === trackId);
+        natTrack = track ? { id: track.id, name: track.name, direction: track.direction, waypoints: track.waypoints } : { id: trackId };
+      }
+    }
+
     res.json({
       waypoints: waypoints || [],
-      avoidedFirs: avoidedFirCodes
+      avoidedFirs: avoidedFirCodes,
+      natTrack
     });
   } catch (error) {
     console.error('Error computing ATC route preview:', error);

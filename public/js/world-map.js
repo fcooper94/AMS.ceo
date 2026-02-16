@@ -20,6 +20,13 @@ let firVisible = false;
 let firDataLoaded = false;
 let firGeoJsonData = null;
 
+// NAT tracks overlay state
+let natLayerGroup = null;    // L.layerGroup holding NAT track polylines + waypoint markers
+let natLabelGroup = null;    // L.layerGroup holding NAT track name labels
+let natVisible = false;
+let natDataLoaded = false;
+let natTrackData = null;
+
 // Synchronized position updates - all aircraft jump together on each tick
 let positionUpdateInterval = null;
 
@@ -392,6 +399,17 @@ function initMap() {
   const firToggle = document.getElementById('firToggle');
   if (firToggle) {
     firToggle.addEventListener('click', toggleFirBoundaries);
+  }
+
+  // NAT tracks toggle button — only available from 1961 onwards
+  const natToggle = document.getElementById('natToggle');
+  if (natToggle) {
+    const gameTime = window.getGlobalWorldTime ? window.getGlobalWorldTime() : null;
+    if (gameTime && gameTime.getFullYear() < 1961) {
+      natToggle.style.display = 'none';
+    } else {
+      natToggle.addEventListener('click', toggleNatTracks);
+    }
   }
 
   // Set initial flights list state based on screen size
@@ -1296,6 +1314,9 @@ function showFlightInfo(flight) {
   // Airport codes
   const depCode = flight.departureAirport.iataCode || flight.departureAirport.icaoCode;
   const arrCode = flight.arrivalAirport.iataCode || flight.arrivalAirport.icaoCode;
+  const depIcao = (flight.departureAirport.icaoCode && flight.departureAirport.icaoCode !== depCode) ? flight.departureAirport.icaoCode : '';
+  const arrIcao = (flight.arrivalAirport.icaoCode && flight.arrivalAirport.icaoCode !== arrCode) ? flight.arrivalAirport.icaoCode : '';
+  const techIcao = hasTechStop ? ((flight.route.techStopAirport.icaoCode && flight.route.techStopAirport.icaoCode !== techCode) ? flight.route.techStopAirport.icaoCode : '') : '';
 
   // Calculate times for both sectors (rounded to nearest 5 minutes)
   const depTime = roundTimeToNearest5(flight.departureTime?.substring(0, 5) || '00:00');
@@ -1397,6 +1418,7 @@ function showFlightInfo(flight) {
           <div class="sector-route tech-stop-route">
             <div class="sector-airport">
               <div class="airport-code">${depCode}</div>
+              <div class="airport-icao">${depIcao}</div>
               <div class="airport-time">${depTime}</div>
             </div>
             <div class="sector-arrow small">
@@ -1405,6 +1427,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport techstop">
               <div class="airport-code" style="color: #d29922;">${techCode}</div>
+              <div class="airport-icao" style="color: #d29922;">${techIcao}</div>
               <div class="airport-time">${leg1ArrivalTime}</div>
               <div class="tech-label">TECH</div>
             </div>
@@ -1414,6 +1437,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport">
               <div class="airport-code">${arrCode}</div>
+              <div class="airport-icao">${arrIcao}</div>
               <div class="airport-time">${leg2ArrivalTime}</div>
             </div>
           </div>
@@ -1437,6 +1461,7 @@ function showFlightInfo(flight) {
           <div class="sector-route tech-stop-route">
             <div class="sector-airport">
               <div class="airport-code">${arrCode}</div>
+              <div class="airport-icao">${arrIcao}</div>
               <div class="airport-time">${returnDepTime}</div>
             </div>
             <div class="sector-arrow small">
@@ -1445,6 +1470,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport techstop">
               <div class="airport-code" style="color: #d29922;">${techCode}</div>
+              <div class="airport-icao" style="color: #d29922;">${techIcao}</div>
               <div class="airport-time">${leg3ArrivalTime}</div>
               <div class="tech-label">TECH</div>
             </div>
@@ -1454,6 +1480,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport">
               <div class="airport-code">${depCode}</div>
+              <div class="airport-icao">${depIcao}</div>
               <div class="airport-time">${leg4ArrivalTime}</div>
             </div>
           </div>
@@ -1495,6 +1522,7 @@ function showFlightInfo(flight) {
           <div class="sector-route">
             <div class="sector-airport">
               <div class="airport-code">${depCode}</div>
+              <div class="airport-icao">${depIcao}</div>
               <div class="airport-time">${depTime}</div>
             </div>
             <div class="sector-arrow">
@@ -1503,6 +1531,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport">
               <div class="airport-code">${arrCode}</div>
+              <div class="airport-icao">${arrIcao}</div>
               <div class="airport-time">${outboundArrivalTime}</div>
             </div>
           </div>
@@ -1525,6 +1554,7 @@ function showFlightInfo(flight) {
           <div class="sector-route">
             <div class="sector-airport">
               <div class="airport-code">${arrCode}</div>
+              <div class="airport-icao">${arrIcao}</div>
               <div class="airport-time">${returnDepTime}</div>
             </div>
             <div class="sector-arrow">
@@ -1533,6 +1563,7 @@ function showFlightInfo(flight) {
             </div>
             <div class="sector-airport">
               <div class="airport-code">${depCode}</div>
+              <div class="airport-icao">${depIcao}</div>
               <div class="airport-time">${returnArrivalTime}</div>
             </div>
           </div>
@@ -1998,6 +2029,141 @@ function toggleFirBoundaries() {
     }
     if (firLabelGroup && map.hasLayer(firLabelGroup)) {
       map.removeLayer(firLabelGroup);
+    }
+  }
+}
+
+// ===== NAT Tracks Overlay =====
+
+// Load NAT track data (lazy-loaded on first toggle)
+async function loadNatTracks() {
+  if (natDataLoaded) return;
+  try {
+    console.log('[WorldMap] Loading NAT tracks...');
+    const response = await fetch('/data/nat-tracks.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    natTrackData = await response.json();
+    natDataLoaded = true;
+    console.log('[WorldMap] NAT tracks loaded:', natTrackData.length, 'tracks');
+    renderNatTracks();
+  } catch (error) {
+    console.error('[WorldMap] Failed to load NAT tracks:', error);
+  }
+}
+
+// Render NAT track polylines, waypoint markers, and labels
+function renderNatTracks() {
+  if (!natTrackData || !map) return;
+
+  natLayerGroup = L.layerGroup();
+  natLabelGroup = L.layerGroup();
+
+  natTrackData.forEach(track => {
+    const waypoints = track.waypoints;
+    if (!waypoints || waypoints.length < 2) return;
+
+    // Draw great-circle polyline segments between consecutive waypoints
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const segments = generateGreatCirclePath(
+        waypoints[i].lat, waypoints[i].lng,
+        waypoints[i + 1].lat, waypoints[i + 1].lng, 20
+      );
+      segments.forEach(segment => {
+        const line = L.polyline(segment, {
+          color: '#4ade80',
+          weight: 1.5,
+          opacity: 0.5,
+          dashArray: '6, 4',
+          interactive: false
+        });
+        natLayerGroup.addLayer(line);
+      });
+    }
+
+    // Add small circle markers at each waypoint with tooltips
+    waypoints.forEach(wp => {
+      const circle = L.circleMarker([wp.lat, wp.lng], {
+        radius: 2.5,
+        color: '#4ade80',
+        fillColor: '#4ade80',
+        fillOpacity: 0.7,
+        weight: 1,
+        interactive: true
+      });
+      circle.bindTooltip(wp.name, {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -5],
+        className: 'waypoint-tooltip nat-wp-tooltip'
+      });
+      natLayerGroup.addLayer(circle);
+    });
+
+    // Add track name label at the midpoint of the track
+    const midIdx = Math.floor(waypoints.length / 2);
+    const midWp = waypoints[midIdx];
+    const label = L.marker([midWp.lat, midWp.lng], {
+      icon: L.divIcon({
+        className: 'nat-label',
+        html: `<span class="nat-label-text">${track.id}</span>`,
+        iconSize: [30, 16],
+        iconAnchor: [15, 8]
+      }),
+      interactive: false
+    });
+    natLabelGroup.addLayer(label);
+  });
+
+  natLayerGroup.addTo(map);
+  updateNatLabelVisibility();
+  map.on('zoomend', updateNatLabelVisibility);
+  map.on('moveend', updateNatLabelVisibility);
+}
+
+// Show/hide NAT labels based on zoom level and viewport
+let natLabelDebounceTimer = null;
+function updateNatLabelVisibility() {
+  if (!natLabelGroup || !natVisible) return;
+
+  const zoom = map.getZoom();
+  if (zoom < 4) {
+    if (map.hasLayer(natLabelGroup)) {
+      map.removeLayer(natLabelGroup);
+    }
+    return;
+  }
+
+  if (natLabelDebounceTimer) clearTimeout(natLabelDebounceTimer);
+  natLabelDebounceTimer = setTimeout(() => {
+    if (!map.hasLayer(natLabelGroup)) {
+      natLabelGroup.addTo(map);
+    }
+  }, 150);
+}
+
+// Toggle NAT tracks layer on/off
+function toggleNatTracks() {
+  natVisible = !natVisible;
+
+  const toggle = document.getElementById('natToggle');
+  if (toggle) toggle.classList.toggle('active', natVisible);
+
+  const natLegend = document.querySelector('.nat-legend');
+  if (natLegend) natLegend.style.display = natVisible ? 'flex' : 'none';
+
+  if (natVisible) {
+    if (!natDataLoaded) {
+      loadNatTracks();
+    } else {
+      if (natLayerGroup) natLayerGroup.addTo(map);
+      updateNatLabelVisibility();
+    }
+  } else {
+    if (natLayerGroup && map.hasLayer(natLayerGroup)) {
+      map.removeLayer(natLayerGroup);
+    }
+    if (natLabelGroup && map.hasLayer(natLabelGroup)) {
+      map.removeLayer(natLabelGroup);
     }
   }
 }

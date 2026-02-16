@@ -1493,6 +1493,54 @@ function showSettingNotification(title, message, isSuccess) {
   }, 4000);
 }
 
+// Recompute ATC Routes
+async function recomputeRoutes() {
+  const btn = document.getElementById('recomputeRoutesBtn');
+  const progressDiv = document.getElementById('recomputeRoutesProgress');
+  const messageSpan = document.getElementById('recomputeRoutesMessage');
+
+  btn.disabled = true;
+  btn.textContent = 'Processing...';
+  btn.style.opacity = '0.6';
+  progressDiv.style.display = 'block';
+  messageSpan.textContent = 'Clearing existing routes and triggering recomputation...';
+
+  try {
+    const response = await fetch('/api/world/recompute-routes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (response.status === 409) {
+      messageSpan.textContent = 'Route computation is already in progress. Please wait.';
+      showSettingNotification('Already Running', 'Route computation is already in progress', false);
+      return;
+    }
+
+    if (response.status === 503) {
+      messageSpan.textContent = 'Airway service is not ready yet. Try again shortly.';
+      showSettingNotification('Service Not Ready', 'Airway service is still initializing', false);
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error('Failed to trigger route recomputation');
+    }
+
+    const data = await response.json();
+    messageSpan.textContent = `${data.routesCleared} routes queued for recomputation. This will run in the background.`;
+    showSettingNotification('Routes Recomputing', `${data.routesCleared} routes are being recalculated`, true);
+  } catch (error) {
+    console.error('Error recomputing routes:', error);
+    messageSpan.textContent = 'Error: ' + error.message;
+    showSettingNotification('Error', 'Failed to trigger route recomputation', false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Recompute Routes';
+    btn.style.opacity = '1';
+  }
+}
+
 // ==================== AIRLINES MANAGEMENT ====================
 
 let allAirlines = [];

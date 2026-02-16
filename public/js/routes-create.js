@@ -331,6 +331,31 @@ function updateRoutePreview() {
     }).addTo(routePreviewMap);
     routePreviewLine = [line];
 
+    // Draw NAT track overlay if present
+    if (autoAtcNatTrack && autoAtcNatTrack.waypoints) {
+      const natCoords = autoAtcNatTrack.waypoints.map(wp => [wp.lat, wp.lng]);
+      const natLine = L.polyline(natCoords, {
+        color: '#4ade80',
+        weight: 2,
+        opacity: 0.4,
+        dashArray: '6, 4'
+      }).addTo(routePreviewMap);
+      routePreviewLine.push(natLine);
+      routePreviewMarkers.push(natLine);
+
+      // NAT track label at midpoint
+      const midIdx = Math.floor(natCoords.length / 2);
+      const natLabel = L.marker(natCoords[midIdx], {
+        icon: L.divIcon({
+          className: 'nat-preview-label',
+          html: `<span>NAT ${autoAtcNatTrack.id}</span>`,
+          iconSize: [50, 16],
+          iconAnchor: [25, -4]
+        })
+      }).addTo(routePreviewMap);
+      routePreviewMarkers.push(natLabel);
+    }
+
     // Fit bounds to all points
     const bounds = L.latLngBounds(routeCoords);
     routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
@@ -2368,6 +2393,7 @@ let customAtcWaypoints = null; // [{name, lat, lng}, ...] — set when user appl
 let customAtcRouteString = '';
 let autoAtcWaypoints = null; // [{name, lat, lng}, ...] — auto-computed from server
 let autoAtcAvoidedFirs = []; // FIR codes that were avoided
+let autoAtcNatTrack = null;  // {id, name, direction, waypoints} — NAT track used if any
 let _atcPreviewAbort = null; // AbortController for in-flight preview requests
 
 async function fetchAtcRoutePreview() {
@@ -2391,12 +2417,14 @@ async function fetchAtcRoutePreview() {
     if (!response.ok) {
       autoAtcWaypoints = null;
       autoAtcAvoidedFirs = [];
+      autoAtcNatTrack = null;
       return;
     }
 
     const data = await response.json();
     autoAtcWaypoints = data.waypoints && data.waypoints.length > 2 ? data.waypoints : null;
     autoAtcAvoidedFirs = data.avoidedFirs || [];
+    autoAtcNatTrack = data.natTrack || null;
 
     // Update the info panel
     updateAutoAtcInfoPanel();
@@ -2409,6 +2437,7 @@ async function fetchAtcRoutePreview() {
     if (e.name !== 'AbortError') {
       autoAtcWaypoints = null;
       autoAtcAvoidedFirs = [];
+      autoAtcNatTrack = null;
       updateAutoAtcInfoPanel();
     }
   }
@@ -2422,7 +2451,29 @@ function updateAutoAtcInfoPanel() {
 
   if (autoAtcWaypoints && autoAtcWaypoints.length > 2) {
     const innerWps = autoAtcWaypoints.filter(wp => wp.name !== 'DEP' && wp.name !== 'ARR');
-    const routeStr = innerWps.map(wp => wp.name).join(' ');
+
+    // Build route string, replacing consecutive NAT track waypoints with "ENTRY NAT X EXIT"
+    const parts = [];
+    let inNat = false;
+    let natEntry = null;
+    for (let i = 0; i < innerWps.length; i++) {
+      const wp = innerWps[i];
+      if (wp.natTrack) {
+        if (!inNat) {
+          natEntry = wp.name;
+          inNat = true;
+        }
+        // Check if next wp is NOT on the same track (or end of list) — emit the full label
+        const next = innerWps[i + 1];
+        if (!next || !next.natTrack) {
+          parts.push(`${natEntry} NAT ${wp.natTrack} ${wp.name}`);
+        }
+      } else {
+        inNat = false;
+        parts.push(wp.name);
+      }
+    }
+    const routeStr = parts.join(' ');
     textEl.textContent = `ATC Route: ${routeStr} (${innerWps.length} waypoints)`;
     infoEl.style.display = 'block';
   } else {

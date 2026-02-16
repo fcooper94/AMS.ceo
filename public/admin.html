@@ -318,6 +318,25 @@
           <p style="color: var(--warning-color);"><strong>Warning:</strong> Only enable this in development environments. The bypass login uses hardcoded credentials (10000010).</p>
         </div>
       </div>
+
+      <div style="background: var(--surface-elevated); padding: 1.5rem; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+        <h3 style="color: var(--text-primary); margin-bottom: 0.5rem; font-size: 1rem;">World Management</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">Actions for managing the active game world</p>
+
+        <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--surface); border-radius: 4px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: var(--text-primary);">Recompute ATC Routes</div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">Recalculate all active flight route waypoints. Use this after airway or NAT track changes.</div>
+          </div>
+          <button id="recomputeRoutesBtn" onclick="recomputeRoutes()" style="padding: 0.5rem 1.25rem; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
+            Recompute Routes
+          </button>
+        </div>
+
+        <div id="recomputeRoutesProgress" style="display: none; margin-top: 0.75rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 4px; font-size: 0.85rem; color: var(--text-secondary);">
+          <span id="recomputeRoutesMessage">Processing...</span>
+        </div>
+      </div>
     </div>
   </div>
   </main>

@@ -183,6 +183,40 @@ router.get('/airway-status', (req, res) => {
 });
 
 /**
+ * Recompute all ATC routes (nulls waypoints then re-runs backfill)
+ */
+router.post('/recompute-routes', async (req, res) => {
+  try {
+    const airwayService = require('../services/airwayService');
+    if (!airwayService.isReady()) {
+      return res.status(503).json({ error: 'Airway service not ready' });
+    }
+
+    const status = airwayService.getBackfillStatus();
+    if (status.running) {
+      return res.status(409).json({ error: 'Route computation already in progress' });
+    }
+
+    const { Route } = require('../models');
+    const [updated] = await Route.update(
+      { waypoints: null },
+      { where: { isActive: true } }
+    );
+
+    // Clear the in-memory route cache
+    airwayService.routeCache.clear();
+
+    // Trigger backfill in background
+    airwayService.backfillMissingWaypoints();
+
+    res.json({ success: true, routesCleared: updated });
+  } catch (error) {
+    console.error('Error recomputing routes:', error);
+    res.status(500).json({ error: 'Failed to start route recomputation' });
+  }
+});
+
+/**
  * Pause the world
  */
 router.post('/pause', async (req, res) => {

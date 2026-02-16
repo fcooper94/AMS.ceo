@@ -47,6 +47,15 @@
       <span class="fir-toggle-label">FIR Zones</span>
     </button>
 
+    <!-- NAT Tracks Toggle Button -->
+    <button class="nat-toggle" id="natToggle" title="NAT Tracks">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 17l6-6 4 4 8-8"></path>
+        <polyline points="14 7 21 7 21 14"></polyline>
+      </svg>
+      <span class="nat-toggle-label">NAT Tracks</span>
+    </button>
+
     <!-- Live Flights List Panel -->
     <div class="flights-list-panel" id="flightsListPanel">
       <div class="flights-list-header">
@@ -82,6 +91,10 @@
       <div class="legend-item fir-legend" style="display: none;">
         <span class="legend-icon fir-icon"></span>
         <span>FIR Boundary</span>
+      </div>
+      <div class="legend-item nat-legend" style="display: none;">
+        <span class="legend-icon nat-icon"></span>
+        <span>NAT Track</span>
       </div>
     </div>
   </main>

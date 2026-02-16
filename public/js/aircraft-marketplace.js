@@ -62,6 +62,7 @@ let currentCategory = '';
 let selectedAircraft = null;
 let registrationPrefix = 'N-'; // Default prefix, will be updated from world info
 let baseCountry = null;
+let isSinglePlayer = false; // SP worlds cache inventory in sessionStorage
 
 // Contract signing animation
 function showContractSigningAnimation(type, aircraftName, registration, price) {
@@ -304,24 +305,47 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
   });
 }
 
-// Fetch world info to get registration prefix
-async function fetchRegistrationPrefix() {
+// Fetch world info (registration prefix, balance, airline name, world type)
+async function fetchWorldInfo() {
   try {
     const response = await fetch('/api/world/info');
-    if (response.ok) {
-      const worldInfo = await response.json();
-      if (worldInfo.baseAirport && worldInfo.baseAirport.country) {
-        baseCountry = worldInfo.baseAirport.country;
-        registrationPrefix = getRegistrationPrefix(baseCountry);
+    if (!response.ok) return;
+    const data = await response.json();
+
+    // Registration prefix
+    if (data.baseAirport && data.baseAirport.country) {
+      baseCountry = data.baseAirport.country;
+      registrationPrefix = getRegistrationPrefix(baseCountry);
+    }
+
+    // World type — SP worlds can cache inventory
+    isSinglePlayer = data.worldType === 'singleplayer';
+
+    // Balance display
+    const balanceEl = document.getElementById('marketplaceBalance');
+    if (balanceEl && !data.error) {
+      const balance = Number(data.balance) || 0;
+      balanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
+      if (balance < 0) {
+        balanceEl.style.color = 'var(--warning-color)';
+      } else if (balance < 100000) {
+        balanceEl.style.color = 'var(--text-secondary)';
+      } else {
+        balanceEl.style.color = 'var(--success-color)';
       }
     }
+
+    // Airline name
+    const airlineEl = document.getElementById('marketplaceAirlineName');
+    if (airlineEl && !data.error) {
+      airlineEl.textContent = data.airlineName || '--';
+    }
   } catch (error) {
-    console.error('Error fetching world info for registration prefix:', error);
-    // Keep default prefix
+    console.error('Error fetching world info:', error);
   }
 }
 
-// Load aircraft based on category
+// Load aircraft based on category (SP worlds use sessionStorage cache)
 async function loadAircraft() {
   try {
     // Get category from URL parameter
@@ -340,6 +364,21 @@ async function loadAircraft() {
       subtitleElement.textContent = 'BROWSE PREVIOUSLY OWNED AIRCRAFT';
     }
 
+    // SP worlds: try sessionStorage cache first
+    const cacheKey = `aircraft_inventory_${currentCategory}`;
+    if (isSinglePlayer) {
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          allAircraft = JSON.parse(cached);
+          populateManufacturerFilter(allAircraft);
+          displayAircraft(allAircraft);
+          updateActiveTab();
+          return;
+        }
+      } catch (e) { /* cache miss or parse error, fetch normally */ }
+    }
+
     // Fetch aircraft from API based on category
     const response = await fetch(`/api/aircraft?category=${currentCategory}`);
     const aircraft = await response.json();
@@ -349,6 +388,12 @@ async function loadAircraft() {
     }
 
     allAircraft = aircraft;
+
+    // SP worlds: cache the result in sessionStorage
+    if (isSinglePlayer) {
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(aircraft)); } catch (e) { /* quota exceeded */ }
+    }
+
     populateManufacturerFilter(allAircraft);
     displayAircraft(allAircraft);
     updateActiveTab(); // Update the active tab after loading
@@ -358,6 +403,14 @@ async function loadAircraft() {
       <div class="empty-message">Error loading aircraft inventory</div>
     `;
   }
+}
+
+// Clear the cached aircraft inventory (call after purchase/lease to refresh on next load)
+function clearAircraftCache() {
+  try {
+    sessionStorage.removeItem('aircraft_inventory_used');
+    sessionStorage.removeItem('aircraft_inventory_new');
+  } catch (e) { /* ignore */ }
 }
 
 // Display aircraft in card grid format
@@ -988,8 +1041,11 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
       // Show success message
       showSuccessMessage(`Aircraft purchased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
 
+      // Clear cached inventory so next load fetches fresh data
+      clearAircraftCache();
+
       // Reload marketplace info to update balance
-      loadMarketplaceInfo();
+      fetchWorldInfo();
     } else {
       // Show error message
       const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
@@ -1781,8 +1837,11 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
       // Show success message
       showSuccessMessage(`Aircraft leased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
 
+      // Clear cached inventory so next load fetches fresh data
+      clearAircraftCache();
+
       // Reload marketplace info to update balance
-      loadMarketplaceInfo();
+      fetchWorldInfo();
     } else {
       // Show error message
       const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
@@ -1886,43 +1945,13 @@ function updateActiveTab() {
   }
 }
 
-// Load marketplace-specific info (balance and airline)
+// Kept for backwards compat — now handled by fetchWorldInfo()
 async function loadMarketplaceInfo() {
-  try {
-    const response = await fetch('/api/world/info');
-    const data = await response.json();
-
-    if (!data.error) {
-      // Update balance display
-      const balanceEl = document.getElementById('marketplaceBalance');
-      if (balanceEl) {
-        const balance = Number(data.balance) || 0;
-        balanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
-
-        // Color code balance based on value
-        if (balance < 0) {
-          balanceEl.style.color = 'var(--warning-color)';
-        } else if (balance < 100000) {
-          balanceEl.style.color = 'var(--text-secondary)';
-        } else {
-          balanceEl.style.color = 'var(--success-color)';
-        }
-      }
-
-      // Update airline name
-      const airlineEl = document.getElementById('marketplaceAirlineName');
-      if (airlineEl) {
-        airlineEl.textContent = data.airlineName || '--';
-      }
-    }
-  } catch (error) {
-    console.error('Error loading marketplace info:', error);
-  }
+  // No-op: world info (balance, airline name) is now loaded in fetchWorldInfo()
 }
 
 // Initialize when page loads
-document.addEventListener('DOMContentLoaded', () => {
-  fetchRegistrationPrefix(); // Load registration prefix from world info
+document.addEventListener('DOMContentLoaded', async () => {
+  await fetchWorldInfo(); // Must complete first — sets isSinglePlayer for cache decision
   loadAircraft();
-  loadMarketplaceInfo();
 });

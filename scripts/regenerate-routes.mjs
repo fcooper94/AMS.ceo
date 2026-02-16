@@ -20,16 +20,14 @@ const processAll = args.includes('--all');
 
 // Use dynamic import for CommonJS modules
 const { default: sequelize } = await import('../src/config/database.js');
-const { default: Route } = await import('../src/models/Route.js');
-const { default: Airport } = await import('../src/models/Airport.js');
-
-// Set up associations needed for includes
-Route.belongsTo(Airport, { foreignKey: 'departure_airport_id', as: 'departureAirport' });
-Route.belongsTo(Airport, { foreignKey: 'arrival_airport_id', as: 'arrivalAirport' });
+const models = await import('../src/models/index.js');
+const { Route, Airport } = models.default || models;
 
 const { default: airwayService } = await import('../src/services/airwayService.js');
 
-// Trigger initialization and wait for it to complete
+// Skip the automatic backfill — this script does its own processing
+airwayService.backfillMissingWaypoints = () => {};
+
 console.log('Initializing airway service...');
 airwayService.initialize();
 await new Promise(resolve => {

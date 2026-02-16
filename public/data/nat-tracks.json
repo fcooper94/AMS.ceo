@@ -1,0 +1,132 @@
+[
+  {
+    "id": "A",
+    "name": "NAT Alpha",
+    "direction": "eastbound",
+    "waypoints": [
+      { "name": "DOTTY", "lat": 44.00, "lng": -53.00 },
+      { "name": "44N050W", "lat": 44.00, "lng": -50.00 },
+      { "name": "45N040W", "lat": 45.00, "lng": -40.00 },
+      { "name": "46N030W", "lat": 46.00, "lng": -30.00 },
+      { "name": "47N020W", "lat": 47.00, "lng": -20.00 },
+      { "name": "BEDRA", "lat": 48.50, "lng": -15.00 }
+    ]
+  },
+  {
+    "id": "B",
+    "name": "NAT Bravo",
+    "direction": "eastbound",
+    "waypoints": [
+      { "name": "MUSAK", "lat": 47.00, "lng": -53.00 },
+      { "name": "47N050W", "lat": 47.00, "lng": -50.00 },
+      { "name": "48N040W", "lat": 48.00, "lng": -40.00 },
+      { "name": "49N030W", "lat": 49.00, "lng": -30.00 },
+      { "name": "50N020W", "lat": 50.00, "lng": -20.00 },
+      { "name": "GUNSO", "lat": 50.50, "lng": -15.00 }
+    ]
+  },
+  {
+    "id": "C",
+    "name": "NAT Charlie",
+    "direction": "eastbound",
+    "waypoints": [
+      { "name": "ALLRY", "lat": 50.00, "lng": -53.00 },
+      { "name": "50N050W", "lat": 50.00, "lng": -50.00 },
+      { "name": "51N040W", "lat": 51.00, "lng": -40.00 },
+      { "name": "52N030W", "lat": 52.00, "lng": -30.00 },
+      { "name": "52N020W", "lat": 52.00, "lng": -20.00 },
+      { "name": "MALOT", "lat": 52.00, "lng": -15.00 }
+    ]
+  },
+  {
+    "id": "D",
+    "name": "NAT Delta",
+    "direction": "eastbound",
+    "waypoints": [
+      { "name": "RAFIN", "lat": 52.00, "lng": -53.00 },
+      { "name": "52N050W", "lat": 52.00, "lng": -50.00 },
+      { "name": "53N040W", "lat": 53.00, "lng": -40.00 },
+      { "name": "54N030W", "lat": 54.00, "lng": -30.00 },
+      { "name": "54N020W", "lat": 54.00, "lng": -20.00 },
+      { "name": "GOMUP", "lat": 54.00, "lng": -15.00 }
+    ]
+  },
+  {
+    "id": "E",
+    "name": "NAT Echo",
+    "direction": "eastbound",
+    "waypoints": [
+      { "name": "MUSEX", "lat": 54.00, "lng": -53.00 },
+      { "name": "55N050W", "lat": 55.00, "lng": -50.00 },
+      { "name": "56N040W", "lat": 56.00, "lng": -40.00 },
+      { "name": "56N030W", "lat": 56.00, "lng": -30.00 },
+      { "name": "56N020W", "lat": 56.00, "lng": -20.00 },
+      { "name": "GIPER", "lat": 56.00, "lng": -15.00 }
+    ]
+  },
+  {
+    "id": "V",
+    "name": "NAT Victor",
+    "direction": "westbound",
+    "waypoints": [
+      { "name": "PIKIL", "lat": 56.50, "lng": -15.00 },
+      { "name": "57N020W", "lat": 57.00, "lng": -20.00 },
+      { "name": "57N030W", "lat": 57.00, "lng": -30.00 },
+      { "name": "56N040W", "lat": 56.00, "lng": -40.00 },
+      { "name": "55N050W", "lat": 55.00, "lng": -50.00 },
+      { "name": "LOMSI", "lat": 54.50, "lng": -53.00 }
+    ]
+  },
+  {
+    "id": "W",
+    "name": "NAT Whiskey",
+    "direction": "westbound",
+    "waypoints": [
+      { "name": "TAMEL", "lat": 54.50, "lng": -15.00 },
+      { "name": "55N020W", "lat": 55.00, "lng": -20.00 },
+      { "name": "55N030W", "lat": 55.00, "lng": -30.00 },
+      { "name": "54N040W", "lat": 54.00, "lng": -40.00 },
+      { "name": "53N050W", "lat": 53.00, "lng": -50.00 },
+      { "name": "REDBY", "lat": 52.00, "lng": -53.00 }
+    ]
+  },
+  {
+    "id": "X",
+    "name": "NAT X-ray",
+    "direction": "westbound",
+    "waypoints": [
+      { "name": "BOBTU", "lat": 52.50, "lng": -15.00 },
+      { "name": "52N020W", "lat": 52.00, "lng": -20.00 },
+      { "name": "52N030W", "lat": 52.00, "lng": -30.00 },
+      { "name": "51N040W", "lat": 51.00, "lng": -40.00 },
+      { "name": "50N050W", "lat": 50.00, "lng": -50.00 },
+      { "name": "UDNOX", "lat": 49.50, "lng": -53.00 }
+    ]
+  },
+  {
+    "id": "Y",
+    "name": "NAT Yankee",
+    "direction": "westbound",
+    "waypoints": [
+      { "name": "LUSEN", "lat": 50.00, "lng": -15.00 },
+      { "name": "49N020W", "lat": 49.00, "lng": -20.00 },
+      { "name": "48N030W", "lat": 48.00, "lng": -30.00 },
+      { "name": "47N040W", "lat": 47.00, "lng": -40.00 },
+      { "name": "46N050W", "lat": 46.00, "lng": -50.00 },
+      { "name": "ELSIR", "lat": 45.50, "lng": -53.00 }
+    ]
+  },
+  {
+    "id": "Z",
+    "name": "NAT Zulu",
+    "direction": "westbound",
+    "waypoints": [
+      { "name": "SOMAX", "lat": 47.50, "lng": -15.00 },
+      { "name": "47N020W", "lat": 47.00, "lng": -20.00 },
+      { "name": "46N030W", "lat": 46.00, "lng": -30.00 },
+      { "name": "45N040W", "lat": 45.00, "lng": -40.00 },
+      { "name": "44N050W", "lat": 44.00, "lng": -50.00 },
+      { "name": "HOIST", "lat": 43.50, "lng": -53.00 }
+    ]
+  }
+]

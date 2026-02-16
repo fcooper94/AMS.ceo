@@ -92,6 +92,8 @@ class AirwayService {
     this.procedures = null;       // ICAO → { sids: {}, stars: {} }
     this._routeContext = null;    // Set during pathfinding for corridor bias
 
+    this.natTracks = null;        // NAT track data for transatlantic routing
+
     this.ready = false;
 
     // Backfill progress tracking
@@ -109,6 +111,7 @@ class AirwayService {
         this._buildSpatialGrid();
         this._initPathFinder();
         this._loadProcedures();
+        this._loadNatTracks();
         this.ready = true;
         const elapsed = Date.now() - startTime;
         console.log(`[Airway] Ready in ${elapsed}ms: ${this.fixes.size} fixes, ${this.graphFixes.size} on airways, graph: ${this.graph.getNodesCount()} nodes / ${this.graph.getLinksCount()} links`);
@@ -334,6 +337,114 @@ class AirwayService {
     console.log(`[Airway] Loaded procedures: ${Object.keys(this.procedures).length} airports, ${sidCount} SIDs, ${starCount} STARs`);
   }
 
+  // ─── NAT Track Data ──────────────────────────────────────────────────────
+
+  _loadNatTracks() {
+    const natFile = path.join(__dirname, '../../public/data/nat-tracks.json');
+    if (!fs.existsSync(natFile)) {
+      console.log('[Airway] No nat-tracks.json found, NAT routing disabled');
+      return;
+    }
+
+    try {
+      const data = fs.readFileSync(natFile, 'utf8');
+      this.natTracks = JSON.parse(data);
+      console.log(`[Airway] Loaded ${this.natTracks.length} NAT tracks`);
+    } catch (err) {
+      console.error('[Airway] Failed to load NAT tracks:', err.message);
+    }
+  }
+
+  /**
+   * Check if a point is within the NAT organized track corridor.
+   * Only routes in the core band (52–60N) get assigned to NAT tracks.
+   * Lower-latitude transatlantic routes use random (FRA) oceanic routing.
+   */
+  _isInNatCorridor(lat, lng) {
+    return lat >= 52 && lat <= 60 && lng >= -53 && lng <= -15;
+  }
+
+  /**
+   * Route an oceanic segment through the closest NAT track.
+   * Determines direction from the overall segment longitude difference,
+   * filters tracks matching that direction, picks the closest by average latitude,
+   * and returns the track waypoints clipped to the segment bounds.
+   */
+  _routeNatTrackSegment(seg, overallDepLng, overallArrLng) {
+    if (!this.natTracks || this.natTracks.length === 0) {
+      return this._routeFraSegment(seg);
+    }
+
+    // Determine direction: if overall arrival is east of departure, it's eastbound
+    let lngDiff = overallArrLng - overallDepLng;
+    if (lngDiff > 180) lngDiff -= 360;
+    else if (lngDiff < -180) lngDiff += 360;
+    const direction = lngDiff > 0 ? 'eastbound' : 'westbound';
+
+    // Filter tracks matching direction
+    const candidates = this.natTracks.filter(t => t.direction === direction);
+    if (candidates.length === 0) {
+      return this._routeFraSegment(seg);
+    }
+
+    // Find the segment's average latitude
+    const segAvgLat = (seg.entryLat + seg.exitLat) / 2;
+
+    // Pick the closest track by average latitude of its waypoints
+    let bestTrack = null;
+    let bestLatDiff = Infinity;
+    for (const track of candidates) {
+      const trackAvgLat = track.waypoints.reduce((sum, wp) => sum + wp.lat, 0) / track.waypoints.length;
+      const diff = Math.abs(trackAvgLat - segAvgLat);
+      if (diff < bestLatDiff) {
+        bestLatDiff = diff;
+        bestTrack = track;
+      }
+    }
+
+    if (!bestTrack) {
+      return this._routeFraSegment(seg);
+    }
+
+    // Get entry/exit fixes for the segment boundaries
+    const entryFix = this._findBestBoundaryFix(seg.entryLat, seg.entryLng);
+    const exitFix = this._findBestBoundaryFix(seg.exitLat, seg.exitLng);
+
+    const waypoints = [];
+
+    // Add entry fix
+    if (entryFix) {
+      waypoints.push({ lat: entryFix.lat, lng: entryFix.lng, name: entryFix.id });
+    } else {
+      waypoints.push({ lat: seg.entryLat, lng: seg.entryLng, name: this._coordLabel(seg.entryLat, seg.entryLng) });
+    }
+
+    // Add ALL NAT track waypoints (full track from entry to exit)
+    for (const wp of bestTrack.waypoints) {
+      const lastWp = waypoints[waypoints.length - 1];
+      if (!lastWp || lastWp.name !== wp.name) {
+        waypoints.push({ lat: wp.lat, lng: wp.lng, name: wp.name, natTrack: bestTrack.id });
+      }
+    }
+
+    // Add exit fix
+    if (exitFix) {
+      const lastWp = waypoints[waypoints.length - 1];
+      if (!lastWp || exitFix.id !== lastWp.name) {
+        waypoints.push({ lat: exitFix.lat, lng: exitFix.lng, name: exitFix.id });
+      }
+    } else {
+      const label = this._coordLabel(seg.exitLat, seg.exitLng);
+      const lastWp = waypoints[waypoints.length - 1];
+      if (!lastWp || lastWp.name !== label) {
+        waypoints.push({ lat: seg.exitLat, lng: seg.exitLng, name: label });
+      }
+    }
+
+    console.log(`[Airway] NAT Track ${bestTrack.id} (${bestTrack.name}) used for oceanic segment, ${waypoints.length} waypoints`);
+    return waypoints;
+  }
+
   // ─── Route Computation (FIR-Segment Based) ─────────────────────────────────
 
   /**
@@ -434,6 +545,34 @@ class AirwayService {
         continue;
       }
 
+      // Check if this is a NAT corridor segment (not dep/arr)
+      const segMidLat = (seg.entryLat + seg.exitLat) / 2;
+      const segMidLng = (seg.entryLng + seg.exitLng) / 2;
+      const inNatCorridor = !seg.isDeparture && !seg.isArrival
+        && this.natTracks && this._isInNatCorridor(segMidLat, segMidLng);
+
+      if (inNatCorridor) {
+        // Merge consecutive NAT corridor segments into one super-segment
+        let j = i;
+        while (j < segments.length) {
+          const s = segments[j];
+          if (s.isDeparture || s.isArrival) break;
+          const mLat = (s.entryLat + s.exitLat) / 2;
+          const mLng = (s.entryLng + s.exitLng) / 2;
+          if (!this._isInNatCorridor(mLat, mLng)) break;
+          j++;
+        }
+        // Build merged segment from first entry to last exit
+        const mergedSeg = {
+          entryLat: segments[i].entryLat, entryLng: segments[i].entryLng,
+          exitLat: segments[j - 1].exitLat, exitLng: segments[j - 1].exitLng
+        };
+        const natWps = this._routeNatTrackSegment(mergedSeg, depLng, arrLng);
+        rawWaypoints.push(...natWps);
+        i = j;
+        continue;
+      }
+
       const segDist = this._haversine(seg.entryLat, seg.entryLng, seg.exitLat, seg.exitLng);
       const isOceanic = !seg.firCode;
       const isFra = isOceanic || this._isFraFir(seg.firCode);
@@ -459,10 +598,13 @@ class AirwayService {
 
     for (const wp of rawWaypoints) {
       const last = waypoints[waypoints.length - 1];
-      // Skip duplicate names (except coordinate labels)
-      if (wp.name && usedNames.has(wp.name) && !wp.name.match(/^\d/)) continue;
-      // Skip points too close to previous (prevents clustering at FIR boundaries)
-      if (last && this._haversine(last.lat, last.lng, wp.lat, wp.lng) < MIN_WAYPOINT_SPACING_NM) continue;
+      // Never filter out NAT track waypoints — they must be preserved exactly
+      if (!wp.natTrack) {
+        // Skip duplicate names (except coordinate labels)
+        if (wp.name && usedNames.has(wp.name) && !wp.name.match(/^\d/)) continue;
+        // Skip points too close to previous (prevents clustering at FIR boundaries)
+        if (last && this._haversine(last.lat, last.lng, wp.lat, wp.lng) < MIN_WAYPOINT_SPACING_NM) continue;
+      }
       waypoints.push(wp);
       if (wp.name) usedNames.add(wp.name);
     }
@@ -1093,6 +1235,12 @@ class AirwayService {
         const curr = result[i];
         const next = result[i + 1];
 
+        // Never remove NAT track waypoints
+        if (curr.natTrack) {
+          filtered.push(curr);
+          continue;
+        }
+
         const bearingIn = this._bearing(prev.lat, prev.lng, curr.lat, curr.lng);
         const bearingOut = this._bearing(curr.lat, curr.lng, next.lat, next.lng);
 
@@ -1150,6 +1298,11 @@ class AirwayService {
       let removed = 0;
 
       for (let i = 1; i < result.length - 1; i++) {
+        // Never remove NAT track waypoints
+        if (result[i].natTrack) {
+          filtered.push(result[i]);
+          continue;
+        }
         // Look ahead up to DRIFT_WINDOW_SIZE waypoints, bounded by DRIFT_WINDOW_DISTANCE_NM
         let windowEnd = Math.min(i + DRIFT_WINDOW_SIZE, result.length - 1);
         let totalDist = 0;
@@ -1194,6 +1347,12 @@ class AirwayService {
         const prev = cleaned[cleaned.length - 1];
         const curr = result[i];
         const next = result[i + 1];
+
+        // Never remove NAT track waypoints
+        if (curr.natTrack) {
+          cleaned.push(curr);
+          continue;
+        }
 
         const bIn = this._bearing(prev.lat, prev.lng, curr.lat, curr.lng);
         const bOut = this._bearing(curr.lat, curr.lng, next.lat, next.lng);
