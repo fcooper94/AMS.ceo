@@ -405,11 +405,13 @@ function closeNewsModal() {
 let worldIsPaused = false;
 
 function applySPControls(world) {
-  if (world.worldType !== 'singleplayer') return;
-
   const card = document.getElementById('spControlsCard');
   if (!card) return;
-  card.style.display = 'block';
+
+  if (world.worldType !== 'singleplayer') {
+    card.style.display = 'none';
+    return;
+  }
 
   // Set current speed
   const speedSelect = document.getElementById('spSpeedSelect');
