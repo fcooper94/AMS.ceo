@@ -3,97 +3,291 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AMS.ceo - Airline Management Sim. Coming Soon.">
-  <title>AMS.ceo - Coming Soon</title>
+  <meta name="description" content="AMS.ceo - Airline Management Simulation integrated with VATSIM. Build your airline empire.">
+  <title>AMS.ceo - Airline Management Sim</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%230066cc'/%3E%3Ctext x='50' y='42' font-family='Arial, sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3EAMS%3C/text%3E%3Ctext x='50' y='70' font-family='Arial, sans-serif' font-size='18' font-weight='600' fill='%2399ccff' text-anchor='middle' dominant-baseline='central'%3E.ceo%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    .coming-soon-container {
+    .cs-page {
       min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
 
-    .coming-soon-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 3rem 1.5rem;
+    /* Hero */
+    .cs-hero {
+      padding: 5rem 2rem 4rem;
       text-align: center;
+      position: relative;
+      overflow: hidden;
     }
 
-    .coming-soon-badge {
+    .cs-hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cs-badge {
       display: inline-block;
-      padding: 0.4rem 1.2rem;
-      background: rgba(37, 99, 235, 0.15);
-      border: 1px solid rgba(37, 99, 235, 0.3);
-      color: var(--accent-color);
-      font-size: 0.7rem;
+      padding: 0.35rem 1rem;
+      background: rgba(5, 150, 105, 0.15);
+      border: 1px solid rgba(5, 150, 105, 0.3);
+      color: #34d399;
+      font-size: 0.65rem;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
       border-radius: 3px;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
     }
 
-    .coming-soon-title {
-      font-size: 3rem;
+    .cs-title {
+      font-size: 3.2rem;
       font-weight: 700;
       color: var(--text-primary);
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.5px;
+      margin-bottom: 0.75rem;
+      letter-spacing: -1px;
+      line-height: 1.1;
     }
 
-    .coming-soon-subtitle {
-      font-size: 1.1rem;
+    .cs-title span {
+      color: var(--accent-color);
+    }
+
+    .cs-subtitle {
+      font-size: 1.15rem;
       color: var(--text-secondary);
-      max-width: 500px;
-      line-height: 1.6;
-      margin-bottom: 3rem;
+      max-width: 580px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
     }
 
-    .coming-soon-features {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1.5rem;
-      max-width: 700px;
-      width: 100%;
-      margin-bottom: 3rem;
+    .cs-stats {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      margin-bottom: 0;
     }
 
-    .coming-soon-feature {
-      background: var(--surface);
-      border: 1px solid var(--border-color);
-      padding: 1.25rem;
+    .cs-stat {
       text-align: center;
     }
 
-    .coming-soon-feature-title {
+    .cs-stat-value {
+      font-size: 1.75rem;
       font-weight: 700;
       color: var(--text-primary);
+      font-family: 'Courier New', monospace;
+    }
+
+    .cs-stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 0.25rem;
+    }
+
+    /* Section titles */
+    .cs-section {
+      padding: 4rem 2rem;
+    }
+
+    .cs-section-alt {
+      background: var(--surface);
+    }
+
+    .cs-section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .cs-section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+
+    .cs-section-desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* Feature grid */
+    .cs-features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .cs-feature {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .cs-feature:hover {
+      border-color: var(--primary-color);
+      transform: translateY(-2px);
+    }
+
+    .cs-feature-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .cs-feature-title {
       font-size: 0.85rem;
-      margin-bottom: 0.3rem;
+      font-weight: 700;
+      color: var(--text-primary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
     }
 
-    .coming-soon-feature-desc {
+    .cs-feature-desc {
       font-size: 0.8rem;
       color: var(--text-secondary);
-      line-height: 1.4;
+      line-height: 1.5;
     }
 
-    .coming-soon-footer {
-      padding: 1.5rem;
-      border-top: 1px solid var(--border-color);
+    /* Highlight features (wider cards) */
+    .cs-highlights {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .cs-highlight {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      padding: 2rem;
+      display: flex;
+      gap: 1.25rem;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+
+    .cs-highlight:hover {
+      border-color: var(--accent-color);
+    }
+
+    .cs-highlight-icon {
+      font-size: 2rem;
+      flex-shrink: 0;
+      width: 48px;
+      text-align: center;
+    }
+
+    .cs-highlight-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.4rem;
+    }
+
+    .cs-highlight-desc {
       font-size: 0.8rem;
-      color: var(--text-muted);
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .cs-highlight-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+    }
+
+    .cs-tag {
+      font-size: 0.65rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(37, 99, 235, 0.1);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      color: var(--accent-color);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .cs-tag-green {
+      background: rgba(5, 150, 105, 0.1);
+      border-color: rgba(5, 150, 105, 0.2);
+      color: #34d399;
+    }
+
+    .cs-tag-amber {
+      background: rgba(217, 119, 6, 0.1);
+      border-color: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+    }
+
+    /* VATSIM callout */
+    .cs-vatsim {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.02));
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      padding: 2.5rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .cs-vatsim-badge {
+      flex-shrink: 0;
+      padding: 0.75rem 1.25rem;
+      background: var(--primary-color);
+      border: 2px solid var(--accent-color);
+      font-weight: 700;
+      font-size: 1rem;
+      color: white;
+      letter-spacing: 1px;
+    }
+
+    .cs-vatsim-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.3rem;
+    }
+
+    .cs-vatsim-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* Footer */
+    .cs-footer {
+      padding: 1.5rem 2rem;
+      border-top: 1px solid var(--border-color);
       background: var(--surface);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
 
     .dev-bypass-trigger {
@@ -114,18 +308,51 @@
     }
 
     @media (max-width: 768px) {
-      .coming-soon-title {
+      .cs-hero {
+        padding: 3rem 1.5rem 2.5rem;
+      }
+
+      .cs-title {
         font-size: 2rem;
       }
 
-      .coming-soon-features {
+      .cs-stats {
+        gap: 1.5rem;
+      }
+
+      .cs-stat-value {
+        font-size: 1.25rem;
+      }
+
+      .cs-features {
         grid-template-columns: 1fr;
+      }
+
+      .cs-highlights {
+        grid-template-columns: 1fr;
+      }
+
+      .cs-vatsim {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .cs-section {
+        padding: 2.5rem 1.5rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .cs-stats {
+        flex-wrap: wrap;
+        gap: 1rem;
       }
     }
   </style>
 </head>
 <body>
-  <div class="coming-soon-container">
+  <div class="cs-page">
+    <!-- Header -->
     <div class="login-header">
       <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
         <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
@@ -136,31 +363,149 @@
       </div>
     </div>
 
-    <div class="coming-soon-content">
-      <div class="coming-soon-badge">Under Construction</div>
-      <h1 class="coming-soon-title">Coming Soon</h1>
-      <p class="coming-soon-subtitle">
-        We're building something special. AMS.ceo is an airline management simulation
-        integrated with the VATSIM flight simulation network.
+    <!-- Hero -->
+    <div class="cs-hero">
+      <div class="cs-badge">Early Access</div>
+      <h1 class="cs-title">Build Your <span>Airline Empire</span></h1>
+      <p class="cs-subtitle">
+        A deep airline management simulation integrated with the VATSIM flight simulation network.
+        Manage fleets, plan routes, compete with real players, and track live flights across the globe.
       </p>
-
-      <div class="coming-soon-features">
-        <div class="coming-soon-feature">
-          <div class="coming-soon-feature-title">Fleet Management</div>
-          <div class="coming-soon-feature-desc">Purchase aircraft, manage maintenance, and optimise utilisation</div>
+      <div class="cs-stats">
+        <div class="cs-stat">
+          <div class="cs-stat-value">12,000+</div>
+          <div class="cs-stat-label">Real Airports</div>
         </div>
-        <div class="coming-soon-feature">
-          <div class="coming-soon-feature-title">Route Network</div>
-          <div class="coming-soon-feature-desc">Build routes across thousands of real-world airports</div>
+        <div class="cs-stat">
+          <div class="cs-stat-value">50+</div>
+          <div class="cs-stat-label">Aircraft Types</div>
         </div>
-        <div class="coming-soon-feature">
-          <div class="coming-soon-feature-title">VATSIM Integration</div>
-          <div class="coming-soon-feature-desc">Live flight tracking and network data</div>
+        <div class="cs-stat">
+          <div class="cs-stat-value">Live</div>
+          <div class="cs-stat-label">VATSIM Tracking</div>
+        </div>
+        <div class="cs-stat">
+          <div class="cs-stat-value">1961+</div>
+          <div class="cs-stat-label">Era Simulation</div>
         </div>
       </div>
     </div>
 
-    <div class="coming-soon-footer">
+    <!-- Core Features -->
+    <div class="cs-section cs-section-alt">
+      <div class="cs-section-header">
+        <h2 class="cs-section-title">Core Systems</h2>
+        <p class="cs-section-desc">Everything you need to run a competitive airline from the ground up</p>
+      </div>
+      <div class="cs-features">
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#9992;</span>
+          <div class="cs-feature-title">Fleet Management</div>
+          <div class="cs-feature-desc">Purchase, lease, and maintain aircraft. Manage A/B/C/D checks, assign registrations, and optimise fleet utilisation across your route network.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#127760;</span>
+          <div class="cs-feature-title">Route Network</div>
+          <div class="cs-feature-desc">Build routes across real-world airports with realistic ATC waypoint routing via airways, SIDs, STARs, and North Atlantic Tracks.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#128176;</span>
+          <div class="cs-feature-title">Financial Management</div>
+          <div class="cs-feature-desc">Track weekly revenue, costs, and profit. Detailed breakdowns for fuel, crew, maintenance, airport fees, and staff salaries.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#128101;</span>
+          <div class="cs-feature-title">Staff & Operations</div>
+          <div class="cs-feature-desc">Manage departments including pilots, cabin crew, engineering, and ground services. Set salary levels and outsource contractors.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#127970;</span>
+          <div class="cs-feature-title">Banking & Loans</div>
+          <div class="cs-feature-desc">Apply for loans from multiple banks with dynamic interest rates based on your airline's credit score, reputation, and profitability.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#128200;</span>
+          <div class="cs-feature-title">Competition</div>
+          <div class="cs-feature-desc">Compete against real players and AI airlines. Track competitor routes, pricing, and performance. Climb the revenue leaderboard.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Highlight Features -->
+    <div class="cs-section">
+      <div class="cs-section-header">
+        <h2 class="cs-section-title">What Sets AMS Apart</h2>
+      </div>
+      <div class="cs-highlights">
+        <div class="cs-highlight">
+          <div class="cs-highlight-icon">&#128506;</div>
+          <div>
+            <div class="cs-highlight-title">Interactive World Map</div>
+            <div class="cs-highlight-desc">Live visualisation of your airline's operations. See routes, competitor activity, airport demand heatmaps, FIR boundaries, and NAT tracks overlaid on a real-world map.</div>
+            <div class="cs-highlight-tags">
+              <span class="cs-tag">Live Flights</span>
+              <span class="cs-tag">FIR Zones</span>
+              <span class="cs-tag">NAT Tracks</span>
+              <span class="cs-tag">Demand Data</span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-highlight">
+          <div class="cs-highlight-icon">&#128337;</div>
+          <div>
+            <div class="cs-highlight-title">Era-Based Worlds</div>
+            <div class="cs-highlight-desc">Start your airline from 1961 or any era. Aircraft availability, economics, airport access, and ticket prices all scale with the time period. Watch aviation history unfold.</div>
+            <div class="cs-highlight-tags">
+              <span class="cs-tag-amber cs-tag">Time Acceleration</span>
+              <span class="cs-tag-amber cs-tag">Dynamic Economy</span>
+              <span class="cs-tag-amber cs-tag">Historical Aircraft</span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-highlight">
+          <div class="cs-highlight-icon">&#128722;</div>
+          <div>
+            <div class="cs-highlight-title">Aircraft Marketplace</div>
+            <div class="cs-highlight-desc">Browse and purchase from a catalogue of real aircraft types. Sell surplus fleet on the open market or lease aircraft to other airlines for passive income.</div>
+            <div class="cs-highlight-tags">
+              <span class="cs-tag-green cs-tag">Buy & Sell</span>
+              <span class="cs-tag-green cs-tag">Leasing</span>
+              <span class="cs-tag-green cs-tag">Market Pricing</span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-highlight">
+          <div class="cs-highlight-icon">&#127919;</div>
+          <div>
+            <div class="cs-highlight-title">Multiplayer & Singleplayer</div>
+            <div class="cs-highlight-desc">Join public multiplayer worlds and compete head-to-head, or create a private singleplayer world with AI competitors at adjustable difficulty levels.</div>
+            <div class="cs-highlight-tags">
+              <span class="cs-tag">Public Worlds</span>
+              <span class="cs-tag">AI Airlines</span>
+              <span class="cs-tag">Difficulty Levels</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VATSIM Integration -->
+    <div class="cs-section cs-section-alt">
+      <div class="cs-vatsim">
+        <div class="cs-vatsim-badge">VATSIM</div>
+        <div>
+          <div class="cs-vatsim-title">Powered by the VATSIM Network</div>
+          <div class="cs-vatsim-desc">
+            Log in with your VATSIM account. AMS.ceo tracks live flights on the network in real-time,
+            connecting your simulation airline with the world's largest online flight simulation community.
+            Flights on VATSIM count towards your airline's operations.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="cs-footer">
       <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
       <button onclick="devBypassLogin()" style="
         background: none;
@@ -175,7 +520,7 @@
     </div>
   </div>
 
-  <!-- Hidden dev bypass trigger (bottom-right corner) -->
+  <!-- Hidden dev bypass trigger -->
   <button class="dev-bypass-trigger" id="devTrigger" title="" onclick="devBypassLogin()"></button>
 
   <!-- Dev Bypass Password Modal -->

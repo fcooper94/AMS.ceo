@@ -718,10 +718,23 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // Load available airports for destination selection
 async function loadAvailableAirports() {
   try {
-    const response = await fetch('/api/world/airports');
-    if (response.ok) {
-      const data = await response.json();
-      const airports = data.airports || data; // Support both new and old format
+    // Show loading state
+    document.getElementById('availableAirportsList').innerHTML = `
+      <div style="padding: 3rem; text-align: center; color: var(--text-muted);">
+        <div style="margin-bottom: 0.5rem;">Loading airports & demand data...</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">This may take a moment on first load</div>
+      </div>
+    `;
+
+    // Fetch airports and demand in parallel
+    const [airportsResponse, demandResponse] = await Promise.all([
+      fetch('/api/world/airports'),
+      fetch(`/api/world/airports/${baseAirport.id}/demand?limit=500`)
+    ]);
+
+    if (airportsResponse.ok) {
+      const data = await airportsResponse.json();
+      const airports = data.airports || data;
 
       // Filter out the base airport and calculate distances
       availableAirports = airports
@@ -736,13 +749,37 @@ async function loadAvailableAirports() {
           return { ...airport, distance };
         });
 
-      // Populate filters and display immediately (don't wait for demand)
+      // Process demand data if available
+      if (demandResponse.ok) {
+        const demandData = await demandResponse.json();
+        if (demandData.destinations) {
+          demandData.destinations.forEach(dest => {
+            if (dest.airport) {
+              demandDataCache[dest.airport.id] = {
+                demand: dest.demand,
+                demandCategory: dest.demandCategory,
+                routeType: dest.routeType,
+                indicators: dest.indicators || null
+              };
+            }
+          });
+        }
+        // Mark remaining airports as having no demand
+        availableAirports.forEach(airport => {
+          if (!demandDataCache[airport.id]) {
+            demandDataCache[airport.id] = {
+              demand: 0,
+              demandCategory: 'none',
+              routeType: null
+            };
+          }
+        });
+      }
+
+      // Now display everything at once
       populateCountryFilter();
       populateTimezoneFilter();
       applyDestinationFilters();
-
-      // Load demand in background, re-sort when ready
-      loadDemandForAirports(availableAirports).then(() => applyDestinationFilters());
     }
   } catch (error) {
     console.error('Error loading airports:', error);
