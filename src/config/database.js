@@ -4,15 +4,21 @@ const { Sequelize } = require('sequelize');
 let sequelize;
 
 if (process.env.DATABASE_URL) {
+  // Detect Railway private networking (internal URLs use .railway.internal)
+  const isPrivateNetwork = process.env.DATABASE_URL.includes('.railway.internal');
+
   // Use Railway's connection string
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      },
+      // Only use SSL for public proxy connections, not private networking
+      ...(isPrivateNetwork ? {} : {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }),
       // Keep connection alive
       keepAlive: true,
       statement_timeout: 30000,

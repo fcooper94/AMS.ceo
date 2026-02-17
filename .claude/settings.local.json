@@ -60,7 +60,25 @@
       "WebFetch(domain:forum.navigraph.com)",
       "WebFetch(domain:developers.navigraph.com)",
       "WebFetch(domain:www.fly.faa.gov)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(where:*)",
+      "Bash(\"C:/Program Files/PostgreSQL/17/bin/psql\" --version)",
+      "Bash(\"C:/Program Files/PostgreSQL/16/bin/psql\" --version)",
+      "Bash(\"C:/Program Files/PostgreSQL/15/bin/psql\" --version)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\" --version)",
+      "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/18/bin/createdb\":*)",
+      "Bash(PGPASSWORD='!_Q1w2e3r4t5y6_!' \"/c/Program Files/PostgreSQL/18/bin/createdb\":*)",
+      "Bash(PGPASSWORD='!_Q1w2e3r4t5y6_!' \"/c/Program Files/PostgreSQL/18/bin/psql\":*)",
+      "Bash(PGPASSWORD='Q1w2e3r4t5y6' \"/c/Program Files/PostgreSQL/18/bin/psql\":*)",
+      "Bash(PGPASSWORD='!_q1w2e3r4t5y6_!' \"/c/Program Files/PostgreSQL/18/bin/psql\":*)",
+      "Bash(# Check if PostgreSQL service is running sc query postgresql-x64-18 || net start)",
+      "Bash(export PGPASSWORD='!_Q1w2e3r4t5y6_!')",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\" -U postgres -h 127.0.0.1 -p 5432 -c \"SELECT 1\")",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\":*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/createdb\" -U postgres -h 127.0.0.1 airline_control)",
+      "Bash(PGPASSWORD='jDRZMptMpBRUAxwWIpMKrhJixYnTJbyU' \"/c/Program Files/PostgreSQL/18/bin/pg_dump\":*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/pg_restore\" -U postgres -h 127.0.0.1 -d airline_control --no-owner --no-acl /tmp/railway_dump.backup)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\" -U postgres -h 127.0.0.1 -d airline_control -c \"SELECT tablename FROM pg_tables WHERE schemaname=''public'' ORDER BY tablename;\")"
     ]
   }
 }

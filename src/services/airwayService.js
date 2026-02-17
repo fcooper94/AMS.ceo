@@ -265,12 +265,13 @@ class AirwayService {
         this.graph.addNode(endId, { lat: endLat, lng: endLng });
       }
 
+      const airwayName = parts[9] || null;
       const dist = this._haversine(startLat, startLng, endLat, endLng);
       if (!this.graph.hasLink(startId, endId)) {
-        this.graph.addLink(startId, endId, { weight: dist });
+        this.graph.addLink(startId, endId, { weight: dist, airway: airwayName });
       }
       if (!this.graph.hasLink(endId, startId)) {
-        this.graph.addLink(endId, startId, { weight: dist });
+        this.graph.addLink(endId, startId, { weight: dist, airway: airwayName });
       }
 
       segmentCount++;
@@ -506,6 +507,11 @@ class AirwayService {
     const crossings = this._detectFirCrossings(depLat, depLng, arrLat, arrLng);
     const segments = this._buildFirSegments(crossings, depLat, depLng, arrLat, arrLng);
 
+    // Check if the overall great circle naturally passes through the NAT corridor
+    // Only allow NAT track routing if the route's midpoint is in the corridor
+    const gcMid = this._interpolateGreatCircle(depLat, depLng, arrLat, arrLng, 0.5);
+    const routeSuitsNat = this.natTracks && this._isInNatCorridor(gcMid.lat, gcMid.lng);
+
     // Route each segment, merging consecutive avoided segments into bypass zones
     const rawWaypoints = [];
     let i = 0;
@@ -545,11 +551,11 @@ class AirwayService {
         continue;
       }
 
-      // Check if this is a NAT corridor segment (not dep/arr)
+      // Check if this is a NAT corridor segment (not dep/arr, and overall route suits NAT)
       const segMidLat = (seg.entryLat + seg.exitLat) / 2;
       const segMidLng = (seg.entryLng + seg.exitLng) / 2;
-      const inNatCorridor = !seg.isDeparture && !seg.isArrival
-        && this.natTracks && this._isInNatCorridor(segMidLat, segMidLng);
+      const inNatCorridor = routeSuitsNat && !seg.isDeparture && !seg.isArrival
+        && this._isInNatCorridor(segMidLat, segMidLng);
 
       if (inNatCorridor) {
         // Merge consecutive NAT corridor segments into one super-segment
@@ -1429,10 +1435,16 @@ class AirwayService {
       const waypoints = [];
       for (let i = 0; i < graphPath.length; i++) {
         const n = graphPath[i];
-        waypoints.push({ lat: n.data.lat, lng: n.data.lng, name: n.id });
+        // Look up the airway name from the link to the next node
+        let airway = null;
         if (i < graphPath.length - 1) {
+          const link = this.graph.getLink(n.id, graphPath[i + 1].id);
+          if (link && link.data && link.data.airway) {
+            airway = link.data.airway;
+          }
           cost += this._haversine(n.data.lat, n.data.lng, graphPath[i + 1].data.lat, graphPath[i + 1].data.lng);
         }
+        waypoints.push({ lat: n.data.lat, lng: n.data.lng, name: n.id, airway });
       }
 
       // Reject if path is wildly longer than direct between entry/exit

@@ -736,15 +736,13 @@ async function loadAvailableAirports() {
           return { ...airport, distance };
         });
 
-      // Populate country and timezone filters
+      // Populate filters and display immediately (don't wait for demand)
       populateCountryFilter();
       populateTimezoneFilter();
-
-      // Load demand data first, then display airports (avoids reordering flash)
-      await loadDemandForAirports(availableAirports);
-
-      // Display airports (now with demand data for proper sorting)
       applyDestinationFilters();
+
+      // Load demand in background, re-sort when ready
+      loadDemandForAirports(availableAirports).then(() => applyDestinationFilters());
     }
   } catch (error) {
     console.error('Error loading airports:', error);
@@ -2456,6 +2454,7 @@ function updateAutoAtcInfoPanel() {
     const parts = [];
     let inNat = false;
     let natEntry = null;
+    let currentAirway = null;
     for (let i = 0; i < innerWps.length; i++) {
       const wp = innerWps[i];
       if (wp.natTrack) {
@@ -2471,10 +2470,17 @@ function updateAutoAtcInfoPanel() {
       } else {
         inNat = false;
         parts.push(wp.name);
+        // Insert airway identifier after this fix if it changes from what was last shown
+        if (wp.airway && wp.airway !== currentAirway) {
+          parts.push(wp.airway);
+          currentAirway = wp.airway;
+        } else if (!wp.airway) {
+          currentAirway = null;
+        }
       }
     }
     const routeStr = parts.join(' ');
-    textEl.textContent = `ATC Route: ${routeStr} (${innerWps.length} waypoints)`;
+    textEl.textContent = `ATC Route: ${routeStr}`;
     infoEl.style.display = 'block';
   } else {
     textEl.textContent = 'ATC Route: Direct (too short for waypoints)';

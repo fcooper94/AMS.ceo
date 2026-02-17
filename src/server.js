@@ -138,6 +138,7 @@ const airspaceRoutes = require('./routes/airspace');
 // Import services
 const worldTimeService = require('./services/worldTimeService');
 const airwayService = require('./services/airwayService');
+const airportCacheService = require('./services/airportCacheService');
 
 // Helper function to render pages with base layout
 async function renderPage(pagePath, requestPath) {
@@ -527,6 +528,20 @@ server.listen(PORT, async () => {
   const worldStarted = await worldTimeService.startAll();
   if (!worldStarted && process.env.NODE_ENV === 'development') {
     console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
+  }
+
+  // Pre-warm airport cache for all active worlds (non-blocking)
+  if (worldStarted) {
+    const { World } = require('./models');
+    World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
+      for (const world of worlds) {
+        airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
+          console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
+        }).catch(err => {
+          console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
+        });
+      }
+    }).catch(() => {});
   }
 });
 
