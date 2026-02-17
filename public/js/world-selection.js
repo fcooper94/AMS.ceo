@@ -1249,7 +1249,7 @@ async function confirmRejoin() {
 
     if (response.ok) {
       closeRejoinModal();
-      enterWorld(rejoinWorldId);
+      enterWorld(rejoinWorldId, 'Joining world...');
     } else {
       const data = await response.json();
       errorDiv.textContent = data.error || 'Failed to rejoin world.';
@@ -1263,9 +1263,9 @@ async function confirmRejoin() {
 }
 
 // Enter world (navigate to dashboard with world context)
-async function enterWorld(worldId) {
+async function enterWorld(worldId, message) {
   // Show loading overlay
-  showLoadingOverlay('Joining world...');
+  showLoadingOverlay(message || 'Opening world...');
 
   try {
     // Set the active world in the session

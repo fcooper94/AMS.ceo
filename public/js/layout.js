@@ -185,8 +185,16 @@ if (socket) {
 // Load user information for navigation bar
 async function loadUserInfo() {
   try {
-    const response = await fetch('/auth/status');
-    const data = await response.json();
+    // Fire both requests in parallel — world info will 404 if no session, which is fine
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/faqs', '/credits'];
+    const needsWorldInfo = !noWorldInfoPages.includes(window.location.pathname);
+
+    const [authResponse, worldResponse] = await Promise.all([
+      fetch('/auth/status'),
+      needsWorldInfo ? fetch('/api/world/info') : Promise.resolve(null)
+    ]);
+
+    const data = await authResponse.json();
 
     if (data.authenticated) {
       // Update user info in navigation
@@ -240,8 +248,10 @@ async function loadUserInfo() {
         }
       }
 
-      // Load world information if user is in an active world
-      loadWorldInfo();
+      // Process world info that was fetched in parallel
+      if (worldResponse) {
+        processWorldInfoResponse(worldResponse);
+      }
     } else {
       // Redirect to login if not authenticated (only on protected pages)
       // Public pages that don't require authentication
@@ -255,7 +265,190 @@ async function loadUserInfo() {
   }
 }
 
-// Load world information for navigation bar
+// Apply world info data to the UI (shared by initial load and periodic refresh)
+function applyWorldInfo(worldInfo) {
+  // Store current world ID for filtering Socket.IO events
+  currentWorldId = worldInfo.id;
+
+  // Update world name
+  const worldNameEl = document.getElementById('worldName');
+  if (worldNameEl) {
+    worldNameEl.textContent = worldInfo.name || '--';
+  }
+
+  // Update time acceleration and pause state
+  worldTimeAcceleration = worldInfo.timeAcceleration || 60;
+  worldIsPausedGlobal = !!worldInfo.isPaused;
+  updateNavbarPausedState(worldIsPausedGlobal);
+
+  // Update time reference with validation (Socket.IO takes precedence)
+  updateTimeReference(worldInfo.currentTime, 'api');
+
+  // Update balance
+  const worldBalanceEl = document.getElementById('worldBalance');
+  if (worldBalanceEl) {
+    const balance = Number(worldInfo.balance) || 0;
+    worldBalanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
+    if (balance < 0) {
+      worldBalanceEl.style.color = 'var(--warning-color)';
+    } else if (balance < 100000) {
+      worldBalanceEl.style.color = 'var(--text-secondary)';
+    } else {
+      worldBalanceEl.style.color = 'var(--success-color)';
+    }
+  }
+
+  // Update airline information in sidebar
+  const airlineInfoEl = document.getElementById('airlineInfo');
+  const airlineNameEl = document.getElementById('airlineName');
+  const airlineCodeEl = document.getElementById('airlineCode');
+
+  if (airlineInfoEl && worldInfo.airlineName) {
+    airlineInfoEl.style.display = 'block';
+
+    if (airlineNameEl) {
+      airlineNameEl.textContent = worldInfo.airlineName;
+    }
+
+    if (airlineCodeEl) {
+      const codes = [];
+      if (worldInfo.iataCode) codes.push(worldInfo.iataCode);
+      if (worldInfo.airlineCode) codes.push(worldInfo.airlineCode);
+      airlineCodeEl.textContent = codes.length > 0 ? codes.join(' / ') : '--';
+    }
+
+    // Update reputation display
+    const repEl = document.getElementById('airlineReputation');
+    const repValue = document.getElementById('reputationValue');
+    const repBar = document.getElementById('reputationBar');
+    if (repEl && worldInfo.reputation !== undefined) {
+      repEl.style.display = 'block';
+      const rep = Math.round(worldInfo.reputation) || 0;
+      repValue.textContent = rep + '/100';
+      repBar.style.width = rep + '%';
+      if (rep >= 70) { repValue.style.color = 'var(--success-color)'; repBar.style.backgroundColor = 'var(--success-color)'; }
+      else if (rep >= 50) { repValue.style.color = 'var(--accent-color)'; repBar.style.backgroundColor = 'var(--accent-color)'; }
+      else if (rep >= 30) { repValue.style.color = 'var(--warning-color)'; repBar.style.backgroundColor = 'var(--warning-color)'; }
+      else { repValue.style.color = 'var(--danger-color)'; repBar.style.backgroundColor = 'var(--danger-color)'; }
+
+      // Build breakdown tooltip
+      const tooltip = document.getElementById('reputationTooltip');
+      if (tooltip) {
+        if (worldInfo.reputationBreakdown && worldInfo.reputationBreakdown.length > 0) {
+          const ratingColor = (rating) => {
+            if (rating === 'Excellent') return 'var(--success-color)';
+            if (rating === 'Good') return 'var(--accent-color)';
+            if (rating === 'Average') return 'var(--warning-color)';
+            return 'var(--danger-color)';
+          };
+          let html = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div>';
+          for (const item of worldInfo.reputationBreakdown) {
+            const pct = Math.round((item.score / item.max) * 100);
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+              <span style="font-size:0.7rem;color:var(--text-secondary);">${item.label}</span>
+              <span style="font-size:0.65rem;font-weight:600;color:${ratingColor(item.rating)};">${item.score}/${item.max}</span>
+            </div>
+            <div style="width:100%;height:3px;background:var(--surface);border-radius:2px;overflow:hidden;margin-bottom:6px;">
+              <div style="height:100%;width:${pct}%;background:${ratingColor(item.rating)};border-radius:2px;"></div>
+            </div>`;
+          }
+          tooltip.innerHTML = html;
+        } else {
+          tooltip.innerHTML = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div><div style="font-size:0.7rem;color:var(--text-muted);">Breakdown will appear after your airline has been operating for a while.</div>';
+        }
+      }
+    }
+  }
+
+  // Set up real-time clock if not already running
+  if (!worldClockInterval) {
+    startRealTimeClock();
+  }
+
+  // Check if world is ending within 6 game months - show banner
+  const endBanner = document.getElementById('worldEndingBanner');
+  const endMessage = document.getElementById('worldEndingMessage');
+  if (endBanner && endMessage && worldInfo.endDate) {
+    const endDate = new Date(worldInfo.endDate);
+    const gameTime = new Date(worldInfo.currentTime);
+    const sixMonthsMs = 6 * 30 * 24 * 60 * 60 * 1000;
+    const timeRemaining = endDate.getTime() - gameTime.getTime();
+
+    if (timeRemaining <= sixMonthsMs && timeRemaining > 0) {
+      const endFormatted = endDate.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+      endMessage.textContent = `This world will end at 23:59 on ${endFormatted}`;
+      endBanner.style.display = 'flex';
+    } else if (timeRemaining <= 0) {
+      endMessage.textContent = 'This world has ended';
+      endBanner.style.display = 'flex';
+    } else {
+      endBanner.style.display = 'none';
+    }
+  } else if (endBanner) {
+    endBanner.style.display = 'none';
+  }
+
+  // Check if airline is in free period - show banner
+  const freeBanner = document.getElementById('freePeriodBanner');
+  const freeMessage = document.getElementById('freePeriodMessage');
+  if (freeBanner && freeMessage && worldInfo.freeWeeks > 0 && worldInfo.lastCreditDeduction) {
+    const gameTime = new Date(worldInfo.currentTime);
+    const creditDeductionStart = new Date(worldInfo.lastCreditDeduction);
+    const yearGap = Math.abs(creditDeductionStart.getFullYear() - gameTime.getFullYear());
+
+    if (yearGap < 20 && gameTime < creditDeductionStart) {
+      const deductionFormatted = creditDeductionStart.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+      const cost = worldInfo.weeklyCost !== undefined ? worldInfo.weeklyCost : 1;
+      freeMessage.textContent = `You are in your free period. From ${deductionFormatted} you will be deducted ${cost} credit${cost !== 1 ? 's' : ''} per week.`;
+      freeBanner.style.display = 'flex';
+    } else {
+      freeBanner.style.display = 'none';
+    }
+  } else if (freeBanner) {
+    freeBanner.style.display = 'none';
+  }
+
+  // Show deferred low credits banner (so all banners appear together)
+  const lowCreditsBannerDeferred = document.getElementById('lowCreditsBanner');
+  if (lowCreditsBannerDeferred) {
+    lowCreditsBannerDeferred.style.display = lowCreditsBannerDeferred.dataset.shouldShow ? 'flex' : 'none';
+  }
+
+  // Show navigation menu when world is active
+  const navMenu = document.querySelector('.nav-menu');
+  if (navMenu) {
+    navMenu.style.display = 'block';
+  }
+}
+
+// Process a pre-fetched world info response (from parallel loading)
+async function processWorldInfoResponse(response) {
+  try {
+    worldInfoFetchInProgress = true;
+    const worldInfo = await response.json();
+    if (response.ok && worldInfo && !worldInfo.error) {
+      applyWorldInfo(worldInfo);
+    } else {
+      console.warn('[Layout] No world data received or error:', worldInfo);
+      const navMenu = document.querySelector('.nav-menu');
+      if (navMenu) navMenu.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('[Layout] Error processing world info:', error);
+  } finally {
+    worldInfoFetchInProgress = false;
+  }
+}
+
+// Load world information for navigation bar (used by periodic refresh)
 async function loadWorldInfo() {
   // Prevent concurrent fetches to avoid race conditions
   if (worldInfoFetchInProgress) {
@@ -297,182 +490,7 @@ async function loadWorldInfo() {
     }
 
     if (response.ok && worldInfo && !worldInfo.error) {
-      console.log('[Layout] World info received:', {
-        id: worldInfo.id,
-        name: worldInfo.name,
-        currentTime: worldInfo.currentTime,
-        acceleration: worldInfo.timeAcceleration,
-        balance: worldInfo.balance
-      });
-
-      // Store current world ID for filtering Socket.IO events
-      currentWorldId = worldInfo.id;
-      console.log('[Layout] Current world ID set to:', currentWorldId);
-
-      // Update world information
-      const worldNameEl = document.getElementById('worldName');
-      if (worldNameEl) {
-        worldNameEl.textContent = worldInfo.name || '--';
-      }
-
-      // Update time acceleration and pause state
-      worldTimeAcceleration = worldInfo.timeAcceleration || 60;
-      worldIsPausedGlobal = !!worldInfo.isPaused;
-      updateNavbarPausedState(worldIsPausedGlobal);
-
-      // Update time reference with validation (Socket.IO takes precedence)
-      updateTimeReference(worldInfo.currentTime, 'api');
-
-      // Update balance
-      const worldBalanceEl = document.getElementById('worldBalance');
-      if (worldBalanceEl) {
-        const balance = Number(worldInfo.balance) || 0;
-        worldBalanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
-
-        // Color code balance based on value
-        if (balance < 0) {
-          worldBalanceEl.style.color = 'var(--warning-color)';
-        } else if (balance < 100000) {
-          worldBalanceEl.style.color = 'var(--text-secondary)';
-        } else {
-          worldBalanceEl.style.color = 'var(--success-color)';
-        }
-      }
-
-      // Update airline information in sidebar
-      const airlineInfoEl = document.getElementById('airlineInfo');
-      const airlineNameEl = document.getElementById('airlineName');
-      const airlineCodeEl = document.getElementById('airlineCode');
-
-      if (airlineInfoEl && worldInfo.airlineName) {
-        airlineInfoEl.style.display = 'block';
-
-        if (airlineNameEl) {
-          airlineNameEl.textContent = worldInfo.airlineName;
-        }
-
-        if (airlineCodeEl) {
-          const codes = [];
-          if (worldInfo.iataCode) codes.push(worldInfo.iataCode);
-          if (worldInfo.airlineCode) codes.push(worldInfo.airlineCode);
-          airlineCodeEl.textContent = codes.length > 0 ? codes.join(' / ') : '--';
-        }
-
-        // Update reputation display
-        const repEl = document.getElementById('airlineReputation');
-        const repValue = document.getElementById('reputationValue');
-        const repBar = document.getElementById('reputationBar');
-        if (repEl && worldInfo.reputation !== undefined) {
-          repEl.style.display = 'block';
-          const rep = Math.round(worldInfo.reputation) || 0;
-          repValue.textContent = rep + '/100';
-          repBar.style.width = rep + '%';
-          // Color: red < 30, orange < 50, yellow < 70, green >= 70
-          if (rep >= 70) { repValue.style.color = 'var(--success-color)'; repBar.style.backgroundColor = 'var(--success-color)'; }
-          else if (rep >= 50) { repValue.style.color = 'var(--accent-color)'; repBar.style.backgroundColor = 'var(--accent-color)'; }
-          else if (rep >= 30) { repValue.style.color = 'var(--warning-color)'; repBar.style.backgroundColor = 'var(--warning-color)'; }
-          else { repValue.style.color = 'var(--danger-color)'; repBar.style.backgroundColor = 'var(--danger-color)'; }
-
-          // Build breakdown tooltip
-          const tooltip = document.getElementById('reputationTooltip');
-          if (tooltip) {
-            if (worldInfo.reputationBreakdown && worldInfo.reputationBreakdown.length > 0) {
-              const ratingColor = (rating) => {
-                if (rating === 'Excellent') return 'var(--success-color)';
-                if (rating === 'Good') return 'var(--accent-color)';
-                if (rating === 'Average') return 'var(--warning-color)';
-                return 'var(--danger-color)';
-              };
-              let html = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div>';
-              for (const item of worldInfo.reputationBreakdown) {
-                const pct = Math.round((item.score / item.max) * 100);
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-                  <span style="font-size:0.7rem;color:var(--text-secondary);">${item.label}</span>
-                  <span style="font-size:0.65rem;font-weight:600;color:${ratingColor(item.rating)};">${item.score}/${item.max}</span>
-                </div>
-                <div style="width:100%;height:3px;background:var(--surface);border-radius:2px;overflow:hidden;margin-bottom:6px;">
-                  <div style="height:100%;width:${pct}%;background:${ratingColor(item.rating)};border-radius:2px;"></div>
-                </div>`;
-              }
-              tooltip.innerHTML = html;
-            } else {
-              tooltip.innerHTML = '<div style="font-weight:700;margin-bottom:6px;font-size:0.75rem;color:var(--text-primary);">Reputation Breakdown</div><div style="font-size:0.7rem;color:var(--text-muted);">Breakdown will appear after your airline has been operating for a while.</div>';
-            }
-          }
-        }
-      }
-
-      // Set up real-time clock if not already running
-      if (!worldClockInterval) {
-        startRealTimeClock();
-      }
-
-      // Check if world is ending within 6 game months - show banner
-      const endBanner = document.getElementById('worldEndingBanner');
-      const endMessage = document.getElementById('worldEndingMessage');
-      if (endBanner && endMessage && worldInfo.endDate) {
-        const endDate = new Date(worldInfo.endDate);
-        const gameTime = new Date(worldInfo.currentTime);
-        const sixMonthsMs = 6 * 30 * 24 * 60 * 60 * 1000;
-        const timeRemaining = endDate.getTime() - gameTime.getTime();
-
-        if (timeRemaining <= sixMonthsMs && timeRemaining > 0) {
-          const endFormatted = endDate.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
-          });
-          endMessage.textContent = `This world will end at 23:59 on ${endFormatted}`;
-          endBanner.style.display = 'flex';
-        } else if (timeRemaining <= 0) {
-          endMessage.textContent = 'This world has ended';
-          endBanner.style.display = 'flex';
-        } else {
-          endBanner.style.display = 'none';
-        }
-      } else if (endBanner) {
-        endBanner.style.display = 'none';
-      }
-
-      // Check if airline is in free period - show banner
-      const freeBanner = document.getElementById('freePeriodBanner');
-      const freeMessage = document.getElementById('freePeriodMessage');
-      if (freeBanner && freeMessage && worldInfo.freeWeeks > 0 && worldInfo.lastCreditDeduction) {
-        const gameTime = new Date(worldInfo.currentTime);
-        const creditDeductionStart = new Date(worldInfo.lastCreditDeduction);
-
-        // Validate that lastCreditDeduction is a game-era date, not a real-world timestamp
-        // If the year gap is more than 20 years, the data is stale/invalid
-        const yearGap = Math.abs(creditDeductionStart.getFullYear() - gameTime.getFullYear());
-
-        if (yearGap < 20 && gameTime < creditDeductionStart) {
-          // Still in free period
-          const deductionFormatted = creditDeductionStart.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
-          });
-          const cost = worldInfo.weeklyCost !== undefined ? worldInfo.weeklyCost : 1;
-          freeMessage.textContent = `You are in your free period. From ${deductionFormatted} you will be deducted ${cost} credit${cost !== 1 ? 's' : ''} per week.`;
-          freeBanner.style.display = 'flex';
-        } else {
-          freeBanner.style.display = 'none';
-        }
-      } else if (freeBanner) {
-        freeBanner.style.display = 'none';
-      }
-
-      // Show deferred low credits banner (so all banners appear together)
-      const lowCreditsBannerDeferred = document.getElementById('lowCreditsBanner');
-      if (lowCreditsBannerDeferred) {
-        lowCreditsBannerDeferred.style.display = lowCreditsBannerDeferred.dataset.shouldShow ? 'flex' : 'none';
-      }
-
-      // Show navigation menu when world is active
-      const navMenu = document.querySelector('.nav-menu');
-      if (navMenu) {
-        navMenu.style.display = 'block';
-      }
+      applyWorldInfo(worldInfo);
     } else {
       console.warn('[Layout] No world data received or error:', worldInfo);
 

@@ -25,34 +25,37 @@ router.get('/info', async (req, res) => {
       });
     }
 
-    // Get the specific world
-    const world = await World.findByPk(activeWorldId);
+    // Single query: get membership with world and airport in one go
+    let world = null;
+    let membership = null;
+    let baseAirport = null;
+
+    if (req.user) {
+      membership = await WorldMembership.findOne({
+        where: { worldId: activeWorldId },
+        include: [
+          { model: User, as: 'user', where: { vatsimId: req.user.vatsimId }, attributes: [] },
+          { model: World, as: 'world' },
+          { model: Airport, as: 'baseAirport' }
+        ]
+      });
+
+      if (membership) {
+        world = membership.world;
+        baseAirport = membership.baseAirport;
+      }
+    }
+
+    // Fallback: if no membership found, just load the world
+    if (!world) {
+      world = await World.findByPk(activeWorldId);
+    }
 
     if (!world) {
       return res.status(404).json({
         error: 'World not found',
         message: 'The selected world does not exist'
       });
-    }
-
-    // Get user's membership data for this world (for balance info)
-    let membership = null;
-    let baseAirport = null;
-    if (req.user) {
-      const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
-      if (user) {
-        membership = await WorldMembership.findOne({
-          where: { userId: user.id, worldId: activeWorldId },
-          include: [{
-            model: Airport,
-            as: 'baseAirport'
-          }]
-        });
-
-        if (membership && membership.baseAirport) {
-          baseAirport = membership.baseAirport;
-        }
-      }
     }
 
     // Get the current time from worldTimeService (always up-to-date in memory)
