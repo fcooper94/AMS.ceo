@@ -15,13 +15,10 @@ router.get('/notifications', async (req, res) => {
       return res.status(400).json({ error: 'No active world selected' });
     }
 
-    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
+    // Single query to get membership (with user filter)
     const membership = await WorldMembership.findOne({
-      where: { userId: user.id, worldId: activeWorldId }
+      where: { worldId: activeWorldId },
+      include: [{ model: User, as: 'user', where: { vatsimId: req.user.vatsimId }, attributes: [] }]
     });
 
     if (!membership) {
@@ -37,11 +34,21 @@ router.get('/notifications', async (req, res) => {
 
     const notifications = [];
 
-    // --- Fleet checks ---
-    const fleet = await UserAircraft.findAll({
-      where: { worldMembershipId: membership.id, status: ['active', 'maintenance'] },
-      include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'variant'] }]
-    });
+    // --- Fetch fleet, routes, and persistent notifications in parallel ---
+    const [fleet, routes, persistentNotifs] = await Promise.all([
+      UserAircraft.findAll({
+        where: { worldMembershipId: membership.id, status: ['active', 'maintenance'] },
+        include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'variant'] }]
+      }),
+      Route.findAll({
+        where: { worldMembershipId: membership.id, isActive: true }
+      }),
+      Notification.findAll({
+        where: { worldMembershipId: membership.id, isRead: false },
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      })
+    ]);
 
     if (fleet.length === 0) {
       notifications.push({
@@ -55,19 +62,26 @@ router.get('/notifications', async (req, res) => {
     } else {
       // Check for upcoming C/D checks and in-progress heavy maintenance
       const gameNow = new Date(currentTime);
-      const gameDateStr = gameNow.toISOString().split('T')[0];
 
-      // Get all C/D maintenance records for the fleet to detect in-progress checks
+      // Get maintenance records and scheduled flights in parallel
       const allFleetIds = fleet.map(ac => ac.id);
-      const heavyMaint = await RecurringMaintenance.findAll({
-        where: {
-          aircraftId: { [Op.in]: allFleetIds },
-          checkType: ['C', 'D'],
-          status: 'active',
-          scheduledDate: { [Op.ne]: null }
-        },
-        order: [['scheduledDate', 'DESC']]
-      });
+      const activeFleet = fleet.filter(ac => ac.status === 'active');
+      const [heavyMaint, aircraftWithFlights] = await Promise.all([
+        RecurringMaintenance.findAll({
+          where: {
+            aircraftId: { [Op.in]: allFleetIds },
+            checkType: ['C', 'D'],
+            status: 'active',
+            scheduledDate: { [Op.ne]: null }
+          },
+          order: [['scheduledDate', 'DESC']]
+        }),
+        activeFleet.length > 0 ? ScheduledFlight.findAll({
+          where: { aircraft_id: activeFleet.map(a => a.id), is_active: true },
+          attributes: ['aircraft_id'],
+          group: ['aircraft_id']
+        }) : Promise.resolve([])
+      ]);
 
       // Build map of aircraftId -> in-progress check info
       // A check is "in progress" if scheduledDate <= today AND scheduledDate + duration > today
@@ -173,13 +187,7 @@ router.get('/notifications', async (req, res) => {
         }
       }
 
-      // Check for idle aircraft (no scheduled flights) - only active aircraft
-      const activeFleet = fleet.filter(ac => ac.status === 'active');
-      const aircraftWithFlights = activeFleet.length > 0 ? await ScheduledFlight.findAll({
-        where: { aircraft_id: activeFleet.map(a => a.id), is_active: true },
-        attributes: ['aircraft_id'],
-        group: ['aircraft_id']
-      }) : [];
+      // Check for idle aircraft (no scheduled flights) - already fetched in parallel above
       const busyIds = new Set(aircraftWithFlights.map(f => f.aircraft_id));
       const idleAircraft = activeFleet.filter(ac => !busyIds.has(ac.id));
 
@@ -196,11 +204,7 @@ router.get('/notifications', async (req, res) => {
       }
     }
 
-    // --- Route checks ---
-    const routes = await Route.findAll({
-      where: { worldMembershipId: membership.id, isActive: true }
-    });
-
+    // --- Route checks (already fetched in parallel above) ---
     if (routes.length === 0 && fleet.length > 0) {
       notifications.push({
         type: 'operations',
@@ -252,22 +256,13 @@ router.get('/notifications', async (req, res) => {
       });
     }
 
-    // One-time cleanup: dismiss old-format AI notifications
-    await Notification.update(
+    // One-time cleanup: dismiss old-format AI notifications (non-blocking)
+    Notification.update(
       { isRead: true },
       { where: { worldMembershipId: membership.id, isRead: false, title: 'New Competitor Entered Market' } }
-    );
+    ).catch(() => {});
 
-    // Merge persistent notifications (sale/lease events)
-    const persistentNotifs = await Notification.findAll({
-      where: {
-        worldMembershipId: membership.id,
-        isRead: false
-      },
-      order: [['createdAt', 'DESC']],
-      limit: 20
-    });
-
+    // Merge persistent notifications (already fetched in parallel above)
     for (const pn of persistentNotifs) {
       notifications.push({
         id: pn.id,

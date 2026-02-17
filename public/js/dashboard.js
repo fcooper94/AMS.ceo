@@ -62,6 +62,9 @@ async function loadDashboardStats() {
       if (repEl) {
         repEl.textContent = (world.reputation || 0) + '/100';
       }
+
+      // Also set up SP controls from same response (avoids duplicate /api/world/info call)
+      applySPControls(world);
     }
 
     if (fleetRes.ok) {
@@ -401,42 +404,32 @@ function closeNewsModal() {
 
 let worldIsPaused = false;
 
-async function loadSPControls() {
-  try {
-    const res = await fetch('/api/world/info');
-    if (!res.ok) return;
+function applySPControls(world) {
+  if (world.worldType !== 'singleplayer') return;
 
-    const world = await res.json();
-    if (world.worldType !== 'singleplayer') return;
+  const card = document.getElementById('spControlsCard');
+  if (!card) return;
+  card.style.display = 'block';
 
-    const card = document.getElementById('spControlsCard');
-    if (!card) return;
-    card.style.display = 'block';
-
-    // Set current speed
-    const speedSelect = document.getElementById('spSpeedSelect');
-    if (speedSelect) {
-      const currentSpeed = world.timeAcceleration || 60;
-      // Try exact match first, otherwise add custom option
-      const optExists = [...speedSelect.options].some(o => parseInt(o.value) === currentSpeed);
-      if (optExists) {
-        speedSelect.value = String(currentSpeed);
-      } else {
-        const opt = document.createElement('option');
-        opt.value = String(currentSpeed);
-        opt.textContent = currentSpeed + 'x';
-        opt.selected = true;
-        speedSelect.appendChild(opt);
-      }
+  // Set current speed
+  const speedSelect = document.getElementById('spSpeedSelect');
+  if (speedSelect) {
+    const currentSpeed = world.timeAcceleration || 60;
+    const optExists = [...speedSelect.options].some(o => parseInt(o.value) === currentSpeed);
+    if (optExists) {
+      speedSelect.value = String(currentSpeed);
+    } else {
+      const opt = document.createElement('option');
+      opt.value = String(currentSpeed);
+      opt.textContent = currentSpeed + 'x';
+      opt.selected = true;
+      speedSelect.appendChild(opt);
     }
-
-    // Set pause/resume state
-    worldIsPaused = !!world.isPaused;
-    updatePauseResumeUI();
-
-  } catch (err) {
-    // SP controls not critical
   }
+
+  // Set pause/resume state
+  worldIsPaused = !!world.isPaused;
+  updatePauseResumeUI();
 }
 
 function updatePauseResumeUI() {
@@ -528,7 +521,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDashboardStats();
   loadPerformanceStats();
   loadNotifications();
-  loadSPControls();
 
   // Measure and set navbar height for fixed sidebar positioning
   const navbar = document.querySelector('.navbar');
