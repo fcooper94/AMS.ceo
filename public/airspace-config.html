@@ -14,13 +14,27 @@
         <h3>ACTIVE RESTRICTIONS</h3>
         <span id="restrictionCount" class="restriction-count">0</span>
       </div>
+      <div class="fir-search-wrap">
+        <input type="text" id="firSearchInput" class="fir-search-input" placeholder="Search FIR code..." autocomplete="off" spellcheck="false">
+        <div id="firSearchResults" class="fir-search-results"></div>
+      </div>
       <div id="restrictionsList" class="restrictions-list">
         <div class="empty-state">No active airspace restrictions</div>
       </div>
     </div>
 
+    <!-- Altitude Slider (bottom-right) -->
+    <div id="altitudeFilterPanel" class="altitude-filter-panel">
+      <div class="alt-slider-readout" id="altSliderReadout">Sectors at <strong>all altitudes</strong></div>
+      <div class="alt-slider-wrap">
+        <span class="alt-slider-label">SFC</span>
+        <input type="range" id="altSlider" class="alt-slider" min="0" max="450" step="5" value="0" oninput="onAltSliderInput()">
+        <span class="alt-slider-label">FL450</span>
+      </div>
+      <div class="alt-slider-stats" id="altSliderStats"></div>
+    </div>
+
     <!-- Map Legend -->
-    <div class="airspace-legend">
       <div class="legend-item">
         <span class="legend-swatch" style="background: rgba(88, 166, 255, 0.3); border: 1px solid rgba(88, 166, 255, 0.5);"></span>
         <span>FIR Boundary</span>
@@ -51,6 +65,7 @@
           <div class="fir-info-badge" id="modalFirCode">EGTT</div>
           <div class="fir-info-detail">
             <span class="fir-info-label">FIR Code</span>
+            <span class="fir-altitude-range" id="modalFirAltitude"></span>
           </div>
         </div>
 
@@ -75,6 +90,33 @@
             <div class="date-field">
               <label>To</label>
               <input type="date" id="endDate">
+            </div>
+          </div>
+        </div>
+
+        <!-- Altitude Filter -->
+        <div class="form-group">
+          <label class="form-label">Altitude Range</label>
+          <div class="segmented-control">
+            <label class="segment active" id="segAllAlt">
+              <input type="radio" name="altitudeMode" value="all" checked onchange="toggleAltitudeMode()">
+              <span>All altitudes</span>
+            </label>
+            <label class="segment" id="segCustomAlt">
+              <input type="radio" name="altitudeMode" value="custom" onchange="toggleAltitudeMode()">
+              <span>Custom range</span>
+            </label>
+          </div>
+          <div id="altitudeRangeFields" class="altitude-range-fields" style="display: none;">
+            <div class="altitude-field">
+              <label>Floor (FL)</label>
+              <input type="number" id="altitudeMin" min="0" max="999" step="10" value="0" placeholder="0">
+              <span class="altitude-hint" id="altMinHint">Surface</span>
+            </div>
+            <div class="altitude-field">
+              <label>Ceiling (FL)</label>
+              <input type="number" id="altitudeMax" min="0" max="999" step="10" value="999" placeholder="999">
+              <span class="altitude-hint" id="altMaxHint">Unlimited</span>
             </div>
           </div>
         </div>

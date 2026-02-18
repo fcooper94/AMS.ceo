@@ -181,6 +181,36 @@ function getFirForPoint(lat, lng) {
 }
 
 /**
+ * Return ALL FIR codes that contain a given point (handles stacked sectors).
+ * Unlike getFirForPoint which returns only the first match, this returns every
+ * overlapping FIR so avoidance checks work correctly with vertically stacked sectors.
+ */
+const firAllPointCache = new Map();
+function getAllFirsForPoint(lat, lng) {
+  loadFirData();
+  const cacheKey = `${(lat * 2 | 0)},${(lng * 2 | 0)}`;
+  if (firAllPointCache.has(cacheKey)) return firAllPointCache.get(cacheKey);
+
+  const cx = Math.floor(lat / FIR_GRID_SIZE);
+  const cy = Math.floor(lng / FIR_GRID_SIZE);
+  const candidates = firBboxGrid.get(`${cx},${cy}`) || [];
+  const results = [];
+  for (const feature of candidates) {
+    const bb = feature._bbox;
+    if (lat < bb.minLat || lat > bb.maxLat || lng < bb.minLng || lng > bb.maxLng) continue;
+    const multiPoly = feature.geometry.coordinates;
+    for (const polygon of multiPoly) {
+      if (pointInPolygon(lat, lng, polygon[0])) {
+        results.push(feature.properties.id);
+        break;
+      }
+    }
+  }
+  firAllPointCache.set(cacheKey, results);
+  return results;
+}
+
+/**
  * Get the outer ring polygon coordinates for a FIR sector.
  * Returns [[lng, lat], ...] (GeoJSON order) or null if not found.
  * For MultiPolygon, returns the largest polygon's outer ring.
@@ -214,6 +244,7 @@ module.exports = {
   isPointInFir,
   doesRouteCrossFir,
   doesGreatCircleCrossFir,
+  getAllFirsForPoint,
   getFirFeature,
   getFirForPoint,
   getFirBoundaryCoords,

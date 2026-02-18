@@ -134,7 +134,7 @@ router.post('/', async (req, res) => {
     const membership = await getMembership(req);
     if (!membership) return res.status(401).json({ error: 'Not authenticated or no world selected' });
 
-    const { firCode, firName, restrictionType, startDate, endDate } = req.body;
+    const { firCode, firName, restrictionType, startDate, endDate, altitudeMin, altitudeMax } = req.body;
 
     if (!firCode) return res.status(400).json({ error: 'FIR code is required' });
     if (!restrictionType || !['until_further_notice', 'date_range'].includes(restrictionType)) {
@@ -185,7 +185,9 @@ router.post('/', async (req, res) => {
       startDate: startDate || null,
       endDate: endDate || null,
       isActive: true,
-      affectedRouteCount: affectedRouteIds.length
+      affectedRouteCount: affectedRouteIds.length,
+      altitudeMin: altitudeMin != null ? altitudeMin : null,
+      altitudeMax: altitudeMax != null ? altitudeMax : null
     });
 
     // Suspend affected routes
@@ -224,7 +226,9 @@ router.post('/', async (req, res) => {
         restrictionType: restriction.restrictionType,
         startDate: restriction.startDate,
         endDate: restriction.endDate,
-        affectedRouteCount: restriction.affectedRouteCount
+        affectedRouteCount: restriction.affectedRouteCount,
+        altitudeMin: restriction.altitudeMin,
+        altitudeMax: restriction.altitudeMax
       },
       suspendedRoutes: affectedDetails
     });

@@ -1,0 +1,2130 @@
+{
+  "perGroup": {
+    "LAAA": {
+      "name": "Tirana",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LDZO": {
+      "name": "Zagreb",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LJLA": {
+      "name": "Ljubljana",
+      "minFL": 245,
+      "maxFL": 659
+    },
+    "LQSB": {
+      "name": "Sarajevo",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LWSS": {
+      "name": "Skopje",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "KFOR": {
+      "name": "KFOR",
+      "minFL": 205,
+      "maxFL": 659
+    },
+    "LYBA": {
+      "name": "Beograd",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FIZ": {
+      "name": "Flight Information Zone",
+      "minFL": 0,
+      "maxFL": 199
+    },
+    "AYPM": {
+      "name": "Moresby",
+      "minFL": 90,
+      "maxFL": 999
+    },
+    "Iceland FIR": {
+      "name": "Reykjavik",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "BGGL": {
+      "name": "Nuuk",
+      "minFL": 0,
+      "maxFL": 194
+    },
+    "TIZ": {
+      "name": "Traffic Information Zone (RMZ)",
+      "minFL": 0,
+      "maxFL": 99
+    },
+    "ATZ": {
+      "name": "Aerodrome Traffic Zone",
+      "minFL": 0,
+      "maxFL": 29
+    },
+    "DGAO": {
+      "name": "Accra Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DGAC": {
+      "name": "Accra",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DXXX": {
+      "name": "Lome",
+      "minFL": 245,
+      "maxFL": 998
+    },
+    "DRRR": {
+      "name": "Niamey",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DFFF": {
+      "name": "Ouaga",
+      "minFL": 245,
+      "maxFL": 999
+    },
+    "GQQQ": {
+      "name": "Nouakchott",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GOOO": {
+      "name": "Dakar",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GAAA": {
+      "name": "Bamako",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DIII": {
+      "name": "Abidjan",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GLRB": {
+      "name": "Roberts",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GOOC": {
+      "name": "Dakar Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DNMM": {
+      "name": "Lagos",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DNKK": {
+      "name": "Kano",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "CTR": {
+      "name": "Tunis",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "CTRR": {
+      "name": "CTRR",
+      "minFL": 15,
+      "maxFL": 194
+    },
+    "RMZ": {
+      "name": "Radio Mandatory Zone",
+      "minFL": 0,
+      "maxFL": 14
+    },
+    "EBBU": {
+      "name": "Brussels",
+      "minFL": 15,
+      "maxFL": 244
+    },
+    "ELLX": {
+      "name": "Luxembourg",
+      "minFL": 20,
+      "maxFL": 164
+    },
+    "EDYY": {
+      "name": "Maastricht",
+      "minFL": 245,
+      "maxFL": 999
+    },
+    "EDMM": {
+      "name": "München",
+      "minFL": 0,
+      "maxFL": 314
+    },
+    "EDUU": {
+      "name": "Rhein",
+      "minFL": 235,
+      "maxFL": 999
+    },
+    "EDGG": {
+      "name": "Langen",
+      "minFL": 0,
+      "maxFL": 294
+    },
+    "EDWW": {
+      "name": "Bremen",
+      "minFL": 0,
+      "maxFL": 284
+    },
+    "EETT": {
+      "name": "Tallinn",
+      "minFL": 17,
+      "maxFL": 659
+    },
+    "AFIS": {
+      "name": "Aerodrome Flight Information Service",
+      "minFL": 0,
+      "maxFL": 201
+    },
+    "ADC": {
+      "name": "Tower",
+      "minFL": 0,
+      "maxFL": 33
+    },
+    "APC": {
+      "name": "Approach",
+      "minFL": 13,
+      "maxFL": 284
+    },
+    "ACC": {
+      "name": "Helsinki",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LS": {
+      "name": "London",
+      "minFL": 55,
+      "maxFL": 999
+    },
+    "LD": {
+      "name": "London",
+      "minFL": 115,
+      "maxFL": 999
+    },
+    "LL": {
+      "name": "London",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LW": {
+      "name": "London",
+      "minFL": 65,
+      "maxFL": 999
+    },
+    "LN": {
+      "name": "London",
+      "minFL": 175,
+      "maxFL": 999
+    },
+    "LE": {
+      "name": "London",
+      "minFL": 195,
+      "maxFL": 999
+    },
+    "LM": {
+      "name": "London",
+      "minFL": 195,
+      "maxFL": 999
+    },
+    "TM": {
+      "name": "London Terminal",
+      "minFL": 45,
+      "maxFL": 224
+    },
+    "TE": {
+      "name": "London Terminal",
+      "minFL": 55,
+      "maxFL": 244
+    },
+    "TC": {
+      "name": "London Terminal",
+      "minFL": 155,
+      "maxFL": 214
+    },
+    "TV": {
+      "name": "London Terminal",
+      "minFL": 155,
+      "maxFL": 214
+    },
+    "TNW": {
+      "name": "London Terminal",
+      "minFL": 25,
+      "maxFL": 164
+    },
+    "TNE": {
+      "name": "London Terminal",
+      "minFL": 25,
+      "maxFL": 174
+    },
+    "TSE": {
+      "name": "London Terminal",
+      "minFL": 25,
+      "maxFL": 194
+    },
+    "TSW": {
+      "name": "London Terminal",
+      "minFL": 25,
+      "maxFL": 174
+    },
+    "MNE": {
+      "name": "Scottish (Manchester)",
+      "minFL": 35,
+      "maxFL": 284
+    },
+    "MSE": {
+      "name": "Scottish (Manchester)",
+      "minFL": 35,
+      "maxFL": 194
+    },
+    "MW": {
+      "name": "Scottish (Manchester)",
+      "minFL": 35,
+      "maxFL": 284
+    },
+    "ST": {
+      "name": "Scottish",
+      "minFL": 45,
+      "maxFL": 254
+    },
+    "SW": {
+      "name": "Scottish",
+      "minFL": 55,
+      "maxFL": 999
+    },
+    "SN": {
+      "name": "Scottish",
+      "minFL": 45,
+      "maxFL": 999
+    },
+    "SS": {
+      "name": "Scottish",
+      "minFL": 45,
+      "maxFL": 999
+    },
+    "SD": {
+      "name": "Scottish",
+      "minFL": 255,
+      "maxFL": 999
+    },
+    "SA": {
+      "name": "Scottish",
+      "minFL": 35,
+      "maxFL": 254
+    },
+    "J": {
+      "name": "Channel Islands",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EHMC": {
+      "name": "Dutch Military",
+      "minFL": 0,
+      "maxFL": 245
+    },
+    "EHAA": {
+      "name": "Amsterdam",
+      "minFL": 55,
+      "maxFL": 244
+    },
+    "EKCH": {
+      "name": "Kastrup",
+      "minFL": 0,
+      "maxFL": 194
+    },
+    "EKYT": {
+      "name": "Aalborg",
+      "minFL": 0,
+      "maxFL": 124
+    },
+    "EKSP": {
+      "name": "Skrydstrup",
+      "minFL": 0,
+      "maxFL": 64
+    },
+    "EKRK": {
+      "name": "Roskilde",
+      "minFL": 0,
+      "maxFL": 54
+    },
+    "EKKA": {
+      "name": "Karup",
+      "minFL": 0,
+      "maxFL": 124
+    },
+    "EKBI": {
+      "name": "Billund",
+      "minFL": 0,
+      "maxFL": 124
+    },
+    "EKAH": {
+      "name": "Aarhus",
+      "minFL": 0,
+      "maxFL": 64
+    },
+    "TIA": {
+      "name": "Traffic Information Area",
+      "minFL": 0,
+      "maxFL": 194
+    },
+    "EKRN": {
+      "name": "Ronne",
+      "minFL": 15,
+      "maxFL": 44
+    },
+    "EKDK": {
+      "name": "Copenhagen",
+      "minFL": 35,
+      "maxFL": 659
+    },
+    "HTZ": {
+      "name": "Helicopter traffic zone (Class G - RMZ)",
+      "minFL": 0,
+      "maxFL": 34
+    },
+    "TMA": {
+      "name": "Approach",
+      "minFL": 0,
+      "maxFL": 245
+    },
+    "ENOB": {
+      "name": "Bodø Oceanic",
+      "minFL": 195,
+      "maxFL": 998
+    },
+    "Offshore": {
+      "name": "Polaris Offshore (Class D)",
+      "minFL": 0,
+      "maxFL": 84
+    },
+    "ENOS": {
+      "name": "Oslo ACC",
+      "minFL": 95,
+      "maxFL": 659
+    },
+    "ENSV": {
+      "name": "Stavanger ACC",
+      "minFL": 75,
+      "maxFL": 659
+    },
+    "ENBD": {
+      "name": "Bodø ACC",
+      "minFL": 55,
+      "maxFL": 659
+    },
+    "EPWW": {
+      "name": "Warszawa",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "ESOS": {
+      "name": "Sweden",
+      "minFL": 12,
+      "maxFL": 660
+    },
+    "ESMM": {
+      "name": "Sweden",
+      "minFL": 15,
+      "maxFL": 659
+    },
+    "EVRR": {
+      "name": "Riga",
+      "minFL": 95,
+      "maxFL": 659
+    },
+    "C": {
+      "name": "Cape Town",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "O": {
+      "name": "Johannesburg Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FBGR": {
+      "name": "Gabrone",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FPST": {
+      "name": "São Tomé",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FOOO": {
+      "name": "Libreville",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FKKK": {
+      "name": "Douala",
+      "minFL": 245,
+      "maxFL": 999
+    },
+    "FCCC": {
+      "name": "Brazzaville",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FIMO": {
+      "name": "Mauritius Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FIMM": {
+      "name": "Mauritius",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FLFI": {
+      "name": "Lusaka",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FMMM": {
+      "name": "Antananarivo",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FNAN": {
+      "name": "Luanda",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FNANO": {
+      "name": "Luanda Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FQBE": {
+      "name": "Beira",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FQBS": {
+      "name": "Maputo",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FSSO": {
+      "name": "Seychelles Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FSSS": {
+      "name": "Seychelles",
+      "minFL": 145,
+      "maxFL": 999
+    },
+    "FTTT": {
+      "name": "N'Djamena",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "FVHF": {
+      "name": "Harare",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FWLL": {
+      "name": "Lilongwe",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FYWH": {
+      "name": "Windhoek",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FZZA3": {
+      "name": "Kisangani",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FZZA2": {
+      "name": "Lubumbashi",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FZZA1": {
+      "name": "Kinshasa",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GMMM": {
+      "name": "Casablanca",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GMAC": {
+      "name": "Agadir",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GVSC": {
+      "name": "Sal",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HAAA": {
+      "name": "Addis",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HTDC": {
+      "name": "Dar-Es-Salaam",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HCSM": {
+      "name": "Mogadishu",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "HECC": {
+      "name": "Cairo",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "DIR": {
+      "name": "Final Approach",
+      "minFL": 0,
+      "maxFL": 84
+    },
+    "HHAA": {
+      "name": "Asmara",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "HSSS": {
+      "name": "Khartoum",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HJJJ": {
+      "name": "Juba",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "HKNA": {
+      "name": "Nairobi",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HLLL": {
+      "name": "Tripoli",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "HUEC": {
+      "name": "Entebbe",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LBSR": {
+      "name": "Sofia",
+      "minFL": 105,
+      "maxFL": 659
+    },
+    "LCCC": {
+      "name": "Nicosia",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "P": {
+      "name": "Palma",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "B": {
+      "name": "Barcelona",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "M": {
+      "name": "Madrid",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "S": {
+      "name": "Sevilla",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "G": {
+      "name": "Galicia",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "LFRR": {
+      "name": "Brest",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LFMM": {
+      "name": "Marseille",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LFFF": {
+      "name": "Paris",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LFEE": {
+      "name": "Reims",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LFBB": {
+      "name": "Bordeaux",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "ARR": {
+      "name": "Arrival",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "DEP": {
+      "name": "Departure",
+      "minFL": 0,
+      "maxFL": 234
+    },
+    "RAD": {
+      "name": "Approach (Radar)",
+      "minFL": 0,
+      "maxFL": 264
+    },
+    "LGGG": {
+      "name": "Athinai",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LGMD": {
+      "name": "Makedonia",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LIRR": {
+      "name": "Roma",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LIBB": {
+      "name": "Brindisi",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LIMM": {
+      "name": "Milano",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LIPP": {
+      "name": "Padova",
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "FIN": {
+      "name": "Final Approach",
+      "minFL": 0,
+      "maxFL": 184
+    },
+    "LMMM": {
+      "name": "Malta",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LPPC": {
+      "name": "Lisboa",
+      "minFL": 55,
+      "maxFL": 999
+    },
+    "LPPO": {
+      "name": "Santa Maria",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "TWR-P": {
+      "name": "Tower (Procedural)",
+      "minFL": 0,
+      "maxFL": 104
+    },
+    "TWR-M": {
+      "name": "Tower (Military)",
+      "minFL": 0,
+      "maxFL": 54
+    },
+    "LSAG": {
+      "name": "Swiss (Geneva)",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "LSAZ": {
+      "name": "Swiss (Zurich)",
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "LTFM TMA": {
+      "name": "Istanbul TMA",
+      "minFL": 0,
+      "maxFL": 114
+    },
+    "LTFJ TMA": {
+      "name": "Gokcen TMA",
+      "minFL": 0,
+      "maxFL": 114
+    },
+    "LTBS TMA": {
+      "name": "Dalaman TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "LTBJ TMA": {
+      "name": "Menderes TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "OTHER": {
+      "name": "OTHER",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "IST TMA": {
+      "name": "Yesilkoy TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "Ltau TMA": {
+      "name": "Ltau TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "LTAI TMA": {
+      "name": "Antalya TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "LTAC TMA": {
+      "name": "Esenboga TMA",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "APN": {
+      "name": "Approach (Non-Radar)",
+      "minFL": 0,
+      "maxFL": 124
+    },
+    "MDCS": {
+      "name": "Santo Domingo",
+      "minFL": 140,
+      "maxFL": 599
+    },
+    "MHCC": {
+      "name": "Cenamer",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MKJK": {
+      "name": "Kingston",
+      "minFL": 45,
+      "maxFL": 599
+    },
+    "MMFO": {
+      "name": "Mazatlan Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MPZL": {
+      "name": "Panama",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MUFH": {
+      "name": "Havana",
+      "minFL": 40,
+      "maxFL": 600
+    },
+    "EGGX": {
+      "name": "Shanwick",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "CZQO": {
+      "name": "Gander",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "NCRG": {
+      "name": "Rarotonga",
+      "minFL": 55,
+      "maxFL": 244
+    },
+    "NFFF": {
+      "name": "Nadi",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FIR": {
+      "name": "Basic Data Only<br/>This Sector May Not Be Accurate",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NSFA": {
+      "name": "Faleolo",
+      "minFL": 35,
+      "maxFL": 244
+    },
+    "NTTT": {
+      "name": "Tahiti",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NZAA": {
+      "name": "Auckland",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NZCM": {
+      "name": "McMurdo",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "OH": {
+      "name": "Ohakea",
+      "minFL": 65,
+      "maxFL": 599
+    },
+    "NZZC": {
+      "name": "Christchurch",
+      "minFL": 55,
+      "maxFL": 599
+    },
+    "BAY": {
+      "name": "Bay",
+      "minFL": 15,
+      "maxFL": 599
+    },
+    "RJTG": {
+      "name": "Tokyo",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SACF": {
+      "name": "Cordoba",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SAEF": {
+      "name": "Ezeiza",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "INF": {
+      "name": "Information",
+      "minFL": 0,
+      "maxFL": 24
+    },
+    "SAMF": {
+      "name": "Mendoza",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SARR": {
+      "name": "Resistencia",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SAVF": {
+      "name": "Comodoro Rivadavia",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "CTA": {
+      "name": "CTA",
+      "minFL": 100,
+      "maxFL": 244
+    },
+    "SCIZ": {
+      "name": "Santiago Oceanic",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SCCZ": {
+      "name": "Punta Arenas",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SCEZ": {
+      "name": "Santiago",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SCFZ": {
+      "name": "Iquique",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SCTZ": {
+      "name": "Puerto Montt",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SEFG": {
+      "name": "Guayaquil",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "SGFA": {
+      "name": "Asunción",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SIP": {
+      "name": "Simferopol",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SMPM": {
+      "name": "Paramaribo",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SOOO": {
+      "name": "Cayenne",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SUEO": {
+      "name": "Montevideo",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SYGC": {
+      "name": "Georgetown",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "TTZP": {
+      "name": "Piarco",
+      "minFL": 55,
+      "maxFL": 599
+    },
+    "TTZO": {
+      "name": "Piarco Oceanic",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TNCF": {
+      "name": "Curaçao",
+      "minFL": 25,
+      "maxFL": 599
+    },
+    "UBBA": {
+      "name": "Baku",
+      "minFL": 200,
+      "maxFL": 599
+    },
+    "UCFO": {
+      "name": "Osh",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UCFM": {
+      "name": "Bishkek",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UDDD": {
+      "name": "Yerevan",
+      "minFL": 200,
+      "maxFL": 599
+    },
+    "UGGG": {
+      "name": "Tbilisi",
+      "minFL": 200,
+      "maxFL": 599
+    },
+    "UHMM": {
+      "name": "Magadan",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "UIII": {
+      "name": "Irkutsk",
+      "minFL": 200,
+      "maxFL": 599
+    },
+    "UKBV": {
+      "name": "Kyiv",
+      "minFL": 29,
+      "maxFL": 659
+    },
+    "UKDV": {
+      "name": "Dnipro",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "UKLV": {
+      "name": "L'viv",
+      "minFL": 20,
+      "maxFL": 659
+    },
+    "UKOV": {
+      "name": "Odesa",
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "KK": {
+      "name": "Kaliningrad",
+      "minFL": 95,
+      "maxFL": 999
+    },
+    "UNKL": {
+      "name": "Krasnoyarsk",
+      "minFL": 70,
+      "maxFL": 599
+    },
+    "UNNT": {
+      "name": "Novosibirsk",
+      "minFL": 60,
+      "maxFL": 599
+    },
+    "URRV": {
+      "name": "Rostov",
+      "minFL": 110,
+      "maxFL": 599
+    },
+    "UTAV": {
+      "name": "Turkmenabat",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UTAT": {
+      "name": "Dashoguz",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UTAK": {
+      "name": "Turkmenbashi",
+      "minFL": 0,
+      "maxFL": 489
+    },
+    "UTAA": {
+      "name": "Ashgabat",
+      "minFL": 0,
+      "maxFL": 489
+    },
+    "UTDD": {
+      "name": "Dushanbe",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UTDL": {
+      "name": "Khujand",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UZTR": {
+      "name": "Tashkent",
+      "minFL": 90,
+      "maxFL": 509
+    },
+    "UZSD": {
+      "name": "Samarkand",
+      "minFL": 200,
+      "maxFL": 509
+    },
+    "VABX": {
+      "name": "Mumbai Oceanic",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VOMX": {
+      "name": "Chennai Oceanic",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VRMF": {
+      "name": "Male",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VCCF": {
+      "name": "Colombo",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VVHN": {
+      "name": "Hanoi",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "VVHM": {
+      "name": "Ho Chi Minh",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "VLVT": {
+      "name": "Vientiane",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "VDPF": {
+      "name": "Phnom Penh",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "DNA": {
+      "name": "Da Nang",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "WBGG": {
+      "name": "Kuching",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "WBFC": {
+      "name": "Kinabalu",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "WMFC": {
+      "name": "Lumpur",
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "KLTMA": {
+      "name": "Lumpur - Terminal Area",
+      "minFL": 0,
+      "maxFL": 244
+    },
+    "KLIA": {
+      "name": "KLIA",
+      "minFL": 0,
+      "maxFL": 144
+    },
+    "ZMUB": {
+      "name": "Ulaanbaatar",
+      "minFL": 202,
+      "maxFL": 478
+    },
+    "EIDW": {
+      "name": "Dublin",
+      "minFL": 15,
+      "maxFL": 244
+    },
+    "EISN": {
+      "name": "Shannon",
+      "minFL": 35,
+      "maxFL": 999
+    },
+    "ZAB E": {
+      "name": "Albuquerque",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAB N": {
+      "name": "Albuquerque",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAB SE": {
+      "name": "Albuquerque",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAB NW": {
+      "name": "Albuquerque",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAB SW": {
+      "name": "Albuquerque",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAK": {
+      "name": "Oakland",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZAU": {
+      "name": "Chicago",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZHN": {
+      "name": "HCF",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LCH": {
+      "name": "Houston",
+      "minFL": 105,
+      "maxFL": 599
+    },
+    "NEW": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "LFK": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "OCN": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "RSG": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "CRP": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "AUS": {
+      "name": "Houston",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZJX": {
+      "name": "Jacksonville",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC C": {
+      "name": "Salt Lake",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC A": {
+      "name": "Salt Lake",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC B": {
+      "name": "Salt Lake",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC D": {
+      "name": "Salt Lake",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC": {
+      "name": "Salt Lake",
+      "minFL": 0,
+      "maxFL": 354
+    },
+    "NAPP": {
+      "name": "Approach (Non-Radar)",
+      "minFL": 0,
+      "maxFL": 134
+    },
+    "ZOA": {
+      "name": "Oakland",
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "Area 1": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "Area 2": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "Area 8": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 235
+    },
+    "Area 3": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "Area 4": {
+      "name": "Cleveland",
+      "minFL": 236,
+      "maxFL": 600
+    },
+    "Area 5": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "Area 6": {
+      "name": "Cleveland",
+      "minFL": 236,
+      "maxFL": 600
+    },
+    "Area 7": {
+      "name": "Cleveland",
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "CZQM": {
+      "name": "Moncton",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "CZQX": {
+      "name": "Gander",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TCA": {
+      "name": "Terminal",
+      "minFL": 0,
+      "maxFL": 284
+    },
+    "CZUL": {
+      "name": "Montreal",
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "RDO": {
+      "name": "Radio",
+      "minFL": 0,
+      "maxFL": 47
+    },
+    "MTCU": {
+      "name": "MTCU",
+      "minFL": 0,
+      "maxFL": 134
+    }
+  },
+  "perPrefix": {
+    "ADR": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "AY": {
+      "minFL": 90,
+      "maxFL": 999
+    },
+    "BI": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "BG": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "DB": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DX": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DF": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DR": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DI": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GA": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GB": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GF": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GL": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GO": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GQ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GU": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DN": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "DT": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EB": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EL": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ED": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EE": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "EF": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "EG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EH": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "EK": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "EN": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "EP": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "ES": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "EV": {
+      "minFL": 95,
+      "maxFL": 659
+    },
+    "EY": {
+      "minFL": 95,
+      "maxFL": 660
+    },
+    "FA": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FD": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FX": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FB": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FC": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FE": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FK": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FO": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FP": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FI": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FJ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FL": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FM": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FN": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FQ": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FS": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FT": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "FV": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "FW": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FY": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "FZ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GC": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "GM": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "GV": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HA": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HD": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HB": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HR": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HT": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HC": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "HE": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "HH": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "HJ": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HS": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "HK": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "HL": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "HU": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LB": {
+      "minFL": 105,
+      "maxFL": 659
+    },
+    "LC": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LE": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LF": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LG": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LH": {
+      "minFL": 95,
+      "maxFL": 999
+    },
+    "LI": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LK": {
+      "minFL": 1,
+      "maxFL": 999
+    },
+    "LM": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LO": {
+      "minFL": 125,
+      "maxFL": 999
+    },
+    "LPPC": {
+      "minFL": 55,
+      "maxFL": 999
+    },
+    "LPPO": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "LR": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "LS": {
+      "minFL": 0,
+      "maxFL": 998
+    },
+    "LT": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "LU": {
+      "minFL": 40,
+      "maxFL": 660
+    },
+    "LZ": {
+      "minFL": 0,
+      "maxFL": 660
+    },
+    "MD": {
+      "minFL": 140,
+      "maxFL": 599
+    },
+    "MG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MH": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MN": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MR": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MS": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MZ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MK": {
+      "minFL": 45,
+      "maxFL": 599
+    },
+    "MMFO": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MP": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "MU": {
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "NAT": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "NC": {
+      "minFL": 55,
+      "maxFL": 244
+    },
+    "NF": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NODATA": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NS": {
+      "minFL": 35,
+      "maxFL": 244
+    },
+    "NT": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NZ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "NI": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "OB": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "OI": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "OK": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "OM": {
+      "minFL": 15,
+      "maxFL": 599
+    },
+    "OO": {
+      "minFL": 110,
+      "maxFL": 599
+    },
+    "OT": {
+      "minFL": 25,
+      "maxFL": 659
+    },
+    "RJ": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SA": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SBAO": {
+      "minFL": 245,
+      "maxFL": 599
+    },
+    "SBAZ": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SBBS": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SBCW": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SBRE": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SC": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SE": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "SG": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SIP": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "SM": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SO": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SU": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "SY": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "TA": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TB": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TD": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TF": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TG": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TK": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TL": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TR": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TT": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TV": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "TN": {
+      "minFL": 25,
+      "maxFL": 599
+    },
+    "UB": {
+      "minFL": 200,
+      "maxFL": 599
+    },
+    "UC": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UD": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UG": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UHMM": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "UIII": {
+      "minFL": 30,
+      "maxFL": 599
+    },
+    "UK": {
+      "minFL": 0,
+      "maxFL": 659
+    },
+    "ULLL": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "UNKL": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UNNT": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "URRV": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UTA": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UTD": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "UZ": {
+      "minFL": 90,
+      "maxFL": 509
+    },
+    "V": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VC": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VR": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "VD": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "VL": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "VV": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "WB": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "WM": {
+      "minFL": 0,
+      "maxFL": 459
+    },
+    "ZM": {
+      "minFL": 0,
+      "maxFL": 478
+    },
+    "EI": {
+      "minFL": 15,
+      "maxFL": 999
+    },
+    "ZAB": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZAK": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZAU": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZHN": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZHU": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZJX": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZLC": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZOA": {
+      "minFL": 0,
+      "maxFL": 999
+    },
+    "ZOB": {
+      "minFL": 0,
+      "maxFL": 600
+    },
+    "ZQM": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZQX": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZUL": {
+      "minFL": 0,
+      "maxFL": 599
+    },
+    "ZYZ": {
+      "minFL": 0,
+      "maxFL": 999
+    }
+  }
+}

@@ -10,6 +10,11 @@
 #map {
   width: 100%;
   height: 100%;
+  outline: none;
+}
+
+#map:focus, #map *:focus {
+  outline: none;
 }
 
 /* ── Restrictions Panel (left side) ───────────────────────────────────────── */
@@ -56,6 +61,92 @@
   border-radius: 10px;
   min-width: 20px;
   text-align: center;
+}
+
+/* ── FIR Search ──────────────────────────────────────────────────────────── */
+
+.fir-search-wrap {
+  position: relative;
+  padding: 0.5rem 0.5rem 0;
+}
+
+.fir-search-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-elevated, #161b22);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 4px;
+  color: var(--text-primary, #e6edf3);
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  box-sizing: border-box;
+  outline: none;
+  letter-spacing: 0.5px;
+}
+
+.fir-search-input::placeholder {
+  color: var(--text-muted, #8b949e);
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+.fir-search-input:focus {
+  border-color: var(--accent-color, #58a6ff);
+}
+
+.fir-search-results {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 100%;
+  background: rgba(22, 27, 34, 0.98);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 0 0 4px 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  z-index: 10;
+  display: none;
+}
+
+.fir-search-results.visible {
+  display: block;
+}
+
+.fir-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #c9d1d9);
+  border-bottom: 1px solid var(--border-color, #30363d);
+}
+
+.fir-search-item:last-child {
+  border-bottom: none;
+}
+
+.fir-search-item:hover {
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.fir-search-item-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: var(--text-primary, #e6edf3);
+  letter-spacing: 0.5px;
+}
+
+.fir-search-item-alt {
+  font-size: 0.6rem;
+  color: var(--text-muted, #8b949e);
+  font-family: 'Courier New', monospace;
+}
+
+.fir-search-item.restricted {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .restrictions-list {
@@ -161,6 +252,124 @@
   height: 12px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+/* ── Altitude Slider (bottom-right map control) ──────────────────────────── */
+
+.altitude-filter-panel {
+  position: absolute;
+  bottom: 2rem;
+  right: 1rem;
+  z-index: 1000;
+  width: 280px;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  padding: 0.6rem 0.85rem;
+}
+
+.alt-slider-readout {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #c9d1d9);
+  margin-bottom: 0.5rem;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+}
+
+.alt-slider-readout strong {
+  color: var(--accent-color, #58a6ff);
+}
+
+.alt-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.alt-slider-label {
+  font-size: 0.55rem;
+  color: var(--text-muted, #8b949e);
+  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
+  width: 30px;
+  text-align: center;
+}
+
+/* Range slider track + thumb */
+.alt-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-elevated, #161b22);
+  outline: none;
+  cursor: pointer;
+}
+
+.alt-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-color, #58a6ff);
+  border: 2px solid rgba(22, 27, 34, 0.95);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(88, 166, 255, 0.4);
+}
+
+.alt-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-color, #58a6ff);
+  border: 2px solid rgba(22, 27, 34, 0.95);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(88, 166, 255, 0.4);
+}
+
+/* Filled portion of the track (left of thumb) */
+.alt-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+}
+
+.alt-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-elevated, #161b22);
+}
+
+.alt-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent-color, #58a6ff);
+}
+
+.alt-slider-stats {
+  font-size: 0.6rem;
+  color: var(--text-muted, #8b949e);
+  text-align: center;
+  margin-top: 0.4rem;
+}
+
+/* ── FIR Tooltip ─────────────────────────────────────────────────────────── */
+
+.fir-tooltip {
+  background: rgba(22, 27, 34, 0.95) !important;
+  border: 1px solid var(--border-color, #30363d) !important;
+  color: var(--text-primary, #e6edf3) !important;
+  font-size: 0.75rem !important;
+  font-family: 'Courier New', monospace !important;
+  padding: 0.3rem 0.5rem !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+.fir-tooltip::before {
+  border-top-color: rgba(22, 27, 34, 0.95) !important;
 }
 
 /* ── FIR Label Styles ─────────────────────────────────────────────────────── */
@@ -435,6 +644,58 @@
 .date-field input[type="date"]:focus {
   outline: none;
   border-color: var(--accent-color, #58a6ff);
+}
+
+/* ── FIR Altitude Info ────────────────────────────────────────────────────── */
+
+.fir-altitude-range {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #c9d1d9);
+  font-family: 'Courier New', monospace;
+  margin-top: 0.1rem;
+}
+
+/* ── Altitude Filter ─────────────────────────────────────────────────────── */
+
+.altitude-range-fields {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.altitude-field {
+  flex: 1;
+}
+
+.altitude-field label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted, #8b949e);
+  margin-bottom: 0.25rem;
+}
+
+.altitude-field input[type="number"] {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-elevated, #161b22);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 4px;
+  color: var(--text-primary, #e6edf3);
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  box-sizing: border-box;
+}
+
+.altitude-field input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent-color, #58a6ff);
+}
+
+.altitude-hint {
+  font-size: 0.65rem;
+  color: var(--text-muted, #8b949e);
+  margin-top: 0.2rem;
+  display: block;
 }
 
 /* ── Affected Routes ──────────────────────────────────────────────────────── */

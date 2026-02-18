@@ -47,6 +47,18 @@ const AirspaceRestriction = sequelize.define('AirspaceRestriction', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     field: 'affected_route_count'
+  },
+  altitudeMin: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'altitude_min',
+    comment: 'Minimum FL for restriction (null = surface)'
+  },
+  altitudeMax: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'altitude_max',
+    comment: 'Maximum FL for restriction (null = unlimited)'
   }
 }, {
   tableName: 'airspace_restrictions',

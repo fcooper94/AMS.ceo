@@ -35,6 +35,9 @@ let demandDataCache = {}; // Cache demand data for airport pairs
 let routePreviewMap = null;
 let routePreviewLine = null;
 let routePreviewMarkers = [];
+let expandedMap = null;
+let expandedMapLayers = [];
+let firGeoJsonCache = null;
 
 // Debounced search for performance
 let searchDebounceTimer = null;
@@ -252,8 +255,33 @@ async function initRoutePreviewMap() {
   }).addTo(routePreviewMap);
 }
 
+// Draw avoided FIR boundaries on a given map, returns array of added layers
+async function drawAvoidedFirsOnMap(map, layers) {
+  const avoidedFirs = autoAtcAvoidedFirs || [];
+  if (avoidedFirs.length === 0) return;
+  try {
+    if (!firGeoJsonCache) {
+      const resp = await fetch('/data/fir-boundaries.geojson');
+      if (resp.ok) firGeoJsonCache = await resp.json();
+    }
+    if (!firGeoJsonCache) return;
+    const avoidSet = new Set(avoidedFirs);
+    const geoLayer = L.geoJSON(firGeoJsonCache, {
+      filter: (feature) => avoidSet.has(feature.properties.id),
+      style: () => ({
+        color: 'rgba(248, 81, 73, 0.5)',
+        weight: 1,
+        fillColor: 'rgba(248, 81, 73, 0.08)',
+        fillOpacity: 1,
+        interactive: false
+      })
+    }).addTo(map);
+    layers.push(geoLayer);
+  } catch (e) { /* non-critical */ }
+}
+
 // Update route preview map
-function updateRoutePreview() {
+async function updateRoutePreview() {
   if (!routePreviewMap || !baseAirport || !selectedDestinationAirport) return;
 
   // If custom ATC is set, defer to that renderer
@@ -268,6 +296,9 @@ function updateRoutePreview() {
   if (routePreviewLine) {
     routePreviewLine.forEach(l => routePreviewMap.removeLayer(l));
   }
+
+  // Draw avoided FIR boundaries (underneath route)
+  await drawAvoidedFirsOnMap(routePreviewMap, routePreviewMarkers);
 
   // Coordinates
   const dep = [parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude)];
@@ -368,6 +399,176 @@ function updateRoutePreview() {
       bounds.extend([parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)]);
     }
     routePreviewMap.fitBounds(bounds, { padding: [15, 15], maxZoom: 8 });
+  }
+}
+
+// ── Expanded Route Map ──────────────────────────────────────────────────────
+
+function openExpandedRouteMap() {
+  if (!baseAirport || !selectedDestinationAirport) return;
+
+  const modal = document.getElementById('expandedMapModal');
+  modal.style.display = 'flex';
+
+  // Set title
+  const depCode = baseAirport.icaoCode || baseAirport.iataCode;
+  const arrCode = selectedDestinationAirport.icaoCode || selectedDestinationAirport.iataCode;
+  document.getElementById('expandedMapTitle').textContent = `ROUTE MAP — ${depCode} → ${arrCode}`;
+
+  // Create map if needed, or just invalidate size
+  const container = document.getElementById('expandedMapContainer');
+  if (!expandedMap) {
+    expandedMap = L.map(container, {
+      center: [30, 0],
+      zoom: 3,
+      zoomControl: true,
+      attributionControl: false,
+      worldCopyJump: true
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(expandedMap);
+  }
+
+  // Small delay to let modal render, then invalidate + draw
+  setTimeout(() => {
+    expandedMap.invalidateSize();
+    drawExpandedRoute();
+  }, 100);
+
+  // Close on Escape
+  document.addEventListener('keydown', _expandedMapEsc);
+}
+
+function _expandedMapEsc(e) {
+  if (e.key === 'Escape') closeExpandedRouteMap();
+}
+
+function closeExpandedRouteMap() {
+  document.getElementById('expandedMapModal').style.display = 'none';
+  document.removeEventListener('keydown', _expandedMapEsc);
+}
+
+async function drawExpandedRoute() {
+  if (!expandedMap || !baseAirport || !selectedDestinationAirport) return;
+
+  // Clear previous layers
+  expandedMapLayers.forEach(l => expandedMap.removeLayer(l));
+  expandedMapLayers = [];
+
+  // Draw avoided FIR boundaries first (underneath the route) — interactive with tooltips
+  const avoidedFirs = autoAtcAvoidedFirs || [];
+  if (avoidedFirs.length > 0) {
+    try {
+      if (!firGeoJsonCache) {
+        const resp = await fetch('/data/fir-boundaries.geojson');
+        if (resp.ok) firGeoJsonCache = await resp.json();
+      }
+      if (firGeoJsonCache) {
+        const avoidSet = new Set(avoidedFirs);
+        const geoLayer = L.geoJSON(firGeoJsonCache, {
+          filter: (feature) => avoidSet.has(feature.properties.id),
+          style: () => ({
+            color: 'rgba(248, 81, 73, 0.5)',
+            weight: 1.5,
+            fillColor: 'rgba(248, 81, 73, 0.1)',
+            fillOpacity: 1,
+            interactive: true
+          }),
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            const minLabel = p.minFL === 0 || p.minFL == null ? 'SFC' : `FL${p.minFL}`;
+            const maxLabel = p.maxFL >= 999 || p.maxFL == null ? 'UNL' : `FL${p.maxFL}`;
+            layer.bindTooltip(`${p.id} (${minLabel}–${maxLabel})`, {
+              sticky: true, className: 'fir-tooltip', direction: 'top', offset: [0, -8]
+            });
+          }
+        }).addTo(expandedMap);
+        expandedMapLayers.push(geoLayer);
+      }
+    } catch (e) { /* non-critical */ }
+  }
+
+  const dep = [parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude)];
+  const arr = [parseFloat(selectedDestinationAirport.latitude), parseFloat(selectedDestinationAirport.longitude)];
+
+  // Departure marker
+  const depMarker = L.circleMarker(dep, {
+    radius: 10, fillColor: '#3fb950', fillOpacity: 1, color: '#fff', weight: 2
+  }).addTo(expandedMap).bindPopup(`<b>${baseAirport.iataCode || baseAirport.icaoCode}</b><br>${baseAirport.name}`);
+  expandedMapLayers.push(depMarker);
+
+  // Arrival marker
+  const arrMarker = L.circleMarker(arr, {
+    radius: 10, fillColor: '#58a6ff', fillOpacity: 1, color: '#fff', weight: 2
+  }).addTo(expandedMap).bindPopup(`<b>${selectedDestinationAirport.iataCode || selectedDestinationAirport.icaoCode}</b><br>${selectedDestinationAirport.name}`);
+  expandedMapLayers.push(arrMarker);
+
+  // Tech stop
+  if (selectedTechStopAirport) {
+    const tech = [parseFloat(selectedTechStopAirport.latitude), parseFloat(selectedTechStopAirport.longitude)];
+    const techMarker = L.circleMarker(tech, {
+      radius: 7, fillColor: '#d29922', fillOpacity: 1, color: '#fff', weight: 2
+    }).addTo(expandedMap).bindPopup(`<b>${selectedTechStopAirport.iataCode || selectedTechStopAirport.icaoCode}</b><br>Tech Stop`);
+    expandedMapLayers.push(techMarker);
+  }
+
+  // Pick waypoints: custom or auto
+  const wps = customAtcWaypoints || autoAtcWaypoints;
+
+  if (wps && wps.length > 2) {
+    const routeCoords = [dep];
+    const innerWps = wps.filter(wp => wp.name !== 'DEP' && wp.name !== 'ARR');
+
+    for (const wp of innerWps) {
+      const pt = [wp.lat, wp.lng];
+      routeCoords.push(pt);
+
+      // Waypoint marker with label
+      const wpMarker = L.circleMarker(pt, {
+        radius: 4, fillColor: customAtcWaypoints ? '#e3b341' : '#22d3ee',
+        fillOpacity: 1, color: 'rgba(255,255,255,0.3)', weight: 1
+      }).addTo(expandedMap).bindPopup(`<b>${wp.name}</b>`);
+      expandedMapLayers.push(wpMarker);
+
+      // Waypoint name label (visible at higher zoom)
+      const label = L.marker(pt, {
+        icon: L.divIcon({
+          className: 'expanded-wp-label',
+          html: `<span style="font-size:9px; color:rgba(255,255,255,0.6); font-family:monospace; text-shadow:0 0 3px #000;">${wp.name}</span>`,
+          iconSize: [60, 14],
+          iconAnchor: [30, -6]
+        }),
+        interactive: false
+      }).addTo(expandedMap);
+      expandedMapLayers.push(label);
+    }
+    routeCoords.push(arr);
+
+    const lineColor = customAtcWaypoints ? '#e3b341' : '#22d3ee';
+    const line = L.polyline(routeCoords, { color: lineColor, weight: 2.5, opacity: 0.9 }).addTo(expandedMap);
+    expandedMapLayers.push(line);
+
+    // NAT track overlay
+    if (!customAtcWaypoints && autoAtcNatTrack && autoAtcNatTrack.waypoints) {
+      const natCoords = autoAtcNatTrack.waypoints.map(wp => [wp.lat, wp.lng]);
+      const natLine = L.polyline(natCoords, {
+        color: '#4ade80', weight: 2, opacity: 0.4, dashArray: '6, 4'
+      }).addTo(expandedMap);
+      expandedMapLayers.push(natLine);
+    }
+
+    expandedMap.fitBounds(L.latLngBounds(routeCoords), { padding: [40, 40], maxZoom: 10 });
+  } else {
+    // Fallback: dashed straight line
+    const line = L.polyline([dep, arr], {
+      color: '#58a6ff', weight: 2, opacity: 0.8, dashArray: '5, 10'
+    }).addTo(expandedMap);
+    expandedMapLayers.push(line);
+
+    const bounds = L.latLngBounds([dep, arr]);
+    expandedMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
   }
 }
 
@@ -2665,7 +2866,7 @@ function clearCustomAtcRoute() {
   updateRoutePreview();
 }
 
-function updateRoutePreviewWithCustomWaypoints() {
+async function updateRoutePreviewWithCustomWaypoints() {
   if (!routePreviewMap || !baseAirport || !selectedDestinationAirport || !customAtcWaypoints) return;
 
   // Clear existing markers and lines
@@ -2674,6 +2875,9 @@ function updateRoutePreviewWithCustomWaypoints() {
   if (routePreviewLine) {
     routePreviewLine.forEach(l => routePreviewMap.removeLayer(l));
   }
+
+  // Draw avoided FIR boundaries (underneath route)
+  await drawAvoidedFirsOnMap(routePreviewMap, routePreviewMarkers);
 
   const dep = [parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude)];
   const arr = [parseFloat(selectedDestinationAirport.latitude), parseFloat(selectedDestinationAirport.longitude)];

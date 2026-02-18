@@ -78,7 +78,17 @@
       "Bash(\"/c/Program Files/PostgreSQL/18/bin/createdb\" -U postgres -h 127.0.0.1 airline_control)",
       "Bash(PGPASSWORD='jDRZMptMpBRUAxwWIpMKrhJixYnTJbyU' \"/c/Program Files/PostgreSQL/18/bin/pg_dump\":*)",
       "Bash(\"/c/Program Files/PostgreSQL/18/bin/pg_restore\" -U postgres -h 127.0.0.1 -d airline_control --no-owner --no-acl /tmp/railway_dump.backup)",
-      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\" -U postgres -h 127.0.0.1 -d airline_control -c \"SELECT tablename FROM pg_tables WHERE schemaname=''public'' ORDER BY tablename;\")"
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql\" -U postgres -h 127.0.0.1 -d airline_control -c \"SELECT tablename FROM pg_tables WHERE schemaname=''public'' ORDER BY tablename;\")",
+      "Bash(gh repo clone:*)",
+      "WebFetch(domain:docs.vatsim-radar.com)",
+      "WebFetch(domain:vatsim-radar.com)",
+      "Bash(gh search code:*)",
+      "Bash(cygpath:*)",
+      "Bash(PGPASSWORD='!_Q1w2e3r4t5y6_!' psql:*)",
+      "Bash(PGPASSWORD='!_Q1w2e3r4t5y6_!' \"/c/Program Files/PostgreSQL/18/bin/psql.exe\":*)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -h localhost -U postgres -d airline_control -c \"ALTER TABLE airspace_restrictions ADD COLUMN IF NOT EXISTS altitude_min INTEGER DEFAULT NULL; ALTER TABLE airspace_restrictions ADD COLUMN IF NOT EXISTS altitude_max INTEGER DEFAULT NULL;\" 2)",
+      "Bash(1:*)",
+      "Bash(tasklist:*)"
     ]
   }
 }
