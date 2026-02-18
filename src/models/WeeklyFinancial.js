@@ -55,7 +55,7 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     field: 'airport_fees'
   },
 
-  // Weekly overhead costs (recorded once per week, prorated from monthly)
+  // Weekly overhead costs (recorded once per week)
   staffCosts: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0,
@@ -83,7 +83,7 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     comment: 'Whether weekly overhead costs have been snapshotted'
   },
 
-  // Loan payments (recorded by monthly loan processor)
+  // Loan payments (recorded by weekly loan processor)
   loanPayments: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0,

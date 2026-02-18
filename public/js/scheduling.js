@@ -913,9 +913,9 @@ async function showAircraftDetails(userAircraftId) {
   const fuelCostPerHour = fuelBurnPerHour * fuelPricePerLiter;
   const totalHourlyCost = fuelCostPerHour + maintenanceCostPerHour;
   const hoursPerDay = 8;
-  const monthlyOperatingCost = totalHourlyCost * hoursPerDay * 30;
-  const leaseMonthly = parseFloat(userAircraft.leaseMonthlyPayment) || 0;
-  const totalMonthlyCost = monthlyOperatingCost + (isLeased ? leaseMonthly : 0);
+  const weeklyOperatingCost = totalHourlyCost * hoursPerDay * 7;
+  const leaseWeekly = parseFloat(userAircraft.leaseWeeklyPayment) || 0;
+  const totalWeeklyCost = weeklyOperatingCost + (isLeased ? leaseWeekly : 0);
 
   const getConditionColor = (pct) => pct >= 80 ? 'var(--success-color)' : pct >= 50 ? 'var(--warning-color)' : 'var(--danger-color)';
 
@@ -985,7 +985,7 @@ async function showAircraftDetails(userAircraftId) {
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Fuel/hr</span><span style="font-weight: 500;">$${formatCurrency(fuelCostPerHour)}</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Maint/hr</span><span style="font-weight: 500;">$${formatCurrency(maintenanceCostPerHour)}</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.4rem 0; border-top: 1px solid var(--border-color); margin-top: 0.2rem;"><span style="font-weight: 600;">Total/hr</span><span style="color: var(--warning-color); font-weight: 700; font-size: 1.05rem;">$${formatCurrency(totalHourlyCost)}</span></div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="font-weight: 600;">Monthly</span><span style="color: var(--danger-color); font-weight: 700; font-size: 1.05rem;">$${formatCurrency(totalMonthlyCost)}</span></div>
+            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="font-weight: 600;">Weekly</span><span style="color: var(--danger-color); font-weight: 700; font-size: 1.05rem;">$${formatCurrency(totalWeeklyCost)}</span></div>
           </div>
 
           <!-- Col 3: Routes -->
@@ -1004,7 +1004,7 @@ async function showAircraftDetails(userAircraftId) {
         <!-- Bottom Row: Ownership -->
         <div style="margin-top: 0.75rem; background: var(--surface-elevated); border-radius: 6px; padding: 0.6rem 1rem; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
           ${isLeased ? `
-            <span><span style="color: var(--text-muted);">Lease:</span> <strong>${userAircraft.leaseDurationMonths} months</strong> @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseMonthly)}/mo</span></span>
+            <span><span style="color: var(--text-muted);">Lease:</span> <strong>${userAircraft.leaseDurationMonths} months</strong> @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseWeekly)}/wk</span></span>
             <span><span style="color: var(--text-muted);">Ends:</span> <strong>${new Date(userAircraft.leaseEndDate).toLocaleDateString('en-GB')}</strong></span>
           ` : `
             <span><span style="color: var(--text-muted);">Purchased for:</span> <span style="color: var(--success-color); font-weight: 600;">$${formatCurrency(userAircraft.purchasePrice || 0)}</span></span>

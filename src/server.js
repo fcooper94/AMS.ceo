@@ -256,7 +256,8 @@ async function renderPage(pagePath, requestPath) {
     // Add additional scripts before closing body tag if specified
     if (scriptsMatch) {
       const scripts = scriptsMatch[1].split(',').map(s => s.trim());
-      const scriptTags = scripts.map(src => `  <script src="${src}"></script>`).join('\n');
+      const cacheBust = Date.now();
+      const scriptTags = scripts.map(src => `  <script src="${src}?v=${cacheBust}"></script>`).join('\n');
       // Replace the LAST occurrence of </body> to ensure we add scripts to the actual body closing tag
       const lastBodyIndex = result.lastIndexOf('</body>');
       if (lastBodyIndex !== -1) {

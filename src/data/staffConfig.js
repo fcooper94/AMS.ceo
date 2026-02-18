@@ -1,7 +1,8 @@
 /**
  * Staff Configuration
  * Defines airline organizational structure based on fleet size (6 eras).
- * Monthly salaries in 2024 USD — use eraEconomicService for era scaling.
+ * Salary values defined as monthly 2024 USD, converted to weekly by role() helper.
+ * Use eraEconomicService for era scaling.
  * Role availability can be year-gated (no Digital Marketing in 1950).
  */
 
@@ -50,11 +51,11 @@ function computeStaffRoster(fleetSize, gameYear, salaryModifiers = {}, crewFromR
   const globalMod = salaryModifiers.global || 1.0;
   const yr = gameYear || 2024;
 
-  // Helper: add role if year requirement met
-  function role(name, count, baseSalary, minYear) {
+  // Helper: add role if year requirement met (converts monthly salary to weekly)
+  function role(name, count, monthlySalary, minYear) {
     if (minYear && yr < minYear) return null;
     if (count <= 0) return null;
-    return { name, count, baseSalary };
+    return { name, count, baseSalary: Math.round(monthlySalary / 4.33) };
   }
 
   const departments = [];
@@ -272,7 +273,7 @@ function computeStaffRoster(fleetSize, gameYear, salaryModifiers = {}, crewFromR
   };
 
   let totalEmployees = 0;
-  let totalMonthlyCost = 0;
+  let totalWeeklyCost = 0;
 
   for (const dept of DEPARTMENTS) {
     const roles = (deptRolesMap[dept.key] || []).filter(r => r !== null);
@@ -296,16 +297,16 @@ function computeStaffRoster(fleetSize, gameYear, salaryModifiers = {}, crewFromR
       salaryModifier: deptMod,
       roles,
       totalEmployees: deptEmployees,
-      totalMonthlyCost: deptCost
+      totalWeeklyCost: deptCost
     });
 
     totalEmployees += deptEmployees;
-    totalMonthlyCost += deptCost;
+    totalWeeklyCost += deptCost;
   }
 
   return {
     departments,
-    summary: { totalEmployees, totalMonthlyCost },
+    summary: { totalEmployees, totalWeeklyCost },
     eraLabel: era.label,
     eraIdx: E,
     fleetSize: N

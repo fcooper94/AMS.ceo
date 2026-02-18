@@ -128,14 +128,14 @@ router.get('/', async (req, res) => {
       };
     });
 
-    // ── 3. Current monthly overheads (for info panel) ────────────────────────
+    // ── 3. Current weekly overheads (for info panel) ─────────────────────────
     const fleet = await UserAircraft.findAll({
       where: { worldMembershipId: membership.id },
       include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'type'] }]
     });
     const activeFleet = fleet.filter(a => a.status === 'active');
     const leasedAircraft = fleet.filter(a => a.acquisitionType === 'lease' && a.status === 'active');
-    const monthlyLeases = leasedAircraft.reduce((sum, a) => sum + (parseFloat(a.leaseMonthlyPayment) || 0), 0);
+    const weeklyLeases = leasedAircraft.reduce((sum, a) => sum + (parseFloat(a.leaseWeeklyPayment) || 0), 0);
 
     // Staff
     const pilotsByType = {};
@@ -153,21 +153,21 @@ router.get('/', async (req, res) => {
       pilotsByType: Object.values(pilotsByType).map(t => ({ typeName: t.typeName, routes: t.routes, totalPilots: Math.ceil(t.routePilots * 1.2) })),
       totalCabinCrew: Math.ceil(routeCabinCrew * 1.2)
     });
-    let monthlyStaff = 0;
+    let weeklyStaff = 0;
     for (const dept of roster.departments) {
       for (const role of dept.roles) {
-        monthlyStaff += Math.round(role.adjustedSalary * eraMultiplier) * role.count;
+        weeklyStaff += Math.round(role.adjustedSalary * eraMultiplier) * role.count;
       }
     }
 
     // Contractors
-    const cleaningCost = Math.round((getContractor('cleaning', membership.cleaningContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
-    const groundCost = Math.round((getContractor('ground', membership.groundContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
-    const engineeringCost = Math.round((getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
-    const monthlyContractors = cleaningCost + groundCost + engineeringCost;
+    const cleaningCost = Math.round((getContractor('cleaning', membership.cleaningContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier);
+    const groundCost = Math.round((getContractor('ground', membership.groundContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier);
+    const engineeringCost = Math.round((getContractor('engineering', membership.engineeringContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier);
+    const weeklyContractors = cleaningCost + groundCost + engineeringCost;
 
-    // Fleet commonality — fixed monthly cost per unique type family
-    const TYPE_FAMILY_MONTHLY_COST = { 'Regional': 25000, 'Narrowbody': 40000, 'Widebody': 65000, 'Cargo': 65000 };
+    // Fleet commonality — fixed weekly cost per unique type family
+    const TYPE_FAMILY_WEEKLY_COST = { 'Regional': 5800, 'Narrowbody': 9250, 'Widebody': 15000, 'Cargo': 15000 };
     const LARGE_WIDEBODY_MODELS = ['747', 'A380', '777'];
     const typeFamilies = new Map();
     for (const ac of activeFleet) {
@@ -177,14 +177,14 @@ router.get('/', async (req, res) => {
         typeFamilies.set(familyKey, { type: ac.aircraft.type, model: ac.aircraft.model });
       }
     }
-    let monthlyCommonality = 0;
+    let weeklyCommonality = 0;
     for (const [, info] of typeFamilies) {
       const isLargeWidebody = LARGE_WIDEBODY_MODELS.includes(info.model);
-      const cost = isLargeWidebody ? 85000 : (TYPE_FAMILY_MONTHLY_COST[info.type] || 40000);
-      monthlyCommonality += Math.round(cost * eraMultiplier);
+      const cost = isLargeWidebody ? 19650 : (TYPE_FAMILY_WEEKLY_COST[info.type] || 9250);
+      weeklyCommonality += Math.round(cost * eraMultiplier);
     }
 
-    const monthlyOverheads = monthlyStaff + Math.round(monthlyLeases) + monthlyContractors + monthlyCommonality;
+    const weeklyOverheads = weeklyStaff + Math.round(weeklyLeases) + weeklyContractors + weeklyCommonality;
 
     // ── 4. All-time totals from weekly data (includes overheads + loans) ────
     let allTimeRevenue = 0;
@@ -209,12 +209,12 @@ router.get('/', async (req, res) => {
         totalFlights: allTimeFlights,
         totalPassengers: allTimePassengers
       },
-      monthlyOverheads: {
-        staff: Math.round(monthlyStaff),
-        leases: Math.round(monthlyLeases),
-        contractors: monthlyContractors,
-        fleetCommonality: monthlyCommonality,
-        total: Math.round(monthlyOverheads)
+      weeklyOverheads: {
+        staff: Math.round(weeklyStaff),
+        leases: Math.round(weeklyLeases),
+        contractors: weeklyContractors,
+        fleetCommonality: weeklyCommonality,
+        total: Math.round(weeklyOverheads)
       }
     });
   } catch (error) {

@@ -19,6 +19,7 @@ let firLabelGroup = null;    // L.layerGroup holding FIR code labels
 let firVisible = false;
 let firDataLoaded = false;
 let firGeoJsonData = null;
+let firRestrictedCodes = new Set(); // Restricted FIR codes from airspace config
 
 // NAT tracks overlay state
 let natLayerGroup = null;    // L.layerGroup holding NAT track polylines + waypoint markers
@@ -435,6 +436,9 @@ function handleAirlineFilterChange() {
   if (otherLegend) {
     otherLegend.style.display = (airlineFilterMode === 'all' || airlineFilterMode === 'hq') ? 'flex' : 'none';
   }
+
+  // Re-render FIR boundaries to show/hide restricted zones
+  if (firVisible && firDataLoaded) renderFirBoundaries();
 
   // Clear current flights and reload
   clearMap();
@@ -1933,10 +1937,21 @@ async function loadFirBoundaries() {
   if (firDataLoaded) return;
   try {
     console.log('[WorldMap] Loading FIR boundaries...');
-    const response = await fetch('/data/fir-boundaries.geojson');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    firGeoJsonData = await response.json();
+    const [geoResp, restrictResp] = await Promise.all([
+      fetch('/data/fir-boundaries.geojson'),
+      fetch('/api/airspace').catch(() => null)
+    ]);
+    if (!geoResp.ok) throw new Error(`HTTP ${geoResp.status}`);
+    firGeoJsonData = await geoResp.json();
     firDataLoaded = true;
+
+    // Load restricted FIR codes
+    firRestrictedCodes.clear();
+    if (restrictResp && restrictResp.ok) {
+      const data = await restrictResp.json();
+      for (const r of (data.restrictions || [])) firRestrictedCodes.add(r.firCode);
+    }
+
     console.log('[WorldMap] FIR boundaries loaded:', firGeoJsonData.features.length, 'regions');
     renderFirBoundaries();
   } catch (error) {
@@ -1948,12 +1963,30 @@ async function loadFirBoundaries() {
 function renderFirBoundaries() {
   if (!firGeoJsonData || !map) return;
 
+  // Remove old layers before re-rendering
+  if (firLayerGroup && map.hasLayer(firLayerGroup)) map.removeLayer(firLayerGroup);
+  if (firLabelGroup && map.hasLayer(firLabelGroup)) map.removeLayer(firLabelGroup);
+
   firLayerGroup = L.layerGroup();
   firLabelGroup = L.layerGroup();
 
+  const showRestricted = airlineFilterMode === 'mine' && firRestrictedCodes.size > 0;
+
   L.geoJSON(firGeoJsonData, {
     style: function(feature) {
+      const firCode = feature.properties.id;
+      const isRestricted = showRestricted && firRestrictedCodes.has(firCode);
       const isOceanic = feature.properties.oceanic === '1' || feature.properties.oceanic === 1;
+
+      if (isRestricted) {
+        return {
+          color: 'rgba(248, 81, 73, 0.6)',
+          weight: 1.5,
+          fillColor: 'rgba(248, 81, 73, 0.12)',
+          fillOpacity: 1,
+          interactive: false
+        };
+      }
       return {
         color: isOceanic ? 'rgba(88, 166, 255, 0.25)' : 'rgba(88, 166, 255, 0.4)',
         weight: isOceanic ? 0.5 : 1,
@@ -1968,12 +2001,14 @@ function renderFirBoundaries() {
 
       const props = feature.properties;
       if (props.label_lat && props.label_lon) {
+        const firCode = props.id;
+        const isRestricted = showRestricted && firRestrictedCodes.has(firCode);
         const label = L.marker(
           [parseFloat(props.label_lat), parseFloat(props.label_lon)],
           {
             icon: L.divIcon({
               className: 'fir-label',
-              html: `<span class="fir-label-text">${props.id}</span>`,
+              html: `<span class="fir-label-text${isRestricted ? ' restricted' : ''}">${firCode}</span>`,
               iconSize: [60, 20],
               iconAnchor: [30, 10]
             }),
@@ -1984,6 +2019,10 @@ function renderFirBoundaries() {
       }
     }
   });
+
+  // Show/hide restricted airspace legend
+  const restrictedLegend = document.querySelector('.restricted-fir-legend');
+  if (restrictedLegend) restrictedLegend.style.display = (firVisible && showRestricted) ? 'flex' : 'none';
 
   firLayerGroup.addTo(map);
   updateFirLabelVisibility();
@@ -2015,6 +2054,9 @@ function toggleFirBoundaries() {
 
   const firLegend = document.querySelector('.fir-legend');
   if (firLegend) firLegend.style.display = firVisible ? 'flex' : 'none';
+
+  const restrictedLegend = document.querySelector('.restricted-fir-legend');
+  if (restrictedLegend && !firVisible) restrictedLegend.style.display = 'none';
 
   if (firVisible) {
     if (!firDataLoaded) {

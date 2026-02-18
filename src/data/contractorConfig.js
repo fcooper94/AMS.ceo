@@ -2,7 +2,7 @@
  * Service Contractor Configuration
  * Defines the 3 contract categories (cleaning, ground, engineering),
  * each with 3 tiers (budget, standard, premium).
- * Monthly costs are in 2024 USD — use eraEconomicService for era scaling.
+ * Weekly costs are in 2024 USD — use eraEconomicService for era scaling.
  */
 
 const CONTRACTORS = {
@@ -12,7 +12,7 @@ const CONTRACTORS = {
       shortName: 'QuickShine',
       tagline: 'Fast and affordable cabin turnovers',
       description: 'Cuts corners but keeps costs low. Occasional complaints.',
-      monthlyCost2024: 8000,
+      weeklyCost2024: 1850,
       cleaningDurationMultiplier: 0.85,   // 15% faster (rushed job)
       qualityScore: 30,
       reputationModifier: -2
@@ -22,7 +22,7 @@ const CONTRACTORS = {
       shortName: 'AeroClean',
       tagline: 'Reliable cabin maintenance you can count on',
       description: 'Industry-standard cleaning with consistent quality.',
-      monthlyCost2024: 18000,
+      weeklyCost2024: 4150,
       cleaningDurationMultiplier: 1.0,
       qualityScore: 60,
       reputationModifier: 0
@@ -32,7 +32,7 @@ const CONTRACTORS = {
       shortName: 'Prestige',
       tagline: 'Five-star cabin presentation, every flight',
       description: 'Meticulous deep cleaning. Longer turnarounds but spotless cabins.',
-      monthlyCost2024: 35000,
+      weeklyCost2024: 8100,
       cleaningDurationMultiplier: 1.20,   // 20% slower (thorough job)
       qualityScore: 95,
       reputationModifier: 3
@@ -45,7 +45,7 @@ const CONTRACTORS = {
       shortName: 'TarmacFirst',
       tagline: 'No-frills ground ops at unbeatable prices',
       description: 'Quick turnarounds but sloppy service. Baggage issues common.',
-      monthlyCost2024: 12000,
+      weeklyCost2024: 2750,
       boardingDurationMultiplier: 0.85,    // 15% faster (rushed)
       deboardingDurationMultiplier: 0.85,
       fuellingDurationMultiplier: 0.90,    // 10% faster
@@ -57,7 +57,7 @@ const CONTRACTORS = {
       shortName: 'GlobalGate',
       tagline: 'Professional handling at every gate',
       description: 'Reliable ground operations with trained staff.',
-      monthlyCost2024: 25000,
+      weeklyCost2024: 5750,
       boardingDurationMultiplier: 1.0,
       deboardingDurationMultiplier: 1.0,
       fuellingDurationMultiplier: 1.0,
@@ -69,7 +69,7 @@ const CONTRACTORS = {
       shortName: 'SkyBridge',
       tagline: 'Precision ground ops for premium airlines',
       description: 'Careful, attentive service. Passengers notice the difference.',
-      monthlyCost2024: 45000,
+      weeklyCost2024: 10400,
       boardingDurationMultiplier: 1.15,    // 15% slower (careful)
       deboardingDurationMultiplier: 1.15,
       fuellingDurationMultiplier: 1.10,    // 10% slower
@@ -84,7 +84,7 @@ const CONTRACTORS = {
       shortName: 'EconTech',
       tagline: 'Cost-effective maintenance solutions',
       description: 'Meets minimum standards. Higher wear rates between checks.',
-      monthlyCost2024: 15000,
+      weeklyCost2024: 3450,
       maintenanceCostMultiplier: 0.80,     // 20% cheaper maintenance
       wearRateMultiplier: 1.25,            // 25% faster wear
       qualityScore: 30,
@@ -95,7 +95,7 @@ const CONTRACTORS = {
       shortName: 'AeroParts',
       tagline: 'Trusted engineering for your fleet',
       description: 'Standard MRO work with OEM parts and procedures.',
-      monthlyCost2024: 30000,
+      weeklyCost2024: 6950,
       maintenanceCostMultiplier: 1.0,
       wearRateMultiplier: 1.0,
       qualityScore: 60,
@@ -106,7 +106,7 @@ const CONTRACTORS = {
       shortName: 'Apex',
       tagline: 'Engineering excellence, zero compromise',
       description: 'Premium MRO with extended component life and proactive care.',
-      monthlyCost2024: 55000,
+      weeklyCost2024: 12700,
       maintenanceCostMultiplier: 1.30,     // 30% more expensive
       wearRateMultiplier: 0.75,            // 25% slower wear
       qualityScore: 95,
@@ -125,11 +125,11 @@ function getContractorsByCategory(category) {
   return CONTRACTORS[category] || null;
 }
 
-function getTotalMonthlyCost(cleaningTier, groundTier, engineeringTier) {
+function getTotalWeeklyCost(cleaningTier, groundTier, engineeringTier) {
   const c = getContractor('cleaning', cleaningTier);
   const g = getContractor('ground', groundTier);
   const e = getContractor('engineering', engineeringTier);
-  return (c?.monthlyCost2024 || 0) + (g?.monthlyCost2024 || 0) + (e?.monthlyCost2024 || 0);
+  return (c?.weeklyCost2024 || 0) + (g?.weeklyCost2024 || 0) + (e?.weeklyCost2024 || 0);
 }
 
 /** Weighted random tier for AI airlines (25% budget, 55% standard, 20% premium) */
@@ -145,6 +145,6 @@ module.exports = {
   DEFAULT_TIER,
   getContractor,
   getContractorsByCategory,
-  getTotalMonthlyCost,
+  getTotalWeeklyCost,
   pickAIContractorTier
 };

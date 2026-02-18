@@ -10,7 +10,7 @@
 
     <!-- Active Restrictions Panel (left side) -->
     <div id="restrictionsPanel" class="restrictions-panel">
-      <div class="restrictions-header">
+      <div class="restrictions-header" onclick="toggleRestrictionsPanel()" style="cursor:pointer;">
         <h3>ACTIVE RESTRICTIONS</h3>
         <span id="restrictionCount" class="restriction-count">0</span>
       </div>
@@ -20,6 +20,9 @@
       </div>
       <div id="restrictionsList" class="restrictions-list">
         <div class="empty-state">No active airspace restrictions</div>
+      </div>
+      <div id="clearAllWrap" class="clear-all-wrap" style="display:none;">
+        <button class="btn-clear-all" onclick="clearAllRestrictions()">LIFT ALL</button>
       </div>
     </div>
 
@@ -176,6 +179,26 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeRemoveModal()">CANCEL</button>
         <button class="btn btn-primary" id="removeConfirmBtn" onclick="confirmRemoveRestriction()">LIFT RESTRICTION</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear All Confirmation Modal -->
+  <div id="clearAllModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header" style="border-bottom-color: #f85149;">
+        <h2>Lift All Restrictions</h2>
+        <button class="modal-close" onclick="closeClearAllModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="clearAllMessage" style="color: var(--text-primary); line-height: 1.6; margin: 0 0 1rem 0;"></p>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">
+          All suspended routes will be reactivated.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeClearAllModal()">CANCEL</button>
+        <button class="btn btn-danger" id="clearAllConfirmBtn" onclick="confirmClearAllRestrictions()">LIFT ALL</button>
       </div>
     </div>
   </div>

@@ -136,6 +136,13 @@ router.get('/', async (req, res) => {
             cCheckRemaining: listing.cCheckRemainingDays ? formatDaysRemaining(listing.cCheckRemainingDays) : 'Unknown',
             dCheckRemaining: listing.dCheckRemainingDays ? formatDaysRemaining(listing.dCheckRemainingDays) : 'Unknown',
 
+            // Maintenance check costs (from aircraft type)
+            dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
+            weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
+            aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
+            cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
+            dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+
             // Same entity offers both purchase and lease
             seller: {
               type: listing.sellerType,
@@ -240,6 +247,13 @@ router.get('/', async (req, res) => {
             dCheckRemainingDays: dRemaining,
             cCheckRemaining: cRemaining !== null ? formatDaysRemaining(cRemaining) : 'Unknown',
             dCheckRemaining: dRemaining !== null ? formatDaysRemaining(dRemaining) : 'Unknown',
+
+            // Maintenance check costs (from aircraft type)
+            dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
+            weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
+            aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
+            cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
+            dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
 
             // Seller/lessor is the player airline
             seller: {
@@ -409,8 +423,8 @@ function generateUsedAircraft(variants, currentYear = null) {
         parseFloat(variant.purchasePrice) * depreciationFactor :
         parseFloat(variant.purchasePrice || 50000000) * depreciationFactor;
 
-      // Generate lease price (typically 0.3-0.5% of used price per month)
-      const leaseMultiplier = 0.003 + (Math.random() * 0.002);
+      // Generate lease price (typically 0.07-0.12% of used price per week)
+      const leaseMultiplier = (0.003 + (Math.random() * 0.002)) / 4.33;
       const leasePrice = usedPrice * leaseMultiplier;
 
       // Create used aircraft object
@@ -454,6 +468,12 @@ function generateUsedAircraft(variants, currentYear = null) {
         cCheckRemaining: formatDaysRemaining(cCheckRemainingDays),
         dCheckRemaining: formatDaysRemaining(dCheckRemainingDays),
 
+        // Maintenance check costs (from aircraft type)
+        dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
+        weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
+        aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
+        cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
+        dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
       };
 
       // Same entity offers both purchase and lease

@@ -86,8 +86,8 @@ function renderActiveLoans(data) {
       <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$${fmtNum(l.remainingPrincipal)}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.interestRate}%</td>
-      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$${fmtNum(l.monthlyPayment)}</td>
-      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.monthsRemaining}mo</td>
+      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$${fmtNum(l.weeklyPayment)}</td>
+      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.weeksRemaining}wk</td>
       <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${strategyLabel}</td>
       <td style="padding:0.45rem 0.6rem;white-space:nowrap;">
         <button class="action-btn" onclick="openRepayModal('${l.id}')">Repay</button>
@@ -270,31 +270,31 @@ function updateLoanPreview() {
   document.getElementById('loanAmountDisplay').textContent = fmtMoney(amount);
   document.getElementById('previewRate').textContent = rate + '% APR';
 
-  let monthly = 0;
+  let weekly = 0;
   let totalInterest = 0;
 
   if (selectedStrategy === 'fixed') {
-    const mr = rate / 100 / 12;
+    const mr = rate / 100 / 52;
     if (mr === 0) {
-      monthly = amount / term;
+      weekly = amount / term;
     } else {
-      monthly = amount * (mr * Math.pow(1 + mr, term)) / (Math.pow(1 + mr, term) - 1);
+      weekly = amount * (mr * Math.pow(1 + mr, term)) / (Math.pow(1 + mr, term) - 1);
     }
-    totalInterest = (monthly * term) - amount;
+    totalInterest = (weekly * term) - amount;
   } else if (selectedStrategy === 'reducing') {
     const principalPortion = amount / term;
-    // First month's payment (highest)
-    const firstInterest = amount * (rate / 100 / 12);
-    monthly = principalPortion + firstInterest;
+    // First week's payment (highest)
+    const firstInterest = amount * (rate / 100 / 52);
+    weekly = principalPortion + firstInterest;
     // Average interest over term
-    totalInterest = (amount * (rate / 100 / 12) * (term + 1)) / 2;
+    totalInterest = (amount * (rate / 100 / 52) * (term + 1)) / 2;
   } else {
     // Interest only
-    monthly = amount * (rate / 100 / 12);
-    totalInterest = monthly * term; // Plus balloon principal at end
+    weekly = amount * (rate / 100 / 52);
+    totalInterest = weekly * term; // Plus balloon principal at end
   }
 
-  document.getElementById('previewMonthly').textContent = '$' + fmtNum(Math.round(monthly));
+  document.getElementById('previewWeekly').textContent = '$' + fmtNum(Math.round(weekly));
   document.getElementById('previewTotalInterest').textContent = '$' + fmtNum(Math.round(totalInterest));
   document.getElementById('previewTotalCost').textContent = '$' + fmtNum(Math.round(amount + totalInterest));
 }
@@ -308,7 +308,7 @@ async function submitLoanApplication() {
 
   const lt = selectedBank.loanTypes.find(t => t.type === selectedLoanType);
   const amount = parseInt(document.getElementById('loanAmount').value) || 0;
-  const termMonths = parseInt(document.getElementById('loanTerm').value) || lt.exampleTerm;
+  const termWeeks = parseInt(document.getElementById('loanTerm').value) || lt.exampleTerm;
 
   try {
     const res = await fetch('/api/loans/apply', {
@@ -318,7 +318,7 @@ async function submitLoanApplication() {
         bankId: selectedBank.bankId,
         loanType: selectedLoanType,
         amount,
-        termMonths,
+        termWeeks,
         repaymentStrategy: selectedStrategy
       })
     });
@@ -423,10 +423,10 @@ function requestHoliday(loanId) {
 
   document.getElementById('holidayBankName').textContent = loan.bankName;
   document.getElementById('holidayOutstanding').textContent = '$' + fmtNum(loan.remainingPrincipal);
-  document.getElementById('holidayMonthly').textContent = '$' + fmtNum(loan.monthlyPayment);
+  document.getElementById('holidayWeekly').textContent = '$' + fmtNum(loan.weeklyPayment);
   document.getElementById('holidayRate').textContent = loan.interestRate + '% APR';
 
-  const estInterest = Math.round(loan.remainingPrincipal * (loan.interestRate / 100 / 12));
+  const estInterest = Math.round(loan.remainingPrincipal * (loan.interestRate / 100 / 52));
   document.getElementById('holidayInterestEst').textContent = '+$' + fmtNum(estInterest);
   document.getElementById('holidayRemaining').textContent = (loan.paymentHolidaysRemaining - 1) + ' of ' + loan.paymentHolidaysTotal;
 

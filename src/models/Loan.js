@@ -3,7 +3,7 @@ const sequelize = require('../config/database');
 
 /**
  * Loan Model
- * Tracks bank loans taken by airlines. Monthly payments are processed
+ * Tracks bank loans taken by airlines. Weekly payments are processed
  * automatically by the tick loop in worldTimeService.
  */
 const Loan = sequelize.define('Loan', {
@@ -51,13 +51,13 @@ const Loan = sequelize.define('Loan', {
     field: 'interest_rate',
     comment: 'Annual interest rate % locked at origination'
   },
-  termMonths: {
+  termWeeks: {
     type: DataTypes.INTEGER,
     allowNull: false,
     field: 'term_months',
-    comment: 'Total loan term in game months'
+    comment: 'Total loan term in game weeks'
   },
-  monthsRemaining: {
+  weeksRemaining: {
     type: DataTypes.INTEGER,
     allowNull: false,
     field: 'months_remaining'
@@ -68,11 +68,11 @@ const Loan = sequelize.define('Loan', {
     defaultValue: 'fixed',
     field: 'repayment_strategy'
   },
-  monthlyPayment: {
+  weeklyPayment: {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0,
     field: 'monthly_payment',
-    comment: 'Pre-calculated monthly payment (for fixed strategy)'
+    comment: 'Pre-calculated weekly payment (for fixed strategy)'
   },
   totalInterestPaid: {
     type: DataTypes.DECIMAL(15, 2),

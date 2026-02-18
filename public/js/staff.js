@@ -112,7 +112,7 @@ function renderSummary() {
   const { summary, eraLabel, fleetSize, salaryModifiers } = staffData;
 
   document.getElementById('statTotalEmployees').textContent = summary.totalEmployees.toLocaleString();
-  document.getElementById('statMonthlyPayroll').textContent = formatSalaryShort(summary.totalMonthlyCost);
+  document.getElementById('statWeeklyPayroll').textContent = formatSalaryShort(summary.totalWeeklyCost);
   document.getElementById('statFleetSize').textContent = fleetSize;
   document.getElementById('statEraLabel').textContent = eraLabel;
 
@@ -162,7 +162,7 @@ function buildOutsourcedBanner(dept, contractorInfo) {
       <span class="outsourced-contractor-note">${outsourceNotes[dept.key] || ''}</span>
     </div>
     <div class="outsourced-banner-right">
-      <span class="outsourced-cost">${formatSalary(contractorInfo.monthlyCost)}/mo</span>
+      <span class="outsourced-cost">${formatSalary(contractorInfo.weeklyCost)}/wk</span>
     </div>
   `;
 
@@ -191,7 +191,7 @@ function buildDepartmentSection(dept) {
       ${dept.label}
     </div>
     <div class="staff-dept-count">${dept.totalEmployees} staff</div>
-    <div class="staff-dept-cost">${formatSalary(dept.totalMonthlyCost)}/mo</div>
+    <div class="staff-dept-cost">${formatSalary(dept.totalWeeklyCost)}/wk</div>
     <div class="staff-dept-adjust" onclick="event.stopPropagation()">
       <button class="salary-adjust-btn minus" onclick="adjustDeptSalary('${dept.key}', -0.05)" title="-5%">-</button>
       <span>${Math.round(effectiveMod * 100)}%</span>
@@ -206,7 +206,7 @@ function buildDepartmentSection(dept) {
 
   const roleHeader = document.createElement('div');
   roleHeader.className = 'staff-role-header';
-  roleHeader.innerHTML = '<span>Role</span><span style="text-align:right">Count</span><span style="text-align:right">Monthly</span><span style="text-align:right">Annual</span><span style="text-align:right">Total/mo</span>';
+  roleHeader.innerHTML = '<span>Role</span><span style="text-align:right">Count</span><span style="text-align:right">Weekly</span><span style="text-align:right">Annual</span><span style="text-align:right">Total/wk</span>';
   body.appendChild(roleHeader);
 
   for (const role of dept.roles) {
@@ -219,9 +219,9 @@ function buildDepartmentSection(dept) {
         ${role.name}
       </div>
       <div class="staff-role-count">${role.count}</div>
-      <div class="staff-role-salary">${formatSalary(role.adjustedSalary)}/mo</div>
-      <div class="staff-role-annual">${formatSalary(role.adjustedSalary * 12)}/yr</div>
-      <div class="staff-role-total">${formatSalary(role.totalCost)}/mo</div>
+      <div class="staff-role-salary">${formatSalary(role.adjustedSalary)}/wk</div>
+      <div class="staff-role-annual">${formatSalary(role.adjustedSalary * 52)}/yr</div>
+      <div class="staff-role-total">${formatSalary(role.totalCost)}/wk</div>
     `;
     body.appendChild(row);
   }
@@ -252,7 +252,7 @@ function openStaffModal(deptKey, role) {
   header.innerHTML = `
     <div>
       <div class="staff-modal-title">${role.name}</div>
-      <div class="staff-modal-subtitle">${role.count} employee${role.count !== 1 ? 's' : ''} &mdash; ${formatSalary(role.adjustedSalary)}/mo &mdash; ${formatSalary(role.adjustedSalary * 12)}/yr</div>
+      <div class="staff-modal-subtitle">${role.count} employee${role.count !== 1 ? 's' : ''} &mdash; ${formatSalary(role.adjustedSalary)}/wk &mdash; ${formatSalary(role.adjustedSalary * 52)}/yr</div>
     </div>
     <button class="staff-modal-close" onclick="closeStaffModal()">&times;</button>
   `;
@@ -261,7 +261,7 @@ function openStaffModal(deptKey, role) {
   // Name list header
   const listHeader = document.createElement('div');
   listHeader.className = 'staff-modal-list-header';
-  listHeader.innerHTML = '<span>Name</span><span>Monthly</span><span>Annual</span>';
+  listHeader.innerHTML = '<span>Name</span><span>Weekly</span><span>Annual</span>';
   modal.appendChild(listHeader);
 
   // Name list (scrollable)
@@ -281,8 +281,8 @@ function openStaffModal(deptKey, role) {
       html += typeNames.map((n, i) =>
         `<div class="staff-modal-row ${i % 2 === 0 ? 'even' : ''}">
           <span class="staff-modal-name">${n.name}</span>
-          <span class="staff-modal-salary">${formatSalary(n.salary)}/mo</span>
-          <span class="staff-modal-salary">${formatSalary(n.salary * 12)}/yr</span>
+          <span class="staff-modal-salary">${formatSalary(n.salary)}/wk</span>
+          <span class="staff-modal-salary">${formatSalary(n.salary * 52)}/yr</span>
         </div>`
       ).join('');
     }
@@ -300,8 +300,8 @@ function openStaffModal(deptKey, role) {
     list.innerHTML = allNames.map((n, i) =>
       `<div class="staff-modal-row ${i % 2 === 0 ? 'even' : ''}">
         <span class="staff-modal-name">${n.name}</span>
-        <span class="staff-modal-salary">${formatSalary(n.salary)}/mo</span>
-        <span class="staff-modal-salary">${formatSalary(n.salary * 12)}/yr</span>
+        <span class="staff-modal-salary">${formatSalary(n.salary)}/wk</span>
+        <span class="staff-modal-salary">${formatSalary(n.salary * 52)}/yr</span>
       </div>`
     ).join('');
   }
@@ -313,7 +313,7 @@ function openStaffModal(deptKey, role) {
   const footer = document.createElement('div');
   footer.className = 'staff-modal-footer';
   footer.innerHTML = `
-    <span>Total: ${formatSalary(totalSalary)}/mo &mdash; ${formatSalary(totalSalary * 12)}/yr</span>
+    <span>Total: ${formatSalary(totalSalary)}/wk &mdash; ${formatSalary(totalSalary * 52)}/yr</span>
     <button class="staff-modal-close-btn" onclick="closeStaffModal()">Close</button>
   `;
   modal.appendChild(footer);

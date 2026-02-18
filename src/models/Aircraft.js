@@ -186,6 +186,32 @@ const Aircraft = sequelize.define('Aircraft', {
     allowNull: false,
     field: 'has_cargo_heavy',
     comment: 'Whether this aircraft can carry heavy cargo'
+  },
+  // Maintenance check costs (fixed per aircraft type)
+  dailyCheckCost: {
+    type: DataTypes.DECIMAL(12, 2),
+    field: 'daily_check_cost',
+    comment: 'Cost of a daily maintenance check in USD'
+  },
+  weeklyCheckCost: {
+    type: DataTypes.DECIMAL(12, 2),
+    field: 'weekly_check_cost',
+    comment: 'Cost of a weekly maintenance check in USD'
+  },
+  aCheckCost: {
+    type: DataTypes.DECIMAL(12, 2),
+    field: 'a_check_cost',
+    comment: 'Cost of an A check in USD'
+  },
+  cCheckCost: {
+    type: DataTypes.DECIMAL(12, 2),
+    field: 'c_check_cost',
+    comment: 'Cost of a C check in USD'
+  },
+  dCheckCost: {
+    type: DataTypes.DECIMAL(12, 2),
+    field: 'd_check_cost',
+    comment: 'Cost of a D check in USD'
   }
 }, {
   tableName: 'aircraft',

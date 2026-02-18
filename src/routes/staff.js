@@ -100,9 +100,9 @@ router.get('/', async (req, res) => {
         role.adjustedSalary = Math.round(role.adjustedSalary * eraMultiplier);
         role.totalCost = role.adjustedSalary * role.count;
       }
-      dept.totalMonthlyCost = dept.roles.reduce((s, r) => s + r.totalCost, 0);
+      dept.totalWeeklyCost = dept.roles.reduce((s, r) => s + r.totalCost, 0);
     }
-    roster.summary.totalMonthlyCost = roster.departments.reduce((s, d) => s + d.totalMonthlyCost, 0);
+    roster.summary.totalWeeklyCost = roster.departments.reduce((s, d) => s + d.totalWeeklyCost, 0);
 
     // Build contractor info for outsourced departments
     const contractors = {};
@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
           tier,
           name: c.name,
           shortName: c.shortName,
-          monthlyCost: Math.round(c.monthlyCost2024 * eraMultiplier)
+          weeklyCost: Math.round(c.weeklyCost2024 * eraMultiplier)
         };
       }
     }

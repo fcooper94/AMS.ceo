@@ -119,11 +119,11 @@ const LOAN_TYPE_ADJUSTMENTS = {
   infrastructure: -0.5     // Long-term, lower risk → -0.5%
 };
 
-// Term ranges by loan type (in game months)
+// Term ranges by loan type (in game weeks)
 const TERM_RANGES = {
-  working_capital: { min: 6, max: 24 },
-  fleet_expansion: { min: 24, max: 60 },
-  infrastructure: { min: 60, max: 120 }
+  working_capital: { min: 26, max: 104 },
+  fleet_expansion: { min: 104, max: 260 },
+  infrastructure: { min: 260, max: 520 }
 };
 
 // Loan type display info
@@ -185,14 +185,14 @@ function calculateMaxLoanAmount(bankId, netWorth) {
 }
 
 /**
- * Calculate monthly payment for a fixed-rate loan (standard amortization)
- * Returns the fixed monthly payment amount
+ * Calculate weekly payment for a fixed-rate loan (standard amortization)
+ * Returns the fixed weekly payment amount
  */
-function calculateFixedPayment(principal, annualRate, termMonths) {
-  const monthlyRate = annualRate / 100 / 12;
-  if (monthlyRate === 0) return Math.round(principal / termMonths * 100) / 100;
-  const payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) /
-    (Math.pow(1 + monthlyRate, termMonths) - 1);
+function calculateFixedPayment(principal, annualRate, termWeeks) {
+  const weeklyRate = annualRate / 100 / 52;
+  if (weeklyRate === 0) return Math.round(principal / termWeeks * 100) / 100;
+  const payment = principal * (weeklyRate * Math.pow(1 + weeklyRate, termWeeks)) /
+    (Math.pow(1 + weeklyRate, termWeeks) - 1);
   return Math.round(payment * 100) / 100;
 }
 

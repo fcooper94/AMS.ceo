@@ -136,7 +136,7 @@
               <th>Type</th>
               <th style="text-align:right;">Outstanding</th>
               <th style="text-align:right;">Rate</th>
-              <th style="text-align:right;">Monthly</th>
+              <th style="text-align:right;">Weekly</th>
               <th style="text-align:right;">Term Left</th>
               <th>Strategy</th>
               <th>Actions</th>
@@ -198,7 +198,7 @@
       </div>
       <div class="loan-summary-box" id="loanPreview">
         <div class="loan-summary-row"><span>Interest Rate</span><span id="previewRate">-</span></div>
-        <div class="loan-summary-row"><span>Monthly Payment</span><span id="previewMonthly">-</span></div>
+        <div class="loan-summary-row"><span>Weekly Payment</span><span id="previewWeekly">-</span></div>
         <div class="loan-summary-row"><span>Total Interest</span><span id="previewTotalInterest">-</span></div>
         <div class="loan-summary-row highlight"><span>Total Cost</span><span id="previewTotalCost">-</span></div>
       </div>
@@ -218,19 +218,19 @@
       <button class="loan-modal-close" onclick="closeHolidayModal()">&times;</button>
     </div>
     <div class="loan-modal-body">
-      <p style="font-size: 0.85rem; color: var(--text-primary); margin: 0 0 1rem;">Skip your next monthly payment on this loan.</p>
+      <p style="font-size: 0.85rem; color: var(--text-primary); margin: 0 0 1rem;">Skip your next weekly payment on this loan.</p>
 
       <div class="loan-summary-box" style="margin-bottom: 1rem;">
         <div class="loan-summary-row"><span>Bank</span><span id="holidayBankName">-</span></div>
         <div class="loan-summary-row"><span>Current Outstanding</span><span id="holidayOutstanding">-</span></div>
-        <div class="loan-summary-row"><span>Monthly Payment</span><span id="holidayMonthly">-</span></div>
+        <div class="loan-summary-row"><span>Weekly Payment</span><span id="holidayWeekly">-</span></div>
         <div class="loan-summary-row"><span>Interest Rate</span><span id="holidayRate">-</span></div>
       </div>
 
       <div style="background: rgba(210, 153, 34, 0.08); border: 1px solid rgba(210, 153, 34, 0.2); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
         <div style="font-size: 0.75rem; font-weight: 700; color: var(--warning-color); margin-bottom: 0.4rem;">How it works</div>
         <ul style="margin: 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6;">
-          <li><strong>Begins:</strong> Next monthly payment cycle</li>
+          <li><strong>Begins:</strong> Next weekly payment cycle</li>
           <li><strong>Duration:</strong> 1 month — your payment is skipped</li>
           <li><strong>Interest:</strong> Still accrues and is added to your outstanding principal</li>
           <li><strong>After:</strong> Normal payments resume automatically the following month</li>

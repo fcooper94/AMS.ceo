@@ -15,6 +15,10 @@ let pendingRemoveId = null;
 let pendingRemoveFirCode = null;
 let altFilterEnabled = false;
 
+function toggleRestrictionsPanel() {
+  document.getElementById('restrictionsPanel').classList.toggle('collapsed');
+}
+
 // ── Toast Notifications ──────────────────────────────────────────────────────
 
 const TOAST_ICONS = {
@@ -141,6 +145,9 @@ function renderRestrictionsList(restrictions) {
   const list = document.getElementById('restrictionsList');
   const count = document.getElementById('restrictionCount');
   count.textContent = restrictions.length;
+
+  const clearWrap = document.getElementById('clearAllWrap');
+  if (clearWrap) clearWrap.style.display = restrictions.length > 1 ? '' : 'none';
 
   if (restrictions.length === 0) {
     list.innerHTML = '<div class="empty-state">No active airspace restrictions</div>';
@@ -647,6 +654,42 @@ async function confirmRemoveRestriction() {
     }
   } catch (err) {
     console.error('[Airspace] Failed to remove restriction:', err);
+    showToast(err.message, 'error');
+  }
+}
+
+function clearAllRestrictions() {
+  const count = restrictedFirCodes.size;
+  if (count === 0) return;
+  document.getElementById('clearAllMessage').textContent =
+    `Remove all ${count} active airspace restriction${count !== 1 ? 's' : ''}?`;
+  document.getElementById('clearAllModal').style.display = 'flex';
+}
+
+function closeClearAllModal() {
+  document.getElementById('clearAllModal').style.display = 'none';
+}
+
+async function confirmClearAllRestrictions() {
+  closeClearAllModal();
+  try {
+    const resp = await fetch('/api/airspace');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const ids = data.restrictions.map(r => r.id);
+    if (ids.length === 0) return;
+
+    let lifted = 0;
+    for (const id of ids) {
+      const del = await fetch(`/api/airspace/${id}`, { method: 'DELETE' });
+      if (del.ok) lifted++;
+    }
+
+    await loadRestrictions();
+    renderFirBoundaries();
+    showToast(`${lifted} restriction${lifted !== 1 ? 's' : ''} lifted`, 'success');
+  } catch (err) {
+    console.error('[Airspace] Failed to clear restrictions:', err);
     showToast(err.message, 'error');
   }
 }

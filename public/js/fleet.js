@@ -272,9 +272,9 @@ async function showAircraftDetails(userAircraftId) {
   const fuelCostPerHour = fuelBurnPerHour * fuelPricePerLiter;
   const totalHourlyCost = fuelCostPerHour + maintenanceCostPerHour;
   const hoursPerDay = 8;
-  const monthlyOperatingCost = totalHourlyCost * hoursPerDay * 30;
-  const leaseMonthly = parseFloat(userAircraft.leaseMonthlyPayment) || 0;
-  const totalMonthlyCost = monthlyOperatingCost + (isLeased ? leaseMonthly : 0);
+  const weeklyOperatingCost = totalHourlyCost * hoursPerDay * 7;
+  const leaseWeekly = parseFloat(userAircraft.leaseWeeklyPayment) || 0;
+  const totalWeeklyCost = weeklyOperatingCost + (isLeased ? leaseWeekly : 0);
 
   const getConditionColor = (pct) => pct >= 80 ? 'var(--success-color)' : pct >= 50 ? 'var(--warning-color)' : 'var(--danger-color)';
 
@@ -340,10 +340,10 @@ async function showAircraftDetails(userAircraftId) {
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--warning-color); font-weight: 600;">Listed for Sale</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.listingPrice || 0)}</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Listed</span><span>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
               ` : userAircraft.status === 'listed_lease' ? `
-                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #a855f7; font-weight: 600;">Listed for Lease</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.listingPrice || 0)}/mo</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #a855f7; font-weight: 600;">Listed for Lease</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.listingPrice || 0)}/wk</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Listed</span><span>${userAircraft.listedAt ? new Date(userAircraft.listedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
               ` : userAircraft.status === 'leased_out' ? `
-                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #14b8a6; font-weight: 600;">Leased Out</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.leaseOutMonthlyRate || 0)}/mo</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #14b8a6; font-weight: 600;">Leased Out</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.leaseOutWeeklyRate || 0)}/wk</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Tenant</span><span>${userAircraft.leaseOutTenantName || 'NPC Airline'}</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Until</span><span>${userAircraft.leaseOutEndDate ? new Date(userAircraft.leaseOutEndDate).toLocaleDateString('en-GB') : 'N/A'}</span></div>
               ` : userAircraft.status === 'recalling' ? `
@@ -352,9 +352,9 @@ async function showAircraftDetails(userAircraftId) {
               ` : userAircraft.status === 'storage' ? `
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #94a3b8; font-weight: 600;">In Storage</span><span>${userAircraft.storageAirportCode || 'N/A'}</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Since</span><span>${userAircraft.storedAt ? new Date(userAircraft.storedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
-                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Cost</span><span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(calculateStorageMonthlyCost(userAircraft))}/mo</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Cost</span><span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(calculateStorageWeeklyCost(userAircraft))}/wk</span></div>
               ` : isLeased ? `
-                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Lease</span><span>${userAircraft.leaseDurationMonths} months @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseMonthly)}/mo</span></span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Lease</span><span>${userAircraft.leaseDurationMonths} months @ <span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(leaseWeekly)}/wk</span></span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Ends</span><span style="font-weight: 600;">${new Date(userAircraft.leaseEndDate).toLocaleDateString('en-GB')}</span></div>
               ` : `
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Purchased for</span><span style="color: var(--success-color); font-weight: 600;">$${formatCurrency(userAircraft.purchasePrice || 0)}</span></div>
@@ -413,8 +413,8 @@ async function showAircraftDetails(userAircraftId) {
                   <div style="color: var(--warning-color); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(totalHourlyCost)}</div>
                 </div>
                 <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px;">
-                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Monthly</div>
-                  <div style="color: var(--danger-color); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(totalMonthlyCost)}</div>
+                  <div style="color: var(--text-muted); font-size: 0.55rem; text-transform: uppercase;">Weekly</div>
+                  <div style="color: var(--danger-color); font-weight: 700; font-size: 0.9rem;">$${formatCurrency(totalWeeklyCost)}</div>
                 </div>
               </div>
             </div>
@@ -535,8 +535,8 @@ function buildActionButtons(ua) {
   let html = '';
 
   if (isLeased && ['active', 'maintenance', 'storage'].includes(status)) {
-    const monthlyRate = parseFloat(ua.leaseMonthlyPayment) || 0;
-    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmCancelLease('${ua.id}', '${ua.registration}', ${isPlayerLease}, ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CANCEL LEASE</button>`;
+    const weeklyRate = parseFloat(ua.leaseWeeklyPayment) || 0;
+    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmCancelLease('${ua.id}', '${ua.registration}', ${isPlayerLease}, ${weeklyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CANCEL LEASE</button>`;
   }
   if (isOwned && ['active', 'storage'].includes(status)) {
     html += `<button class="btn" onclick="event.stopPropagation(); showSellDialog('${ua.id}', '${ua.registration}', ${ua.purchasePrice || 0})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #d29922; border-color: #d29922; color: #fff;">SELL</button>`;
@@ -556,8 +556,8 @@ function buildActionButtons(ua) {
     html += `<button class="btn" onclick="event.stopPropagation(); withdrawListing('${ua.id}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #d29922; border-color: #d29922; color: #fff;">WITHDRAW LISTING</button>`;
   }
   if (status === 'leased_out') {
-    const monthlyRate = parseFloat(ua.leaseOutMonthlyRate) || 0;
-    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmRecallAircraft('${ua.id}', '${ua.registration}', ${monthlyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">RECALL AIRCRAFT</button>`;
+    const weeklyRate = parseFloat(ua.leaseOutWeeklyRate) || 0;
+    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmRecallAircraft('${ua.id}', '${ua.registration}', ${weeklyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">RECALL AIRCRAFT</button>`;
   }
 
   html += `<button id="closeDetailBtn" class="btn btn-secondary" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CLOSE</button>`;
@@ -658,13 +658,13 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
 }
 
 // Cancel lease confirmation
-function confirmCancelLease(aircraftId, registration, isPlayerLease, monthlyRate) {
-  const penalty = isPlayerLease ? monthlyRate * 3 : 0;
+function confirmCancelLease(aircraftId, registration, isPlayerLease, weeklyRate) {
+  const penalty = isPlayerLease ? weeklyRate * 3 : 0;
   const penaltyHtml = isPlayerLease ? `
     <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
       <span style="color: #ef4444; font-weight: 700;">Early Termination Penalty:</span><br>
       <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(penalty)}</span>
-      <span style="color: var(--text-muted); font-size: 0.8rem;">(3 months &times; $${formatCurrency(monthlyRate)}/mo)</span><br>
+      <span style="color: var(--text-muted); font-size: 0.8rem;">(3 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
       <span style="color: var(--text-muted); font-size: 0.8rem;">This will be deducted from your balance and paid to the aircraft owner.</span>
     </p>
   ` : '';
@@ -757,7 +757,7 @@ function showSellDialog(aircraftId, registration, purchasePrice) {
   }
 }
 
-// Lease out dialog with monthly rate input
+// Lease out dialog with weekly rate input
 function showLeaseOutDialog(aircraftId, registration) {
   const userAircraft = fleetData.find(a => a.id === aircraftId);
   const aircraftTypeId = userAircraft?.aircraftId;
@@ -770,24 +770,24 @@ function showLeaseOutDialog(aircraftId, registration) {
     title: 'Lease Out Aircraft',
     registration,
     bodyHtml: `
-      <p>Set a monthly rate to list this aircraft for lease. Scheduled flights and maintenance will be removed while listed.</p>
+      <p>Set a weekly rate to list this aircraft for lease. Scheduled flights and maintenance will be removed while listed.</p>
       ${aircraftTypeId ? loadingSpinner : ''}
     `,
     confirmLabel: 'List for Lease',
     confirmClass: 'btn-confirm-primary',
     inputConfig: {
-      label: 'Monthly Lease Rate',
+      label: 'Weekly Lease Rate',
       defaultValue: '',
-      placeholder: 'Enter monthly rate',
-      suffix: '/mo',
-      errorMsg: 'Please enter a valid monthly rate.'
+      placeholder: 'Enter weekly rate',
+      suffix: '/wk',
+      errorMsg: 'Please enter a valid weekly rate.'
     },
-    onConfirm: async (monthlyRate) => {
+    onConfirm: async (weeklyRate) => {
       try {
         const res = await fetch(`/api/fleet/${aircraftId}/lease-out`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ monthlyRate })
+          body: JSON.stringify({ weeklyRate })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -807,7 +807,7 @@ function showLeaseOutDialog(aircraftId, registration) {
         const el = document.getElementById('leaseMarketData');
         if (!el) return;
         if (market && market.lease.count > 0) {
-          el.innerHTML = `Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/mo</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/mo)</span>`;
+          el.innerHTML = `Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/wk</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/wk)</span>`;
           // Also update input with suggested rate
           const input = document.getElementById('fleetModalInput');
           if (input && !input.value) {
@@ -849,8 +849,8 @@ function withdrawListing(aircraftId) {
 }
 
 // Recall aircraft from player lessee
-function confirmRecallAircraft(aircraftId, registration, monthlyRate) {
-  const compensation = monthlyRate * 3;
+function confirmRecallAircraft(aircraftId, registration, weeklyRate) {
+  const compensation = weeklyRate * 3;
   showFleetModal({
     icon: '&#8617;',
     iconClass: 'danger',
@@ -861,7 +861,7 @@ function confirmRecallAircraft(aircraftId, registration, monthlyRate) {
       <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
         <span style="color: #ef4444; font-weight: 700;">Early Recall Compensation:</span><br>
         <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(compensation)}</span>
-        <span style="color: var(--text-muted); font-size: 0.8rem;">(3 months &times; $${formatCurrency(monthlyRate)}/mo)</span><br>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">(3 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
         <span style="color: var(--text-muted); font-size: 0.8rem;">This will be deducted from your balance and paid to the lessee as compensation.</span>
       </p>
       <p class="modal-warning">This action cannot be undone.</p>
@@ -882,12 +882,12 @@ function confirmRecallAircraft(aircraftId, registration, monthlyRate) {
   });
 }
 
-// Calculate storage monthly cost using per-airport rate
-function calculateStorageMonthlyCost(userAircraft) {
+// Calculate storage weekly cost using per-airport rate
+function calculateStorageWeeklyCost(userAircraft) {
   const purchasePrice = parseFloat(userAircraft.purchasePrice) || 0;
   if (userAircraft.storageAirportCode && window.STORAGE_AIRPORTS) {
     const sa = window.STORAGE_AIRPORTS.find(a => a.icao === userAircraft.storageAirportCode);
-    if (sa) return Math.round(purchasePrice * sa.monthlyRatePercent / 100);
+    if (sa) return Math.round(purchasePrice * sa.weeklyRatePercent / 100);
   }
   return Math.round(purchasePrice * 0.005);
 }
@@ -951,16 +951,16 @@ function confirmPutInStorage(aircraftId, registration) {
       const tierClass = (t) => t === 'Very Cheap' ? 'vcheap' : t === 'Cheap' ? 'cheap' : t === 'Middle' ? 'middle' : t === 'Mid-Expensive' ? 'midexp' : 'expensive';
       let tableHtml = `<table class="storage-table">
         <thead><tr>
-          <th></th><th>Location</th><th>Tier</th><th style="text-align:right">Cost/mo</th><th style="text-align:right">Wear</th><th style="text-align:right">Ferry</th><th style="text-align:right">Dist</th>
+          <th></th><th>Location</th><th>Tier</th><th style="text-align:right">Cost/wk</th><th style="text-align:right">Wear</th><th style="text-align:right">Ferry</th><th style="text-align:right">Dist</th>
         </tr></thead><tbody>`;
       storageAirports.forEach((sa, i) => {
-        const monthlyCost = Math.round(purchasePrice * sa.monthlyRatePercent / 100);
+        const weeklyCost = Math.round(purchasePrice * sa.weeklyRatePercent / 100);
         tableHtml += `
           <tr class="${i === 0 ? 'selected-row' : ''}" onclick="this.querySelector('input').checked=true; this.closest('tbody').querySelectorAll('tr').forEach(r=>r.classList.remove('selected-row')); this.classList.add('selected-row');">
             <td><input type="radio" name="storageAirport" value="${sa.icao}" ${i === 0 ? 'checked' : ''}></td>
             <td><div class="loc-name">${sa.icao}</div><div class="loc-detail">${sa.city}, ${sa.country}</div></td>
             <td><span class="tier-badge tier-${tierClass(sa.costTier)}">${sa.costTier}</span></td>
-            <td class="num">$${monthlyCost.toLocaleString()}</td>
+            <td class="num">$${weeklyCost.toLocaleString()}</td>
             <td class="num">${sa.annualConditionLoss}%/yr</td>
             <td class="num">${sa.recallDays}d</td>
             <td class="num">${sa.distanceNm.toLocaleString()}nm</td>

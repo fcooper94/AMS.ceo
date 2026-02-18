@@ -1854,12 +1854,12 @@ router.get('/market-averages/:aircraftTypeId', async (req, res) => {
         aircraftId: aircraftTypeId,
         status: { [Op.in]: ['listed_sale', 'listed_lease', 'leased_out'] }
       },
-      attributes: ['status', 'listingPrice', 'leaseOutMonthlyRate']
+      attributes: ['status', 'listingPrice', 'leaseOutWeeklyRate']
     });
     for (const pa of playerAircraft) {
       if (pa.status === 'listed_sale' && pa.listingPrice) salePrices.push(Math.round(parseFloat(pa.listingPrice)));
       if (pa.status === 'listed_lease' && pa.listingPrice) leaseRates.push(Math.round(parseFloat(pa.listingPrice)));
-      if (pa.status === 'leased_out' && pa.leaseOutMonthlyRate) leaseRates.push(Math.round(parseFloat(pa.leaseOutMonthlyRate)));
+      if (pa.status === 'leased_out' && pa.leaseOutWeeklyRate) leaseRates.push(Math.round(parseFloat(pa.leaseOutWeeklyRate)));
     }
 
     // 6. Calculate averages
@@ -2322,7 +2322,7 @@ router.post('/lease', async (req, res) => {
       condition,
       conditionPercentage,
       ageYears,
-      leaseMonthlyPayment,
+      leaseWeeklyPayment,
       leaseDurationMonths,
       maintenanceCostPerHour,
       fuelBurnPerHour,
@@ -2341,7 +2341,7 @@ router.post('/lease', async (req, res) => {
       playerListingId
     } = req.body;
 
-    if (!aircraftId || !leaseMonthlyPayment || !leaseDurationMonths || !registration) {
+    if (!aircraftId || !leaseWeeklyPayment || !leaseDurationMonths || !registration) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -2360,11 +2360,11 @@ router.post('/lease', async (req, res) => {
     }
 
     // Check if user can afford first month's payment
-    const monthlyPayment = Number(leaseMonthlyPayment);
-    if (membership.balance < monthlyPayment) {
+    const weeklyPayment = Number(leaseWeeklyPayment);
+    if (membership.balance < weeklyPayment) {
       return res.status(400).json({
         error: 'Insufficient funds for first lease payment',
-        required: monthlyPayment,
+        required: weeklyPayment,
         available: membership.balance
       });
     }
@@ -2478,7 +2478,7 @@ router.post('/lease', async (req, res) => {
       conditionPercentage: conditionPercentage || 100,
       ageYears: ageYears || 0,
       purchasePrice: purchasePrice || null,
-      leaseMonthlyPayment: monthlyPayment,
+      leaseWeeklyPayment: weeklyPayment,
       leaseDurationMonths: parseInt(leaseDurationMonths),
       leaseStartDate: now,
       leaseEndDate: leaseEnd,
@@ -2522,7 +2522,7 @@ router.post('/lease', async (req, res) => {
     }
 
     // Deduct first month's payment
-    membership.balance -= monthlyPayment;
+    membership.balance -= weeklyPayment;
     await membership.save();
 
     // Handle player-to-player lease: update owner's aircraft and notify
@@ -2536,7 +2536,7 @@ router.post('/lease', async (req, res) => {
           const buyerAirlineName = membership.airlineName || 'Another airline';
           // Update owner's aircraft to leased_out + link to lessee
           ownerAircraft.status = 'leased_out';
-          ownerAircraft.leaseOutMonthlyRate = monthlyPayment;
+          ownerAircraft.leaseOutWeeklyRate = weeklyPayment;
           ownerAircraft.leaseOutStartDate = now;
           ownerAircraft.leaseOutEndDate = leaseEnd;
           ownerAircraft.leaseOutTenantName = buyerAirlineName;
@@ -2546,7 +2546,7 @@ router.post('/lease', async (req, res) => {
           userAircraft.playerLessorAircraftId = ownerAircraft.id;
           await userAircraft.save();
           // Credit first month to owner
-          ownerMembership.balance = parseFloat(ownerMembership.balance) + monthlyPayment;
+          ownerMembership.balance = parseFloat(ownerMembership.balance) + weeklyPayment;
           await ownerMembership.save();
           // Notify owner
           await Notification.create({
@@ -2554,7 +2554,7 @@ router.post('/lease', async (req, res) => {
             type: 'aircraft_leased_out',
             icon: 'plane',
             title: 'Aircraft Leased Out',
-            message: `${ownerAircraft.registration} has been leased by ${buyerAirlineName} at $${Number(monthlyPayment).toLocaleString('en-US')}/mo for ${leaseDurationMonths} months`,
+            message: `${ownerAircraft.registration} has been leased by ${buyerAirlineName} at $${Number(weeklyPayment).toLocaleString('en-US')}/wk for ${leaseDurationMonths} months`,
             priority: 2,
             gameTime: now
           });
@@ -4123,7 +4123,7 @@ router.post('/:aircraftId/cancel-lease', async (req, res) => {
     }
 
     const reg = aircraft.registration;
-    const monthlyPayment = parseFloat(aircraft.leaseMonthlyPayment) || 0;
+    const weeklyPayment = parseFloat(aircraft.leaseWeeklyPayment) || 0;
 
     // Find owner aircraft: first by direct link, then by reverse lookup
     let ownerAircraft = null;
@@ -4144,7 +4144,7 @@ router.post('/:aircraftId/cancel-lease', async (req, res) => {
 
     // Player lease: apply 3-month early termination penalty
     if (isPlayerLease) {
-      const penalty = monthlyPayment * 3;
+      const penalty = weeklyPayment * 3;
       if (parseFloat(membership.balance) < penalty) {
         return res.status(400).json({
           error: `Insufficient funds for early termination penalty ($${Number(penalty).toLocaleString('en-US')}). You need 3 months' lease rate.`
@@ -4159,7 +4159,7 @@ router.post('/:aircraftId/cancel-lease', async (req, res) => {
       if (ownerAircraft) {
         const ownerMembership = ownerAircraft.membership;
         ownerAircraft.status = 'active';
-        ownerAircraft.leaseOutMonthlyRate = null;
+        ownerAircraft.leaseOutWeeklyRate = null;
         ownerAircraft.leaseOutStartDate = null;
         ownerAircraft.leaseOutEndDate = null;
         ownerAircraft.leaseOutTenantName = null;
@@ -4257,9 +4257,9 @@ router.post('/:aircraftId/lease-out', async (req, res) => {
       return res.status(400).json({ error: 'Aircraft must be active or in storage to lease out' });
     }
 
-    const monthlyRate = parseFloat(req.body.monthlyRate);
-    if (!monthlyRate || monthlyRate <= 0) {
-      return res.status(400).json({ error: 'Valid monthly rate is required' });
+    const weeklyRate = parseFloat(req.body.weeklyRate);
+    if (!weeklyRate || weeklyRate <= 0) {
+      return res.status(400).json({ error: 'Valid weekly rate is required' });
     }
 
     const gameTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
@@ -4267,11 +4267,11 @@ router.post('/:aircraftId/lease-out', async (req, res) => {
     await clearAircraftSchedule(aircraft.id);
     await aircraft.update({
       status: 'listed_lease',
-      listingPrice: monthlyRate,
+      listingPrice: weeklyRate,
       listedAt: gameTime
     });
 
-    console.log(`Aircraft listed for lease: ${aircraft.registration} at $${monthlyRate}/mo`);
+    console.log(`Aircraft listed for lease: ${aircraft.registration} at $${weeklyRate}/wk`);
     res.json({ message: 'Aircraft listed for lease', aircraft, newStatus: 'listed_lease' });
   } catch (error) {
     console.error('Error listing aircraft for lease:', error);
@@ -4337,7 +4337,7 @@ router.post('/:aircraftId/recall-aircraft', async (req, res) => {
       // No player lessee found - this is an NPC lease, just return to active
       await aircraft.update({
         status: 'active',
-        leaseOutMonthlyRate: null,
+        leaseOutWeeklyRate: null,
         leaseOutStartDate: null,
         leaseOutEndDate: null,
         leaseOutTenantName: null,
@@ -4349,8 +4349,8 @@ router.post('/:aircraftId/recall-aircraft', async (req, res) => {
       return res.json({ message: 'Aircraft returned to fleet', registration: aircraft.registration, compensation: 0 });
     }
 
-    const monthlyRate = parseFloat(aircraft.leaseOutMonthlyRate) || 0;
-    const compensation = monthlyRate * 3;
+    const weeklyRate = parseFloat(aircraft.leaseOutWeeklyRate) || 0;
+    const compensation = weeklyRate * 3;
 
     if (parseFloat(membership.balance) < compensation) {
       return res.status(400).json({
@@ -4391,7 +4391,7 @@ router.post('/:aircraftId/recall-aircraft', async (req, res) => {
     // Return owner's aircraft to active
     await aircraft.update({
       status: 'active',
-      leaseOutMonthlyRate: null,
+      leaseOutWeeklyRate: null,
       leaseOutStartDate: null,
       leaseOutEndDate: null,
       leaseOutTenantName: null,

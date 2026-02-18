@@ -1189,7 +1189,7 @@ router.delete('/airlines/fleet/:aircraftId', async (req, res) => {
       depreciationFactor = Math.max(depreciationFactor, 0.03);
 
       const usedPrice = basePrice * depreciationFactor;
-      const leasePrice = usedPrice * (0.003 + Math.random() * 0.002);
+      const leasePrice = usedPrice * ((0.003 + Math.random() * 0.002) / 4.33);
 
       // Calculate check validity (randomized)
       const cCheckRemainingDays = 180 + Math.floor(Math.random() * 365);

@@ -97,7 +97,7 @@ async function calculateCreditScore(membership) {
   if (allLoans.length > 0) {
     const totalMissed = allLoans.reduce((sum, l) => sum + (l.missedPayments || 0), 0);
     const totalPaymentsMade = allLoans.reduce((sum, l) => {
-      return sum + (l.termMonths - (l.monthsRemaining || 0));
+      return sum + (l.termWeeks - (l.weeksRemaining || 0));
     }, 0);
     const totalPayments = totalPaymentsMade + totalMissed;
     if (totalPayments > 0) {
@@ -132,7 +132,7 @@ router.get('/', async (req, res) => {
 
     const activeLoans = loans.filter(l => l.status === 'active');
     const totalDebt = activeLoans.reduce((sum, l) => sum + (parseFloat(l.remainingPrincipal) || 0), 0);
-    const monthlyObligations = activeLoans.reduce((sum, l) => sum + (parseFloat(l.monthlyPayment) || 0), 0);
+    const weeklyObligations = activeLoans.reduce((sum, l) => sum + (parseFloat(l.weeklyPayment) || 0), 0);
 
     res.json({
       creditScore: credit.score,
@@ -149,10 +149,10 @@ router.get('/', async (req, res) => {
         principalAmount: parseFloat(l.principalAmount),
         remainingPrincipal: parseFloat(l.remainingPrincipal),
         interestRate: parseFloat(l.interestRate),
-        termMonths: l.termMonths,
-        monthsRemaining: l.monthsRemaining,
+        termWeeks: l.termWeeks,
+        weeksRemaining: l.weeksRemaining,
         repaymentStrategy: l.repaymentStrategy,
-        monthlyPayment: parseFloat(l.monthlyPayment),
+        weeklyPayment: parseFloat(l.weeklyPayment),
         totalInterestPaid: parseFloat(l.totalInterestPaid),
         totalPrincipalPaid: parseFloat(l.totalPrincipalPaid),
         earlyRepaymentFee: parseFloat(l.earlyRepaymentFee),
@@ -166,7 +166,7 @@ router.get('/', async (req, res) => {
       })),
       summary: {
         totalDebt: Math.round(totalDebt),
-        monthlyObligations: Math.round(monthlyObligations),
+        weeklyObligations: Math.round(weeklyObligations),
         activeLoans: activeLoans.length,
         totalLoans: loans.length,
         defaultedLoans: loans.filter(l => l.status === 'defaulted').length,
@@ -205,7 +205,7 @@ router.get('/offers', async (req, res) => {
           const rate = calculateOfferRate(bank.id, credit.score, type);
           const termRange = TERM_RANGES[type];
           const midTerm = Math.round((termRange.min + termRange.max) / 2);
-          const exampleMonthly = maxAmount > 0 ? calculateFixedPayment(maxAmount, rate, midTerm) : 0;
+          const exampleWeekly = maxAmount > 0 ? calculateFixedPayment(maxAmount, rate, midTerm) : 0;
 
           return {
             type,
@@ -213,7 +213,7 @@ router.get('/offers', async (req, res) => {
             description: info.description,
             rate,
             termRange,
-            exampleMonthly: Math.round(exampleMonthly),
+            exampleWeekly: Math.round(exampleWeekly),
             exampleTerm: midTerm
           };
         });
@@ -263,7 +263,7 @@ router.post('/apply', async (req, res) => {
     const membership = await getMembership(req);
     if (!membership) return res.status(401).json({ error: 'Not authenticated or no world selected' });
 
-    const { bankId, loanType, amount, termMonths, repaymentStrategy } = req.body;
+    const { bankId, loanType, amount, termWeeks, repaymentStrategy } = req.body;
 
     // Validate bank
     const bank = getBank(bankId);
@@ -287,8 +287,8 @@ router.post('/apply', async (req, res) => {
 
     // Validate term range
     const termRange = TERM_RANGES[loanType];
-    if (termMonths < termRange.min || termMonths > termRange.max) {
-      return res.status(400).json({ error: `Term must be ${termRange.min}–${termRange.max} months for ${LOAN_TYPES[loanType].label}` });
+    if (termWeeks < termRange.min || termWeeks > termRange.max) {
+      return res.status(400).json({ error: `Term must be ${termRange.min}–${termRange.max} weeks for ${LOAN_TYPES[loanType].label}` });
     }
 
     // Credit score check
@@ -306,17 +306,17 @@ router.post('/apply', async (req, res) => {
 
     // Calculate rate and payment
     const rate = calculateOfferRate(bankId, credit.score, loanType);
-    let monthlyPayment = 0;
+    let weeklyPayment = 0;
     if (repaymentStrategy === 'fixed') {
-      monthlyPayment = calculateFixedPayment(amount, rate, termMonths);
+      weeklyPayment = calculateFixedPayment(amount, rate, termWeeks);
     } else if (repaymentStrategy === 'reducing') {
-      // First month payment (highest)
-      const principalPortion = amount / termMonths;
-      const interestPortion = amount * (rate / 100 / 12);
-      monthlyPayment = Math.round((principalPortion + interestPortion) * 100) / 100;
+      // First week payment (highest)
+      const principalPortion = amount / termWeeks;
+      const interestPortion = amount * (rate / 100 / 52);
+      weeklyPayment = Math.round((principalPortion + interestPortion) * 100) / 100;
     } else {
       // Interest only
-      monthlyPayment = Math.round(amount * (rate / 100 / 12) * 100) / 100;
+      weeklyPayment = Math.round(amount * (rate / 100 / 52) * 100) / 100;
     }
 
     // Get game date for origination
@@ -334,10 +334,10 @@ router.post('/apply', async (req, res) => {
       principalAmount: amount,
       remainingPrincipal: amount,
       interestRate: rate,
-      termMonths,
-      monthsRemaining: termMonths,
+      termWeeks,
+      weeksRemaining: termWeeks,
       repaymentStrategy,
-      monthlyPayment,
+      weeklyPayment,
       earlyRepaymentFee: bank.earlyRepaymentFee,
       paymentHolidaysTotal: bank.paymentHolidays,
       paymentHolidaysUsed: 0,
@@ -358,7 +358,7 @@ router.post('/apply', async (req, res) => {
         type: 'loan_approved',
         icon: 'dollar-sign',
         title: `Loan Approved — ${bank.shortName}`,
-        message: `$${Math.round(amount).toLocaleString()} ${LOAN_TYPES[loanType].label} loan at ${rate}% APR. Monthly payment: $${Math.round(monthlyPayment).toLocaleString()}`,
+        message: `$${Math.round(amount).toLocaleString()} ${LOAN_TYPES[loanType].label} loan at ${rate}% APR. Weekly payment: $${Math.round(weeklyPayment).toLocaleString()}`,
         link: '/loans',
         priority: 2,
         gameTime: world?.currentTime || new Date()
@@ -372,8 +372,8 @@ router.post('/apply', async (req, res) => {
         loanType,
         amount,
         rate,
-        termMonths,
-        monthlyPayment,
+        termWeeks,
+        weeklyPayment,
         repaymentStrategy
       },
       newBalance: parseFloat(membership.balance)
@@ -425,7 +425,7 @@ router.post('/:id/repay', async (req, res) => {
     if (newRemaining <= 0.01) {
       loan.status = 'paid_off';
       loan.remainingPrincipal = 0;
-      loan.monthsRemaining = 0;
+      loan.weeksRemaining = 0;
 
       const bank = getBank(loan.bankId);
       try {

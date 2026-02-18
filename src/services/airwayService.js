@@ -508,7 +508,12 @@ class AirwayService {
    */
   _computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, avoidFirs = null) {
     const gcMid = this._interpolateGreatCircle(depLat, depLng, arrLat, arrLng, 0.5);
-    const routeSuitsNat = this.natTracks && this._isInNatCorridor(gcMid.lat, gcMid.lng);
+    // NAT tracks are for full transatlantic crossings. Both airports should be on
+    // opposite continental margins — not mid-ocean (Greenland, Iceland, Azores, etc.).
+    // Americas side: west of -55°W, Europe side: east of -12°W
+    const _isMidAtlantic = (lat, lng) => lng > -55 && lng < -12 && lat >= 45 && lat <= 70;
+    const routeSuitsNat = this.natTracks && this._isInNatCorridor(gcMid.lat, gcMid.lng)
+      && !_isMidAtlantic(depLat, depLng) && !_isMidAtlantic(arrLat, arrLng);
 
     // Helper: check if a segment overlaps any avoided FIR (handles stacked sectors)
     const _isSegmentAvoided = (seg) => {

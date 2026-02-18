@@ -30,7 +30,7 @@ function renderSummary(data) {
   setText('statCosts', fmtMoney(data.allTime.totalCosts));
   setText('statFlights', data.allTime.totalFlights.toLocaleString());
   setText('statPax', data.allTime.totalPassengers.toLocaleString());
-  setText('statOverhead', fmtMoney(data.monthlyOverheads.total) + '/mo');
+  setText('statOverhead', fmtMoney(data.weeklyOverheads.total) + '/wk');
 }
 
 // ── Pagination ───────────────────────────────────────────────────────────────

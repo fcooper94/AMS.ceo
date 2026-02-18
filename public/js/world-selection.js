@@ -18,7 +18,7 @@ let airportBrowserContext = 'join'; // 'join' or 'sp'
 // AI count — same across all difficulties (~800), difficulty only affects AI behaviour
 const AI_TOTAL_COUNTS = { easy: 800, medium: 800, hard: 800 };
 
-// Service contractor monthly costs (2024 USD) — era-scaled in preview functions
+// Service contractor weekly costs (2024 USD) — era-scaled in preview functions
 const CONTRACTOR_COSTS = {
   cleaning:     { budget: 8000,  standard: 18000, premium: 35000 },
   ground:       { budget: 12000, standard: 25000, premium: 45000 },
@@ -1727,8 +1727,8 @@ function updateSPPreview() {
 function formatContractorCost(cost2024, mult) {
   const scaled = Math.round(cost2024 * mult);
   return scaled >= 1000000
-    ? `$${(scaled / 1000000).toFixed(1)}M/mo`
-    : `$${(scaled / 1000).toLocaleString('en-US')}K/mo`;
+    ? `$${(scaled / 1000000).toFixed(1)}M/wk`
+    : `$${(scaled / 1000).toLocaleString('en-US')}K/wk`;
 }
 
 function updateContractorCosts(prefix, mult) {
@@ -1744,8 +1744,8 @@ function updateContractorCosts(prefix, mult) {
   const engineering = document.querySelector(`input[name="${prefix}Engineering"]:checked`)?.value || 'standard';
   const total = (CONTRACTOR_COSTS.cleaning[cleaning] + CONTRACTOR_COSTS.ground[ground] + CONTRACTOR_COSTS.engineering[engineering]) * mult;
   const totalText = total >= 1000000
-    ? `$${(total / 1000000).toFixed(1)}M/mo`
-    : `$${Math.round(total / 1000).toLocaleString('en-US')}K/mo`;
+    ? `$${(total / 1000000).toFixed(1)}M/wk`
+    : `$${Math.round(total / 1000).toLocaleString('en-US')}K/wk`;
   // Update all total spans (one per contractor step)
   for (const suffix of ['', '2', '3']) {
     const el = document.getElementById(`${prefix}ContractorTotal${suffix}`);

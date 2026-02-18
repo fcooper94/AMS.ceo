@@ -28,7 +28,7 @@ class WorldTimeService {
     this.lastListingCheck = 0; // Timestamp of last listing check
     this.listingCheckInterval = 60000; // Check listings every 60 seconds (real time)
     this.isProcessingListings = false; // Prevent overlapping listing queries
-    this.lastLeaseIncomeMonth = {}; // Map of worldId -> last game month processed for lease income
+    this.lastLeaseIncomeWeek = {}; // Map of worldId -> last game week processed for lease/storage income
     // AI decision processing
     this.lastAICheck = 0;
     this.aiCheckInterval = 30000; // Check AI decisions every 30 seconds (real time)
@@ -49,8 +49,8 @@ class WorldTimeService {
     // Weekly overhead recording
     this.lastOverheadWeek = {}; // Map of worldId -> last game week (Monday date) overheads were recorded
     this.isProcessingOverheads = false;
-    // Monthly loan payment processing
-    this.lastLoanMonth = {}; // Map of worldId -> last game month (YYYY-MM) loans were processed
+    // Weekly loan payment processing
+    this.lastLoanWeek = {}; // Map of worldId -> last game week loans were processed
     this.isProcessingLoans = false;
   }
 
@@ -421,11 +421,10 @@ class WorldTimeService {
         .finally(() => { this.isProcessingOverheads = false; });
     }
 
-    // Process monthly loan payments once per game month
-    const currentLoanMonth = gameTime.toISOString().slice(0, 7); // 'YYYY-MM'
-    const lastLoanMonth = this.lastLoanMonth[worldId] || '';
-    if (!this.isProcessingLoans && currentLoanMonth !== lastLoanMonth) {
-      this.lastLoanMonth[worldId] = currentLoanMonth;
+    // Process weekly loan payments once per game week
+    const lastLoanWeek = this.lastLoanWeek[worldId] || '';
+    if (!this.isProcessingLoans && currentWeekStart !== lastLoanWeek) {
+      this.lastLoanWeek[worldId] = currentWeekStart;
       this.isProcessingLoans = true;
       this.processLoanPayments(worldId, gameTime)
         .catch(err => console.error('Error processing loan payments:', err.message))
@@ -1016,7 +1015,7 @@ class WorldTimeService {
 
   /**
    * Record weekly overhead costs (staff, leases, contractors) for all memberships
-   * Called once per game week. Prorates monthly costs to weekly (÷ 4.33).
+   * Called once per game week. Records weekly overhead costs for all memberships.
    */
   async recordWeeklyOverheads(worldId, gameTime, weekStart) {
     try {
@@ -1034,10 +1033,10 @@ class WorldTimeService {
         where: { worldId, isActive: true }
       });
 
-      // Fleet commonality cost tiers (monthly, 2024 USD, before era scaling)
-      const TYPE_FAMILY_MONTHLY_COST = { 'Regional': 25000, 'Narrowbody': 40000, 'Widebody': 65000, 'Cargo': 65000 };
+      // Fleet commonality cost tiers (weekly, 2024 USD, before era scaling)
+      const TYPE_FAMILY_WEEKLY_COST = { 'Regional': 5800, 'Narrowbody': 9250, 'Widebody': 15000, 'Cargo': 15000 };
       const LARGE_WIDEBODY_MODELS = ['747', 'A380', '777'];
-      const LARGE_WIDEBODY_MONTHLY_COST = 85000;
+      const LARGE_WIDEBODY_WEEKLY_COST = 19650;
 
       for (const membership of memberships) {
         try {
@@ -1051,7 +1050,7 @@ class WorldTimeService {
           // Lease costs
           const leaseCosts = fleet
             .filter(a => a.acquisitionType === 'lease')
-            .reduce((sum, a) => sum + (parseFloat(a.leaseMonthlyPayment) || 0), 0);
+            .reduce((sum, a) => sum + (parseFloat(a.leaseWeeklyPayment) || 0), 0);
 
           // Staff costs (simplified — no crew-from-routes for overhead snapshot)
           const modifiers = membership.staffSalaryModifiers || {};
@@ -1064,12 +1063,12 @@ class WorldTimeService {
           }
 
           // Contractor costs
-          const cleaningCost = (getContractor('cleaning', membership.cleaningContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
-          const groundCost = (getContractor('ground', membership.groundContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
-          const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
+          const cleaningCost = (getContractor('cleaning', membership.cleaningContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
+          const groundCost = (getContractor('ground', membership.groundContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
+          const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
           const contractorCost = Math.round(cleaningCost + groundCost + engineeringCost);
 
-          // Fleet commonality costs — fixed monthly cost per unique type family
+          // Fleet commonality costs — fixed weekly cost per unique type family
           const typeFamilies = new Map(); // family key → { type, model }
           for (const ac of fleet) {
             if (!ac.aircraft) continue;
@@ -1081,16 +1080,11 @@ class WorldTimeService {
           let commonalityCost = 0;
           for (const [, info] of typeFamilies) {
             const isLargeWidebody = LARGE_WIDEBODY_MODELS.includes(info.model);
-            const monthlyCost = isLargeWidebody ? LARGE_WIDEBODY_MONTHLY_COST : (TYPE_FAMILY_MONTHLY_COST[info.type] || 40000);
-            commonalityCost += monthlyCost * eraMultiplier;
+            const weeklyCost = isLargeWidebody ? LARGE_WIDEBODY_WEEKLY_COST : (TYPE_FAMILY_WEEKLY_COST[info.type] || 9250);
+            commonalityCost += weeklyCost * eraMultiplier;
           }
 
-          // Prorate monthly to weekly (÷ 4.33)
-          const weeklyStaff = Math.round(staffCost / 4.33);
-          const weeklyLeases = Math.round(leaseCosts / 4.33);
-          const weeklyContractors = Math.round(contractorCost / 4.33);
-          const weeklyCommonality = Math.round(commonalityCost / 4.33);
-
+          // All values are now weekly — no proration needed
           const [record] = await WeeklyFinancial.findOrCreate({
             where: { worldMembershipId: membership.id, weekStart },
             defaults: {}
@@ -1098,10 +1092,10 @@ class WorldTimeService {
 
           if (!record.overheadRecorded) {
             await record.update({
-              staffCosts: weeklyStaff,
-              leaseCosts: weeklyLeases,
-              contractorCosts: weeklyContractors,
-              fleetCommonalityCosts: weeklyCommonality,
+              staffCosts: Math.round(staffCost),
+              leaseCosts: Math.round(leaseCosts),
+              contractorCosts: Math.round(contractorCost),
+              fleetCommonalityCosts: Math.round(commonalityCost),
               overheadRecorded: true
             });
           }
@@ -1115,8 +1109,8 @@ class WorldTimeService {
   }
 
   /**
-   * Process monthly loan payments for all active loans in a world
-   * Called once per game month. Deducts payments from balance, updates loan state.
+   * Process weekly loan payments for all active loans in a world
+   * Called once per game week. Deducts payments from balance, updates loan state.
    */
   async processLoanPayments(worldId, gameTime) {
     try {
@@ -1140,27 +1134,27 @@ class WorldTimeService {
 
           if (loans.length === 0) continue;
 
-          let totalPaymentThisMonth = 0;
+          let totalPaymentThisWeek = 0;
 
           for (const loan of loans) {
             try {
               const remaining = parseFloat(loan.remainingPrincipal) || 0;
               if (remaining <= 0) {
                 loan.status = 'paid_off';
-                loan.monthsRemaining = 0;
+                loan.weeksRemaining = 0;
                 await loan.save();
                 continue;
               }
 
               const annualRate = parseFloat(loan.interestRate) || 0;
-              const monthlyRate = annualRate / 100 / 12;
-              const monthlyInterest = remaining * monthlyRate;
+              const weeklyRate = annualRate / 100 / 52;
+              const weeklyInterest = remaining * weeklyRate;
 
               // Payment holiday: accrue interest, skip payment
               if (loan.isOnHoliday) {
-                loan.remainingPrincipal = remaining + monthlyInterest;
+                loan.remainingPrincipal = remaining + weeklyInterest;
                 loan.isOnHoliday = false;
-                loan.monthsRemaining = Math.max(0, loan.monthsRemaining - 1);
+                loan.weeksRemaining = Math.max(0, loan.weeksRemaining - 1);
                 loan.lastPaymentGameDate = gameDate;
                 await loan.save();
                 continue;
@@ -1168,10 +1162,10 @@ class WorldTimeService {
 
               let payment = 0;
               let principalPortion = 0;
-              let interestPortion = monthlyInterest;
+              let interestPortion = weeklyInterest;
 
               if (loan.repaymentStrategy === 'fixed') {
-                payment = parseFloat(loan.monthlyPayment) || 0;
+                payment = parseFloat(loan.weeklyPayment) || 0;
                 principalPortion = payment - interestPortion;
                 // On final months, adjust to avoid overpaying
                 if (principalPortion > remaining) {
@@ -1179,12 +1173,12 @@ class WorldTimeService {
                   payment = principalPortion + interestPortion;
                 }
               } else if (loan.repaymentStrategy === 'reducing') {
-                principalPortion = parseFloat(loan.principalAmount) / loan.termMonths;
+                principalPortion = parseFloat(loan.principalAmount) / loan.termWeeks;
                 if (principalPortion > remaining) principalPortion = remaining;
                 payment = principalPortion + interestPortion;
               } else {
                 // Interest only — pay interest each month, balloon on final month
-                if (loan.monthsRemaining <= 1) {
+                if (loan.weeksRemaining <= 1) {
                   principalPortion = remaining;
                   payment = remaining + interestPortion;
                 } else {
@@ -1245,21 +1239,21 @@ class WorldTimeService {
 
               // Deduct payment
               membership.balance = balance - payment;
-              totalPaymentThisMonth += payment;
+              totalPaymentThisWeek += payment;
 
               // Update loan
               loan.remainingPrincipal = Math.max(0, remaining - principalPortion);
               loan.totalInterestPaid = (parseFloat(loan.totalInterestPaid) || 0) + interestPortion;
               loan.totalPrincipalPaid = (parseFloat(loan.totalPrincipalPaid) || 0) + principalPortion;
-              loan.monthsRemaining = Math.max(0, loan.monthsRemaining - 1);
+              loan.weeksRemaining = Math.max(0, loan.weeksRemaining - 1);
               loan.missedPayments = 0; // Reset on successful payment
               loan.lastPaymentGameDate = gameDate;
 
               // Check if paid off
-              if (loan.remainingPrincipal <= 0.01 || loan.monthsRemaining <= 0) {
+              if (loan.remainingPrincipal <= 0.01 || loan.weeksRemaining <= 0) {
                 loan.status = 'paid_off';
                 loan.remainingPrincipal = 0;
-                loan.monthsRemaining = 0;
+                loan.weeksRemaining = 0;
 
                 const bank = getBank(loan.bankId);
                 try {
@@ -1286,13 +1280,13 @@ class WorldTimeService {
           await membership.save();
 
           // Record total loan payments in weekly financial
-          if (totalPaymentThisMonth > 0) {
+          if (totalPaymentThisWeek > 0) {
             try {
               const [weekRecord] = await WeeklyFinancial.findOrCreate({
                 where: { worldMembershipId: membership.id, weekStart },
                 defaults: {}
               });
-              await weekRecord.increment({ loanPayments: totalPaymentThisMonth });
+              await weekRecord.increment({ loanPayments: totalPaymentThisWeek });
             } catch (wfErr) { /* non-critical */ }
           }
         } catch (mErr) {
@@ -2134,18 +2128,19 @@ class WorldTimeService {
         }
       }
 
-      // --- Process lease-out income (monthly) ---
-      const gameMonth = currentGameTime.getFullYear() * 12 + currentGameTime.getMonth();
-      const lastMonth = this.lastLeaseIncomeMonth[worldId] || 0;
+      // --- Process lease-out income (weekly) ---
+      const WeeklyFinancial = require('../models/WeeklyFinancial');
+      const currentWeek = WeeklyFinancial.getWeekStart(currentGameTime);
+      const lastWeek = this.lastLeaseIncomeWeek[worldId] || '';
 
-      if (gameMonth > lastMonth) {
-        this.lastLeaseIncomeMonth[worldId] = gameMonth;
+      if (currentWeek !== lastWeek) {
+        this.lastLeaseIncomeWeek[worldId] = currentWeek;
 
         const leasedOutAircraft = await UserAircraft.findAll({
           where: {
             worldMembershipId: { [Op.in]: membershipIds },
             status: 'leased_out',
-            leaseOutMonthlyRate: { [Op.ne]: null }
+            leaseOutWeeklyRate: { [Op.ne]: null }
           }
         });
 
@@ -2157,7 +2152,7 @@ class WorldTimeService {
           if (ac.leaseOutEndDate && new Date(ac.leaseOutEndDate) <= currentGameTime) {
             await ac.update({
               status: 'active',
-              leaseOutMonthlyRate: null,
+              leaseOutWeeklyRate: null,
               leaseOutStartDate: null,
               leaseOutEndDate: null,
               leaseOutTenantName: null,
@@ -2180,15 +2175,15 @@ class WorldTimeService {
             continue;
           }
 
-          // Credit monthly lease income
-          const rate = parseFloat(ac.leaseOutMonthlyRate);
+          // Credit weekly lease income
+          const rate = parseFloat(ac.leaseOutWeeklyRate);
           membership.balance = parseFloat(membership.balance) + rate;
           await membership.save();
 
           console.log(`Lease income: $${rate} from ${ac.registration} to membership ${membership.id}`);
         }
 
-        // --- Process storage costs (monthly) ---
+        // --- Process storage costs (weekly) ---
         const storedAircraft = await UserAircraft.findAll({
           where: {
             worldMembershipId: { [Op.in]: membershipIds },
@@ -2201,17 +2196,17 @@ class WorldTimeService {
           if (!membership) continue;
 
           const purchasePrice = parseFloat(ac.purchasePrice) || 0;
-          let monthlyRate = 0.005; // default 0.5%
+          let weeklyRate = 0.005 / 4.33; // default 0.5%/mo → weekly
           if (ac.storageAirportCode) {
             const sa = STORAGE_AIRPORTS.find(a => a.icao === ac.storageAirportCode);
-            if (sa) monthlyRate = sa.monthlyRatePercent / 100;
+            if (sa) weeklyRate = sa.weeklyRatePercent / 100;
           }
-          const storageCost = Math.round(purchasePrice * monthlyRate);
+          const storageCost = Math.round(purchasePrice * weeklyRate);
 
           if (storageCost > 0) {
             membership.balance = parseFloat(membership.balance) - storageCost;
             await membership.save();
-            console.log(`Storage cost: -$${storageCost} for ${ac.registration} at ${ac.storageAirportCode || 'unknown'} (${monthlyRate * 100}%/mo)`);
+            console.log(`Storage cost: -$${storageCost} for ${ac.registration} at ${ac.storageAirportCode || 'unknown'} (${weeklyRate * 100}%/wk)`);
           }
         }
       }
@@ -2258,7 +2253,7 @@ class WorldTimeService {
    * Complete an NPC aircraft lease-out
    */
   async completeLeaseOut(userAircraft, membership, gameTime, Notification) {
-    const monthlyRate = parseFloat(userAircraft.listingPrice);
+    const weeklyRate = parseFloat(userAircraft.listingPrice);
     const npcName = generateNpcAirlineName();
     const leaseDuration = 12 + Math.floor(Math.random() * 24); // 12-36 months
 
@@ -2268,7 +2263,7 @@ class WorldTimeService {
 
     await userAircraft.update({
       status: 'leased_out',
-      leaseOutMonthlyRate: monthlyRate,
+      leaseOutWeeklyRate: weeklyRate,
       leaseOutStartDate: leaseStart,
       leaseOutEndDate: leaseEnd,
       leaseOutTenantName: npcName,
@@ -2281,13 +2276,13 @@ class WorldTimeService {
       type: 'aircraft_leased_out',
       icon: 'plane',
       title: `Aircraft Leased: ${userAircraft.registration}`,
-      message: `${npcName} is leasing your ${userAircraft.registration} for $${monthlyRate.toLocaleString()}/mo (${leaseDuration} months). Income will be credited monthly.`,
+      message: `${npcName} is leasing your ${userAircraft.registration} for $${weeklyRate.toLocaleString()}/wk (${leaseDuration} months). Income will be credited weekly.`,
       link: '/fleet',
       priority: 2,
       gameTime: gameTime
     });
 
-    console.log(`Aircraft leased out: ${userAircraft.registration} to ${npcName} at $${monthlyRate}/mo for ${leaseDuration} months`);
+    console.log(`Aircraft leased out: ${userAircraft.registration} to ${npcName} at $${weeklyRate}/wk for ${leaseDuration} months`);
   }
 }
 

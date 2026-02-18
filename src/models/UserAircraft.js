@@ -58,7 +58,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
     allowNull: true,
     field: 'purchase_price'
   },
-  leaseMonthlyPayment: {
+  leaseWeeklyPayment: {
     type: DataTypes.DECIMAL(15, 2),
     field: 'lease_monthly_payment'
   },
@@ -79,7 +79,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     field: 'listing_price',
-    comment: 'Asking price when listed for sale, or monthly rate when listed for lease-out'
+    comment: 'Asking price when listed for sale, or weekly rate when listed for lease-out'
   },
   listedAt: {
     type: DataTypes.DATE,
@@ -87,11 +87,11 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'listed_at',
     comment: 'Game-time when aircraft was listed for sale or lease'
   },
-  leaseOutMonthlyRate: {
+  leaseOutWeeklyRate: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     field: 'lease_out_monthly_rate',
-    comment: 'Monthly lease rate when leased out to NPC'
+    comment: 'Weekly lease rate when leased out to NPC'
   },
   leaseOutStartDate: {
     type: DataTypes.DATE,
