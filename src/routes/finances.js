@@ -54,9 +54,10 @@ router.get('/', async (req, res) => {
       const staff = parseFloat(w.staffCosts) || 0;
       const leases = parseFloat(w.leaseCosts) || 0;
       const contractors = parseFloat(w.contractorCosts) || 0;
+      const commonality = parseFloat(w.fleetCommonalityCosts) || 0;
       const loanPay = parseFloat(w.loanPayments) || 0;
       const opCosts = fuel + crew + maint + fees;
-      const overheads = staff + leases + contractors + loanPay;
+      const overheads = staff + leases + contractors + commonality + loanPay;
       const totalCosts = opCosts + overheads;
       const netProfit = rev - totalCosts;
 
@@ -71,6 +72,7 @@ router.get('/', async (req, res) => {
         staffCosts: Math.round(staff),
         leaseCosts: Math.round(leases),
         contractorCosts: Math.round(contractors),
+        fleetCommonalityCosts: Math.round(commonality),
         loanPayments: Math.round(loanPay),
         overheads: Math.round(overheads),
         totalCosts: Math.round(totalCosts),
@@ -128,7 +130,8 @@ router.get('/', async (req, res) => {
 
     // ── 3. Current monthly overheads (for info panel) ────────────────────────
     const fleet = await UserAircraft.findAll({
-      where: { worldMembershipId: membership.id }
+      where: { worldMembershipId: membership.id },
+      include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'type'] }]
     });
     const activeFleet = fleet.filter(a => a.status === 'active');
     const leasedAircraft = fleet.filter(a => a.acquisitionType === 'lease' && a.status === 'active');
@@ -162,7 +165,26 @@ router.get('/', async (req, res) => {
     const groundCost = Math.round((getContractor('ground', membership.groundContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
     const engineeringCost = Math.round((getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier);
     const monthlyContractors = cleaningCost + groundCost + engineeringCost;
-    const monthlyOverheads = monthlyStaff + Math.round(monthlyLeases) + monthlyContractors;
+
+    // Fleet commonality — fixed monthly cost per unique type family
+    const TYPE_FAMILY_MONTHLY_COST = { 'Regional': 25000, 'Narrowbody': 40000, 'Widebody': 65000, 'Cargo': 65000 };
+    const LARGE_WIDEBODY_MODELS = ['747', 'A380', '777'];
+    const typeFamilies = new Map();
+    for (const ac of activeFleet) {
+      if (!ac.aircraft) continue;
+      const familyKey = `${ac.aircraft.manufacturer} ${ac.aircraft.model}`;
+      if (!typeFamilies.has(familyKey)) {
+        typeFamilies.set(familyKey, { type: ac.aircraft.type, model: ac.aircraft.model });
+      }
+    }
+    let monthlyCommonality = 0;
+    for (const [, info] of typeFamilies) {
+      const isLargeWidebody = LARGE_WIDEBODY_MODELS.includes(info.model);
+      const cost = isLargeWidebody ? 85000 : (TYPE_FAMILY_MONTHLY_COST[info.type] || 40000);
+      monthlyCommonality += Math.round(cost * eraMultiplier);
+    }
+
+    const monthlyOverheads = monthlyStaff + Math.round(monthlyLeases) + monthlyContractors + monthlyCommonality;
 
     // ── 4. All-time totals from weekly data (includes overheads + loans) ────
     let allTimeRevenue = 0;
@@ -191,6 +213,7 @@ router.get('/', async (req, res) => {
         staff: Math.round(monthlyStaff),
         leases: Math.round(monthlyLeases),
         contractors: monthlyContractors,
+        fleetCommonality: monthlyCommonality,
         total: Math.round(monthlyOverheads)
       }
     });

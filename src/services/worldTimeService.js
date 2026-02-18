@@ -1034,11 +1034,17 @@ class WorldTimeService {
         where: { worldId, isActive: true }
       });
 
+      // Fleet commonality cost tiers (monthly, 2024 USD, before era scaling)
+      const TYPE_FAMILY_MONTHLY_COST = { 'Regional': 25000, 'Narrowbody': 40000, 'Widebody': 65000, 'Cargo': 65000 };
+      const LARGE_WIDEBODY_MODELS = ['747', 'A380', '777'];
+      const LARGE_WIDEBODY_MONTHLY_COST = 85000;
+
       for (const membership of memberships) {
         try {
-          // Fleet count
+          // Fleet count (include Aircraft type info for commonality calculation)
           const fleet = await UserAircraft.findAll({
-            where: { worldMembershipId: membership.id, status: 'active' }
+            where: { worldMembershipId: membership.id, status: 'active' },
+            include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'type'] }]
           });
           const fleetCount = fleet.length;
 
@@ -1063,10 +1069,27 @@ class WorldTimeService {
           const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.monthlyCost2024 || 0) * eraMultiplier;
           const contractorCost = Math.round(cleaningCost + groundCost + engineeringCost);
 
+          // Fleet commonality costs — fixed monthly cost per unique type family
+          const typeFamilies = new Map(); // family key → { type, model }
+          for (const ac of fleet) {
+            if (!ac.aircraft) continue;
+            const familyKey = `${ac.aircraft.manufacturer} ${ac.aircraft.model}`;
+            if (!typeFamilies.has(familyKey)) {
+              typeFamilies.set(familyKey, { type: ac.aircraft.type, model: ac.aircraft.model });
+            }
+          }
+          let commonalityCost = 0;
+          for (const [, info] of typeFamilies) {
+            const isLargeWidebody = LARGE_WIDEBODY_MODELS.includes(info.model);
+            const monthlyCost = isLargeWidebody ? LARGE_WIDEBODY_MONTHLY_COST : (TYPE_FAMILY_MONTHLY_COST[info.type] || 40000);
+            commonalityCost += monthlyCost * eraMultiplier;
+          }
+
           // Prorate monthly to weekly (÷ 4.33)
           const weeklyStaff = Math.round(staffCost / 4.33);
           const weeklyLeases = Math.round(leaseCosts / 4.33);
           const weeklyContractors = Math.round(contractorCost / 4.33);
+          const weeklyCommonality = Math.round(commonalityCost / 4.33);
 
           const [record] = await WeeklyFinancial.findOrCreate({
             where: { worldMembershipId: membership.id, weekStart },
@@ -1078,6 +1101,7 @@ class WorldTimeService {
               staffCosts: weeklyStaff,
               leaseCosts: weeklyLeases,
               contractorCosts: weeklyContractors,
+              fleetCommonalityCosts: weeklyCommonality,
               overheadRecorded: true
             });
           }

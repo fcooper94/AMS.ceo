@@ -502,7 +502,21 @@ async function scheduleAIFlights(route, aircraft) {
 }
 
 /**
+ * Get max appropriate passenger capacity for an airport type
+ */
+function getMaxCapacityForAirport(airportType) {
+  switch (airportType) {
+    case 'International Hub': return 9999;  // No limit
+    case 'Major':             return 350;   // Up to widebody, no superjumbos
+    case 'Regional':          return 200;   // Narrowbody only
+    case 'Small Regional':    return 100;   // Regional jets only
+    default:                  return 200;
+  }
+}
+
+/**
  * Try to buy a new aircraft for the AI airline
+ * Prefers aircraft types already in fleet (commonality) and appropriate for base airport size
  */
 async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, gameTime) {
   const balance = parseFloat(airline.balance) || 0;
@@ -522,29 +536,45 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   if (eraAircraft.length === 0) return;
 
-  // Pick aircraft that fits budget (spend max 40% of balance)
+  // Filter by budget (spend max 40% of balance)
   const maxSpend = balance * 0.4;
   const affordable = eraAircraft.filter(ac => {
-    const price = parseFloat(ac.price) || 50000000;
+    const price = parseFloat(ac.purchasePrice) || 50000000;
     return price <= maxSpend;
   });
 
   if (affordable.length === 0) return;
 
+  // Filter by airport size — don't put 747s at tiny airports
+  const baseAirport = airline.baseAirport || await Airport.findByPk(airline.baseAirportId);
+  const maxPax = getMaxCapacityForAirport(baseAirport?.type);
+  const sizeAppropriate = affordable.filter(ac => ac.passengerCapacity <= maxPax);
+  const candidates = sizeAppropriate.length > 0 ? sizeAppropriate : affordable;
+
+  // Fleet commonality: identify type families already in fleet
+  const existingFamilies = new Set();
+  for (const ac of currentFleet) {
+    if (ac.aircraft) {
+      existingFamilies.add(`${ac.aircraft.manufacturer} ${ac.aircraft.model}`);
+    }
+  }
+
+  // Strongly prefer aircraft from existing type families (80% chance if available)
+  const sameFamily = candidates.filter(ac => existingFamilies.has(`${ac.manufacturer} ${ac.model}`));
+  const useCommonFleet = sameFamily.length > 0 && Math.random() < 0.8;
+  const pool = useCommonFleet ? sameFamily : candidates;
+
   // Pick based on personality
   let chosen;
   if (airline.aiPersonality === 'aggressive') {
-    // Aggressive: pick larger aircraft
-    chosen = affordable[affordable.length - 1];
+    chosen = pool[pool.length - 1];
   } else if (airline.aiPersonality === 'conservative') {
-    // Conservative: pick smaller, cheaper aircraft
-    chosen = affordable[Math.floor(affordable.length * 0.3)];
+    chosen = pool[Math.floor(pool.length * 0.3)];
   } else {
-    // Balanced: pick mid-range
-    chosen = affordable[Math.floor(affordable.length * 0.5)];
+    chosen = pool[Math.floor(pool.length * 0.5)];
   }
 
-  const purchasePrice = parseFloat(chosen.price) || 50000000;
+  const purchasePrice = parseFloat(chosen.purchasePrice) || 50000000;
 
   // Generate registration
   const existingRegs = new Set(currentFleet.map(ac => ac.registration));

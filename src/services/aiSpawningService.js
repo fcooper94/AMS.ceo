@@ -318,18 +318,20 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
       const fleetSize = baseTier.fleetSize.min +
         Math.floor(Math.random() * (baseTier.fleetSize.max - baseTier.fleetSize.min + 1));
 
-      const isHub = humanBaseAirport.type === 'International Hub';
-      const pool = isHub
-        ? [...mediumAircraft, ...largeAircraft, ...smallAircraft]
-        : [...smallAircraft, ...mediumAircraft];
+      // Filter aircraft by airport-appropriate size
+      const maxPaxBase = getMaxCapacityForAirport(humanBaseAirport.type);
+      const sizePoolBase = eraAircraft.filter(ac => ac.passengerCapacity <= maxPaxBase);
+      const pool = sizePoolBase.length > 0 ? sizePoolBase : eraAircraft;
 
       let balance = startingBalance;
       const airlineFleet = [];
 
       if (pool.length > 0 && eraAircraft.length > 0) {
         const regPrefix = getRegistrationPrefix(humanBaseAirport.country);
+        let preferredFamily = null;
         for (let f = 0; f < fleetSize; f++) {
-          const ac = pool[Math.floor(Math.random() * pool.length)];
+          const ac = pickAircraftWithCommonality(pool, preferredFamily);
+          if (f === 0) preferredFamily = `${ac.manufacturer} ${ac.model}`;
           const reg = generateRegistration(regPrefix, existingRegs);
           existingRegs.add(reg);
           const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
@@ -506,18 +508,20 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
         const fleetSize = tier.fleetSize.min +
           Math.floor(Math.random() * (tier.fleetSize.max - tier.fleetSize.min + 1));
 
-        const isHub = airport.type === 'International Hub';
-        const pool = isHub
-          ? [...mediumAircraft, ...largeAircraft, ...smallAircraft]
-          : [...smallAircraft, ...mediumAircraft];
+        // Filter aircraft by airport-appropriate size
+        const maxPax = getMaxCapacityForAirport(airport.type);
+        const sizePool = eraAircraft.filter(ac => ac.passengerCapacity <= maxPax);
+        const pool = sizePool.length > 0 ? sizePool : eraAircraft;
 
         let balance = startingBalance;
         const airlineFleet = []; // track for route creation
 
         if (pool.length > 0 && eraAircraft.length > 0) {
           const regPrefix = getRegistrationPrefix(airport.country);
+          let preferredFamily = null;
           for (let f = 0; f < fleetSize; f++) {
-            const ac = pool[Math.floor(Math.random() * pool.length)];
+            const ac = pickAircraftWithCommonality(pool, preferredFamily);
+            if (f === 0) preferredFamily = `${ac.manufacturer} ${ac.model}`;
             const reg = generateRegistration(regPrefix, existingRegs);
             existingRegs.add(reg);
             const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
@@ -707,7 +711,35 @@ async function flushBatch(memberships, fleet, routes, flights) {
 }
 
 /**
+ * Get max appropriate passenger capacity for an airport type
+ */
+function getMaxCapacityForAirport(airportType) {
+  switch (airportType) {
+    case 'International Hub': return 9999;
+    case 'Major':             return 350;
+    case 'Regional':          return 200;
+    case 'Small Regional':    return 100;
+    default:                  return 200;
+  }
+}
+
+/**
+ * Pick an aircraft from a pool, biased toward a preferred type family (commonality)
+ */
+function pickAircraftWithCommonality(pool, preferredFamily) {
+  if (preferredFamily) {
+    const sameFamily = pool.filter(ac => `${ac.manufacturer} ${ac.model}` === preferredFamily);
+    // 75% chance to pick from same family if available
+    if (sameFamily.length > 0 && Math.random() < 0.75) {
+      return sameFamily[Math.floor(Math.random() * sameFamily.length)];
+    }
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
  * Assign initial fleet to a single AI airline (used by replacement spawning)
+ * Respects airport size limits and fleet commonality
  */
 async function assignInitialFleet(membership, baseAirport, eraAircraft, config, existingRegs) {
   // Use tier 2 fleet size as default for replacement airlines
@@ -718,20 +750,24 @@ async function assignInitialFleet(membership, baseAirport, eraAircraft, config, 
 
   const regPrefix = getRegistrationPrefix(membership.region);
 
-  const smallAircraft = eraAircraft.filter(ac => ac.passengerCapacity <= 100);
-  const mediumAircraft = eraAircraft.filter(ac => ac.passengerCapacity > 100 && ac.passengerCapacity <= 250);
-  const largeAircraft = eraAircraft.filter(ac => ac.passengerCapacity > 250);
-
-  const isHub = baseAirport.type === 'International Hub';
-  const pool = isHub
-    ? [...mediumAircraft, ...largeAircraft, ...smallAircraft]
-    : [...smallAircraft, ...mediumAircraft];
+  // Filter aircraft by airport-appropriate size
+  const maxPax = getMaxCapacityForAirport(baseAirport.type);
+  const sizeAppropriate = eraAircraft.filter(ac => ac.passengerCapacity <= maxPax);
+  const pool = sizeAppropriate.length > 0 ? sizeAppropriate : eraAircraft;
 
   if (pool.length === 0) return;
 
   const fleetData = [];
+  let preferredFamily = null; // Track first pick for commonality
+
   for (let i = 0; i < fleetSize; i++) {
-    const aircraft = pool[Math.floor(Math.random() * pool.length)];
+    const aircraft = pickAircraftWithCommonality(pool, preferredFamily);
+
+    // Set preferred family from first pick
+    if (i === 0) {
+      preferredFamily = `${aircraft.manufacturer} ${aircraft.model}`;
+    }
+
     const reg = generateRegistration(regPrefix, existingRegs);
     existingRegs.add(reg);
     const purchasePrice = parseFloat(aircraft.purchasePrice) || 50000000;

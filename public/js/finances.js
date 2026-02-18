@@ -114,6 +114,7 @@ function renderWeeklyPL() {
   rows += wkRow('Staff', weeks, 'staffCosts', true);
   rows += wkRow('Leases', weeks, 'leaseCosts', true);
   rows += wkRow('Contractors', weeks, 'contractorCosts', true);
+  rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true);
   rows += wkRow('Loan Payments', weeks, 'loanPayments', true);
   rows += wkTotal('Total Overheads', weeks, 'overheads', true);
   rows += wkSpacer(cols);

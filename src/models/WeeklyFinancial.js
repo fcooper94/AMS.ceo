@@ -71,6 +71,11 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     defaultValue: 0,
     field: 'contractor_costs'
   },
+  fleetCommonalityCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'fleet_commonality_costs'
+  },
   overheadRecorded: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
