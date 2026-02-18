@@ -129,6 +129,7 @@ function filterFleet() {
       if (statusFilter === 'listed' && !['listed_sale', 'listed_lease'].includes(userAircraft.status)) return false;
       if (statusFilter === 'leased_out' && userAircraft.status !== 'leased_out') return false;
       if (statusFilter === 'storage' && !['storage', 'recalling'].includes(userAircraft.status)) return false;
+      if (statusFilter === 'on_order' && userAircraft.status !== 'on_order') return false;
     }
 
     return true;
@@ -228,6 +229,7 @@ function displayFleet() {
       else if (userAircraft.status === 'listed_lease') { badgeText = 'List'; badgeClass = 'status-listed-lease'; }
       else if (userAircraft.status === 'leased_out') { badgeText = 'L-Out'; badgeClass = 'status-leased-out'; }
       else if (userAircraft.status === 'maintenance') { badgeText = 'Maint'; badgeClass = 'status-maintenance'; }
+      else if (userAircraft.status === 'on_order') { badgeText = 'Order'; badgeClass = 'status-on-order'; }
       else { badgeText = isOwned ? 'Own' : 'Lse'; badgeClass = isOwned ? 'status-owned' : 'status-leased'; }
 
       html += `
@@ -349,6 +351,13 @@ async function showAircraftDetails(userAircraftId) {
               ` : userAircraft.status === 'recalling' ? `
                 <div style="padding: 0.2rem 0;"><span style="color: #60a5fa; font-weight: 600;">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? `Ferrying to ${userAircraft.storageAirportCode}` : `Recalling from ${userAircraft.storageAirportCode || 'Storage'}`}</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">${userAircraft.currentAirport && userAircraft.storageAirportCode && userAircraft.currentAirport === userAircraft.storageAirportCode ? 'Reaches Storage' : 'Back at Base'}</span><span style="color: var(--accent-color); font-weight: 600;">${userAircraft.recallAvailableAt ? new Date(userAircraft.recallAvailableAt).toLocaleDateString('en-GB') : 'Soon'}</span></div>
+              ` : userAircraft.status === 'on_order' ? `
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #eab308; font-weight: 600;">On Order</span><span style="color: var(--text-muted); font-size: 0.8rem;">Awaiting delivery</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Ordered</span><span>${userAircraft.orderDate ? new Date(userAircraft.orderDate).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Expected Delivery</span><span style="color: var(--accent-color); font-weight: 600;">${userAircraft.expectedDeliveryDate ? new Date(userAircraft.expectedDeliveryDate).toLocaleDateString('en-GB') : 'N/A'}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Deposit Paid</span><span style="color: var(--warning-color); font-weight: 600;">$${formatCurrency(userAircraft.depositPaid || 0)}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Remaining at Delivery</span><span style="font-weight: 600;">$${formatCurrency(userAircraft.remainingPayment || 0)}</span></div>
+                <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Financing</span><span style="font-weight: 600;">${userAircraft.financingMethod === 'loan' ? 'Loan' : 'Cash'}</span></div>
               ` : userAircraft.status === 'storage' ? `
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: #94a3b8; font-weight: 600;">In Storage</span><span>${userAircraft.storageAirportCode || 'N/A'}</span></div>
                 <div style="display: flex; justify-content: space-between; padding: 0.2rem 0;"><span style="color: var(--text-muted);">Since</span><span>${userAircraft.storedAt ? new Date(userAircraft.storedAt).toLocaleDateString('en-GB') : 'N/A'}</span></div>
@@ -559,6 +568,9 @@ function buildActionButtons(ua) {
     const weeklyRate = parseFloat(ua.leaseOutWeeklyRate) || 0;
     html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmRecallAircraft('${ua.id}', '${ua.registration}', ${weeklyRate})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">RECALL AIRCRAFT</button>`;
   }
+  if (status === 'on_order') {
+    html += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmCancelOrder('${ua.id}', '${ua.registration}', ${ua.depositPaid || 0})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CANCEL ORDER</button>`;
+  }
 
   html += `<button id="closeDetailBtn" class="btn btn-secondary" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">CLOSE</button>`;
   return html;
@@ -659,12 +671,12 @@ function showFleetModal({ icon, iconClass, title, registration, bodyHtml, confir
 
 // Cancel lease confirmation
 function confirmCancelLease(aircraftId, registration, isPlayerLease, weeklyRate) {
-  const penalty = isPlayerLease ? weeklyRate * 3 : 0;
+  const penalty = isPlayerLease ? weeklyRate * 12 : 0;
   const penaltyHtml = isPlayerLease ? `
     <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
       <span style="color: #ef4444; font-weight: 700;">Early Termination Penalty:</span><br>
       <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(penalty)}</span>
-      <span style="color: var(--text-muted); font-size: 0.8rem;">(3 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
+      <span style="color: var(--text-muted); font-size: 0.8rem;">(12 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
       <span style="color: var(--text-muted); font-size: 0.8rem;">This will be deducted from your balance and paid to the aircraft owner.</span>
     </p>
   ` : '';
@@ -684,6 +696,38 @@ function confirmCancelLease(aircraftId, registration, isPlayerLease, weeklyRate)
     onConfirm: async () => {
       try {
         const res = await fetch(`/api/fleet/${aircraftId}/cancel-lease`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('aircraftDetailOverlay')?.remove();
+        loadFleet();
+      } catch (err) {
+        showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+      }
+    }
+  });
+}
+
+// Cancel order confirmation
+function confirmCancelOrder(aircraftId, registration, depositPaid) {
+  showFleetModal({
+    icon: '&#9888;',
+    iconClass: 'danger',
+    title: 'Cancel Order',
+    registration,
+    bodyHtml: `
+      <p>Cancel this aircraft order? The aircraft will not be delivered.</p>
+      <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
+        <span style="color: #ef4444; font-weight: 700;">Deposit Forfeiture:</span><br>
+        <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(depositPaid)}</span><br>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">Your deposit will not be refunded.</span>
+      </p>
+      <p class="modal-warning">This action cannot be undone.</p>
+    `,
+    confirmLabel: `Forfeit $${formatCurrency(depositPaid)} & Cancel`,
+    confirmClass: 'btn-confirm-danger',
+    onConfirm: async () => {
+      try {
+        const res = await fetch(`/api/fleet/${aircraftId}/cancel-order`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         document.getElementById('aircraftDetailOverlay')?.remove();

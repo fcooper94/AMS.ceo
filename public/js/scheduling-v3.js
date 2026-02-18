@@ -185,6 +185,7 @@ function getMaintenanceWarnings(aircraft) {
 
 // Check if any maintenance checks are expired OR in progress (aircraft cannot fly)
 function getExpiredChecks(aircraft) {
+  if (aircraft.status === 'on_order') return []; // On-order aircraft have no check dates yet
   const expired = [];
   const checkTypes = ['daily', 'weekly', 'A', 'C', 'D'];
   const checkNames = {
@@ -552,6 +553,20 @@ function updateAircraftStatusBadges() {
       // Update registration span color to grayed out
       if (registrationSpan) {
         registrationSpan.style.color = '#8b949e';
+      }
+    } else if (aircraft.status === 'on_order') {
+      // On-order aircraft: preserve ON ORDER badge, don't remove it
+      if (existingBadge && existingBadge.textContent !== 'ON ORDER') {
+        // Had a grounded badge, replace with on-order badge
+        existingBadge.textContent = 'ON ORDER';
+        existingBadge.style.color = '#f59e0b';
+        existingBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+        const delDate = aircraft.expectedDeliveryDate ? new Date(aircraft.expectedDeliveryDate) : null;
+        existingBadge.title = delDate ? `ON ORDER — Delivery: ${delDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'ON ORDER';
+      }
+      // Keep registration amber
+      if (registrationSpan) {
+        registrationSpan.style.color = '#f59e0b';
       }
     } else {
       // No expired checks - remove badge if it exists
@@ -1245,7 +1260,7 @@ async function fetchAllScheduleData() {
     const response = await fetch('/api/schedule/data');
     if (response.ok) {
       const data = await response.json();
-      userFleet = (data.fleet || []).filter(ac => ac.status === 'active' || ac.status === 'maintenance');
+      userFleet = (data.fleet || []).filter(ac => ac.status === 'active' || ac.status === 'maintenance' || ac.status === 'on_order');
       routes = data.routes || [];
       // Templates come from server with dayOfWeek - compute virtual dates for rendering
       scheduledFlights = computeVirtualDatesForTemplates(data.flights || [], worldTime);
@@ -1295,7 +1310,7 @@ async function fetchUserFleet() {
     const response = await fetch('/api/fleet');
     if (response.ok) {
       const allFleet = await response.json();
-      userFleet = allFleet.filter(ac => ac.status === 'active' || ac.status === 'maintenance');
+      userFleet = allFleet.filter(ac => ac.status === 'active' || ac.status === 'maintenance' || ac.status === 'on_order');
     }
   } catch (error) {
     console.error('Error fetching fleet:', error);
@@ -2378,8 +2393,9 @@ function renderTransitDayBlock(flight, route, viewingDate) {
 function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
   if (!flights || flights.length === 0) return '';
 
-  // Blur style for grounded aircraft
-  const blurStyle = isGrounded ? 'filter: blur(2px); opacity: 0.4;' : '';
+  // Blur style for grounded aircraft, dashed style for on-order
+  const wrapperStyle = isGrounded ? 'filter: blur(2px); opacity: 0.4;' : '';
+  const blurStyle = wrapperStyle; // alias used in return statements
 
   return flights.map(flight => {
     const route = flight.route;
@@ -2848,8 +2864,8 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
 
     // Color and label based on check type
     const checkConfig = {
-      'daily': { color: '#FFA500', label: 'D', description: 'Daily Check (30-90 min)', isHeavy: false },
-      'weekly': { color: '#8B5CF6', label: 'W', description: 'Weekly Check (1.5-3 hrs)', isHeavy: false },
+      'daily': { color: '#FFA500', label: 'DY', description: 'Daily Check (30-90 min)', isHeavy: false },
+      'weekly': { color: '#8B5CF6', label: 'WK', description: 'Weekly Check (1.5-3 hrs)', isHeavy: false },
       'A': { color: '#17A2B8', label: 'A', description: 'A Check (6-12 hrs)', isHeavy: false },
       'C': { color: '#6B7280', label: 'C', description: 'C Check (2-4 weeks)', isHeavy: true },
       'D': { color: '#4B5563', label: 'D', description: 'D Check (2-3 months)', isHeavy: true }
@@ -5107,7 +5123,7 @@ async function viewMaintenanceDetails(maintenanceId) {
           <!-- Header -->
           <div style="padding: 1rem 1.25rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; background: ${checkColor}15;">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
-              <span style="background: ${checkColor}; color: white; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem;">${maintenance.checkType === 'daily' ? 'D' : maintenance.checkType === 'weekly' ? 'W' : maintenance.checkType}</span>
+              <span style="background: ${checkColor}; color: white; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem;">${maintenance.checkType === 'daily' ? 'DY' : maintenance.checkType === 'weekly' ? 'WK' : maintenance.checkType}</span>
               <div>
                 <h3 style="margin: 0; color: #f0f6fc; font-size: 1rem;">${checkType}${checkSubtitle ? ` <span style="font-weight: 400; font-size: 0.8rem; color: #fbbf24;">(${checkSubtitle})</span>` : ''}</h3>
                 <span style="color: #8b949e; font-size: 0.75rem;">${aircraft.registration}</span>
@@ -5638,8 +5654,8 @@ function renderDailySchedule() {
         </tr>
       `;
 
-      // Aircraft rows
-      aircraftInGroup.forEach(aircraft => {
+      // Aircraft rows (sorted A-Z by registration)
+      aircraftInGroup.sort((a, b) => (a.registration || '').localeCompare(b.registration || '')).forEach(aircraft => {
         html += generateAircraftRow(aircraft, timeColumns);
       });
     });
@@ -5650,7 +5666,7 @@ function renderDailySchedule() {
       return typeKey === filterValue;
     });
 
-    filteredFleet.forEach(aircraft => {
+    filteredFleet.sort((a, b) => (a.registration || '').localeCompare(b.registration || '')).forEach(aircraft => {
       html += generateAircraftRow(aircraft, timeColumns);
     });
   }
@@ -5727,8 +5743,8 @@ function renderWeeklySchedule() {
         </tr>
       `;
 
-      // Aircraft rows
-      aircraftInGroup.forEach(aircraft => {
+      // Aircraft rows (sorted A-Z by registration)
+      aircraftInGroup.sort((a, b) => (a.registration || '').localeCompare(b.registration || '')).forEach(aircraft => {
         html += generateAircraftRowWeekly(aircraft, dayColumns);
       });
     });
@@ -5739,7 +5755,7 @@ function renderWeeklySchedule() {
       return typeKey === filterValue;
     });
 
-    filteredFleet.forEach(aircraft => {
+    filteredFleet.sort((a, b) => (a.registration || '').localeCompare(b.registration || '')).forEach(aircraft => {
       html += generateAircraftRowWeekly(aircraft, dayColumns);
     });
   }
@@ -5764,6 +5780,8 @@ function goToDay(dayOfWeek) {
 
 // Generate aircraft row for weekly view
 function generateAircraftRowWeekly(aircraft, dayColumns) {
+  const isOnOrder = aircraft.status === 'on_order';
+
   // Check for expired checks (aircraft cannot fly)
   const expiredChecks = getExpiredChecks(aircraft);
   const hasExpiredChecks = expiredChecks.length > 0;
@@ -5784,6 +5802,13 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired`;
   }
 
+  // On-order delivery date for badge tooltip
+  let deliveryTooltip = '';
+  if (isOnOrder && aircraft.expectedDeliveryDate) {
+    const delDate = new Date(aircraft.expectedDeliveryDate);
+    deliveryTooltip = `ON ORDER — Delivery: ${delDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
+
   let html = `<tr data-aircraft-id="${aircraft.id}" style="border-bottom: 1px solid var(--border-color);">`;
 
   // Aircraft info column (sticky left)
@@ -5794,13 +5819,24 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     ? `<span class="aircraft-status-badge" style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
     : '';
 
+  const onOrderBadge = isOnOrder
+    ? `<span class="aircraft-status-badge" style="font-size: 0.65rem; color: #f59e0b; font-weight: 600; background: rgba(245, 158, 11, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${deliveryTooltip}">ON ORDER</span>`
+    : '';
+
+  const deliveryDateLine = isOnOrder && aircraft.expectedDeliveryDate
+    ? `<div style="font-size: 0.6rem; color: #f59e0b; opacity: 0.8; margin-top: 1px;">Delivery: ${new Date(aircraft.expectedDeliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>`
+    : '';
+
   html += `
-    <td class="aircraft-info-cell" style="padding: 0.75rem 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5; vertical-align: middle;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="aircraft-registration" style="color: ${actuallyExpired.length > 0 ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 0.95rem; cursor: pointer;" onclick="event.stopPropagation(); showAircraftDetails('${aircraft.id}')" title="Click for aircraft details">
-          ${aircraft.registration}
-        </span>
-        ${groundedBadge}
+    <td class="aircraft-info-cell" style="padding: 0.5rem 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5; vertical-align: middle;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="aircraft-registration" style="color: ${isOnOrder ? '#f59e0b' : (actuallyExpired.length > 0 ? '#8b949e' : 'var(--accent-color)')}; font-weight: 600; font-size: 0.95rem; cursor: pointer;" onclick="event.stopPropagation(); showAircraftDetails('${aircraft.id}')" title="Click for aircraft details">
+            ${aircraft.registration}
+          </span>
+          ${groundedBadge}${onOrderBadge}
+        </div>
+        ${deliveryDateLine}
       </div>
     </td>
   `;
@@ -6162,7 +6198,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         const leftPct = (startMinutes / 1440) * 100;
 
         // Show label for each check type
-        const maintLabels = { 'daily': 'D', 'weekly': 'W', 'A': 'A', 'C': 'C', 'D': 'D' };
+        const maintLabels = { 'daily': 'DY', 'weekly': 'WK', 'A': 'A', 'C': 'C', 'D': 'D' };
 
         // Check if maintenance starts exactly where a flight ends (no gap needed)
         const flightEndsPct = dayFlights.length > 0 ? Math.max(...dayFlights.map(f => {
@@ -6328,7 +6364,9 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             // Downroute daily checks blend into the flight strip with no border-radius and higher z-index
             const maintBorderRadius = isDownrouteDaily ? '0' : (isAdjacentToFlight ? '0 3px 3px 0' : '3px');
             const maintZIndex = isDownrouteDaily ? 'z-index: 2;' : '';
-            const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">${maintLabels[maint.checkType] || maint.checkType}</span>`;
+            const maintLabelText = maintLabels[maint.checkType] || maint.checkType;
+            // Hide label for daily checks (too narrow in weekly view) and any block < 3% width
+            const content = (maint.checkType === 'daily' || maint.checkType === 'weekly' || widthPct <= 3) ? '' : `<span style="color: white; font-size: 0.6rem; font-weight: 600;">${maintLabelText}</span>`;
 
             // Build tooltip with completion time
             const checkName = maint.checkType === 'daily' ? 'Daily' : (maint.checkType === 'weekly' ? 'Weekly' : maint.checkType);
@@ -6345,7 +6383,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
                 title="${maintTooltip}"
-                style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; ${maintZIndex}"
+                style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: hidden; ${maintZIndex}"
               >
                 ${content}
               </div>
@@ -6698,6 +6736,7 @@ async function loadSchedule() {
 function generateAircraftRow(aircraft, timeColumns) {
   const aircraftRoutes = getAircraftRoutes(aircraft.id);
   const typeStr = `${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model}${aircraft.aircraft.variant ? (aircraft.aircraft.variant.startsWith('-') ? aircraft.aircraft.variant : '-' + aircraft.aircraft.variant) : ''}`;
+  const isOnOrder = aircraft.status === 'on_order';
 
   let html = '';
 
@@ -6724,6 +6763,13 @@ function generateAircraftRow(aircraft, timeColumns) {
     groundedTooltip = `GROUNDED: ${heaviestExpired.name} expired`;
   }
 
+  // On-order delivery date for badge tooltip
+  let deliveryTooltip = '';
+  if (isOnOrder && aircraft.expectedDeliveryDate) {
+    const delDate = new Date(aircraft.expectedDeliveryDate);
+    deliveryTooltip = `ON ORDER — Delivery: ${delDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
+
   // Aircraft info column (sticky left)
   // Show different badge color for in-progress maintenance vs expired
   const badgeColor = inProgressChecks.length > 0 && actuallyExpired.length === 0 ? '#d29922' : '#f85149';
@@ -6732,13 +6778,24 @@ function generateAircraftRow(aircraft, timeColumns) {
     ? `<span class="aircraft-status-badge" style="font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${badgeColor === '#d29922' ? '210, 153, 34' : '248, 81, 73'}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${groundedTooltip}">${badgeText}</span>`
     : '';
 
+  const onOrderBadge = isOnOrder
+    ? `<span class="aircraft-status-badge" style="font-size: 0.65rem; color: #f59e0b; font-weight: 600; background: rgba(245, 158, 11, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;" title="${deliveryTooltip}">ON ORDER</span>`
+    : '';
+
+  const deliveryDateLine = isOnOrder && aircraft.expectedDeliveryDate
+    ? `<div style="font-size: 0.6rem; color: #f59e0b; opacity: 0.8; margin-top: 1px;">Delivery: ${new Date(aircraft.expectedDeliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>`
+    : '';
+
   html += `
-    <td class="aircraft-info-cell" style="padding: 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span class="aircraft-registration" style="color: ${actuallyExpired.length > 0 ? '#8b949e' : 'var(--accent-color)'}; font-weight: 600; font-size: 1rem; cursor: pointer;" onclick="event.stopPropagation(); showAircraftDetails('${aircraft.id}')" title="Click for aircraft details">
-          ${aircraft.registration}
-        </span>
-        ${groundedBadge}
+    <td class="aircraft-info-cell" style="padding: 0.75rem 1rem; position: sticky; left: 0; background: var(--surface); border-right: 2px solid var(--border-color); z-index: 5;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="aircraft-registration" style="color: ${isOnOrder ? '#f59e0b' : (actuallyExpired.length > 0 ? '#8b949e' : 'var(--accent-color)')}; font-weight: 600; font-size: 1rem; cursor: pointer;" onclick="event.stopPropagation(); showAircraftDetails('${aircraft.id}')" title="Click for aircraft details">
+            ${aircraft.registration}
+          </span>
+          ${groundedBadge}${onOrderBadge}
+        </div>
+        ${deliveryDateLine}
       </div>
     </td>
   `;
@@ -9986,6 +10043,7 @@ async function showAircraftDetails(userAircraftId) {
         <div style="text-align: right;">
           <div style="font-size: 1.8rem; font-weight: 700; color: var(--accent-color); font-family: monospace;">${userAircraft.registration}</div>
           <span class="status-badge ${isLeased ? 'status-leased' : 'status-owned'}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">${isLeased ? 'LEASED' : 'OWNED'}</span>
+          ${userAircraft.status === 'on_order' ? `<span style="font-size: 0.7rem; color: #f59e0b; font-weight: 600; background: rgba(245, 158, 11, 0.15); padding: 0.15rem 0.4rem; border-radius: 3px; margin-left: 0.3rem;">ON ORDER${userAircraft.expectedDeliveryDate ? ' — Delivery: ' + new Date(userAircraft.expectedDeliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</span>` : ''}
         </div>
       </div>
 

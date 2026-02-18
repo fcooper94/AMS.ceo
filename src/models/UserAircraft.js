@@ -160,7 +160,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
   },
   // Status
   status: {
-    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out'),
+    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out', 'on_order'),
     defaultValue: 'active'
   },
   // Location
@@ -266,6 +266,105 @@ const UserAircraft = sequelize.define('UserAircraft', {
     defaultValue: false,
     field: 'auto_schedule_d',
     comment: 'Automatically schedule D checks'
+  },
+  // Cabin class seat allocation
+  economySeats: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'economy_seats',
+    comment: 'Number of Economy seats configured'
+  },
+  economyPlusSeats: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'economy_plus_seats',
+    comment: 'Number of Economy Plus seats configured'
+  },
+  businessSeats: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'business_seats',
+    comment: 'Number of Business seats configured'
+  },
+  firstSeats: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'first_seats',
+    comment: 'Number of First class seats configured'
+  },
+  // Order tracking (for new aircraft with delivery delay)
+  orderDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'order_date',
+    comment: 'Game-time when the order was placed'
+  },
+  expectedDeliveryDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'expected_delivery_date',
+    comment: 'Game-time when aircraft is expected to be delivered'
+  },
+  depositPaid: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'deposit_paid',
+    comment: 'Pre-delivery payment (30% of transaction price)'
+  },
+  remainingPayment: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'remaining_payment',
+    comment: 'Amount due at delivery (70% of transaction price)'
+  },
+  financingMethod: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    field: 'financing_method',
+    comment: 'How remaining payment is handled: cash or loan'
+  },
+  financingBankId: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'financing_bank_id',
+    comment: 'Bank ID from bankConfig if financing with loan'
+  },
+  financingTermWeeks: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'financing_term_weeks',
+    comment: 'Loan term in game weeks if financing with loan'
+  },
+  transactionDiscount: {
+    type: DataTypes.DECIMAL(5, 2),
+    defaultValue: 0,
+    field: 'transaction_discount',
+    comment: 'Discount percentage applied to list price'
+  },
+  bulkOrderIndex: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'bulk_order_index',
+    comment: 'Position in bulk order (0=first, affects staggered delivery)'
+  },
+  // Cargo type allocation (kg per type)
+  cargoLightKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_light_kg',
+    comment: 'Kg allocated to light cargo'
+  },
+  cargoStandardKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_standard_kg',
+    comment: 'Kg allocated to standard cargo'
+  },
+  cargoHeavyKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_heavy_kg',
+    comment: 'Kg allocated to heavy cargo'
   }
 }, {
   tableName: 'user_aircraft',
@@ -349,6 +448,20 @@ UserAircraft.CHECK_VALIDITY = {
   A: { min: 800, max: 1000 },          // flight hours
   C: { days: 730 },                    // 2 years
   D: { min: 1825, max: 2555 }          // 5-7 years in days
+};
+
+/**
+ * Calculate delivery delay in game weeks based on aircraft type
+ * Widebody: 6 weeks, Narrowbody: 4 weeks, Regional: 2 weeks
+ * Cargo: classified by cargo capacity (large=6, medium=4, small=2)
+ */
+UserAircraft.getDeliveryDelayWeeks = function(aircraftType, cargoCapacityKg) {
+  if (aircraftType === 'Cargo') {
+    if (cargoCapacityKg >= 100000) return 6;
+    if (cargoCapacityKg >= 30000) return 4;
+    return 2;
+  }
+  return { Widebody: 6, Narrowbody: 4, Regional: 2 }[aircraftType] || 4;
 };
 
 module.exports = UserAircraft;

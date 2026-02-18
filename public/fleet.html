@@ -187,6 +187,13 @@
     border: 1px solid #f59e0b;
   }
 
+  .status-on-order {
+    background: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+    border: 1px solid #eab308;
+    animation: pulse-recall 2s infinite;
+  }
+
   .cond-excellent {
     background: rgba(5, 150, 105, 0.15);
     color: var(--success-color);
@@ -474,6 +481,7 @@
               <option value="listed">Listed</option>
               <option value="leased_out">Leased Out</option>
               <option value="storage">In Storage</option>
+              <option value="on_order">On Order</option>
             </select>
           </div>
           <div style="margin-left: auto; color: var(--text-muted); font-size: 0.8rem;">

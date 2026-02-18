@@ -2,10 +2,25 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
 const { STORAGE_AIRPORTS, calculateStorageDistanceNm, calculateRecallDays } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
+const { getBank, calculateOfferRate, calculateFixedPayment, TERM_RANGES } = require('../data/bankConfig');
+
+/**
+ * Transaction discount: 30% (qty 1) scaling to 55% (qty 10+)
+ * 0% for single, scaling to 55% at qty 10+
+ */
+function transactionDiscountPercent(qty) {
+  if (qty <= 1) return 0;
+  return Math.round(Math.min(55, ((qty - 1) / 9) * 55));
+}
+function transactionPrice(listPrice, qty) {
+  const discount = transactionDiscountPercent(qty);
+  return Math.round(listPrice * (1 - discount / 100));
+}
 
 // Check durations in minutes
 const CHECK_DURATIONS = {
@@ -1309,6 +1324,11 @@ async function refreshAutoScheduledMaintenance(aircraftId, worldId = null, provi
     return [];
   }
 
+  // Don't schedule maintenance for aircraft that haven't been delivered yet
+  if (aircraft.status === 'on_order') {
+    return [];
+  }
+
   console.log(`[MAINT REFRESH] Aircraft ${aircraft.registration} auto-schedule flags:`, {
     daily: aircraft.autoScheduleDaily,
     weekly: aircraft.autoScheduleWeekly,
@@ -2067,7 +2087,20 @@ router.post('/purchase', async (req, res) => {
       autoScheduleC,
       autoScheduleD,
       // Player-to-player listing
-      playerListingId
+      playerListingId,
+      // Cabin configuration
+      economySeats,
+      economyPlusSeats,
+      businessSeats,
+      firstSeats,
+      // Cargo allocation
+      cargoLightKg,
+      cargoStandardKg,
+      cargoHeavyKg,
+      // Financing (new aircraft orders only)
+      financingMethod,  // 'cash' or 'loan'
+      financingBankId,
+      financingTermWeeks
     } = req.body;
 
     if (!aircraftId || !category || !purchasePrice || !registration) {
@@ -2088,20 +2121,52 @@ router.post('/purchase', async (req, res) => {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
 
-    // Check if user has enough balance
-    const price = Number(purchasePrice);
-    if (membership.balance < price) {
-      return res.status(400).json({
-        error: 'Insufficient funds',
-        required: price,
-        available: membership.balance
-      });
-    }
-
     // Verify aircraft exists
     const aircraft = await Aircraft.findByPk(aircraftId);
     if (!aircraft) {
       return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // For NEW aircraft: order system with deposit + delivery delay
+    // For USED aircraft: instant delivery at full price (unchanged)
+    const isNewOrder = category === 'new' && !playerListingId;
+    const listPrice = Number(purchasePrice);
+
+    let price, deposit, remaining, discountPct;
+    if (isNewOrder) {
+      discountPct = transactionDiscountPercent(1);
+      price = transactionPrice(listPrice, 1);
+      deposit = Math.round(price * 0.30);
+      remaining = price - deposit;
+
+      // Check deposit affordability (not full price)
+      if (membership.balance < deposit) {
+        return res.status(400).json({
+          error: 'Insufficient funds for deposit',
+          required: deposit,
+          available: membership.balance
+        });
+      }
+
+      // Validate financing if loan
+      if (financingMethod === 'loan') {
+        const bank = getBank(financingBankId);
+        if (!bank) return res.status(400).json({ error: 'Invalid bank selected' });
+        const termWeeks = parseInt(financingTermWeeks);
+        if (!termWeeks || termWeeks < TERM_RANGES.fleet_expansion.min || termWeeks > TERM_RANGES.fleet_expansion.max) {
+          return res.status(400).json({ error: `Loan term must be between ${TERM_RANGES.fleet_expansion.min} and ${TERM_RANGES.fleet_expansion.max} weeks` });
+        }
+      }
+    } else {
+      // Used aircraft or player listing: full price, instant delivery
+      price = listPrice;
+      if (membership.balance < price) {
+        return res.status(400).json({
+          error: 'Insufficient funds',
+          required: price,
+          available: membership.balance
+        });
+      }
     }
 
     // Get base airport to determine country for registration validation
@@ -2133,7 +2198,6 @@ router.post('/purchase', async (req, res) => {
     if (baseCountry) {
       const prefix = getRegistrationPrefix(baseCountry);
       if (registrationUpper.startsWith(prefix.replace('-', ''))) {
-        // Extract suffix (part after prefix)
         const suffix = registrationUpper.substring(prefix.length);
         const validation = validateRegistrationSuffix(suffix, prefix);
         if (!validation.valid) {
@@ -2156,147 +2220,450 @@ router.post('/purchase', async (req, res) => {
       return res.status(400).json({ error: 'Registration already in use' });
     }
 
-    // Get the world's current time (game world time, not real world time)
+    // Get the world's current time
     const world = await World.findByPk(activeWorldId);
     if (!world) {
       return res.status(404).json({ error: 'World not found' });
     }
     const now = new Date(world.currentTime);
 
-    // Default intervals
-    const defaultCInterval = 660; // ~22 months
-    const defaultDInterval = 2920; // ~8 years
+    if (isNewOrder) {
+      // --- NEW AIRCRAFT ORDER: deposit + delivery delay ---
+      const deliveryWeeks = 0; // First (single) aircraft: immediate delivery
+      const deliveryDate = new Date(now.getTime() + deliveryWeeks * 7 * 24 * 60 * 60 * 1000);
 
-    let lastCCheckDate, lastDCheckDate;
-    let cInterval = defaultCInterval;
-    let dInterval = defaultDInterval;
+      const userAircraft = await UserAircraft.create({
+        worldMembershipId: membership.id,
+        aircraftId,
+        acquisitionType: 'purchase',
+        condition: 'New',
+        conditionPercentage: 100,
+        ageYears: 0,
+        purchasePrice: price,
+        maintenanceCostPerHour: aircraft.maintenanceCostPerHour,
+        fuelBurnPerHour: aircraft.fuelBurnPerHour,
+        registration: registrationUpper,
+        currentAirport: baseAirportCode,
+        status: 'on_order',
+        // Order tracking
+        orderDate: now,
+        expectedDeliveryDate: deliveryDate,
+        depositPaid: deposit,
+        remainingPayment: remaining,
+        financingMethod: financingMethod || 'cash',
+        financingBankId: financingMethod === 'loan' ? financingBankId : null,
+        financingTermWeeks: financingMethod === 'loan' ? parseInt(financingTermWeeks) : null,
+        transactionDiscount: discountPct,
+        bulkOrderIndex: 0,
+        // Auto-schedule preferences (applied at delivery)
+        autoScheduleDaily: autoScheduleDaily === true,
+        autoScheduleWeekly: autoScheduleWeekly === true,
+        autoScheduleA: autoScheduleA === true,
+        autoScheduleC: autoScheduleC === true,
+        autoScheduleD: autoScheduleD === true,
+        // Cabin configuration
+        economySeats: economySeats || null,
+        economyPlusSeats: economyPlusSeats || null,
+        businessSeats: businessSeats || null,
+        firstSeats: firstSeats || null,
+        // Cargo allocation
+        cargoLightKg: cargoLightKg || null,
+        cargoStandardKg: cargoStandardKg || null,
+        cargoHeavyKg: cargoHeavyKg || null
+      });
 
-    if (category === 'new') {
-      // New aircraft: all checks just done, full validity
-      lastCCheckDate = now;
-      lastDCheckDate = now;
-      // Randomize intervals slightly for variety
-      cInterval = 600 + Math.floor(Math.random() * 120); // 600-720 days
-      dInterval = 2190 + Math.floor(Math.random() * 1460); // 2190-3650 days
+      // Deduct deposit only
+      membership.balance -= deposit;
+      await membership.save();
+
+      const result = await UserAircraft.findByPk(userAircraft.id, {
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      });
+
+      res.json({
+        message: 'Aircraft ordered successfully',
+        aircraft: result,
+        orderType: 'new',
+        deliveryDate: deliveryDate.toISOString(),
+        deliveryWeeks,
+        deposit,
+        remaining,
+        transactionDiscount: discountPct,
+        newBalance: membership.balance
+      });
     } else {
-      // Used aircraft: calculate last check date based on remaining days
-      if (cCheckRemainingDays) {
-        const cDaysAgo = cInterval - cCheckRemainingDays;
-        lastCCheckDate = new Date(now.getTime() - (cDaysAgo * 24 * 60 * 60 * 1000));
+      // --- USED AIRCRAFT / PLAYER LISTING: instant delivery at full price ---
+      const defaultCInterval = 660;
+      const defaultDInterval = 2920;
+      let lastCCheckDate, lastDCheckDate;
+      let cInterval = defaultCInterval;
+      let dInterval = defaultDInterval;
+
+      if (category === 'new') {
+        lastCCheckDate = now;
+        lastDCheckDate = now;
+        cInterval = 600 + Math.floor(Math.random() * 120);
+        dInterval = 2190 + Math.floor(Math.random() * 1460);
       } else {
-        // Default: 6 months validity remaining
-        const cDaysAgo = cInterval - 180;
-        lastCCheckDate = new Date(now.getTime() - (cDaysAgo * 24 * 60 * 60 * 1000));
-      }
-
-      if (dCheckRemainingDays) {
-        const dDaysAgo = dInterval - dCheckRemainingDays;
-        lastDCheckDate = new Date(now.getTime() - (dDaysAgo * 24 * 60 * 60 * 1000));
-      } else {
-        // Default: 2 years validity remaining
-        const dDaysAgo = dInterval - 730;
-        lastDCheckDate = new Date(now.getTime() - (dDaysAgo * 24 * 60 * 60 * 1000));
-      }
-    }
-
-    // Create user aircraft
-    const userAircraft = await UserAircraft.create({
-      worldMembershipId: membership.id,
-      aircraftId,
-      acquisitionType: 'purchase',
-      condition: condition || 'New',
-      conditionPercentage: conditionPercentage || 100,
-      ageYears: ageYears || 0,
-      purchasePrice: price,
-      maintenanceCostPerHour,
-      fuelBurnPerHour,
-      registration: registrationUpper,
-      currentAirport: baseAirportCode,
-      status: 'active',
-      // Check dates and intervals
-      lastCCheckDate,
-      lastDCheckDate,
-      cCheckIntervalDays: cInterval,
-      dCheckIntervalDays: dInterval,
-      // Daily check: EXPIRED on delivery (3-5 days ago, interval is 2 days)
-      // Aircraft needs a daily check before it can fly
-      lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
-      // Weekly check: Valid, done 2-5 days ago (interval is 7-8 days)
-      lastWeeklyCheckDate: new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000)),
-      // A check: Done at 0 hours (new aircraft or reset on delivery)
-      lastACheckDate: new Date(now.getTime() - ((1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000)),
-      lastACheckHours: 0,
-      aCheckIntervalHours: 800 + Math.floor(Math.random() * 200), // 800-1000 hrs
-      // Auto-schedule preferences (default to false - user enables per aircraft)
-      autoScheduleDaily: autoScheduleDaily === true,
-      autoScheduleWeekly: autoScheduleWeekly === true,
-      autoScheduleA: autoScheduleA === true,
-      autoScheduleC: autoScheduleC === true,
-      autoScheduleD: autoScheduleD === true
-    });
-
-    // Create auto-scheduled maintenance for explicitly enabled check types
-    const autoCheckTypes = [];
-    if (autoScheduleDaily === true) autoCheckTypes.push('daily');
-    if (autoScheduleWeekly === true) autoCheckTypes.push('weekly');
-    if (autoScheduleA === true) autoCheckTypes.push('A');
-    if (autoScheduleC === true) autoCheckTypes.push('C');
-    if (autoScheduleD === true) autoCheckTypes.push('D');
-
-    if (autoCheckTypes.length > 0) {
-      await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
-    }
-
-    // Deduct from balance
-    membership.balance -= price;
-    await membership.save();
-
-    // Handle player-to-player sale: credit seller and notify
-    if (playerListingId) {
-      try {
-        const sellerAircraft = await UserAircraft.findByPk(playerListingId, {
-          include: [{ model: WorldMembership, as: 'membership' }]
-        });
-        if (sellerAircraft && sellerAircraft.status === 'listed_sale') {
-          const sellerMembership = sellerAircraft.membership;
-          // Credit seller
-          sellerMembership.balance = parseFloat(sellerMembership.balance) + price;
-          await sellerMembership.save();
-          // Notify seller
-          await Notification.create({
-            worldMembershipId: sellerMembership.id,
-            type: 'aircraft_sold',
-            icon: 'plane',
-            title: 'Aircraft Sold',
-            message: `${sellerAircraft.registration} has been purchased by another airline for $${Number(price).toLocaleString('en-US')}`,
-            priority: 2,
-            gameTime: now
-          });
-          // Remove seller's aircraft
-          await sellerAircraft.destroy();
+        if (cCheckRemainingDays) {
+          const cDaysAgo = cInterval - cCheckRemainingDays;
+          lastCCheckDate = new Date(now.getTime() - (cDaysAgo * 24 * 60 * 60 * 1000));
+        } else {
+          const cDaysAgo = cInterval - 180;
+          lastCCheckDate = new Date(now.getTime() - (cDaysAgo * 24 * 60 * 60 * 1000));
         }
-      } catch (sellerErr) {
-        console.error('Error processing seller side of player sale:', sellerErr);
+        if (dCheckRemainingDays) {
+          const dDaysAgo = dInterval - dCheckRemainingDays;
+          lastDCheckDate = new Date(now.getTime() - (dDaysAgo * 24 * 60 * 60 * 1000));
+        } else {
+          const dDaysAgo = dInterval - 730;
+          lastDCheckDate = new Date(now.getTime() - (dDaysAgo * 24 * 60 * 60 * 1000));
+        }
       }
+
+      const userAircraft = await UserAircraft.create({
+        worldMembershipId: membership.id,
+        aircraftId,
+        acquisitionType: 'purchase',
+        condition: condition || 'New',
+        conditionPercentage: conditionPercentage || 100,
+        ageYears: ageYears || 0,
+        purchasePrice: price,
+        maintenanceCostPerHour,
+        fuelBurnPerHour,
+        registration: registrationUpper,
+        currentAirport: baseAirportCode,
+        status: 'active',
+        lastCCheckDate,
+        lastDCheckDate,
+        cCheckIntervalDays: cInterval,
+        dCheckIntervalDays: dInterval,
+        // New aircraft: C, D, A checks valid from factory. Only Daily/Weekly needed before first flight.
+        lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
+        lastWeeklyCheckDate: new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000)),
+        lastACheckDate: now,
+        lastACheckHours: 0,
+        aCheckIntervalHours: 800 + Math.floor(Math.random() * 200),
+        autoScheduleDaily: autoScheduleDaily === true,
+        autoScheduleWeekly: autoScheduleWeekly === true,
+        autoScheduleA: autoScheduleA === true,
+        autoScheduleC: autoScheduleC === true,
+        autoScheduleD: autoScheduleD === true,
+        economySeats: economySeats || null,
+        economyPlusSeats: economyPlusSeats || null,
+        businessSeats: businessSeats || null,
+        firstSeats: firstSeats || null,
+        cargoLightKg: cargoLightKg || null,
+        cargoStandardKg: cargoStandardKg || null,
+        cargoHeavyKg: cargoHeavyKg || null
+      });
+
+      // Auto-schedule maintenance
+      const autoCheckTypes = [];
+      if (autoScheduleDaily === true) autoCheckTypes.push('daily');
+      if (autoScheduleWeekly === true) autoCheckTypes.push('weekly');
+      if (autoScheduleA === true) autoCheckTypes.push('A');
+      if (autoScheduleC === true) autoCheckTypes.push('C');
+      if (autoScheduleD === true) autoCheckTypes.push('D');
+      if (autoCheckTypes.length > 0) {
+        await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
+      }
+
+      // Deduct full price
+      membership.balance -= price;
+      await membership.save();
+
+      // Handle player-to-player sale
+      if (playerListingId) {
+        try {
+          const sellerAircraft = await UserAircraft.findByPk(playerListingId, {
+            include: [{ model: WorldMembership, as: 'membership' }]
+          });
+          if (sellerAircraft && sellerAircraft.status === 'listed_sale') {
+            const sellerMembership = sellerAircraft.membership;
+            sellerMembership.balance = parseFloat(sellerMembership.balance) + price;
+            await sellerMembership.save();
+            await Notification.create({
+              worldMembershipId: sellerMembership.id,
+              type: 'aircraft_sold',
+              icon: 'plane',
+              title: 'Aircraft Sold',
+              message: `${sellerAircraft.registration} has been purchased by another airline for $${Number(price).toLocaleString('en-US')}`,
+              priority: 2,
+              gameTime: now
+            });
+            await sellerAircraft.destroy();
+          }
+        } catch (sellerErr) {
+          console.error('Error processing seller side of player sale:', sellerErr);
+        }
+      }
+
+      const result = await UserAircraft.findByPk(userAircraft.id, {
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      });
+
+      res.json({
+        message: 'Aircraft purchased successfully',
+        aircraft: result,
+        orderType: 'instant',
+        newBalance: membership.balance
+      });
     }
-
-    // Include aircraft details in response
-    const result = await UserAircraft.findByPk(userAircraft.id, {
-      include: [{
-        model: Aircraft,
-        as: 'aircraft'
-      }]
-    });
-
-    res.json({
-      message: 'Aircraft purchased successfully',
-      aircraft: result,
-      newBalance: membership.balance
-    });
   } catch (error) {
     console.error('Error purchasing aircraft:', error);
     res.status(500).json({
       error: 'Failed to purchase aircraft',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * Bulk purchase new aircraft (up to 10 at once)
+ */
+router.post('/bulk-purchase', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    const {
+      aircraftId,
+      purchasePrice,
+      registrations, // array of full registration strings
+      autoScheduleDaily,
+      autoScheduleWeekly,
+      autoScheduleA,
+      autoScheduleC,
+      autoScheduleD,
+      // Cabin configuration
+      economySeats,
+      economyPlusSeats,
+      businessSeats,
+      firstSeats,
+      // Cargo allocation
+      cargoLightKg,
+      cargoStandardKg,
+      cargoHeavyKg,
+      // Financing (new aircraft orders)
+      financingMethod,
+      financingBankId,
+      financingTermWeeks
+    } = req.body;
+
+    // Basic validation
+    if (!aircraftId || !purchasePrice || !Array.isArray(registrations) || registrations.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (registrations.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 aircraft per bulk order' });
+    }
+
+    // Verify aircraft exists
+    const aircraft = await Aircraft.findByPk(aircraftId);
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    // Get user
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Normalize registrations
+    const normalizedRegs = registrations.map(r => r.trim().toUpperCase());
+
+    // Check for duplicates in the batch
+    const regSet = new Set(normalizedRegs);
+    if (regSet.size !== normalizedRegs.length) {
+      return res.status(400).json({ error: 'Duplicate registrations in batch' });
+    }
+
+    // Validate each registration format
+    let baseCountry = null;
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    if (membership.baseAirportId) {
+      const baseAirport = await Airport.findByPk(membership.baseAirportId);
+      if (baseAirport) baseCountry = baseAirport.country;
+    }
+
+    for (const reg of normalizedRegs) {
+      if (reg.length < 3 || reg.length > 10) {
+        return res.status(400).json({ error: `Registration ${reg} must be between 3 and 10 characters` });
+      }
+      if (!/^[A-Z0-9-]+$/.test(reg)) {
+        return res.status(400).json({ error: `Registration ${reg} contains invalid characters` });
+      }
+      if (baseCountry) {
+        const prefix = getRegistrationPrefix(baseCountry);
+        if (reg.startsWith(prefix.replace('-', ''))) {
+          const suffix = reg.substring(prefix.length);
+          const validation = validateRegistrationSuffix(suffix, prefix);
+          if (!validation.valid) {
+            return res.status(400).json({ error: `Registration ${reg}: ${validation.message}` });
+          }
+        }
+      }
+    }
+
+    // Check DB uniqueness for all registrations in one query
+    const existingRegs = await UserAircraft.findAll({
+      where: { registration: { [Op.in]: normalizedRegs } },
+      include: [{
+        model: WorldMembership,
+        as: 'membership',
+        where: { worldId: activeWorldId },
+        attributes: []
+      }],
+      attributes: ['registration']
+    });
+    if (existingRegs.length > 0) {
+      const taken = existingRegs.map(r => r.registration).join(', ');
+      return res.status(400).json({ error: `Registration(s) already in use: ${taken}` });
+    }
+
+    const qty = normalizedRegs.length;
+    const listPrice = Number(purchasePrice);
+    // Transaction discount: 30% (qty 1) scaling to 55% (qty 10)
+    const discountPct = transactionDiscountPercent(qty);
+    const discountedUnit = transactionPrice(listPrice, qty);
+    const totalPrice = discountedUnit * qty;
+    const depositPerUnit = Math.round(discountedUnit * 0.30);
+    const remainingPerUnit = discountedUnit - depositPerUnit;
+    const totalDeposit = depositPerUnit * qty;
+
+    // Validate financing if loan
+    if (financingMethod === 'loan') {
+      const bank = getBank(financingBankId);
+      if (!bank) return res.status(400).json({ error: 'Invalid bank selected' });
+      const termWeeks = parseInt(financingTermWeeks);
+      if (!termWeeks || termWeeks < TERM_RANGES.fleet_expansion.min || termWeeks > TERM_RANGES.fleet_expansion.max) {
+        return res.status(400).json({ error: `Loan term must be between ${TERM_RANGES.fleet_expansion.min} and ${TERM_RANGES.fleet_expansion.max} weeks` });
+      }
+    }
+
+    // Get world time
+    const world = await World.findByPk(activeWorldId);
+    if (!world) {
+      return res.status(404).json({ error: 'World not found' });
+    }
+    const now = new Date(world.currentTime);
+
+    // Get base airport code
+    let baseAirportCode = null;
+    if (membership.baseAirportId) {
+      const baseAirport = await Airport.findByPk(membership.baseAirportId);
+      if (baseAirport) baseAirportCode = baseAirport.icaoCode;
+    }
+
+    // --- Transaction: create all on-order aircraft + deduct deposit atomically ---
+    const createdAircraft = [];
+    const t = await sequelize.transaction();
+    try {
+      const lockedMembership = await WorldMembership.findByPk(membership.id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (lockedMembership.balance < totalDeposit) {
+        await t.rollback();
+        return res.status(400).json({
+          error: 'Insufficient funds for deposit',
+          required: totalDeposit,
+          available: lockedMembership.balance
+        });
+      }
+
+      for (let i = 0; i < normalizedRegs.length; i++) {
+        const reg = normalizedRegs[i];
+        // Staggered delivery: 1st immediate, 2nd +1 week, 3rd +2 weeks, etc.
+        const deliveryWeeks = i;
+        const deliveryDate = new Date(now.getTime() + deliveryWeeks * 7 * 24 * 60 * 60 * 1000);
+
+        const userAircraft = await UserAircraft.create({
+          worldMembershipId: lockedMembership.id,
+          aircraftId,
+          acquisitionType: 'purchase',
+          condition: 'New',
+          conditionPercentage: 100,
+          ageYears: 0,
+          purchasePrice: discountedUnit,
+          maintenanceCostPerHour: aircraft.maintenanceCostPerHour,
+          fuelBurnPerHour: aircraft.fuelBurnPerHour,
+          registration: reg,
+          currentAirport: baseAirportCode,
+          status: 'on_order',
+          // Order tracking
+          orderDate: now,
+          expectedDeliveryDate: deliveryDate,
+          depositPaid: depositPerUnit,
+          remainingPayment: remainingPerUnit,
+          financingMethod: financingMethod || 'cash',
+          financingBankId: financingMethod === 'loan' ? financingBankId : null,
+          financingTermWeeks: financingMethod === 'loan' ? parseInt(financingTermWeeks) : null,
+          transactionDiscount: discountPct,
+          bulkOrderIndex: i,
+          // Auto-schedule (applied at delivery)
+          autoScheduleDaily: autoScheduleDaily === true,
+          autoScheduleWeekly: autoScheduleWeekly === true,
+          autoScheduleA: autoScheduleA === true,
+          autoScheduleC: autoScheduleC === true,
+          autoScheduleD: autoScheduleD === true,
+          economySeats: economySeats || null,
+          economyPlusSeats: economyPlusSeats || null,
+          businessSeats: businessSeats || null,
+          firstSeats: firstSeats || null,
+          cargoLightKg: cargoLightKg || null,
+          cargoStandardKg: cargoStandardKg || null,
+          cargoHeavyKg: cargoHeavyKg || null
+        }, { transaction: t });
+
+        createdAircraft.push(userAircraft);
+      }
+
+      // Deduct total deposit from balance
+      lockedMembership.balance = parseFloat(lockedMembership.balance) - totalDeposit;
+      await lockedMembership.save({ transaction: t });
+
+      await t.commit();
+    } catch (txError) {
+      await t.rollback();
+      throw txError;
+    }
+
+    const finalMembership = await WorldMembership.findByPk(membership.id);
+
+    res.json({
+      message: `${qty} aircraft ordered successfully`,
+      aircraft: createdAircraft.map((a, i) => ({
+        id: a.id,
+        registration: a.registration,
+        deliveryDate: a.expectedDeliveryDate
+      })),
+      transactionDiscount: discountPct,
+      unitPrice: discountedUnit,
+      depositPerUnit,
+      totalDeposit,
+      totalRemaining: remainingPerUnit * qty,
+      newBalance: finalMembership.balance
+    });
+  } catch (error) {
+    console.error('Error in bulk purchase:', error);
+    res.status(500).json({
+      error: 'Failed to complete bulk purchase',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -2338,11 +2705,21 @@ router.post('/lease', async (req, res) => {
       autoScheduleC,
       autoScheduleD,
       // Player-to-player listing
-      playerListingId
+      playerListingId,
+      // Cargo allocation
+      cargoLightKg,
+      cargoStandardKg,
+      cargoHeavyKg
     } = req.body;
 
     if (!aircraftId || !leaseWeeklyPayment || !leaseDurationMonths || !registration) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Enforce 3-12 year lease duration (36-144 months)
+    const durationMonths = parseInt(leaseDurationMonths);
+    if (durationMonths < 36 || durationMonths > 144) {
+      return res.status(400).json({ error: 'Lease duration must be between 3 and 12 years (36-144 months)' });
     }
 
     // Get user's membership
@@ -2492,21 +2869,21 @@ router.post('/lease', async (req, res) => {
       lastDCheckDate,
       cCheckIntervalDays: cInterval,
       dCheckIntervalDays: dInterval,
-      // Daily check: EXPIRED on delivery (3-5 days ago, interval is 2 days)
-      // Aircraft needs a daily check before it can fly
+      // New aircraft: C, D, A checks valid from factory. Only Daily/Weekly needed before first flight.
       lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
-      // Weekly check: Valid, done 2-5 days ago (interval is 7-8 days)
       lastWeeklyCheckDate: new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000)),
-      // A check: Done at 0 hours (new aircraft or reset on delivery)
-      lastACheckDate: new Date(now.getTime() - ((1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000)),
+      lastACheckDate: category === 'new' ? now : new Date(now.getTime() - ((1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000)),
       lastACheckHours: 0,
-      aCheckIntervalHours: 800 + Math.floor(Math.random() * 200), // 800-1000 hrs
-      // Auto-schedule preferences (default to false - user enables per aircraft)
+      aCheckIntervalHours: 800 + Math.floor(Math.random() * 200),
       autoScheduleDaily: autoScheduleDaily === true,
       autoScheduleWeekly: autoScheduleWeekly === true,
       autoScheduleA: autoScheduleA === true,
       autoScheduleC: autoScheduleC === true,
-      autoScheduleD: autoScheduleD === true
+      autoScheduleD: autoScheduleD === true,
+      // Cargo allocation
+      cargoLightKg: cargoLightKg || null,
+      cargoStandardKg: cargoStandardKg || null,
+      cargoHeavyKg: cargoHeavyKg || null
     });
 
     // Create auto-scheduled maintenance for explicitly enabled check types
@@ -2587,6 +2964,256 @@ router.post('/lease', async (req, res) => {
 });
 
 /**
+ * POST /api/fleet/bulk-lease
+ * Lease multiple new aircraft at once with bulk discount
+ */
+router.post('/bulk-lease', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+
+    const {
+      aircraftId,
+      leaseWeeklyPayment,
+      leaseDurationMonths,
+      registrations,
+      autoScheduleDaily,
+      autoScheduleWeekly,
+      autoScheduleA,
+      autoScheduleC,
+      autoScheduleD,
+      cargoLightKg,
+      cargoStandardKg,
+      cargoHeavyKg
+    } = req.body;
+
+    if (!aircraftId || !leaseWeeklyPayment || !leaseDurationMonths || !Array.isArray(registrations) || registrations.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (registrations.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 aircraft per bulk lease' });
+    }
+
+    const durationMonths = parseInt(leaseDurationMonths);
+    if (durationMonths < 36 || durationMonths > 144) {
+      return res.status(400).json({ error: 'Lease duration must be between 3 and 12 years (36-144 months)' });
+    }
+
+    const aircraft = await Aircraft.findByPk(aircraftId);
+    if (!aircraft) {
+      return res.status(404).json({ error: 'Aircraft not found' });
+    }
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const normalizedRegs = registrations.map(r => r.trim().toUpperCase());
+    const regSet = new Set(normalizedRegs);
+    if (regSet.size !== normalizedRegs.length) {
+      return res.status(400).json({ error: 'Duplicate registrations in batch' });
+    }
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this world' });
+    }
+
+    let baseCountry = null;
+    let baseAirportCode = null;
+    if (membership.baseAirportId) {
+      const baseAirport = await Airport.findByPk(membership.baseAirportId);
+      if (baseAirport) {
+        baseCountry = baseAirport.country;
+        baseAirportCode = baseAirport.icaoCode;
+      }
+    }
+
+    // Validate registrations
+    for (const reg of normalizedRegs) {
+      if (reg.length < 3 || reg.length > 10) {
+        return res.status(400).json({ error: `Registration ${reg} must be between 3 and 10 characters` });
+      }
+      if (!/^[A-Z0-9-]+$/.test(reg)) {
+        return res.status(400).json({ error: `Registration ${reg} contains invalid characters` });
+      }
+      if (baseCountry) {
+        const prefix = getRegistrationPrefix(baseCountry);
+        if (reg.startsWith(prefix.replace('-', ''))) {
+          const suffix = reg.substring(prefix.length);
+          const validation = validateRegistrationSuffix(suffix, prefix);
+          if (!validation.valid) {
+            return res.status(400).json({ error: `Registration ${reg}: ${validation.message}` });
+          }
+        }
+      }
+    }
+
+    // Check DB uniqueness
+    const existingRegs = await UserAircraft.findAll({
+      where: { registration: { [Op.in]: normalizedRegs } },
+      include: [{
+        model: WorldMembership, as: 'membership',
+        where: { worldId: activeWorldId }, attributes: []
+      }],
+      attributes: ['registration']
+    });
+    if (existingRegs.length > 0) {
+      const taken = existingRegs.map(r => r.registration).join(', ');
+      return res.status(400).json({ error: `Registration(s) already in use: ${taken}` });
+    }
+
+    const qty = normalizedRegs.length;
+    const weeklyPayment = Number(leaseWeeklyPayment);
+    const totalFirstPayment = weeklyPayment * qty;
+
+    // Get world time
+    const world = await World.findByPk(activeWorldId);
+    if (!world) {
+      return res.status(404).json({ error: 'World not found' });
+    }
+    const now = new Date(world.currentTime);
+    const leaseEnd = new Date(now);
+    leaseEnd.setMonth(leaseEnd.getMonth() + durationMonths);
+
+    // New aircraft: full check validity
+    const cInterval = 600 + Math.floor(Math.random() * 120);
+    const dInterval = 2190 + Math.floor(Math.random() * 1460);
+
+    // Transaction: create all leased aircraft + deduct first payment
+    const createdAircraft = [];
+    const t = await sequelize.transaction();
+    try {
+      const lockedMembership = await WorldMembership.findByPk(membership.id, {
+        transaction: t, lock: t.LOCK.UPDATE
+      });
+
+      // Only charge first weekly payment for the 1st aircraft (immediate delivery)
+      // On-order aircraft pay at delivery via processDeliveries
+      if (lockedMembership.balance < weeklyPayment) {
+        await t.rollback();
+        return res.status(400).json({
+          error: 'Insufficient funds for first lease payment',
+          required: weeklyPayment,
+          available: lockedMembership.balance
+        });
+      }
+
+      for (let i = 0; i < normalizedRegs.length; i++) {
+        const reg = normalizedRegs[i];
+        const isImmediate = (i === 0); // 1st aircraft: immediate, rest staggered
+
+        const createData = {
+          worldMembershipId: lockedMembership.id,
+          aircraftId,
+          acquisitionType: 'lease',
+          condition: 'New',
+          conditionPercentage: 100,
+          ageYears: 0,
+          purchasePrice: aircraft.purchasePrice || null,
+          leaseWeeklyPayment: weeklyPayment,
+          leaseDurationMonths: durationMonths,
+          maintenanceCostPerHour: aircraft.maintenanceCostPerHour,
+          fuelBurnPerHour: aircraft.fuelBurnPerHour,
+          registration: reg,
+          currentAirport: baseAirportCode,
+          autoScheduleDaily: autoScheduleDaily === true,
+          autoScheduleWeekly: autoScheduleWeekly === true,
+          autoScheduleA: autoScheduleA === true,
+          autoScheduleC: autoScheduleC === true,
+          autoScheduleD: autoScheduleD === true,
+          cargoLightKg: cargoLightKg || null,
+          cargoStandardKg: cargoStandardKg || null,
+          cargoHeavyKg: cargoHeavyKg || null
+        };
+
+        if (isImmediate) {
+          // First aircraft: active immediately with full check dates and lease dates
+          Object.assign(createData, {
+            status: 'active',
+            leaseStartDate: now,
+            leaseEndDate: leaseEnd,
+            lastCCheckDate: now,
+            lastDCheckDate: now,
+            cCheckIntervalDays: cInterval,
+            dCheckIntervalDays: dInterval,
+            // New aircraft: C, D, A checks valid from factory. Only Daily/Weekly needed before first flight.
+            lastDailyCheckDate: new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000)),
+            lastWeeklyCheckDate: new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000)),
+            lastACheckDate: now,
+            lastACheckHours: 0,
+            aCheckIntervalHours: 800 + Math.floor(Math.random() * 200)
+          });
+        } else {
+          // Staggered: on_order with delivery date i weeks from now
+          const deliveryDate = new Date(now.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+          Object.assign(createData, {
+            status: 'on_order',
+            orderDate: now,
+            expectedDeliveryDate: deliveryDate,
+            leaseStartDate: null, // Set at delivery by processDeliveries
+            leaseEndDate: null
+          });
+        }
+
+        const userAircraft = await UserAircraft.create(createData, { transaction: t });
+        createdAircraft.push(userAircraft);
+      }
+
+      // Deduct first weekly payment for 1st aircraft only
+      lockedMembership.balance = parseFloat(lockedMembership.balance) - weeklyPayment;
+      await lockedMembership.save({ transaction: t });
+
+      await t.commit();
+    } catch (txError) {
+      await t.rollback();
+      throw txError;
+    }
+
+    // Create auto-scheduled maintenance only for the first (active) aircraft
+    const autoCheckTypes = [];
+    if (autoScheduleDaily === true) autoCheckTypes.push('daily');
+    if (autoScheduleWeekly === true) autoCheckTypes.push('weekly');
+    if (autoScheduleA === true) autoCheckTypes.push('A');
+    if (autoScheduleC === true) autoCheckTypes.push('C');
+    if (autoScheduleD === true) autoCheckTypes.push('D');
+
+    if (autoCheckTypes.length > 0 && createdAircraft.length > 0) {
+      await createAutoScheduledMaintenance(createdAircraft[0].id, autoCheckTypes, activeWorldId);
+    }
+
+    const finalMembership = await WorldMembership.findByPk(membership.id);
+
+    res.json({
+      message: `${qty} aircraft leased successfully`,
+      aircraft: createdAircraft.map(a => ({
+        id: a.id,
+        registration: a.registration
+      })),
+      weeklyPaymentPerUnit: weeklyPayment,
+      totalWeeklyPayment: totalFirstPayment,
+      leaseDurationMonths: durationMonths,
+      newBalance: finalMembership.balance
+    });
+  } catch (error) {
+    console.error('Error in bulk lease:', error);
+    res.status(500).json({
+      error: 'Failed to complete bulk lease',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
  * Get maintenance status for all aircraft
  */
 router.get('/maintenance', async (req, res) => {
@@ -2622,7 +3249,7 @@ router.get('/maintenance', async (req, res) => {
     // Fetch fleet and active maintenance in parallel
     const [fleet, activeMaint] = await Promise.all([
       UserAircraft.findAll({
-        where: { worldMembershipId: membership.id },
+        where: { worldMembershipId: membership.id, status: { [Op.ne]: 'on_order' } },
         include: [{ model: Aircraft, as: 'aircraft' }],
         order: [['registration', 'ASC']]
       }),
@@ -3281,9 +3908,9 @@ router.post('/global-maintenance-settings', async (req, res) => {
     const world = await World.findByPk(activeWorldId);
     const gameNow = world ? new Date(world.currentTime) : new Date();
 
-    // Get all aircraft for this membership
+    // Get all delivered aircraft for this membership (skip on_order)
     const allAircraft = await UserAircraft.findAll({
-      where: { worldMembershipId: membership.id }
+      where: { worldMembershipId: membership.id, status: { [Op.ne]: 'on_order' } }
     });
 
     if (allAircraft.length === 0) {
@@ -4142,12 +4769,12 @@ router.post('/:aircraftId/cancel-lease', async (req, res) => {
 
     const isPlayerLease = !!ownerAircraft;
 
-    // Player lease: apply 3-month early termination penalty
+    // Player lease: apply 12-week early termination penalty
     if (isPlayerLease) {
-      const penalty = weeklyPayment * 3;
+      const penalty = weeklyPayment * 12;
       if (parseFloat(membership.balance) < penalty) {
         return res.status(400).json({
-          error: `Insufficient funds for early termination penalty ($${Number(penalty).toLocaleString('en-US')}). You need 3 months' lease rate.`
+          error: `Insufficient funds for early termination penalty ($${Number(penalty).toLocaleString('en-US')}). You need 12 weeks' lease rate.`
         });
       }
 
@@ -4200,6 +4827,51 @@ router.post('/:aircraftId/cancel-lease', async (req, res) => {
     }
   } catch (error) {
     console.error('Error cancelling lease:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/:aircraftId/cancel-order
+ * Cancel an on-order aircraft. Deposit is forfeited (no refund).
+ */
+router.post('/:aircraftId/cancel-order', async (req, res) => {
+  try {
+    const { membership, aircraft, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
+
+    if (aircraft.status !== 'on_order') {
+      return res.status(400).json({ error: 'This aircraft is not on order' });
+    }
+
+    const reg = aircraft.registration;
+    const deposit = parseFloat(aircraft.depositPaid) || 0;
+
+    // Delete the on-order aircraft (deposit is forfeited)
+    await aircraft.destroy();
+
+    const gameTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
+
+    // Notify about cancellation and forfeited deposit
+    await Notification.create({
+      worldMembershipId: membership.id,
+      type: 'order_cancelled',
+      icon: 'x-circle',
+      title: `Order Cancelled — ${reg}`,
+      message: deposit > 0
+        ? `Your order for ${reg} has been cancelled. Deposit of $${Math.round(deposit).toLocaleString('en-US')} has been forfeited.`
+        : `Your lease order for ${reg} has been cancelled.`,
+      priority: 2,
+      gameTime
+    });
+
+    console.log(`Order cancelled: ${reg}, deposit forfeited: $${deposit}`);
+    res.json({
+      message: 'Order cancelled successfully',
+      registration: reg,
+      depositForfeited: deposit
+    });
+  } catch (error) {
+    console.error('Error cancelling order:', error);
     res.status(error.status || 500).json({ error: error.message });
   }
 });
@@ -4564,6 +5236,7 @@ router.post('/:aircraftId/take-out-of-storage', async (req, res) => {
 // Export router as default and helper functions
 module.exports = router;
 module.exports.checkMaintenanceConflict = checkMaintenanceConflict;
+module.exports.createAutoScheduledMaintenance = createAutoScheduledMaintenance;
 module.exports.attemptMaintenanceReschedule = attemptMaintenanceReschedule;
 module.exports.findAvailableMaintenanceSlot = findAvailableMaintenanceSlot;
 module.exports.findAvailableSlotOnDate = findAvailableSlotOnDate;

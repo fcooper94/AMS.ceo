@@ -3,6 +3,7 @@ const router = express.Router();
 const { Aircraft, World, WorldMembership, User, UsedAircraftForSale, UserAircraft } = require('../models');
 const { Op } = require('sequelize');
 const { getRandomLessor, getUsedAircraftSeller, getManufacturer } = require('../data/aircraftSellers');
+const eraEconomicService = require('../services/eraEconomicService');
 
 /**
  * Format days remaining into human-readable string
@@ -42,6 +43,9 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Era multiplier: scale 2024 USD prices to era-appropriate values
+    const eraMultiplier = currentYear ? eraEconomicService.getEraMultiplier(currentYear) : 1.0;
+
     // Build where clause for aircraft availability
     const whereClause = { isActive: true };
 
@@ -73,7 +77,7 @@ router.get('/', async (req, res) => {
       console.log(`Found ${variants.length} aircraft variants available for year ${currentYear || 'any'} (used category)`);
 
       // Generate used aircraft based on variants
-      const usedAircraft = generateUsedAircraft(variants, currentYear);
+      const usedAircraft = generateUsedAircraft(variants, currentYear, eraMultiplier);
 
       // Also fetch persistent used aircraft listings for this world
       if (req.session?.activeWorldId) {
@@ -292,12 +296,16 @@ router.get('/', async (req, res) => {
 
       console.log(`Found ${newAircraft.length} aircraft variants available for year ${currentYear || 'any'} (new category)`);
 
-      // Add seller/lessor info to each aircraft (same entity offers both purchase and lease)
+      // Add seller/lessor info and computed lease price to each aircraft
       const aircraftWithSellers = newAircraft.map(ac => {
         const acData = ac.toJSON();
         const lessor = getRandomLessor(ac.type);
         acData.lessor = lessor;
         acData.seller = lessor;
+        // Apply era multiplier to prices
+        acData.purchasePrice = Math.round(parseFloat(ac.purchasePrice) * eraMultiplier);
+        // Compute weekly lease rate: 0.2% of era-adjusted list price per week
+        acData.leasePrice = Math.round(acData.purchasePrice * 0.002);
         return acData;
       });
 
@@ -314,7 +322,7 @@ router.get('/', async (req, res) => {
 /**
  * Generate used aircraft from available variants
  */
-function generateUsedAircraft(variants, currentYear = null) {
+function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0) {
   const usedAircraft = [];
 
   // For each variant, generate 5-15 used examples with different conditions
@@ -419,9 +427,10 @@ function generateUsedAircraft(variants, currentYear = null) {
       depreciationFactor *= checkValidityDiscount;
       depreciationFactor = Math.max(depreciationFactor, 0.03); // Minimum 3%
 
-      const usedPrice = variant.purchasePrice ?
-        parseFloat(variant.purchasePrice) * depreciationFactor :
-        parseFloat(variant.purchasePrice || 50000000) * depreciationFactor;
+      const basePrice = variant.purchasePrice ?
+        parseFloat(variant.purchasePrice) :
+        parseFloat(variant.purchasePrice || 50000000);
+      const usedPrice = basePrice * depreciationFactor * eraMultiplier;
 
       // Generate lease price (typically 0.07-0.12% of used price per week)
       const leaseMultiplier = (0.003 + (Math.random() * 0.002)) / 4.33;

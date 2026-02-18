@@ -63,6 +63,9 @@ let selectedAircraft = null;
 let registrationPrefix = 'N-'; // Default prefix, will be updated from world info
 let baseCountry = null;
 let isSinglePlayer = false; // SP worlds cache inventory in sessionStorage
+let purchaseQuantity = 1; // Quantity for bulk new aircraft purchases
+let selectedCabinConfig = null; // Cabin class configuration for new aircraft
+let selectedCargoConfig = null; // Cargo type allocation for new aircraft
 
 // Contract signing animation
 function showContractSigningAnimation(type, aircraftName, registration, price) {
@@ -100,8 +103,8 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
       year: 'numeric'
     });
 
-    const contractType = type === 'lease' ? 'AIRCRAFT LEASE AGREEMENT' : 'AIRCRAFT PURCHASE AGREEMENT';
-    const actionText = type === 'lease' ? 'lease' : 'purchase';
+    const contractType = type === 'lease' ? 'AIRCRAFT LEASE AGREEMENT' : type === 'order' ? 'AIRCRAFT ORDER AGREEMENT' : 'AIRCRAFT PURCHASE AGREEMENT';
+    const actionText = type === 'lease' ? 'lease' : type === 'order' ? 'order' : 'purchase';
 
     overlay.innerHTML = `
       <div class="contract-container" style="
@@ -152,7 +155,7 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
               <strong>${registration}</strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
-              <span>${type === 'lease' ? 'Weekly Rate:' : 'Purchase Price:'}</span>
+              <span>${type === 'lease' ? 'Weekly Rate:' : type === 'order' ? 'Deposit Paid:' : 'Purchase Price:'}</span>
               <strong>${formattedPrice}</strong>
             </div>
           </div>
@@ -323,8 +326,9 @@ async function fetchWorldInfo() {
 
     // Balance display
     const balanceEl = document.getElementById('marketplaceBalance');
-    if (balanceEl && !data.error) {
-      const balance = Number(data.balance) || 0;
+    if (!data.error) {
+      playerBalance = Number(data.balance) || 0;
+      const balance = playerBalance;
       balanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
       if (balance < 0) {
         balanceEl.style.color = 'var(--warning-color)';
@@ -410,6 +414,8 @@ function clearAircraftCache() {
   try {
     sessionStorage.removeItem('aircraft_inventory_used');
     sessionStorage.removeItem('aircraft_inventory_new');
+    sessionStorage.removeItem('aircraft_inventory_v2_used');
+    sessionStorage.removeItem('aircraft_inventory_v2_new');
   } catch (e) { /* ignore */ }
 }
 
@@ -662,6 +668,12 @@ function showAircraftDetails(aircraftId) {
 
   // Store selected aircraft for purchase/lease
   selectedAircraft = aircraft;
+  purchaseQuantity = 1; // Reset quantity on each detail view
+  selectedCabinConfig = null; // Reset cabin config
+  selectedCargoConfig = null; // Reset cargo config
+  selectedFinancingMethod = 'cash'; // Reset financing state
+  selectedBankId = null;
+  selectedLoanTermWeeks = 156;
 
   const conditionPercent = aircraft.conditionPercentage || (aircraft.condition === 'New' ? 100 : 70);
   const ageYears = aircraft.age !== undefined ? aircraft.age : 0;
@@ -786,7 +798,30 @@ function showAircraftDetails(aircraftId) {
     </div>
     ` : ''}
 
+    ${isNew && aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? `
+    <div id="cabinConfigBtn" onclick="openCabinConfigurator()" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); border: 1px dashed rgba(139, 92, 246, 0.4); border-radius: 6px; padding: 0.4rem 0.6rem; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;" onmouseover="this.style.borderColor='#8B5CF6'; this.style.background='linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)'" onmouseout="this.style.borderColor='rgba(139, 92, 246, 0.4)'; this.style.background='linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)'">
+      <div>
+        <div style="color: #8B5CF6; font-weight: 600; font-size: 0.75rem;">CONFIGURE CABIN</div>
+        <div id="cabinConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Default: ${aircraft.passengerCapacity}Y (all economy) · Click to customize</div>
+      </div>
+      <div style="color: #8B5CF6; font-size: 1rem;">&#9654;</div>
+    </div>
+    ` : ''}
+
+    ${isNew && aircraft.cargoCapacityKg > 0 ? `
+    <div id="cargoConfigBtn" onclick="openCargoConfigurator()" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); border: 1px dashed rgba(245, 158, 11, 0.4); border-radius: 6px; padding: 0.4rem 0.6rem; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;" onmouseover="this.style.borderColor='#F59E0B'; this.style.background='linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.4)'; this.style.background='linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)'">
+      <div>
+        <div style="color: #F59E0B; font-weight: 600; font-size: 0.75rem;">CONFIGURE CARGO</div>
+        <div id="cargoConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Default: ${(aircraft.cargoCapacityKg / 1000).toFixed(1)}t light freight \u00B7 Click to customize</div>
+      </div>
+      <div style="color: #F59E0B; font-size: 1rem;">&#9654;</div>
+    </div>
+    ` : ''}
+
     <!-- Bottom: Purchase & Lease side by side -->
+    ${isNew && !aircraft.isPlayerListing ? `
+    ${buildNewAircraftAcquisitionCards(aircraft)}
+    ` : `
     <div style="display: grid; grid-template-columns: ${aircraft.purchasePrice && aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
       ${aircraft.purchasePrice ? `
       <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processPurchase()">
@@ -794,7 +829,7 @@ function showAircraftDetails(aircraftId) {
           <div>
             <div style="color: #10b981; font-weight: 700; font-size: 0.8rem;">PURCHASE</div>
             <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Buy from ' + (aircraft.seller?.name || 'player') : 'Own outright'}</div>
-            ${aircraft.seller && !isNew ? `<div style="color: var(--text-muted); font-size: 0.55rem;">From: <strong style="color: var(--text-primary);">${aircraft.seller.shortName}</strong> ${aircraft.seller.country ? `<span style="font-size: 0.5rem;">${aircraft.seller.country}</span>` : ''}</div>` : ''}
+            ${aircraft.seller ? `<div style="color: var(--text-muted); font-size: 0.55rem;">From: <strong style="color: var(--text-primary);">${aircraft.seller.shortName}</strong> ${aircraft.seller.country ? `<span style="font-size: 0.5rem;">${aircraft.seller.country}</span>` : ''}</div>` : ''}
           </div>
           <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.purchasePrice)}</div>
         </div>
@@ -809,22 +844,23 @@ function showAircraftDetails(aircraftId) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
           <div>
             <div style="color: #3b82f6; font-weight: 700; font-size: 0.8rem;">LEASE</div>
-            <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Lease from ' + (aircraft.lessor?.name || 'player') : '12 month minimum'}</div>
+            <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Lease from ' + (aircraft.lessor?.name || 'player') : '3 year minimum'}</div>
           </div>
           <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
         </div>
-        ${aircraft.lessor && !isNew ? `
+        ${aircraft.lessor ? `
         <div style="font-size: 0.55rem; color: var(--text-muted); margin-bottom: 0.2rem;">
           <span style="color: var(--text-secondary);">${aircraft.lessor.isPlayer ? 'Owner:' : 'Lessor:'}</span> <strong style="color: var(--text-primary);">${aircraft.lessor.shortName}</strong>
           ${aircraft.lessor.country ? `<span style="color: var(--text-muted); font-size: 0.5rem;">${aircraft.lessor.country}</span>` : ''}
         </div>
         ` : ''}
         <div style="font-size: 0.55rem; color: var(--text-secondary);">
-          ✓ Lower upfront &nbsp; ✓ Flexible
+          ✓ Lower upfront &nbsp; ✓ Flexible &nbsp; ✓ Available now
         </div>
       </div>
       ` : ''}
     </div>
+    `}
   `;
 
   const fullName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''}`;
@@ -836,6 +872,998 @@ function showAircraftDetails(aircraftId) {
   if (purchaseBtn) {
     purchaseBtn.style.display = 'none';
   }
+}
+
+// Transaction discount: 0% for single, scaling to 55% at qty 10+
+function transactionDiscountPercent(qty) {
+  if (qty <= 1) return 0;
+  return Math.round(Math.min(55, ((qty - 1) / 9) * 55));
+}
+function transactionUnitPrice(listPrice, qty) {
+  return Math.round(listPrice * (1 - transactionDiscountPercent(qty) / 100));
+}
+
+// Client-side loan payment calculator (mirrors bankConfig.calculateFixedPayment)
+function calculateWeeklyLoanPayment(principal, annualRate, termWeeks) {
+  const weeklyRate = annualRate / 100 / 52;
+  if (weeklyRate === 0) return Math.round(principal / termWeeks * 100) / 100;
+  const payment = principal * (weeklyRate * Math.pow(1 + weeklyRate, termWeeks)) /
+    (Math.pow(1 + weeklyRate, termWeeks) - 1);
+  return Math.round(payment * 100) / 100;
+}
+
+// Cached bank offers for financing selector
+let cachedBankOffers = null;
+async function fetchBankOffers() {
+  if (cachedBankOffers) return cachedBankOffers;
+  try {
+    const resp = await fetch('/api/loans/offers');
+    if (resp.ok) {
+      cachedBankOffers = await resp.json();
+      return cachedBankOffers;
+    }
+  } catch (e) { console.error('Error fetching bank offers:', e); }
+  return null;
+}
+
+// Selected financing state
+let selectedFinancingMethod = 'cash'; // 'cash' or 'loan'
+let selectedBankId = null;
+let selectedLoanTermWeeks = 156; // default 3 years
+let playerBalance = 0; // Updated by fetchWorldInfo()
+
+// Build compact acquisition buttons for the detail modal (ORDER + LEASE)
+function buildNewAircraftAcquisitionCards(aircraft) {
+  const listPrice = aircraft.purchasePrice;
+  const txnPrice = transactionUnitPrice(listPrice, 1);
+  const discPct = transactionDiscountPercent(1);
+
+  return `
+    <div style="display: grid; grid-template-columns: ${aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
+      <!-- ORDER NEW button -->
+      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); showOrderDialog()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+          <div>
+            <div style="color: #10b981; font-weight: 700; font-size: 0.85rem;">ORDER NEW</div>
+            <div style="color: var(--text-muted); font-size: 0.6rem;">Own outright · Available immediately</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(listPrice)}</div>
+            <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
+          </div>
+        </div>
+        <div style="font-size: 0.55rem; color: var(--text-secondary);">
+          ✓ Full ownership &nbsp; ✓ Sell anytime &nbsp; ✓ Residual value
+        </div>
+      </div>
+
+      ${aircraft.leasePrice ? `
+      <!-- OPERATING LEASE button -->
+      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processLease()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+          <div>
+            <div style="color: #3b82f6; font-weight: 700; font-size: 0.85rem;">OPERATING LEASE</div>
+            <div style="color: var(--text-muted); font-size: 0.6rem;">3-12 year term · Available now</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
+            <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
+          </div>
+        </div>
+        <div style="font-size: 0.55rem; color: var(--text-secondary);">
+          ✓ No deposit &nbsp; ✓ Flexible &nbsp; ✓ Lower capital
+        </div>
+      </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+// Get delivery delay in weeks for frontend display
+function getDeliveryDelayWeeks(aircraft) {
+  return 0; // 1st aircraft always immediate; bulk stagger handled separately
+}
+
+// Dedicated order dialog for new aircraft (replaces inline cards + multi-purchase dialog)
+function showOrderDialog() {
+  if (!selectedAircraft) return;
+  const aircraft = selectedAircraft;
+  const listPrice = aircraft.purchasePrice;
+  const conditionPercent = aircraft.conditionPercentage || (aircraft.condition === 'New' ? 100 : 70);
+
+  const fullName = aircraft.variant
+    ? `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant}`
+    : `${aircraft.manufacturer} ${aircraft.model}`;
+
+  // Local order state
+  let orderQty = 1;
+  let orderFinancing = 'cash';
+  let orderBankId = null;
+  let orderTermWeeks = 156;
+
+  function discPct() { return transactionDiscountPercent(orderQty); }
+  function unitPrice() { return transactionUnitPrice(listPrice, orderQty); }
+  function depositPer() { return Math.round(unitPrice() * 0.30); }
+  function totalDeposit() { return depositPer() * orderQty; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'orderDialogOverlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8); z-index: 2000;
+    display: flex; justify-content: center; align-items: center;
+    overflow-y: auto; padding: 2rem 0;
+  `;
+
+  function renderDialog() {
+    const deliveryNote = orderQty > 1 ? `1st immediate, then 1/week (${orderQty - 1} more)` : 'Available immediately';
+
+    overlay.innerHTML = `
+      <div style="background: var(--surface); border: 1px solid var(--accent-color); border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 1050px; margin: auto;">
+        <h2 style="margin: 0 0 1rem 0; color: var(--accent-color); text-align: center; font-size: 1.2rem;">ORDER NEW AIRCRAFT</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <!-- Left Column -->
+          <div>
+            <!-- Aircraft Info -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem;">${fullName}</h3>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.85rem;">
+                <div><span style="color: var(--text-muted);">Type:</span> <strong>${aircraft.type}</strong></div>
+                <div><span style="color: var(--text-muted);">Pax:</span> <strong>${aircraft.passengerCapacity || 0}</strong></div>
+                <div><span style="color: var(--text-muted);">Range:</span> <strong>${aircraft.rangeNm || 0}nm</strong></div>
+              </div>
+            </div>
+
+            <!-- Pricing -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px;">
+              <div id="orderListPriceRow" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span style="color: var(--text-muted); font-size: 0.8rem;">List Price</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">$${formatCurrencyShort(listPrice)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span id="orderPriceLabel" style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">Unit Price</span>
+                <div style="text-align: right;">
+                  <span id="orderUnitPrice" style="color: #10b981; font-weight: 700; font-size: 1.3rem;">$${formatCurrencyShort(unitPrice())}</span>
+                  <span id="orderDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: none;"></span>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
+                <span style="color: var(--text-secondary); font-size: 0.85rem;">30% Deposit</span>
+                <span id="orderDepositDisplay" style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalDeposit())}</span>
+              </div>
+            </div>
+
+            <!-- Quantity Selector -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">Quantity</div>
+                  <div id="orderDeliveryNote" style="color: var(--text-muted); font-size: 0.75rem;">${deliveryNote}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                  <button id="orderQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <span id="orderQtyDisplay" style="font-weight: 700; font-size: 1.3rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${orderQty}</span>
+                  <button id="orderQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Financing Method -->
+            <div>
+              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Payment at Delivery</div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button id="orderCashBtn" style="flex: 1; padding: 0.5rem; border: 2px solid ${orderFinancing === 'cash' ? '#10b981' : 'var(--border-color)'}; border-radius: 6px; background: ${orderFinancing === 'cash' ? 'rgba(16, 185, 129, 0.1)' : 'transparent'}; color: ${orderFinancing === 'cash' ? '#10b981' : 'var(--text-muted)'}; font-size: 0.85rem; font-weight: 600; cursor: pointer;">CASH AT DELIVERY</button>
+                <button id="orderLoanBtn" style="flex: 1; padding: 0.5rem; border: 2px solid ${orderFinancing === 'loan' ? '#3b82f6' : 'var(--border-color)'}; border-radius: 6px; background: ${orderFinancing === 'loan' ? 'rgba(59, 130, 246, 0.1)' : 'transparent'}; color: ${orderFinancing === 'loan' ? '#3b82f6' : 'var(--text-muted)'}; font-size: 0.85rem; font-weight: 600; cursor: pointer;">FINANCE WITH LOAN</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div>
+            <!-- Order Terms -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Order Terms</h4>
+              <ul style="margin: 0; padding-left: 1rem; font-size: 0.8rem; color: var(--text-secondary);">
+                <li>30% deposit charged now, remaining 70% due at delivery</li>
+                <li>Cancellation forfeits deposit (no refund)</li>
+                <li>${orderQty > 1 ? `Staggered delivery: 1st immediate, then 1 per week` : 'Delivery: Available immediately'}</li>
+              </ul>
+            </div>
+
+            <!-- Order Summary -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Aircraft</span>
+                <span style="color: var(--text-primary); font-weight: 600;">${fullName} ${orderQty > 1 ? '<span id="orderSummaryQty">x' + orderQty + '</span>' : ''}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Payment Method</span>
+                <span id="orderSummaryFinancing" style="color: var(--text-primary); font-weight: 600;">${orderFinancing === 'loan' ? 'Loan' : 'Cash at Delivery'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
+                <span style="color: var(--text-primary); font-weight: 700; font-size: 0.95rem;">Deposit Due Now</span>
+                <span id="orderSummaryDeposit" style="color: #10b981; font-weight: 700; font-size: 1.2rem;">$${formatCurrencyShort(totalDeposit())}</span>
+              </div>
+            </div>
+
+            <!-- Insufficient Funds Warning -->
+            <div id="orderFundsWarning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
+              <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;">
+                <span style="color: #EF4444; font-size: 1.1rem;">&#9888;</span>
+                <span style="color: #EF4444; font-weight: 700; font-size: 0.9rem;">Insufficient Funds</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+                <span>Your balance: </span><strong id="orderPlayerBalance" style="color: var(--text-primary);">$0</strong><br>
+                <span>Total cost (deposit + delivery): </span><strong id="orderTotalCost" style="color: #EF4444;">$0</strong><br>
+                <span>Shortfall: </span><strong id="orderShortfall" style="color: #EF4444;">$0</strong>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid rgba(239, 68, 68, 0.15); padding-top: 0.4rem; margin-top: 0.3rem;">
+                <span id="orderFundsSuggestion">Consider <strong style="color: #3b82f6; cursor: pointer;" id="orderSwitchToLoan">financing with a loan</strong> to spread the remaining 70% over weekly payments, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.75rem;">
+              <button id="orderConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Continue — Registration</button>
+              <button id="orderCancelBtn" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loan Details Panel (full width, below the grid) -->
+        <div id="orderLoanPanel" style="display: ${orderFinancing === 'loan' ? 'block' : 'none'}; margin-top: 1rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px;">
+          <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.4rem; font-weight: 600;">Select Bank</label>
+
+          <!-- No bank can cover warning -->
+          <div id="orderNoBankWarning" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px;">
+            <div style="display: flex; align-items: center; gap: 0.3rem;">
+              <span style="color: #EF4444; font-size: 1rem;">&#9888;</span>
+              <span style="color: #EF4444; font-weight: 700; font-size: 0.8rem;">No bank can cover this loan</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+              Loan needed: <strong id="orderLoanNeeded" style="color: #EF4444;">$0</strong>.
+              Reduce quantity or consider cash / used aircraft.
+            </div>
+          </div>
+
+          <!-- Bank cards grid (full width, 3 columns) -->
+          <div id="orderBankCards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.6rem;">
+            <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 0.6rem; font-size: 0.8rem;">Loading banks...</div>
+          </div>
+
+          <!-- Term slider + preview row -->
+          <div style="display: flex; gap: 1rem; align-items: center;">
+            <div style="flex: 1;">
+              <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.3rem;">Term (weeks)</label>
+              <input id="orderTermInput" type="range" min="104" max="260" value="${orderTermWeeks}" step="26" style="width: 100%; accent-color: #3b82f6;">
+              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">
+                <span>2 yr</span>
+                <span id="orderTermDisplay" style="color: #3b82f6; font-weight: 600;">${(orderTermWeeks / 52).toFixed(1)} yr</span>
+                <span>5 yr</span>
+              </div>
+            </div>
+            <div id="orderLoanPreview" style="color: #3b82f6; font-weight: 600; text-align: center; padding: 0.5rem 1rem; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 0.85rem; min-width: 200px;">
+              Calculating...
+            </div>
+          </div>
+        </div>
+      </div>
+      <style>
+        .toggle-switch input:checked + .toggle-slider { background-color: var(--accent-color); }
+        .toggle-switch .toggle-slider:before {
+          content: ""; position: absolute;
+          height: calc(100% - 4px); aspect-ratio: 1;
+          left: 2px; bottom: 2px;
+          background-color: white; transition: 0.3s; border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(calc(100% - 2px)); }
+      </style>
+    `;
+  }
+
+  renderDialog();
+  document.body.appendChild(overlay);
+
+  // --- Dynamic UI updates ---
+  function updatePricing() {
+    const deliveryNote = orderQty > 1 ? `1st immediate, then 1/week (${orderQty - 1} more)` : 'Available immediately';
+    const hasDiscount = discPct() > 0;
+    const unitPriceEl = document.getElementById('orderUnitPrice');
+    const discBadgeEl = document.getElementById('orderDiscBadge');
+    const listPriceRow = document.getElementById('orderListPriceRow');
+    const priceLabelEl = document.getElementById('orderPriceLabel');
+    const depositEl = document.getElementById('orderDepositDisplay');
+    const qtyEl = document.getElementById('orderQtyDisplay');
+    const deliveryEl = document.getElementById('orderDeliveryNote');
+    const confirmBtn = document.getElementById('orderConfirmBtn');
+
+    if (unitPriceEl) unitPriceEl.textContent = '$' + formatCurrencyShort(unitPrice());
+    if (listPriceRow) listPriceRow.style.display = hasDiscount ? 'flex' : 'none';
+    if (priceLabelEl) priceLabelEl.textContent = hasDiscount ? 'Discounted Unit Price' : 'Unit Price';
+    if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.display = hasDiscount ? 'inline' : 'none'; }
+    if (depositEl) depositEl.textContent = '$' + formatCurrencyShort(totalDeposit());
+    if (qtyEl) qtyEl.textContent = orderQty;
+    if (deliveryEl) deliveryEl.textContent = deliveryNote;
+    // Update summary section
+    const summaryQty = document.getElementById('orderSummaryQty');
+    const summaryFinancing = document.getElementById('orderSummaryFinancing');
+    const summaryDeposit = document.getElementById('orderSummaryDeposit');
+    if (summaryQty) summaryQty.textContent = 'x' + orderQty;
+    if (summaryFinancing) summaryFinancing.textContent = orderFinancing === 'loan' ? 'Loan' : 'Cash at Delivery';
+    if (summaryDeposit) summaryDeposit.textContent = '$' + formatCurrencyShort(totalDeposit());
+
+    if (orderFinancing === 'loan' && cachedBankOffers) renderBankCards();
+    else updateLoanPreviewLocal();
+    updateFundsWarning();
+  }
+
+  // --- Funds affordability check ---
+  function updateFundsWarning() {
+    const warningEl = document.getElementById('orderFundsWarning');
+    const confirmBtn = document.getElementById('orderConfirmBtn');
+    if (!warningEl) return;
+
+    // Deposit is always due upfront regardless of financing method
+    const deposit = totalDeposit();
+    // Cash mode: need full cost (deposit + remaining 70%)
+    // Loan mode: only need the deposit (loan covers the rest)
+    const amountNeeded = orderFinancing === 'loan' ? deposit : unitPrice() * orderQty;
+    const label = orderFinancing === 'loan' ? 'Deposit due now' : 'Total cost (deposit + delivery)';
+
+    // Hide/show loan panel based on deposit affordability
+    const loanPanel = document.getElementById('orderLoanPanel');
+    const cantAffordDeposit = playerBalance < deposit;
+    if (loanPanel && orderFinancing === 'loan') {
+      loanPanel.style.display = cantAffordDeposit ? 'none' : 'block';
+    }
+
+    if (playerBalance >= amountNeeded) {
+      warningEl.style.display = 'none';
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.opacity = '1'; }
+    } else {
+      warningEl.style.display = 'block';
+      const balEl = document.getElementById('orderPlayerBalance');
+      const costEl = document.getElementById('orderTotalCost');
+      const shortEl = document.getElementById('orderShortfall');
+      if (balEl) balEl.textContent = '$' + formatCurrencyShort(playerBalance);
+      if (costEl) costEl.textContent = '$' + formatCurrencyShort(amountNeeded);
+      if (shortEl) shortEl.textContent = '$' + formatCurrencyShort(amountNeeded - playerBalance);
+      // Update the label text
+      const costLabelEl = costEl?.previousElementSibling;
+      if (costLabelEl) costLabelEl.textContent = label + ': ';
+      if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5'; }
+      // Update suggestion text based on financing mode
+      const suggestionEl = document.getElementById('orderFundsSuggestion');
+      if (suggestionEl) {
+        if (orderFinancing === 'loan') {
+          suggestionEl.innerHTML = 'Reduce the order quantity, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.';
+        } else {
+          suggestionEl.innerHTML = 'Consider <strong style="color: #3b82f6; cursor: pointer;" id="orderSwitchToLoan">financing with a loan</strong> to spread the remaining 70% over weekly payments, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.';
+          document.getElementById('orderSwitchToLoan')?.addEventListener('click', switchToLoan);
+        }
+      }
+    }
+  }
+
+  // --- Quantity ---
+  document.getElementById('orderQtyDown').addEventListener('click', () => {
+    if (orderQty <= 1) return;
+    orderQty--;
+    purchaseQuantity = orderQty;
+    updatePricing();
+  });
+  document.getElementById('orderQtyUp').addEventListener('click', () => {
+    if (orderQty >= 10) return;
+    orderQty++;
+    purchaseQuantity = orderQty;
+    updatePricing();
+  });
+
+  // --- Financing ---
+  document.getElementById('orderCashBtn').addEventListener('click', () => {
+    orderFinancing = 'cash';
+    selectedFinancingMethod = 'cash';
+    const cashBtn = document.getElementById('orderCashBtn');
+    const loanBtn = document.getElementById('orderLoanBtn');
+    const loanPanel = document.getElementById('orderLoanPanel');
+    cashBtn.style.border = '2px solid #10b981'; cashBtn.style.background = 'rgba(16, 185, 129, 0.1)'; cashBtn.style.color = '#10b981';
+    loanBtn.style.border = '2px solid var(--border-color)'; loanBtn.style.background = 'transparent'; loanBtn.style.color = 'var(--text-muted)';
+    if (loanPanel) loanPanel.style.display = 'none';
+    updateFundsWarning();
+    updatePricing();
+  });
+
+  function switchToLoan() {
+    document.getElementById('orderLoanBtn')?.click();
+  }
+
+  document.getElementById('orderLoanBtn').addEventListener('click', () => {
+    orderFinancing = 'loan';
+    selectedFinancingMethod = 'loan';
+    const cashBtn = document.getElementById('orderCashBtn');
+    const loanBtn = document.getElementById('orderLoanBtn');
+    const loanPanel = document.getElementById('orderLoanPanel');
+    loanBtn.style.border = '2px solid #3b82f6'; loanBtn.style.background = 'rgba(59, 130, 246, 0.1)'; loanBtn.style.color = '#3b82f6';
+    cashBtn.style.border = '2px solid var(--border-color)'; cashBtn.style.background = 'transparent'; cashBtn.style.color = 'var(--text-muted)';
+    if (loanPanel) loanPanel.style.display = 'block';
+    loadBankSelectorLocal();
+    updateFundsWarning();
+    updatePricing();
+  });
+
+  // Wire "financing with a loan" link in the funds warning
+  document.getElementById('orderSwitchToLoan')?.addEventListener('click', switchToLoan);
+
+  // --- Bank/Loan ---
+  const riskColors = {
+    conservative: { bg: 'rgba(46, 160, 67, 0.12)', color: '#2ea043', label: 'Conservative' },
+    moderate: { bg: 'rgba(210, 153, 34, 0.12)', color: '#d29922', label: 'Moderate' },
+    aggressive: { bg: 'rgba(248, 81, 73, 0.12)', color: '#f85149', label: 'Aggressive' }
+  };
+
+  function renderBankCards() {
+    const container = document.getElementById('orderBankCards');
+    const warningEl = document.getElementById('orderNoBankWarning');
+    const loanNeededEl = document.getElementById('orderLoanNeeded');
+    if (!container) return;
+
+    const data = cachedBankOffers;
+    if (!data || !data.offers || data.offers.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 0.6rem; font-size: 0.8rem;">No banks available.</div>';
+      return;
+    }
+
+    const totalLoanNeeded = (unitPrice() - depositPer()) * orderQty;
+    let anyAvailable = false;
+    let html = '';
+
+    for (const bank of data.offers) {
+      const fleetType = bank.loanTypes?.find(lt => lt.type === 'fleet_expansion');
+      const rate = fleetType?.rate || bank.loanTypes?.[1]?.rate || 0;
+      const exceedsLimit = totalLoanNeeded > bank.maxLoanAmount;
+      const creditTooLow = !bank.meetsRequirement;
+      const disabled = exceedsLimit || creditTooLow;
+      const isSelected = bank.bankId === orderBankId;
+      if (!disabled) anyAvailable = true;
+
+      const risk = riskColors[bank.riskAppetite] || riskColors.moderate;
+
+      html += `
+        <div class="order-bank-card${disabled ? ' disabled' : ''}" data-bank-id="${bank.bankId}"
+             style="padding: 0.5rem 0.6rem; border: 2px solid ${isSelected && !disabled ? '#3b82f6' : disabled ? 'rgba(255,255,255,0.05)' : 'var(--border-color)'}; border-radius: 6px; background: ${isSelected && !disabled ? 'rgba(59, 130, 246, 0.08)' : disabled ? 'rgba(255,255,255,0.02)' : 'var(--surface-elevated)'}; cursor: ${disabled ? 'not-allowed' : 'pointer'}; opacity: ${disabled ? '0.45' : '1'}; transition: border-color 0.15s, background 0.15s;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">${bank.shortName}</span>
+              <span style="font-size: 0.55rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; background: ${risk.bg}; color: ${risk.color};">${risk.label}</span>
+            </div>
+            <span style="font-weight: 700; font-size: 0.9rem; color: ${disabled ? 'var(--text-muted)' : '#3b82f6'}; font-family: 'Courier New', monospace;">${rate.toFixed(1)}%</span>
+          </div>
+          <div style="display: flex; gap: 0.7rem; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">
+            <span>Max: <strong style="color: var(--text-primary);">$${formatCurrencyShort(bank.maxLoanAmount)}</strong></span>
+            <span>Early fee: <strong style="color: var(--text-primary);">${bank.earlyRepaymentFee > 0 ? bank.earlyRepaymentFee + '%' : 'None'}</strong></span>
+            <span>Holidays: <strong style="color: var(--text-primary);">${bank.paymentHolidays}</strong></span>
+          </div>
+          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+            ${(bank.features || []).map(f => `<span style="font-size: 0.55rem; padding: 0.08rem 0.3rem; border-radius: 3px; background: rgba(200,210,225,0.08); color: var(--text-secondary); font-weight: 600;">${f}</span>`).join('')}
+          </div>
+          ${exceedsLimit ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: #EF4444; font-weight: 600;">&#9888; Exceeds max loan: $${formatCurrencyShort(bank.maxLoanAmount)} (need $${formatCurrencyShort(totalLoanNeeded)})</div>` : ''}
+          ${creditTooLow ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">&#128274; Requires credit score ${bank.minCreditScore}+</div>` : ''}
+        </div>`;
+    }
+
+    container.innerHTML = html;
+
+    // Show/hide the "no bank can cover this" warning
+    if (warningEl) {
+      warningEl.style.display = anyAvailable ? 'none' : 'block';
+      if (loanNeededEl) loanNeededEl.textContent = '$' + formatCurrencyShort(totalLoanNeeded);
+    }
+
+    // If current selection is now invalid, auto-select first available
+    const currentValid = data.offers.find(b => b.bankId === orderBankId && b.meetsRequirement && totalLoanNeeded <= b.maxLoanAmount);
+    if (!currentValid) {
+      const firstValid = data.offers.find(b => b.meetsRequirement && totalLoanNeeded <= b.maxLoanAmount);
+      if (firstValid) {
+        orderBankId = firstValid.bankId;
+        selectedBankId = firstValid.bankId;
+        // Re-highlight the new selection
+        container.querySelectorAll('.order-bank-card').forEach(c => {
+          const id = c.getAttribute('data-bank-id');
+          if (id === firstValid.bankId) {
+            c.style.borderColor = '#3b82f6';
+            c.style.background = 'rgba(59, 130, 246, 0.08)';
+          }
+        });
+      } else {
+        orderBankId = null;
+        selectedBankId = null;
+      }
+    }
+
+    updateLoanPreviewLocal();
+  }
+
+  let bankCardsWired = false;
+  async function loadBankSelectorLocal() {
+    const container = document.getElementById('orderBankCards');
+    if (!container) return;
+    const data = await fetchBankOffers();
+    if (!data || !data.offers) return;
+
+    renderBankCards();
+
+    // Wire event delegation once
+    if (!bankCardsWired) {
+      bankCardsWired = true;
+      container.addEventListener('click', (e) => {
+        const card = e.target.closest('.order-bank-card:not(.disabled)');
+        if (!card) return;
+        const bankId = card.getAttribute('data-bank-id');
+
+        container.querySelectorAll('.order-bank-card').forEach(c => {
+          if (!c.classList.contains('disabled')) {
+            c.style.borderColor = 'var(--border-color)';
+            c.style.background = 'var(--surface-elevated)';
+          }
+        });
+
+        card.style.borderColor = '#3b82f6';
+        card.style.background = 'rgba(59, 130, 246, 0.08)';
+
+        orderBankId = bankId;
+        selectedBankId = bankId;
+        updateLoanPreviewLocal();
+      });
+    }
+  }
+
+  function updateLoanPreviewLocal() {
+    const termInput = document.getElementById('orderTermInput');
+    const termDisplay = document.getElementById('orderTermDisplay');
+    const preview = document.getElementById('orderLoanPreview');
+    const confirmBtn = document.getElementById('orderConfirmBtn');
+    if (!termInput) return;
+
+    orderTermWeeks = parseInt(termInput.value);
+    selectedLoanTermWeeks = orderTermWeeks;
+    const years = (orderTermWeeks / 52).toFixed(1);
+    if (termDisplay) termDisplay.textContent = `${years} yr`;
+
+    const remainingPerUnit = unitPrice() - depositPer();
+    const totalLoanNeeded = remainingPerUnit * orderQty;
+    let rate = 6.0;
+    let earlyFee = 0;
+    let holidays = 0;
+    let bankName = '';
+    let exceedsLimit = false;
+
+    if (cachedBankOffers && cachedBankOffers.offers && orderBankId) {
+      const bank = cachedBankOffers.offers.find(b => b.bankId === orderBankId);
+      if (bank) {
+        const fleetType = bank.loanTypes?.find(lt => lt.type === 'fleet_expansion');
+        rate = fleetType?.rate || bank.loanTypes?.[1]?.rate || 6.0;
+        earlyFee = bank.earlyRepaymentFee || 0;
+        holidays = bank.paymentHolidays || 0;
+        bankName = bank.shortName;
+        exceedsLimit = totalLoanNeeded > bank.maxLoanAmount;
+      }
+    }
+
+    const weeklyPayment = calculateWeeklyLoanPayment(remainingPerUnit, rate, orderTermWeeks);
+
+    if (preview) {
+      if (!orderBankId || exceedsLimit) {
+        preview.innerHTML = '<span style="color: var(--text-muted);">Select an eligible bank above</span>';
+      } else {
+        let detailParts = [`${bankName} @ ${rate.toFixed(1)}%`];
+        if (earlyFee > 0) detailParts.push(`${earlyFee}% early fee`);
+        if (holidays > 0) detailParts.push(`${holidays} payment holiday${holidays > 1 ? 's' : ''}`);
+        preview.innerHTML = `
+          <div style="font-size: 0.95rem;">~$${formatCurrencyShort(weeklyPayment)}/wk for ${years} years</div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.15rem;">${detailParts.join(' &middot; ')}</div>`;
+      }
+    }
+
+    // Manage confirm button for loan mode
+    if (orderFinancing === 'loan' && confirmBtn) {
+      const canAffordDeposit = playerBalance >= totalDeposit();
+      const validSelection = orderBankId && !exceedsLimit && canAffordDeposit;
+      confirmBtn.disabled = !validSelection;
+      confirmBtn.style.opacity = validSelection ? '1' : '0.5';
+    }
+  }
+
+  const termInput = document.getElementById('orderTermInput');
+  if (termInput) {
+    termInput.addEventListener('input', updateLoanPreviewLocal);
+    termInput.addEventListener('change', updateLoanPreviewLocal);
+  }
+
+  // Initial funds check
+  updateFundsWarning();
+
+  // --- Confirm: sync state and open registration dialog (step 2) ---
+  const confirmBtn = document.getElementById('orderConfirmBtn');
+  confirmBtn.addEventListener('click', () => {
+    if (confirmBtn.disabled) return;
+    purchaseQuantity = orderQty;
+    selectedFinancingMethod = orderFinancing;
+    selectedBankId = orderBankId;
+    selectedLoanTermWeeks = orderTermWeeks;
+    document.body.removeChild(overlay);
+    showOrderRegistrationDialog();
+  });
+
+  // --- Cancel ---
+  document.getElementById('orderCancelBtn').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+}
+
+// Step 2: Registration + Maintenance dialog (called after order config)
+function showOrderRegistrationDialog() {
+  if (!selectedAircraft) return;
+  const aircraft = selectedAircraft;
+  const qty = purchaseQuantity || 1;
+  const listPrice = aircraft.purchasePrice;
+  const uPrice = transactionUnitPrice(listPrice, qty);
+  const deposit = Math.round(uPrice * 0.30) * qty;
+
+  const fullName = aircraft.variant
+    ? `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant}`
+    : `${aircraft.manufacturer} ${aircraft.model}`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'orderRegOverlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8); z-index: 2000;
+    display: flex; justify-content: center; align-items: center;
+    overflow-y: auto; padding: 2rem 0;
+  `;
+
+  function buildRegInputs() {
+    if (qty === 1) {
+      return `
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="regContainer0">
+          <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
+          <input type="text" id="regSuffix0"
+            placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
+            maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
+            style="flex: 1; padding: 0.6rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.95rem; outline: none; text-transform: uppercase;" />
+        </div>
+        <div id="regStatus0" style="margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-muted);"></div>`;
+    }
+    let rows = '';
+    for (let i = 0; i < qty; i++) {
+      rows += `
+        <tr>
+          <td style="padding: 0.4rem 0.5rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">${i + 1}</td>
+          <td style="padding: 0.4rem 0.5rem;">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
+              <div style="padding: 0.4rem 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center;">${registrationPrefix}</div>
+              <input type="text" id="regSuffix${i}"
+                placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
+                maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
+                style="flex: 1; padding: 0.4rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.85rem; outline: none; text-transform: uppercase; min-width: 60px;" />
+            </div>
+          </td>
+          <td style="padding: 0.4rem 0.5rem; text-align: center;">
+            <span id="regStatus${i}" style="font-size: 0.8rem; color: var(--text-muted);">—</span>
+          </td>
+        </tr>`;
+    }
+    return `
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 30px;">#</th>
+            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: left;">Registration</th>
+            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 60px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function makeToggle(id, label, color = '#10b981') {
+    return `
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.3rem 0;">
+        <label class="toggle-switch" style="position: relative; width: 36px; height: 20px; flex-shrink: 0;">
+          <input type="checkbox" id="${id}" data-toggle-color="${color}" checked style="opacity: 0; width: 0; height: 0;">
+          <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${color}; border: 1px solid ${color}; transition: 0.3s; border-radius: 20px;"></span>
+        </label>
+        <span style="color: var(--text-secondary); font-size: 0.85rem;">${label}</span>
+      </label>`;
+  }
+
+  const financingLabel = selectedFinancingMethod === 'loan' ? 'Loan' : 'Cash at Delivery';
+
+  overlay.innerHTML = `
+    <div style="background: var(--surface); border: 1px solid var(--accent-color); border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 700px; margin: auto;">
+      <h2 style="margin: 0 0 1rem 0; color: var(--accent-color); text-align: center; font-size: 1.2rem;">REGISTRATION & SCHEDULING</h2>
+
+      <!-- Order summary bar -->
+      <div style="margin-bottom: 1.25rem; padding: 0.6rem 0.75rem; background: var(--surface-elevated); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.85rem;">
+        <span style="color: var(--text-primary); font-weight: 600;">${fullName}${qty > 1 ? ' x' + qty : ''}</span>
+        <span style="color: var(--text-muted);">${financingLabel}</span>
+        <span style="color: #10b981; font-weight: 700;">Deposit: $${formatCurrencyShort(deposit)}</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: ${qty > 1 ? '1fr 1fr' : '1fr'}; gap: 1.25rem;">
+        <!-- Registration Section -->
+        <div>
+          <label style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Aircraft Registration${qty > 1 ? 's' : ''}</label>
+          <div id="regSection" style="max-height: 320px; overflow-y: auto;">
+            ${buildRegInputs()}
+          </div>
+        </div>
+
+        <!-- Maintenance Scheduling -->
+        <div>
+          <label style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Auto-Schedule Maintenance</label>
+          <div style="padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+            ${makeToggle('regAutoAll', 'Auto-Schedule All', '#10b981')}
+            <div style="border-top: 1px solid var(--border-color); margin: 0.4rem 0;"></div>
+            ${makeToggle('regAutoDaily', 'Daily Check', '#FFA500')}
+            ${makeToggle('regAutoWeekly', 'Weekly Check', '#8B5CF6')}
+            ${makeToggle('regAutoA', 'A Check', '#17A2B8')}
+            ${makeToggle('regAutoC', 'C Check', '#6B7280')}
+            ${makeToggle('regAutoD', 'D Check', '#4B5563')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+        <button id="regBackBtn" class="btn btn-secondary" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">Back</button>
+        <button id="regConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Place Order — Deposit $${formatCurrencyShort(deposit)}</button>
+      </div>
+    </div>
+    <style>
+      .toggle-switch .toggle-slider:before {
+        content: ""; position: absolute;
+        height: calc(100% - 4px); aspect-ratio: 1;
+        left: 2px; bottom: 2px;
+        background-color: white; transition: 0.3s; border-radius: 50%;
+      }
+      .toggle-switch input:checked + .toggle-slider:before { transform: translateX(calc(100% - 2px)); }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Apply toggle colors dynamically
+  overlay.querySelectorAll('.toggle-switch input[data-toggle-color]').forEach(input => {
+    const color = input.getAttribute('data-toggle-color');
+    const slider = input.nextElementSibling;
+    input.addEventListener('change', () => {
+      slider.style.backgroundColor = input.checked ? color : 'rgba(255,255,255,0.12)';
+      slider.style.borderColor = input.checked ? color : 'rgba(255,255,255,0.15)';
+    });
+  });
+
+  // --- Auto-schedule toggles ---
+  const autoAll = document.getElementById('regAutoAll');
+  const autoAllSlider = autoAll.nextElementSibling;
+  const autoAllColor = autoAll.getAttribute('data-toggle-color');
+  const autoToggles = ['Daily', 'Weekly', 'A', 'C', 'D'].map(l => document.getElementById('regAuto' + l));
+  function syncAutoAllColor() {
+    autoAllSlider.style.backgroundColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.12)';
+    autoAllSlider.style.borderColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.15)';
+  }
+  autoAll.addEventListener('change', () => { autoToggles.forEach(t => { if (!t) return; t.checked = autoAll.checked; t.dispatchEvent(new Event('change')); }); syncAutoAllColor(); });
+  autoToggles.forEach(t => {
+    if (!t) return;
+    t.addEventListener('change', () => {
+      autoAll.checked = autoToggles.every(t => t && t.checked);
+      syncAutoAllColor();
+    });
+  });
+
+  // --- Registration validation ---
+  const regValidStates = [];
+  const regCheckTimers = [];
+  const confirmBtn = document.getElementById('regConfirmBtn');
+
+  function validateReg(suffix) {
+    const trimmed = suffix.trim().toUpperCase();
+    if (typeof validateRegistrationSuffix === 'function') {
+      const v = validateRegistrationSuffix(trimmed, registrationPrefix);
+      if (!v.valid) return v;
+      return { valid: true, value: registrationPrefix + v.value };
+    }
+    if (trimmed.length < 1) return { valid: false, message: 'Enter a registration' };
+    if (!/^[A-Z0-9-]+$/.test(trimmed)) return { valid: false, message: 'Invalid characters' };
+    return { valid: true, value: registrationPrefix + trimmed };
+  }
+
+  function updateConfirmState() {
+    const allValid = regValidStates.length === qty && regValidStates.every(v => v);
+    confirmBtn.disabled = !allValid;
+    confirmBtn.style.opacity = allValid ? '1' : '0.5';
+  }
+
+  function checkDuplicates() {
+    const regs = [];
+    for (let i = 0; i < qty; i++) {
+      const input = document.getElementById(`regSuffix${i}`);
+      if (!input) continue;
+      const suffix = input.value.trim().toUpperCase();
+      if (!suffix) continue;
+      const v = validateReg(suffix);
+      if (v.valid) regs.push({ idx: i, reg: v.value });
+    }
+    const seen = {};
+    const dupes = new Set();
+    for (const { idx, reg } of regs) {
+      if (seen[reg] !== undefined) { dupes.add(idx); dupes.add(seen[reg]); }
+      else seen[reg] = idx;
+    }
+    return dupes;
+  }
+
+  function wireRegInput(i) {
+    const input = document.getElementById(`regSuffix${i}`);
+    if (!input) return;
+    const statusEl = document.getElementById(`regStatus${i}`);
+    const containerEl = document.getElementById(`regContainer${i}`);
+
+    input.addEventListener('input', () => {
+      const suffix = input.value.trim();
+      if (!suffix) {
+        regValidStates[i] = false;
+        if (statusEl) { statusEl.textContent = qty > 1 ? '—' : ''; statusEl.style.color = 'var(--text-muted)'; }
+        if (containerEl) containerEl.style.borderColor = 'var(--border-color)';
+        updateConfirmState();
+        return;
+      }
+      const v = validateReg(suffix);
+      if (!v.valid) {
+        regValidStates[i] = false;
+        if (statusEl) { statusEl.textContent = '!'; statusEl.style.color = '#EF4444'; }
+        if (containerEl) containerEl.style.borderColor = '#EF4444';
+        updateConfirmState();
+        return;
+      }
+      if (qty > 1) {
+        const dupes = checkDuplicates();
+        if (dupes.has(i)) {
+          regValidStates[i] = false;
+          if (statusEl) { statusEl.textContent = 'DUP'; statusEl.style.color = '#F59E0B'; }
+          if (containerEl) containerEl.style.borderColor = '#F59E0B';
+          updateConfirmState();
+          return;
+        }
+      }
+      if (statusEl) { statusEl.textContent = '...'; statusEl.style.color = 'var(--text-muted)'; }
+      if (containerEl) containerEl.style.borderColor = 'var(--border-color)';
+
+      clearTimeout(regCheckTimers[i]);
+      regCheckTimers[i] = setTimeout(async () => {
+        try {
+          const resp = await fetch(`/api/fleet/check-registration?registration=${encodeURIComponent(v.value)}`);
+          const data = await resp.json();
+          if (input.value.trim().toUpperCase() !== suffix.toUpperCase()) return;
+          if (data.inUse) {
+            regValidStates[i] = false;
+            if (statusEl) { statusEl.innerHTML = '&#10007;'; statusEl.style.color = '#EF4444'; }
+            if (containerEl) containerEl.style.borderColor = '#EF4444';
+          } else {
+            regValidStates[i] = true;
+            if (statusEl) { statusEl.innerHTML = '&#10003;'; statusEl.style.color = '#10B981'; }
+            if (containerEl) containerEl.style.borderColor = '#10B981';
+          }
+        } catch (e) {
+          regValidStates[i] = true;
+          if (statusEl) { statusEl.innerHTML = '&#10003;'; statusEl.style.color = '#10B981'; }
+          if (containerEl) containerEl.style.borderColor = '#10B981';
+        }
+        if (qty > 1) {
+          const dupes2 = checkDuplicates();
+          for (let j = 0; j < qty; j++) {
+            const st = document.getElementById(`regStatus${j}`);
+            const ct = document.getElementById(`regContainer${j}`);
+            if (dupes2.has(j) && regValidStates[j]) {
+              regValidStates[j] = false;
+              if (st) { st.textContent = 'DUP'; st.style.color = '#F59E0B'; }
+              if (ct) ct.style.borderColor = '#F59E0B';
+            }
+          }
+        }
+        updateConfirmState();
+      }, 350);
+    });
+
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const next = document.getElementById(`regSuffix${i + 1}`);
+        if (next) next.focus();
+        else if (!confirmBtn.disabled) confirmBtn.click();
+      }
+    });
+  }
+
+  // Wire up all registration inputs
+  for (let i = 0; i < qty; i++) {
+    regValidStates.push(false);
+    regCheckTimers.push(null);
+    wireRegInput(i);
+  }
+  document.getElementById('regSuffix0')?.focus();
+
+  // --- Confirm: place order ---
+  confirmBtn.addEventListener('click', () => {
+    if (confirmBtn.disabled) return;
+
+    const registrations = [];
+    for (let i = 0; i < qty; i++) {
+      const suffix = document.getElementById(`regSuffix${i}`).value.trim();
+      const v = validateReg(suffix);
+      if (!v.valid) return;
+      registrations.push(v.value);
+    }
+
+    const autoSchedulePrefs = {
+      autoScheduleDaily: document.getElementById('regAutoDaily')?.checked || false,
+      autoScheduleWeekly: document.getElementById('regAutoWeekly')?.checked || false,
+      autoScheduleA: document.getElementById('regAutoA')?.checked || false,
+      autoScheduleC: document.getElementById('regAutoC')?.checked || false,
+      autoScheduleD: document.getElementById('regAutoD')?.checked || false
+    };
+
+    document.body.removeChild(overlay);
+
+    if (qty > 1) {
+      confirmMultiPurchase(registrations, autoSchedulePrefs);
+    } else {
+      confirmPurchase(registrations[0], autoSchedulePrefs);
+    }
+  });
+
+  // --- Back: return to order config ---
+  document.getElementById('regBackBtn').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+    showOrderDialog();
+  });
+}
+
+// Open cabin configurator for the selected aircraft
+function openCabinConfigurator() {
+  if (!selectedAircraft || typeof showCabinConfigurator !== 'function') return;
+  showCabinConfigurator(selectedAircraft, (config) => {
+    selectedCabinConfig = config;
+    // Update the button to show the summary
+    const summaryEl = document.getElementById('cabinConfigSummary');
+    const btnEl = document.getElementById('cabinConfigBtn');
+    if (summaryEl && config) {
+      const summary = typeof cabinConfigSummary === 'function' ? cabinConfigSummary(config) : 'Configured';
+      summaryEl.innerHTML = `<span style="color: #10B981;">&#10003;</span> ${summary}`;
+    }
+    if (btnEl) {
+      btnEl.style.borderStyle = 'solid';
+      btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    }
+  }, selectedCabinConfig);
+}
+
+// Open cargo configurator for the selected aircraft
+function openCargoConfigurator() {
+  if (!selectedAircraft || typeof showCargoConfigurator !== 'function') return;
+  showCargoConfigurator(selectedAircraft, (config) => {
+    selectedCargoConfig = config;
+    const summaryEl = document.getElementById('cargoConfigSummary');
+    const btnEl = document.getElementById('cargoConfigBtn');
+    if (summaryEl && config) {
+      const summary = typeof cargoConfigSummary === 'function' ? cargoConfigSummary(config) : 'Configured';
+      summaryEl.innerHTML = `<span style="color: #10B981;">&#10003;</span> ${summary}`;
+    }
+    if (btnEl) {
+      btnEl.style.borderStyle = 'solid';
+      btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    }
+  }, selectedCargoConfig);
 }
 
 // Close aircraft detail modal
@@ -942,21 +1970,27 @@ function showPurchaseConfirmationModal() {
 function processPurchase() {
   if (!selectedAircraft) return;
 
-  const fullName = selectedAircraft.variant
-    ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
-    : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
+  const isNewOrder = currentCategory === 'new' && !selectedAircraft.isPlayerListing;
 
-  const condition = selectedAircraft.condition || 'New';
-  const price = selectedAircraft.purchasePrice;
-
-  showConfirmationDialog(
-    'CONFIRM PURCHASE',
-    fullName,
-    condition,
-    `$${formatCurrency(price)}`,
-    'Purchase',
-    confirmPurchase
-  );
+  if (isNewOrder) {
+    // New aircraft: open dedicated order dialog
+    showOrderDialog();
+  } else {
+    // Used aircraft / player listing: instant purchase via confirmation dialog
+    const fullName = selectedAircraft.variant
+      ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
+      : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
+    const condition = selectedAircraft.condition || 'New';
+    const price = selectedAircraft.purchasePrice;
+    showConfirmationDialog(
+      'CONFIRM PURCHASE',
+      fullName,
+      condition,
+      `$${formatCurrency(price)}`,
+      'Purchase',
+      confirmPurchase
+    );
+  }
 }
 
 // Show processing/ordering overlay
@@ -1015,74 +2049,155 @@ function hideProcessingOverlay() {
 async function confirmPurchase(registration, autoSchedulePrefs = {}) {
   if (!selectedAircraft) return;
 
-  // Show contract signing animation
+  const isNewOrder = currentCategory === 'new' && !selectedAircraft.isPlayerListing;
   const aircraftName = selectedAircraft.variant
     ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
-  await showContractSigningAnimation('purchase', aircraftName, registration, selectedAircraft.purchasePrice);
 
-  // Show processing overlay
+  // Show contract signing animation
+  if (isNewOrder) {
+    const txnPrice = transactionUnitPrice(selectedAircraft.purchasePrice, 1);
+    const deposit = Math.round(txnPrice * 0.30);
+    await showContractSigningAnimation('order', aircraftName, registration, deposit);
+  } else {
+    await showContractSigningAnimation('purchase', aircraftName, registration, selectedAircraft.purchasePrice);
+  }
+
   showProcessingOverlay('purchase');
 
   try {
     const conditionPercent = selectedAircraft.conditionPercentage || (selectedAircraft.condition === 'New' ? 100 : 70);
     const ageYears = selectedAircraft.age || 0;
-
-    // Use variantId for used aircraft, id for new aircraft
     const aircraftId = selectedAircraft.variantId || selectedAircraft.id;
+
+    const payload = {
+      aircraftId: aircraftId,
+      category: currentCategory,
+      condition: selectedAircraft.condition || 'New',
+      conditionPercentage: conditionPercent,
+      ageYears: ageYears,
+      purchasePrice: selectedAircraft.purchasePrice,
+      maintenanceCostPerHour: selectedAircraft.maintenanceCostPerHour,
+      fuelBurnPerHour: selectedAircraft.fuelBurnPerHour,
+      registration: registration,
+      cCheckRemainingDays: selectedAircraft.cCheckRemainingDays || null,
+      dCheckRemainingDays: selectedAircraft.dCheckRemainingDays || null,
+      autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
+      autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
+      autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
+      autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
+      autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
+      playerListingId: selectedAircraft.playerListingId || null,
+      economySeats: selectedCabinConfig?.economySeats || null,
+      economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
+      businessSeats: selectedCabinConfig?.businessSeats || null,
+      firstSeats: selectedCabinConfig?.firstSeats || null,
+      cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
+      cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
+      cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
+    };
+
+    // Add financing info for new aircraft orders
+    if (isNewOrder) {
+      payload.financingMethod = selectedFinancingMethod;
+      if (selectedFinancingMethod === 'loan') {
+        payload.financingBankId = selectedBankId;
+        payload.financingTermWeeks = selectedLoanTermWeeks;
+      }
+    }
 
     const response = await fetch('/api/fleet/purchase', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        aircraftId: aircraftId,
-        category: currentCategory,
-        condition: selectedAircraft.condition || 'New',
-        conditionPercentage: conditionPercent,
-        ageYears: ageYears,
-        purchasePrice: selectedAircraft.purchasePrice,
-        maintenanceCostPerHour: selectedAircraft.maintenanceCostPerHour,
-        fuelBurnPerHour: selectedAircraft.fuelBurnPerHour,
-        registration: registration,
-        // Check validity for used aircraft
-        cCheckRemainingDays: selectedAircraft.cCheckRemainingDays || null,
-        dCheckRemainingDays: selectedAircraft.dCheckRemainingDays || null,
-        // Auto-schedule preferences for all check types
-        autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
-        autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
-        autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
-        autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
-        autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
-        // Player-to-player listing
-        playerListingId: selectedAircraft.playerListingId || null
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
     const data = await response.json();
-
-    // Hide processing overlay
     hideProcessingOverlay();
 
     if (response.ok) {
-      // Show success message
-      showSuccessMessage(`Aircraft purchased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
-
-      // Clear cached inventory so next load fetches fresh data
+      if (data.orderType === 'new') {
+        showSuccessMessage(`Aircraft ordered! ${data.aircraft.registration} — Available immediately. Deposit: $${formatCurrency(data.deposit)}`, data.newBalance);
+      } else {
+        showSuccessMessage(`Aircraft purchased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
+      }
       clearAircraftCache();
-
-      // Reload marketplace info to update balance
       fetchWorldInfo();
     } else {
-      // Show error message
       const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
-      showErrorMessage(`Purchase failed: ${errorMsg}`);
+      showErrorMessage(`${isNewOrder ? 'Order' : 'Purchase'} failed: ${errorMsg}`);
     }
   } catch (error) {
     console.error('Error purchasing aircraft:', error);
     hideProcessingOverlay();
     showErrorMessage('Failed to purchase aircraft. Please try again.');
+  }
+}
+
+// Confirm bulk purchase - send all registrations to server
+async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
+  if (!selectedAircraft) return;
+
+  const qty = registrations.length;
+  const aircraftName = selectedAircraft.variant
+    ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
+    : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
+
+  // Show contract animation with total deposit amount
+  const displayReg = qty > 1 ? `${registrations[0]} (+${qty - 1} more)` : registrations[0];
+  const txnUnit = transactionUnitPrice(selectedAircraft.purchasePrice, qty);
+  const totalDeposit = Math.round(txnUnit * 0.30) * qty;
+  await showContractSigningAnimation('order', aircraftName, displayReg, totalDeposit);
+
+  showProcessingOverlay('purchase');
+
+  try {
+    const payload = {
+      aircraftId: selectedAircraft.id,
+      purchasePrice: selectedAircraft.purchasePrice,
+      registrations,
+      autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
+      autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
+      autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
+      autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
+      autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
+      economySeats: selectedCabinConfig?.economySeats || null,
+      economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
+      businessSeats: selectedCabinConfig?.businessSeats || null,
+      firstSeats: selectedCabinConfig?.firstSeats || null,
+      cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
+      cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
+      cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null,
+      // Financing
+      financingMethod: selectedFinancingMethod
+    };
+    if (selectedFinancingMethod === 'loan') {
+      payload.financingBankId = selectedBankId;
+      payload.financingTermWeeks = selectedLoanTermWeeks;
+    }
+
+    const response = await fetch('/api/fleet/bulk-purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    hideProcessingOverlay();
+
+    if (response.ok) {
+      const regList = data.aircraft.map(a => a.registration).join(', ');
+      showSuccessMessage(`${qty} aircraft ordered! Deposit: $${formatCurrency(data.totalDeposit)}. Registrations: ${regList}`, data.newBalance);
+      clearAircraftCache();
+      fetchWorldInfo();
+    } else {
+      const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
+      showErrorMessage(`Bulk order failed: ${errorMsg}`);
+    }
+  } catch (error) {
+    console.error('Error in bulk order:', error);
+    hideProcessingOverlay();
+    showErrorMessage('Failed to complete bulk order. Please try again.');
   }
 }
 
@@ -1360,14 +2475,737 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
   registrationSuffix.focus();
 }
 
-// Show lease confirmation dialog
+// Show lease confirmation dialog — route new aircraft to bulk lease order flow
 function processLease() {
   if (!selectedAircraft) return;
-  showLeaseConfirmationDialog();
+  if (currentCategory === 'new') {
+    showLeaseOrderDialog();
+  } else {
+    showLeaseConfirmationDialogUsed();
+  }
 }
 
-// Dedicated lease confirmation dialog with lessor info, check dates, and duration
-function showLeaseConfirmationDialog() {
+// Lease order state (shared between step 1 and step 2)
+let leaseOrderQty = 1;
+let leaseOrderDurationMonths = 36;
+let leaseOrderWeeklyRate = 0;
+
+// Step 1: Lease order configuration dialog (qty, duration, pricing) for new aircraft
+function showLeaseOrderDialog() {
+  if (!selectedAircraft) return;
+  const aircraft = selectedAircraft;
+  const baseLeasePrice = aircraft.leasePrice || 0;
+
+  const fullName = aircraft.variant
+    ? `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant}`
+    : `${aircraft.manufacturer} ${aircraft.model}`;
+
+  // Local order state
+  let orderQty = leaseOrderQty || 1;
+  let leaseYears = 3;
+  let leaseMonths = 0;
+  const minTotalMonths = 36;
+  const maxTotalMonths = 144;
+
+  function discPct() { return transactionDiscountPercent(orderQty); }
+  function unitWeekly() { return Math.round(baseLeasePrice * (1 - discPct() / 100)); }
+  function totalWeekly() { return unitWeekly() * orderQty; }
+  function getTotalMonths() { return leaseYears * 12 + leaseMonths; }
+  function totalCommitment() { return totalWeekly() * getTotalMonths() * 4.33; }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'leaseOrderOverlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8); z-index: 2000;
+    display: flex; justify-content: center; align-items: center;
+    overflow-y: auto; padding: 2rem 0;
+  `;
+
+  function renderDialog() {
+    overlay.innerHTML = `
+      <div style="background: var(--surface); border: 1px solid #3b82f6; border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 1050px; margin: auto;">
+        <h2 style="margin: 0 0 1rem 0; color: #3b82f6; text-align: center; font-size: 1.2rem;">OPERATING LEASE</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <!-- Left Column -->
+          <div>
+            <!-- Aircraft Info -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1rem;">${fullName}</h3>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.85rem;">
+                <div><span style="color: var(--text-muted);">Type:</span> <strong>${aircraft.type}</strong></div>
+                <div><span style="color: var(--text-muted);">Pax:</span> <strong>${aircraft.passengerCapacity || 0}</strong></div>
+                <div><span style="color: var(--text-muted);">Range:</span> <strong>${aircraft.rangeNm || 0}nm</strong></div>
+              </div>
+            </div>
+
+            <!-- Lease Pricing -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.03) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px;">
+              <div id="leaseListPriceRow" style="display: ${discPct() > 0 ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span style="color: var(--text-muted); font-size: 0.8rem;">List Rate</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">$${formatCurrencyShort(baseLeasePrice)}/wk</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span id="leasePriceLabel" style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">${discPct() > 0 ? 'Discounted Rate' : 'Weekly Rate'}</span>
+                <div style="text-align: right;">
+                  <span id="leaseUnitWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.3rem;">$${formatCurrencyShort(unitWeekly())}/wk</span>
+                  <span id="leaseDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: ${discPct() > 0 ? 'inline' : 'none'};">${discPct() > 0 ? '-' + discPct() + '%' : ''}</span>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
+                <span style="color: var(--text-secondary); font-size: 0.85rem;">Total Weekly (x${orderQty})</span>
+                <span id="leaseTotalWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalWeekly())}/wk</span>
+              </div>
+            </div>
+
+            <!-- Quantity Selector -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">Quantity</div>
+                  <div id="leaseDeliveryNote" style="color: var(--text-muted); font-size: 0.75rem;">${orderQty > 1 ? `1st immediate, then 1/week (${orderQty - 1} more)` : 'Available immediately'}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                  <button id="leaseQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <span id="leaseQtyDisplay" style="font-weight: 700; font-size: 1.3rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${orderQty}</span>
+                  <button id="leaseQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Lease Duration -->
+            <div>
+              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Lease Duration</div>
+              <div style="display: flex; gap: 0.75rem; align-items: center;">
+                <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
+                  <button type="button" id="leaseYearsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <div style="flex: 1; text-align: center;">
+                    <div id="leaseYearsValue" style="font-weight: 700; font-size: 1.3rem; color: #3b82f6;">${leaseYears}</div>
+                    <div style="font-size: 0.6rem; color: var(--text-muted); margin-top: -2px;">years</div>
+                  </div>
+                  <button type="button" id="leaseYearsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+                <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
+                  <button type="button" id="leaseMonthsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <div style="flex: 1; text-align: center;">
+                    <div id="leaseMonthsValue" style="font-weight: 700; font-size: 1.3rem; color: #3b82f6;">${leaseMonths}</div>
+                    <div style="font-size: 0.6rem; color: var(--text-muted); margin-top: -2px;">months</div>
+                  </div>
+                  <button type="button" id="leaseMonthsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+              <div style="margin-top: 0.3rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
+                Total: <span id="leaseDurationTotal" style="color: var(--text-primary); font-weight: 600;">${getTotalMonths()} months</span> (min 3 yrs, max 12 yrs)
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div>
+            <!-- Lease Terms -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Lease Terms</h4>
+              <ul style="margin: 0; padding-left: 1rem; font-size: 0.8rem; color: var(--text-secondary);">
+                <li>No deposit required — first weekly payment charged now</li>
+                <li>${orderQty > 1 ? `Staggered delivery: 1st immediate, then 1 per week` : 'Aircraft available immediately upon signing'}</li>
+                <li style="color: #f59e0b;">Early termination: <strong>12 weeks</strong> of weekly payments</li>
+                ${orderQty > 1 ? '<li>Bulk lease discount applied to all aircraft</li>' : ''}
+              </ul>
+            </div>
+
+            <!-- Lease Summary -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.03) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Aircraft</span>
+                <span style="color: var(--text-primary); font-weight: 600;">${fullName} ${orderQty > 1 ? '<span id="leaseSummaryQty">x' + orderQty + '</span>' : ''}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Duration</span>
+                <span id="leaseSummaryDuration" style="color: var(--text-primary); font-weight: 600;">${getTotalMonths()} months</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Weekly Payment</span>
+                <span id="leaseSummaryWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalWeekly())}/wk</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Total Commitment</span>
+                <span id="leaseSummaryTotal" style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;">$${formatCurrencyShort(totalCommitment())}</span>
+              </div>
+            </div>
+
+            <!-- First Payment / Funds Warning -->
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">First Payment Due Now</span>
+                <span id="leaseFirstPayment" style="color: #3b82f6; font-weight: 700;">$${formatCurrencyShort(totalWeekly())}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Your Balance</span>
+                <span style="color: var(--text-primary); font-weight: 600;">$${formatCurrencyShort(playerBalance)}</span>
+              </div>
+            </div>
+
+            <!-- Insufficient Funds Warning -->
+            <div id="leaseFundsWarning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
+              <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;">
+                <span style="color: #EF4444; font-size: 1.1rem;">&#9888;</span>
+                <span style="color: #EF4444; font-weight: 700; font-size: 0.9rem;">Insufficient Funds</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                First weekly payment ($<span id="leaseWarningCost">${formatCurrencyShort(totalWeekly())}</span>) exceeds your balance ($<span id="leaseWarningBalance">${formatCurrencyShort(playerBalance)}</span>).
+                Reduce quantity or browse <strong>used aircraft</strong> for lower-cost leases.
+              </div>
+            </div>
+
+            <!-- Early Termination Info -->
+            <div style="margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 6px;">
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                Early termination penalty: <strong style="color: #f59e0b;" id="leaseTerminationFee">$${formatCurrencyShort(unitWeekly() * 12 * orderQty)}</strong>
+                <span style="color: var(--text-muted); font-size: 0.75rem;">(12 wks x ${orderQty} aircraft)</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.75rem;">
+              <button id="leaseConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Continue — Registration</button>
+              <button id="leaseCancelBtn" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <style>
+        .toggle-switch input:checked + .toggle-slider { background-color: var(--accent-color); }
+        .toggle-switch .toggle-slider:before {
+          content: ""; position: absolute;
+          height: calc(100% - 4px); aspect-ratio: 1;
+          left: 2px; bottom: 2px;
+          background-color: white; transition: 0.3s; border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(calc(100% - 2px)); }
+      </style>
+    `;
+  }
+
+  renderDialog();
+  document.body.appendChild(overlay);
+
+  // --- Dynamic UI updates ---
+  function updateLeasePricing() {
+    const hasDiscount = discPct() > 0;
+    const leaseDeliveryNote = orderQty > 1 ? `1st immediate, then 1/week (${orderQty - 1} more)` : 'Available immediately';
+    const unitWeeklyEl = document.getElementById('leaseUnitWeekly');
+    const discBadgeEl = document.getElementById('leaseDiscBadge');
+    const listPriceRow = document.getElementById('leaseListPriceRow');
+    const priceLabelEl = document.getElementById('leasePriceLabel');
+    const totalWeeklyEl = document.getElementById('leaseTotalWeekly');
+    const qtyEl = document.getElementById('leaseQtyDisplay');
+    const deliveryEl = document.getElementById('leaseDeliveryNote');
+    const firstPaymentEl = document.getElementById('leaseFirstPayment');
+    const summaryQtyEl = document.getElementById('leaseSummaryQty');
+    const summaryWeeklyEl = document.getElementById('leaseSummaryWeekly');
+    const summaryTotalEl = document.getElementById('leaseSummaryTotal');
+    const summaryDurationEl = document.getElementById('leaseSummaryDuration');
+    const terminationFeeEl = document.getElementById('leaseTerminationFee');
+
+    if (unitWeeklyEl) unitWeeklyEl.textContent = '$' + formatCurrencyShort(unitWeekly()) + '/wk';
+    if (listPriceRow) listPriceRow.style.display = hasDiscount ? 'flex' : 'none';
+    if (priceLabelEl) priceLabelEl.textContent = hasDiscount ? 'Discounted Rate' : 'Weekly Rate';
+    if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.display = hasDiscount ? 'inline' : 'none'; }
+    if (totalWeeklyEl) totalWeeklyEl.textContent = '$' + formatCurrencyShort(totalWeekly()) + '/wk';
+    if (qtyEl) qtyEl.textContent = orderQty;
+    if (deliveryEl) deliveryEl.textContent = leaseDeliveryNote;
+    if (firstPaymentEl) firstPaymentEl.textContent = '$' + formatCurrencyShort(totalWeekly());
+    if (summaryQtyEl) summaryQtyEl.textContent = 'x' + orderQty;
+    if (summaryWeeklyEl) summaryWeeklyEl.textContent = '$' + formatCurrencyShort(totalWeekly()) + '/wk';
+    if (summaryTotalEl) summaryTotalEl.textContent = '$' + formatCurrencyShort(totalCommitment());
+    if (summaryDurationEl) summaryDurationEl.textContent = getTotalMonths() + ' months';
+    if (terminationFeeEl) terminationFeeEl.textContent = '$' + formatCurrencyShort(unitWeekly() * 12 * orderQty);
+
+    // Update the total weekly label
+    const totalLabel = totalWeeklyEl?.parentElement?.querySelector('span:first-child');
+    if (totalLabel) totalLabel.textContent = `Total Weekly (x${orderQty})`;
+
+    // Update the termination info
+    const termInfoEl = terminationFeeEl?.parentElement;
+    if (termInfoEl) {
+      const spanEl = termInfoEl.querySelector('span');
+      if (spanEl) spanEl.textContent = `(12 wks x ${orderQty} aircraft)`;
+    }
+
+    updateLeaseFundsWarning();
+  }
+
+  // --- Funds warning ---
+  function updateLeaseFundsWarning() {
+    const warningEl = document.getElementById('leaseFundsWarning');
+    const confirmBtn = document.getElementById('leaseConfirmBtn');
+    if (!warningEl) return;
+
+    const firstPayment = totalWeekly();
+
+    if (playerBalance >= firstPayment) {
+      warningEl.style.display = 'none';
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.opacity = '1'; }
+    } else {
+      warningEl.style.display = 'block';
+      const costEl = document.getElementById('leaseWarningCost');
+      const balEl = document.getElementById('leaseWarningBalance');
+      if (costEl) costEl.textContent = formatCurrencyShort(firstPayment);
+      if (balEl) balEl.textContent = formatCurrencyShort(playerBalance);
+      if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5'; }
+    }
+  }
+
+  // --- Duration spinner ---
+  const yearsValueEl = document.getElementById('leaseYearsValue');
+  const monthsValueEl = document.getElementById('leaseMonthsValue');
+  const totalDisplayEl = document.getElementById('leaseDurationTotal');
+
+  function updateDurationDisplay() {
+    if (yearsValueEl) yearsValueEl.textContent = leaseYears;
+    if (monthsValueEl) monthsValueEl.textContent = leaseMonths;
+    if (totalDisplayEl) totalDisplayEl.textContent = `${getTotalMonths()} months`;
+    updateLeasePricing();
+  }
+
+  function adjustYears(delta) {
+    const newYears = leaseYears + delta;
+    const newTotal = newYears * 12 + leaseMonths;
+    if (newYears < 0 || newYears > 12) return;
+    if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
+    leaseYears = newYears;
+    updateDurationDisplay();
+  }
+
+  function adjustMonths(delta) {
+    let newMonths = leaseMonths + delta;
+    let newYears = leaseYears;
+    if (newMonths < 0) {
+      if (newYears > 0) { newYears--; newMonths = 11; }
+      else return;
+    } else if (newMonths > 11) {
+      if (newYears < 12) { newYears++; newMonths = 0; }
+      else return;
+    }
+    const newTotal = newYears * 12 + newMonths;
+    if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
+    leaseYears = newYears;
+    leaseMonths = newMonths;
+    updateDurationDisplay();
+  }
+
+  document.getElementById('leaseYearsDown').addEventListener('click', () => adjustYears(-1));
+  document.getElementById('leaseYearsUp').addEventListener('click', () => adjustYears(1));
+  document.getElementById('leaseMonthsDown').addEventListener('click', () => adjustMonths(-1));
+  document.getElementById('leaseMonthsUp').addEventListener('click', () => adjustMonths(1));
+
+  // --- Quantity ---
+  document.getElementById('leaseQtyDown').addEventListener('click', () => {
+    if (orderQty <= 1) return;
+    orderQty--;
+    updateLeasePricing();
+  });
+  document.getElementById('leaseQtyUp').addEventListener('click', () => {
+    if (orderQty >= 10) return;
+    orderQty++;
+    updateLeasePricing();
+  });
+
+  // Initial funds check
+  updateLeaseFundsWarning();
+
+  // --- Confirm: sync state and open registration dialog (step 2) ---
+  document.getElementById('leaseConfirmBtn').addEventListener('click', () => {
+    const confirmBtn = document.getElementById('leaseConfirmBtn');
+    if (confirmBtn.disabled) return;
+    leaseOrderQty = orderQty;
+    leaseOrderDurationMonths = getTotalMonths();
+    leaseOrderWeeklyRate = unitWeekly();
+    document.body.removeChild(overlay);
+    showLeaseRegistrationDialog();
+  });
+
+  // --- Cancel ---
+  document.getElementById('leaseCancelBtn').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+}
+
+// Step 2: Lease Registration + Maintenance dialog
+function showLeaseRegistrationDialog() {
+  if (!selectedAircraft) return;
+  const aircraft = selectedAircraft;
+  const qty = leaseOrderQty || 1;
+  const weeklyRate = leaseOrderWeeklyRate;
+  const totalWeekly = weeklyRate * qty;
+
+  const fullName = aircraft.variant
+    ? `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant.startsWith('-') ? aircraft.variant : '-' + aircraft.variant}`
+    : `${aircraft.manufacturer} ${aircraft.model}`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'leaseRegOverlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8); z-index: 2000;
+    display: flex; justify-content: center; align-items: center;
+    overflow-y: auto; padding: 2rem 0;
+  `;
+
+  function buildRegInputs() {
+    if (qty === 1) {
+      return `
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer0">
+          <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
+          <input type="text" id="leaseRegSuffix0"
+            placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
+            maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
+            style="flex: 1; padding: 0.6rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.95rem; outline: none; text-transform: uppercase;" />
+        </div>
+        <div id="leaseRegStatus0" style="margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-muted);"></div>`;
+    }
+    let rows = '';
+    for (let i = 0; i < qty; i++) {
+      rows += `
+        <tr>
+          <td style="padding: 0.3rem; color: var(--text-muted); font-size: 0.8rem; text-align: center;">${i + 1}</td>
+          <td style="padding: 0.3rem;">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer${i}">
+              <div style="padding: 0.35rem 0.4rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; display: flex; align-items: center;">${registrationPrefix}</div>
+              <input type="text" id="leaseRegSuffix${i}"
+                placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
+                maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
+                style="flex: 1; padding: 0.35rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.8rem; outline: none; text-transform: uppercase; min-width: 0; width: 100%;" />
+            </div>
+          </td>
+          <td style="padding: 0.3rem; text-align: center;">
+            <span id="leaseRegStatus${i}" style="font-size: 0.75rem; color: var(--text-muted);">—</span>
+          </td>
+        </tr>`;
+    }
+    return `
+      <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 24px;">#</th>
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: left;">Registration</th>
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 36px;"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function makeToggle(id, label, color = '#3b82f6') {
+    return `
+      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.3rem 0;">
+        <label class="toggle-switch" style="position: relative; width: 36px; height: 20px; flex-shrink: 0;">
+          <input type="checkbox" id="${id}" data-toggle-color="${color}" checked style="opacity: 0; width: 0; height: 0;">
+          <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${color}; border: 1px solid ${color}; transition: 0.3s; border-radius: 20px;"></span>
+        </label>
+        <span style="color: var(--text-secondary); font-size: 0.85rem;">${label}</span>
+      </label>`;
+  }
+
+  overlay.innerHTML = `
+    <div style="background: var(--surface); border: 1px solid #3b82f6; border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 700px; margin: auto;">
+      <h2 style="margin: 0 0 1rem 0; color: #3b82f6; text-align: center; font-size: 1.2rem;">LEASE — REGISTRATION & SCHEDULING</h2>
+
+      <!-- Lease summary bar -->
+      <div style="margin-bottom: 1.25rem; padding: 0.6rem 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.85rem;">
+        <span style="color: var(--text-primary); font-weight: 600;">${fullName}${qty > 1 ? ' x' + qty : ''}</span>
+        <span style="color: var(--text-muted);">${leaseOrderDurationMonths} months</span>
+        <span style="color: #3b82f6; font-weight: 700;">$${formatCurrencyShort(totalWeekly)}/wk</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: ${qty > 1 ? '1fr 1fr' : '1fr'}; gap: 1.25rem; overflow: hidden;">
+        <!-- Registration Section -->
+        <div style="min-width: 0;">
+          <label style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Aircraft Registration${qty > 1 ? 's' : ''}</label>
+          <div id="leaseRegSection" style="max-height: 320px; overflow-y: auto; overflow-x: hidden;">
+            ${buildRegInputs()}
+          </div>
+        </div>
+
+        <!-- Maintenance Scheduling -->
+        <div>
+          <label style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Auto-Schedule Maintenance</label>
+          <div style="padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
+            ${makeToggle('leaseRegAutoAll', 'Auto-Schedule All', '#3b82f6')}
+            <div style="border-top: 1px solid var(--border-color); margin: 0.4rem 0;"></div>
+            ${makeToggle('leaseRegAutoDaily', 'Daily Check', '#FFA500')}
+            ${makeToggle('leaseRegAutoWeekly', 'Weekly Check', '#8B5CF6')}
+            ${makeToggle('leaseRegAutoA', 'A Check', '#17A2B8')}
+            ${makeToggle('leaseRegAutoC', 'C Check', '#6B7280')}
+            ${makeToggle('leaseRegAutoD', 'D Check', '#4B5563')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+        <button id="leaseRegBackBtn" class="btn btn-secondary" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">Back</button>
+        <button id="leaseRegConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Sign Lease — $${formatCurrencyShort(totalWeekly)}/wk</button>
+      </div>
+    </div>
+    <style>
+      .toggle-switch .toggle-slider:before {
+        content: ""; position: absolute;
+        height: calc(100% - 4px); aspect-ratio: 1;
+        left: 2px; bottom: 2px;
+        background-color: white; transition: 0.3s; border-radius: 50%;
+      }
+      .toggle-switch input:checked + .toggle-slider:before { transform: translateX(calc(100% - 2px)); }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Apply toggle colors dynamically
+  overlay.querySelectorAll('.toggle-switch input[data-toggle-color]').forEach(input => {
+    const color = input.getAttribute('data-toggle-color');
+    const slider = input.nextElementSibling;
+    input.addEventListener('change', () => {
+      slider.style.backgroundColor = input.checked ? color : 'rgba(255,255,255,0.12)';
+      slider.style.borderColor = input.checked ? color : 'rgba(255,255,255,0.15)';
+    });
+  });
+
+  // --- Auto-schedule toggles ---
+  const autoAll = document.getElementById('leaseRegAutoAll');
+  const autoAllSlider = autoAll.nextElementSibling;
+  const autoAllColor = autoAll.getAttribute('data-toggle-color');
+  const autoToggles = ['Daily', 'Weekly', 'A', 'C', 'D'].map(l => document.getElementById('leaseRegAuto' + l));
+  function syncAutoAllColor() {
+    autoAllSlider.style.backgroundColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.12)';
+    autoAllSlider.style.borderColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.15)';
+  }
+  autoAll.addEventListener('change', () => { autoToggles.forEach(t => { if (!t) return; t.checked = autoAll.checked; t.dispatchEvent(new Event('change')); }); syncAutoAllColor(); });
+  autoToggles.forEach(t => {
+    if (!t) return;
+    t.addEventListener('change', () => {
+      autoAll.checked = autoToggles.every(t => t && t.checked);
+      syncAutoAllColor();
+    });
+  });
+
+  // --- Registration validation ---
+  const regValidStates = [];
+  const regCheckTimers = [];
+  const confirmBtn = document.getElementById('leaseRegConfirmBtn');
+
+  function validateReg(suffix) {
+    const trimmed = suffix.trim().toUpperCase();
+    if (typeof validateRegistrationSuffix === 'function') {
+      const v = validateRegistrationSuffix(trimmed, registrationPrefix);
+      if (!v.valid) return v;
+      return { valid: true, value: registrationPrefix + v.value };
+    }
+    if (trimmed.length < 1) return { valid: false, message: 'Enter a registration' };
+    if (!/^[A-Z0-9-]+$/.test(trimmed)) return { valid: false, message: 'Invalid characters' };
+    return { valid: true, value: registrationPrefix + trimmed };
+  }
+
+  function updateConfirmState() {
+    const allValid = regValidStates.length === qty && regValidStates.every(v => v);
+    confirmBtn.disabled = !allValid;
+    confirmBtn.style.opacity = allValid ? '1' : '0.5';
+  }
+
+  function checkDuplicates() {
+    const regs = [];
+    for (let i = 0; i < qty; i++) {
+      const input = document.getElementById(`leaseRegSuffix${i}`);
+      if (!input) continue;
+      const suffix = input.value.trim().toUpperCase();
+      if (!suffix) continue;
+      const v = validateReg(suffix);
+      if (v.valid) regs.push({ idx: i, reg: v.value });
+    }
+    const seen = {};
+    const dupes = new Set();
+    for (const { idx, reg } of regs) {
+      if (seen[reg] !== undefined) { dupes.add(idx); dupes.add(seen[reg]); }
+      else seen[reg] = idx;
+    }
+    return dupes;
+  }
+
+  function wireRegInput(i) {
+    const input = document.getElementById(`leaseRegSuffix${i}`);
+    if (!input) return;
+    const statusEl = document.getElementById(`leaseRegStatus${i}`);
+    const containerEl = document.getElementById(`leaseRegContainer${i}`);
+
+    input.addEventListener('input', () => {
+      const suffix = input.value.trim();
+      if (!suffix) {
+        regValidStates[i] = false;
+        if (statusEl) { statusEl.textContent = qty > 1 ? '—' : ''; statusEl.style.color = 'var(--text-muted)'; }
+        if (containerEl) containerEl.style.borderColor = 'var(--border-color)';
+        updateConfirmState();
+        return;
+      }
+      const v = validateReg(suffix);
+      if (!v.valid) {
+        regValidStates[i] = false;
+        if (statusEl) { statusEl.textContent = '!'; statusEl.style.color = '#EF4444'; }
+        if (containerEl) containerEl.style.borderColor = '#EF4444';
+        updateConfirmState();
+        return;
+      }
+      if (qty > 1) {
+        const dupes = checkDuplicates();
+        if (dupes.has(i)) {
+          regValidStates[i] = false;
+          if (statusEl) { statusEl.textContent = 'DUP'; statusEl.style.color = '#F59E0B'; }
+          if (containerEl) containerEl.style.borderColor = '#F59E0B';
+          updateConfirmState();
+          return;
+        }
+      }
+      if (statusEl) { statusEl.textContent = '...'; statusEl.style.color = 'var(--text-muted)'; }
+      if (containerEl) containerEl.style.borderColor = 'var(--border-color)';
+
+      clearTimeout(regCheckTimers[i]);
+      regCheckTimers[i] = setTimeout(async () => {
+        try {
+          const resp = await fetch(`/api/fleet/check-registration?registration=${encodeURIComponent(v.value)}`);
+          const data = await resp.json();
+          if (input.value.trim().toUpperCase() !== suffix.toUpperCase()) return;
+          if (data.inUse) {
+            regValidStates[i] = false;
+            if (statusEl) { statusEl.innerHTML = '&#10007;'; statusEl.style.color = '#EF4444'; }
+            if (containerEl) containerEl.style.borderColor = '#EF4444';
+          } else {
+            regValidStates[i] = true;
+            if (statusEl) { statusEl.innerHTML = '&#10003;'; statusEl.style.color = '#10B981'; }
+            if (containerEl) containerEl.style.borderColor = '#10B981';
+          }
+        } catch (e) {
+          regValidStates[i] = true;
+          if (statusEl) { statusEl.innerHTML = '&#10003;'; statusEl.style.color = '#10B981'; }
+          if (containerEl) containerEl.style.borderColor = '#10B981';
+        }
+        if (qty > 1) {
+          const dupes2 = checkDuplicates();
+          for (let j = 0; j < qty; j++) {
+            const st = document.getElementById(`leaseRegStatus${j}`);
+            const ct = document.getElementById(`leaseRegContainer${j}`);
+            if (dupes2.has(j) && regValidStates[j]) {
+              regValidStates[j] = false;
+              if (st) { st.textContent = 'DUP'; st.style.color = '#F59E0B'; }
+              if (ct) ct.style.borderColor = '#F59E0B';
+            }
+          }
+        }
+        updateConfirmState();
+      }, 350);
+    });
+
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const next = document.getElementById(`leaseRegSuffix${i + 1}`);
+        if (next) next.focus();
+        else if (!confirmBtn.disabled) confirmBtn.click();
+      }
+    });
+  }
+
+  for (let i = 0; i < qty; i++) {
+    regValidStates.push(false);
+    regCheckTimers.push(null);
+    wireRegInput(i);
+  }
+  document.getElementById('leaseRegSuffix0')?.focus();
+
+  // --- Confirm: place bulk lease ---
+  confirmBtn.addEventListener('click', () => {
+    if (confirmBtn.disabled) return;
+
+    const registrations = [];
+    for (let i = 0; i < qty; i++) {
+      const suffix = document.getElementById(`leaseRegSuffix${i}`).value.trim();
+      const v = validateReg(suffix);
+      if (!v.valid) return;
+      registrations.push(v.value);
+    }
+
+    const autoSchedulePrefs = {
+      autoScheduleDaily: document.getElementById('leaseRegAutoDaily')?.checked || false,
+      autoScheduleWeekly: document.getElementById('leaseRegAutoWeekly')?.checked || false,
+      autoScheduleA: document.getElementById('leaseRegAutoA')?.checked || false,
+      autoScheduleC: document.getElementById('leaseRegAutoC')?.checked || false,
+      autoScheduleD: document.getElementById('leaseRegAutoD')?.checked || false
+    };
+
+    document.body.removeChild(overlay);
+    confirmBulkLease(registrations, autoSchedulePrefs);
+  });
+
+  // --- Back: return to lease order config ---
+  document.getElementById('leaseRegBackBtn').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+    showLeaseOrderDialog();
+  });
+}
+
+// Execute bulk lease API call
+async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
+  if (!selectedAircraft) return;
+
+  const qty = registrations.length;
+  const aircraftName = selectedAircraft.variant
+    ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
+    : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
+
+  const displayReg = qty > 1 ? `${registrations[0]} (+${qty - 1} more)` : registrations[0];
+  await showContractSigningAnimation('lease', aircraftName, displayReg, leaseOrderWeeklyRate * qty);
+
+  showProcessingOverlay('lease');
+
+  try {
+    const response = await fetch('/api/fleet/bulk-lease', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        aircraftId: selectedAircraft.id,
+        leaseWeeklyPayment: leaseOrderWeeklyRate,
+        leaseDurationMonths: leaseOrderDurationMonths,
+        registrations,
+        autoScheduleDaily: autoSchedulePrefs.autoScheduleDaily || false,
+        autoScheduleWeekly: autoSchedulePrefs.autoScheduleWeekly || false,
+        autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
+        autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
+        autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
+        cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
+        cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
+        cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
+      })
+    });
+
+    const data = await response.json();
+    hideProcessingOverlay();
+
+    if (response.ok) {
+      const regList = data.aircraft.map(a => a.registration).join(', ');
+      showSuccessMessage(`${qty} aircraft leased! Weekly: $${formatCurrency(data.totalWeeklyPayment)}. Registrations: ${regList}`, data.newBalance);
+      clearAircraftCache();
+      fetchWorldInfo();
+    } else {
+      const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
+      showErrorMessage(`Bulk lease failed: ${errorMsg}`);
+    }
+  } catch (error) {
+    console.error('Error in bulk lease:', error);
+    hideProcessingOverlay();
+    showErrorMessage('Failed to complete bulk lease. Please try again.');
+  }
+}
+
+// Used/player aircraft lease confirmation dialog (single aircraft, legacy flow)
+function showLeaseConfirmationDialogUsed() {
   if (!selectedAircraft) return;
 
   const fullName = selectedAircraft.variant
@@ -1375,35 +3213,24 @@ function showLeaseConfirmationDialog() {
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
 
   const conditionPercent = selectedAircraft.conditionPercentage || (selectedAircraft.condition === 'New' ? 100 : 70);
-  const isNew = currentCategory === 'new';
   const lessor = selectedAircraft.lessor;
 
   const overlay = document.createElement('div');
   overlay.id = 'leaseConfirmOverlay';
   overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    z-index: 2000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow-y: auto;
-    padding: 2rem 0;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8); z-index: 2000;
+    display: flex; justify-content: center; align-items: center;
+    overflow-y: auto; padding: 2rem 0;
   `;
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--accent-color); border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 950px; margin: auto;">
       <h2 style="margin-bottom: 1rem; color: var(--accent-color); text-align: center; font-size: 1.2rem;">CONFIRM LEASE</h2>
 
-      <!-- Two Column Layout -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
         <!-- Left Column -->
         <div>
-          <!-- Lessor Info -->
           ${lessor ? `
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1419,89 +3246,45 @@ function showLeaseConfirmationDialog() {
           </div>
           ` : ''}
 
-          <!-- Aircraft Info -->
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
             <h3 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 0.95rem;">${fullName}</h3>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.8rem;">
-              <div>
-                <span style="color: var(--text-muted);">Cond:</span>
-                <strong style="color: ${conditionPercent >= 80 ? '#10b981' : conditionPercent >= 60 ? '#f59e0b' : '#ef4444'};">${conditionPercent}%</strong>
-              </div>
-              <div>
-                <span style="color: var(--text-muted);">Pax:</span>
-                <strong>${selectedAircraft.passengerCapacity}</strong>
-              </div>
-              <div>
-                <span style="color: var(--text-muted);">Range:</span>
-                <strong>${selectedAircraft.rangeNm}nm</strong>
-              </div>
+              <div><span style="color: var(--text-muted);">Cond:</span> <strong style="color: ${conditionPercent >= 80 ? '#10b981' : conditionPercent >= 60 ? '#f59e0b' : '#ef4444'};">${conditionPercent}%</strong></div>
+              <div><span style="color: var(--text-muted);">Pax:</span> <strong>${selectedAircraft.passengerCapacity}</strong></div>
+              <div><span style="color: var(--text-muted);">Range:</span> <strong>${selectedAircraft.rangeNm}nm</strong></div>
             </div>
           </div>
 
-          <!-- Check Status (for used aircraft) -->
-          ${!isNew ? `
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
             <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Maintenance Status</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
               <div style="padding: 0.5rem; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 4px;">
                 <div style="color: #DC2626; font-size: 0.65rem; font-weight: 600;">C CHECK DUE</div>
-                <div style="color: ${selectedAircraft.cCheckRemainingDays < 180 ? '#DC2626' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.cCheckRemaining || 'Full'}</div>
+                <div style="color: ${(selectedAircraft.cCheckRemainingDays || 0) < 180 ? '#DC2626' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.cCheckRemaining || 'Full'}</div>
                 <div style="color: var(--text-muted); font-size: 0.6rem;">${selectedAircraft.cCheckRemainingDays || 0} days</div>
-                ${selectedAircraft.cCheckCost ? `<div style="color: var(--text-muted); font-size: 0.6rem; margin-top: 0.15rem;">Cost: <span style="color: #f59e0b; font-weight: 600;">$${formatCurrencyShort(selectedAircraft.cCheckCost)}</span></div>` : ''}
               </div>
               <div style="padding: 0.5rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px;">
                 <div style="color: #10B981; font-size: 0.65rem; font-weight: 600;">D CHECK DUE</div>
-                <div style="color: ${selectedAircraft.dCheckRemainingDays < 365 ? '#FFA500' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.dCheckRemaining || 'Full'}</div>
+                <div style="color: ${(selectedAircraft.dCheckRemainingDays || 0) < 365 ? '#FFA500' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.dCheckRemaining || 'Full'}</div>
                 <div style="color: var(--text-muted); font-size: 0.6rem;">${selectedAircraft.dCheckRemainingDays || 0} days</div>
-                ${selectedAircraft.dCheckCost ? `<div style="color: var(--text-muted); font-size: 0.6rem; margin-top: 0.15rem;">Cost: <span style="color: #f59e0b; font-weight: 600;">$${formatCurrencyShort(selectedAircraft.dCheckCost)}</span></div>` : ''}
-              </div>
-            </div>
-          </div>
-          ` : ''}
-
-          <!-- Maintenance Check Costs -->
-          <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
-            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Check Costs</h4>
-            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.35rem;">
-              <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px; text-align: center;">
-                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Daily</div>
-                <div style="color: var(--text-primary); font-weight: 600; font-size: 0.75rem;">${selectedAircraft.dailyCheckCost ? '$' + formatCurrencyShort(selectedAircraft.dailyCheckCost) : 'N/A'}</div>
-              </div>
-              <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px; text-align: center;">
-                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Weekly</div>
-                <div style="color: var(--text-primary); font-weight: 600; font-size: 0.75rem;">${selectedAircraft.weeklyCheckCost ? '$' + formatCurrencyShort(selectedAircraft.weeklyCheckCost) : 'N/A'}</div>
-              </div>
-              <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px; text-align: center;">
-                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">A Check</div>
-                <div style="color: var(--text-primary); font-weight: 600; font-size: 0.75rem;">${selectedAircraft.aCheckCost ? '$' + formatCurrencyShort(selectedAircraft.aCheckCost) : 'N/A'}</div>
-              </div>
-              <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px; text-align: center;">
-                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">C Check</div>
-                <div style="color: #DC2626; font-weight: 600; font-size: 0.75rem;">${selectedAircraft.cCheckCost ? '$' + formatCurrencyShort(selectedAircraft.cCheckCost) : 'N/A'}</div>
-              </div>
-              <div style="padding: 0.35rem; background: var(--surface); border-radius: 3px; text-align: center;">
-                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">D Check</div>
-                <div style="color: #f59e0b; font-weight: 600; font-size: 0.75rem;">${selectedAircraft.dCheckCost ? '$' + formatCurrencyShort(selectedAircraft.dCheckCost) : 'N/A'}</div>
               </div>
             </div>
           </div>
 
-          <!-- Lease Duration Selection -->
+          <!-- Lease Duration -->
           <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Lease Duration</label>
             <div style="display: flex; gap: 1rem; align-items: center;">
-              <!-- Years Spinner -->
               <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                <button type="button" id="leaseYearsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">−</button>
+                <button type="button" id="leaseYearsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                 <div style="flex: 1; text-align: center;">
-                  <div id="leaseYearsValue" style="font-weight: 700; font-size: 1.4rem; color: var(--accent-color);">1</div>
+                  <div id="leaseYearsValue" style="font-weight: 700; font-size: 1.4rem; color: var(--accent-color);">3</div>
                   <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: -2px;">years</div>
                 </div>
                 <button type="button" id="leaseYearsUp" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
               </div>
-              <!-- Months Spinner -->
               <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                <button type="button" id="leaseMonthsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">−</button>
+                <button type="button" id="leaseMonthsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                 <div style="flex: 1; text-align: center;">
                   <div id="leaseMonthsValue" style="font-weight: 700; font-size: 1.4rem; color: var(--accent-color);">0</div>
                   <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: -2px;">months</div>
@@ -1510,7 +3293,7 @@ function showLeaseConfirmationDialog() {
               </div>
             </div>
             <div style="margin-top: 0.4rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
-              Total: <span id="leaseDurationTotal" style="color: var(--text-primary); font-weight: 600;">12 months</span> (min 6 months, max 10 years)
+              Total: <span id="leaseDurationTotal" style="color: var(--text-primary); font-weight: 600;">36 months</span> (min 3 years, max 12 years)
             </div>
           </div>
 
@@ -1523,7 +3306,7 @@ function showLeaseConfirmationDialog() {
               </div>
               <div style="text-align: right;">
                 <div style="color: var(--text-muted); font-size: 0.65rem;">Total Commitment</div>
-                <div style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;" id="leaseTotalDisplay">$${formatCurrency((selectedAircraft.leasePrice || 0) * 52)}</div>
+                <div style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;" id="leaseTotalDisplay">$${formatCurrency((selectedAircraft.leasePrice || 0) * 36 * 4.33)}</div>
               </div>
             </div>
           </div>
@@ -1531,23 +3314,18 @@ function showLeaseConfirmationDialog() {
 
         <!-- Right Column -->
         <div>
-          <!-- Registration Input -->
           <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Aircraft Registration</label>
             <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);">
               <div id="leaseRegistrationPrefix" style="padding: 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
-              <input
-                type="text"
-                id="leaseRegistrationSuffix"
+              <input type="text" id="leaseRegistrationSuffix"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
                 maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
-                style="flex: 1; padding: 0.6rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.95rem; outline: none; text-transform: uppercase;"
-              />
+                style="flex: 1; padding: 0.6rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.95rem; outline: none; text-transform: uppercase;" />
             </div>
             <div id="leaseRegistrationError" style="margin-top: 0.4rem; color: var(--warning-color); font-size: 0.8rem; display: none;"></div>
           </div>
 
-          <!-- Maintenance Auto-Scheduling -->
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
               <label style="color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Maintenance Scheduling</label>
@@ -1559,40 +3337,38 @@ function showLeaseConfirmationDialog() {
                 </label>
               </div>
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-              Auto-schedule recurring maintenance checks.
-            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">Auto-schedule recurring maintenance checks.</div>
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem;">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.7rem; color: #FFA500; white-space: nowrap;">Daily</span>
+                <span style="font-size: 0.7rem; color: #FFA500;">Daily</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.7rem; color: #8B5CF6; white-space: nowrap;">Wkly</span>
+                <span style="font-size: 0.7rem; color: #8B5CF6;">Wkly</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.7rem; color: #3B82F6; white-space: nowrap;">A</span>
+                <span style="font-size: 0.7rem; color: #3B82F6;">A</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.7rem; color: #10B981; white-space: nowrap;">C</span>
+                <span style="font-size: 0.7rem; color: #10B981;">C</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleC" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
-                <span style="font-size: 0.7rem; color: #EF4444; white-space: nowrap;">D</span>
+                <span style="font-size: 0.7rem; color: #EF4444;">D</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleD" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
@@ -1601,18 +3377,15 @@ function showLeaseConfirmationDialog() {
             </div>
           </div>
 
-          <!-- Lease Terms Note -->
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
             <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Lease Terms</h4>
             <ul style="margin: 0; padding-left: 1rem; font-size: 0.75rem; color: var(--text-secondary);">
-              <li>Maintenance included in lease rate</li>
-              <li>Early termination fees may apply</li>
+
               <li>Aircraft must be returned in good condition</li>
-              <li>Longer terms may qualify for better rates</li>
+              <li style="color: #f59e0b;">Early termination penalty: <strong>12 weeks</strong> of weekly payments ($${formatCurrency((selectedAircraft.leasePrice || 0) * 12)})</li>
             </ul>
           </div>
 
-          <!-- Action Buttons -->
           <div style="display: flex; gap: 0.75rem;">
             <button id="confirmLeaseBtn" class="btn btn-primary" style="flex: 1; padding: 0.7rem; font-size: 0.9rem;">Sign Lease Agreement</button>
             <button id="cancelLeaseBtn" class="btn btn-secondary" style="flex: 1; padding: 0.7rem; font-size: 0.9rem;">Cancel</button>
@@ -1621,62 +3394,39 @@ function showLeaseConfirmationDialog() {
       </div>
     </div>
     <style>
-      .toggle-switch input:checked + .toggle-slider {
-        background-color: var(--accent-color);
-      }
-      .toggle-switch .toggle-slider:before {
-        content: "";
-        position: absolute;
-        height: calc(100% - 4px);
-        aspect-ratio: 1;
-        left: 2px;
-        bottom: 2px;
-        background-color: white;
-        transition: 0.3s;
-        border-radius: 50%;
-      }
-      .toggle-switch input:checked + .toggle-slider:before {
-        transform: translateX(calc(100% - 2px));
-      }
+      .toggle-switch input:checked + .toggle-slider { background-color: var(--accent-color); }
+      .toggle-switch .toggle-slider:before { content: ""; position: absolute; height: calc(100% - 4px); aspect-ratio: 1; left: 2px; bottom: 2px; background-color: white; transition: 0.3s; border-radius: 50%; }
+      .toggle-switch input:checked + .toggle-slider:before { transform: translateX(calc(100% - 2px)); }
     </style>
   `;
 
   document.body.appendChild(overlay);
 
   // Duration spinner logic
-  let leaseYears = 1;
+  let leaseYears = 3;
   let leaseMonths = 0;
-  const minTotalMonths = 6;
-  const maxTotalMonths = 120; // 10 years
+  const minTotalMonths = 36;
+  const maxTotalMonths = 144;
 
   const yearsValueEl = document.getElementById('leaseYearsValue');
   const monthsValueEl = document.getElementById('leaseMonthsValue');
   const totalDisplayEl = document.getElementById('leaseDurationTotal');
   const totalCommitmentEl = document.getElementById('leaseTotalDisplay');
 
-  function getTotalMonths() {
-    return leaseYears * 12 + leaseMonths;
-  }
+  function getTotalMonths() { return leaseYears * 12 + leaseMonths; }
 
   function updateDurationDisplay() {
     yearsValueEl.textContent = leaseYears;
     monthsValueEl.textContent = leaseMonths;
-    const total = getTotalMonths();
-    totalDisplayEl.textContent = `${total} months`;
-
-    // Update total commitment price
+    totalDisplayEl.textContent = `${getTotalMonths()} months`;
     const weeklyPrice = selectedAircraft.leasePrice || 0;
-    totalCommitmentEl.textContent = '$' + formatCurrency(weeklyPrice * total * 4.33);
+    totalCommitmentEl.textContent = '$' + formatCurrency(weeklyPrice * getTotalMonths() * 4.33);
   }
 
   function adjustYears(delta) {
     const newYears = leaseYears + delta;
     const newTotal = newYears * 12 + leaseMonths;
-
-    // Check bounds
-    if (newYears < 0 || newYears > 10) return;
-    if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
-
+    if (newYears < 0 || newYears > 12 || newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
     leaseYears = newYears;
     updateDurationDisplay();
   }
@@ -1684,42 +3434,21 @@ function showLeaseConfirmationDialog() {
   function adjustMonths(delta) {
     let newMonths = leaseMonths + delta;
     let newYears = leaseYears;
-
-    // Handle wraparound
-    if (newMonths < 0) {
-      if (newYears > 0) {
-        newYears--;
-        newMonths = 11;
-      } else {
-        return; // Can't go below 0
-      }
-    } else if (newMonths > 11) {
-      if (newYears < 10) {
-        newYears++;
-        newMonths = 0;
-      } else {
-        return; // Can't exceed 10 years
-      }
-    }
-
+    if (newMonths < 0) { if (newYears > 0) { newYears--; newMonths = 11; } else return; }
+    else if (newMonths > 11) { if (newYears < 12) { newYears++; newMonths = 0; } else return; }
     const newTotal = newYears * 12 + newMonths;
     if (newTotal < minTotalMonths || newTotal > maxTotalMonths) return;
-
     leaseYears = newYears;
     leaseMonths = newMonths;
     updateDurationDisplay();
   }
 
-  // Spinner button event listeners
   document.getElementById('leaseYearsDown').addEventListener('click', () => adjustYears(-1));
   document.getElementById('leaseYearsUp').addEventListener('click', () => adjustYears(1));
   document.getElementById('leaseMonthsDown').addEventListener('click', () => adjustMonths(-1));
   document.getElementById('leaseMonthsUp').addEventListener('click', () => adjustMonths(1));
-
-  // Initialize display
   updateDurationDisplay();
 
-  // Auto-schedule toggle handlers for all check types
   const autoScheduleAll = document.getElementById('leaseAutoScheduleAll');
   const autoScheduleDaily = document.getElementById('leaseAutoScheduleDaily');
   const autoScheduleWeekly = document.getElementById('leaseAutoScheduleWeekly');
@@ -1728,21 +3457,14 @@ function showLeaseConfirmationDialog() {
   const autoScheduleD = document.getElementById('leaseAutoScheduleD');
   const individualToggles = [autoScheduleDaily, autoScheduleWeekly, autoScheduleA, autoScheduleC, autoScheduleD];
 
-  autoScheduleAll.addEventListener('change', () => {
-    const checked = autoScheduleAll.checked;
-    individualToggles.forEach(toggle => { toggle.checked = checked; });
-  });
-
+  autoScheduleAll.addEventListener('change', () => { individualToggles.forEach(toggle => { toggle.checked = autoScheduleAll.checked; }); });
   individualToggles.forEach(toggle => {
     toggle.addEventListener('change', () => {
-      const allChecked = individualToggles.every(t => t.checked);
-      const noneChecked = individualToggles.every(t => !t.checked);
-      autoScheduleAll.checked = allChecked;
-      autoScheduleAll.indeterminate = !allChecked && !noneChecked;
+      autoScheduleAll.checked = individualToggles.every(t => t.checked);
+      autoScheduleAll.indeterminate = !autoScheduleAll.checked && !individualToggles.every(t => !t.checked);
     });
   });
 
-  // Registration validation
   const registrationSuffix = document.getElementById('leaseRegistrationSuffix');
   const registrationError = document.getElementById('leaseRegistrationError');
 
@@ -1753,27 +3475,19 @@ function showLeaseConfirmationDialog() {
       if (!validation.valid) return validation;
       return { valid: true, value: registrationPrefix + validation.value };
     }
-    if (trimmedSuffix.length < 1) {
-      return { valid: false, message: 'Please enter a registration suffix' };
-    }
-    if (!/^[A-Z0-9-]+$/.test(trimmedSuffix)) {
-      return { valid: false, message: 'Registration can only contain letters, numbers, and hyphens' };
-    }
+    if (trimmedSuffix.length < 1) return { valid: false, message: 'Please enter a registration suffix' };
+    if (!/^[A-Z0-9-]+$/.test(trimmedSuffix)) return { valid: false, message: 'Registration can only contain letters, numbers, and hyphens' };
     return { valid: true, value: registrationPrefix + trimmedSuffix };
   }
 
-  // Confirm button
   document.getElementById('confirmLeaseBtn').addEventListener('click', () => {
     const suffix = registrationSuffix.value.trim();
     const validation = validateLeaseRegistration(suffix);
-
     if (!validation.valid) {
       registrationError.textContent = validation.message;
       registrationError.style.display = 'block';
       return;
     }
-
-    // Collect auto-schedule preferences for all check types
     const autoSchedulePrefs = {
       autoScheduleDaily: autoScheduleDaily.checked,
       autoScheduleWeekly: autoScheduleWeekly.checked,
@@ -1781,17 +3495,12 @@ function showLeaseConfirmationDialog() {
       autoScheduleC: autoScheduleC.checked,
       autoScheduleD: autoScheduleD.checked
     };
-
     document.body.removeChild(overlay);
     confirmLease(validation.value, autoSchedulePrefs, getTotalMonths());
   });
 
-  // Cancel button
-  document.getElementById('cancelLeaseBtn').addEventListener('click', () => {
-    document.body.removeChild(overlay);
-  });
+  document.getElementById('cancelLeaseBtn').addEventListener('click', () => { document.body.removeChild(overlay); });
 
-  // Live registration availability check
   let regCheckTimer = null;
   let lastCheckedReg = '';
   const leaseInputContainer = registrationSuffix.parentElement;
@@ -1799,17 +3508,13 @@ function showLeaseConfirmationDialog() {
   registrationSuffix.addEventListener('input', () => {
     registrationError.style.display = 'none';
     leaseInputContainer.style.borderColor = 'var(--border-color)';
-
     clearTimeout(regCheckTimer);
     const suffix = registrationSuffix.value.trim();
     if (!suffix) { lastCheckedReg = ''; return; }
-
     const validation = validateLeaseRegistration(suffix);
     if (!validation.valid) return;
-
     const fullReg = validation.value;
     if (fullReg === lastCheckedReg) return;
-
     regCheckTimer = setTimeout(async () => {
       try {
         const resp = await fetch(`/api/fleet/check-registration?registration=${encodeURIComponent(fullReg)}`);
@@ -1820,11 +3525,10 @@ function showLeaseConfirmationDialog() {
           registrationError.style.display = 'block';
           leaseInputContainer.style.borderColor = 'var(--warning-color)';
         }
-      } catch (e) { /* ignore network errors */ }
+      } catch (e) { /* ignore */ }
     }, 400);
   });
 
-  // Focus registration input
   registrationSuffix.focus();
 }
 
@@ -1881,7 +3585,11 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
         autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
         autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
         // Player-to-player listing
-        playerListingId: selectedAircraft.playerListingId || null
+        playerListingId: selectedAircraft.playerListingId || null,
+        // Cargo allocation
+        cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
+        cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
+        cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
       })
     });
 
@@ -2009,6 +3717,7 @@ async function loadMarketplaceInfo() {
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
+  clearAircraftCache(); // Clear stale prices on page load
   await fetchWorldInfo(); // Must complete first — sets isSinglePlayer for cache decision
   loadAircraft();
 });

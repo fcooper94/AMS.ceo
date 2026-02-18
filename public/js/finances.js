@@ -12,7 +12,13 @@ async function loadFinancialData() {
 
     renderSummary(data);
     allWeeks = data.weeks || [];
-    weekPage = 0;
+    // If ?week=previous, start on page that shows previous week
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('week') === 'previous' && allWeeks.length > 1) {
+      weekPage = Math.floor(1 / WEEKS_PER_PAGE);
+    } else {
+      weekPage = 0;
+    }
     renderWeeklyPL();
     renderRoutes(data.routes);
   } catch (err) {

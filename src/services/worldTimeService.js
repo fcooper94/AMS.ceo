@@ -1,5 +1,5 @@
 const World = require('../models/World');
-const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, RecurringMaintenance } = require('../models');
+const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, RecurringMaintenance, Notification } = require('../models');
 const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 const path = require('path');
@@ -52,6 +52,9 @@ class WorldTimeService {
     // Weekly loan payment processing
     this.lastLoanWeek = {}; // Map of worldId -> last game week loans were processed
     this.isProcessingLoans = false;
+    // Weekly aircraft delivery processing
+    this.lastDeliveryWeek = {};
+    this.isProcessingDeliveries = false;
   }
 
   /**
@@ -429,6 +432,16 @@ class WorldTimeService {
       this.processLoanPayments(worldId, gameTime)
         .catch(err => console.error('Error processing loan payments:', err.message))
         .finally(() => { this.isProcessingLoans = false; });
+    }
+
+    // Process aircraft deliveries once per game week
+    const lastDeliveryWeek = this.lastDeliveryWeek[worldId] || '';
+    if (!this.isProcessingDeliveries && currentWeekStart !== lastDeliveryWeek) {
+      this.lastDeliveryWeek[worldId] = currentWeekStart;
+      this.isProcessingDeliveries = true;
+      this.processDeliveries(worldId, gameTime)
+        .catch(err => console.error('Error processing deliveries:', err.message))
+        .finally(() => { this.isProcessingDeliveries = false; });
     }
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
@@ -1299,6 +1312,209 @@ class WorldTimeService {
   }
 
   /**
+   * Process aircraft deliveries for on-order aircraft whose delivery date has passed.
+   * - Cash financing: deduct remaining payment from balance (fallback to Condor loan if insufficient)
+   * - Loan financing: auto-create fleet_expansion loan with pre-selected bank
+   * - Assign fresh maintenance check dates and activate the aircraft
+   */
+  async processDeliveries(worldId, gameTime) {
+    try {
+      const Loan = require('../models/Loan');
+      const { getBank, calculateOfferRate, calculateFixedPayment } = require('../data/bankConfig');
+
+      const memberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true }
+      });
+
+      for (const membership of memberships) {
+        try {
+          // Find all on-order aircraft ready for delivery
+          const readyAircraft = await UserAircraft.findAll({
+            where: {
+              worldMembershipId: membership.id,
+              status: 'on_order',
+              expectedDeliveryDate: { [Op.lte]: gameTime }
+            },
+            include: [{ model: Aircraft, as: 'aircraft' }]
+          });
+
+          if (readyAircraft.length === 0) continue;
+
+          for (const ua of readyAircraft) {
+            const remaining = parseFloat(ua.remainingPayment) || 0;
+            const balance = parseFloat(membership.balance) || 0;
+            const acName = ua.aircraft ? `${ua.aircraft.manufacturer} ${ua.aircraft.model}` : ua.registration;
+
+            // Assign fresh check dates for new aircraft
+            // C, D, A checks valid from factory. Only Daily/Weekly needed before first flight.
+            const now = new Date(gameTime);
+            ua.lastCCheckDate = now;
+            ua.lastDCheckDate = now;
+            ua.cCheckIntervalDays = 600 + Math.floor(Math.random() * 120);
+            ua.dCheckIntervalDays = 2190 + Math.floor(Math.random() * 1460);
+            ua.lastDailyCheckDate = new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000));
+            ua.lastWeeklyCheckDate = new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000));
+            ua.lastACheckDate = now;
+            ua.lastACheckHours = 0;
+            ua.aCheckIntervalHours = 800 + Math.floor(Math.random() * 200);
+            ua.acquiredAt = now;
+
+            if (ua.acquisitionType === 'lease') {
+              // Lease delivery: activate, set lease dates, deduct first weekly payment
+              const weeklyPayment = parseFloat(ua.leaseWeeklyPayment) || 0;
+              if (balance >= weeklyPayment) {
+                membership.balance = balance - weeklyPayment;
+                await membership.save();
+              }
+              // Set lease start to delivery time, calculate end date
+              ua.leaseStartDate = now;
+              const leaseEnd = new Date(now);
+              leaseEnd.setMonth(leaseEnd.getMonth() + (ua.leaseDurationMonths || 36));
+              ua.leaseEndDate = leaseEnd;
+              ua.status = 'active';
+              await ua.save();
+
+              await Notification.create({
+                worldMembershipId: membership.id,
+                type: 'aircraft_delivered',
+                icon: 'plane',
+                title: `Lease Aircraft Delivered — ${ua.registration}`,
+                message: `Your leased ${acName} has been delivered and is now active. Weekly payment: $${Math.round(weeklyPayment).toLocaleString('en-US')}.`,
+                link: '/fleet',
+                priority: 2,
+                gameTime: now
+              });
+            } else if (ua.financingMethod === 'cash') {
+              if (balance >= remaining) {
+                // Pay remaining balance and activate
+                membership.balance = balance - remaining;
+                ua.status = 'active';
+                await ua.save();
+                await membership.save();
+
+                await Notification.create({
+                  worldMembershipId: membership.id,
+                  type: 'aircraft_delivered',
+                  icon: 'plane',
+                  title: `Aircraft Delivered — ${ua.registration}`,
+                  message: `Your ${acName} has been delivered. Remaining payment of $${Math.round(remaining).toLocaleString('en-US')} deducted from balance.`,
+                  link: '/fleet',
+                  priority: 2,
+                  gameTime: now
+                });
+              } else {
+                // Insufficient funds: auto-create loan with Condor (penalty bank)
+                const fallbackBankId = 'condor';
+                const bank = getBank(fallbackBankId);
+                const rate = calculateOfferRate(fallbackBankId, 400, 'fleet_expansion');
+                const termWeeks = 156; // 3 years
+                const weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
+
+                await Loan.create({
+                  worldMembershipId: membership.id,
+                  bankId: fallbackBankId,
+                  loanType: 'fleet_expansion',
+                  status: 'active',
+                  principalAmount: remaining,
+                  remainingPrincipal: remaining,
+                  interestRate: rate,
+                  termWeeks,
+                  weeksRemaining: termWeeks,
+                  repaymentStrategy: 'fixed',
+                  weeklyPayment,
+                  earlyRepaymentFee: bank.earlyRepaymentFee,
+                  paymentHolidaysTotal: bank.paymentHolidays,
+                  originationGameDate: now.toISOString().split('T')[0],
+                  creditScoreAtOrigin: 400
+                });
+
+                ua.status = 'active';
+                ua.financingMethod = 'loan';
+                ua.financingBankId = fallbackBankId;
+                ua.financingTermWeeks = termWeeks;
+                await ua.save();
+
+                await Notification.create({
+                  worldMembershipId: membership.id,
+                  type: 'aircraft_delivered_forced_loan',
+                  icon: 'alert-circle',
+                  title: `Delivery Financed — ${ua.registration}`,
+                  message: `Insufficient funds for delivery of ${acName}. A loan of $${Math.round(remaining).toLocaleString('en-US')} at ${rate}% was auto-created with ${bank.shortName}. Weekly payment: $${Math.round(weeklyPayment).toLocaleString('en-US')}.`,
+                  link: '/loans',
+                  priority: 1,
+                  gameTime: now
+                });
+              }
+            } else if (ua.financingMethod === 'loan') {
+              // Create the pre-selected loan
+              const bank = getBank(ua.financingBankId);
+              const rate = bank ? calculateOfferRate(ua.financingBankId, 500, 'fleet_expansion') : 7.0;
+              const termWeeks = ua.financingTermWeeks || 156;
+              const weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
+
+              await Loan.create({
+                worldMembershipId: membership.id,
+                bankId: ua.financingBankId || 'condor',
+                loanType: 'fleet_expansion',
+                status: 'active',
+                principalAmount: remaining,
+                remainingPrincipal: remaining,
+                interestRate: rate,
+                termWeeks,
+                weeksRemaining: termWeeks,
+                repaymentStrategy: 'fixed',
+                weeklyPayment,
+                earlyRepaymentFee: bank?.earlyRepaymentFee || 0,
+                paymentHolidaysTotal: bank?.paymentHolidays || 0,
+                originationGameDate: now.toISOString().split('T')[0],
+                creditScoreAtOrigin: 500
+              });
+
+              ua.status = 'active';
+              await ua.save();
+
+              await Notification.create({
+                worldMembershipId: membership.id,
+                type: 'aircraft_delivered',
+                icon: 'plane',
+                title: `Aircraft Delivered — ${ua.registration}`,
+                message: `Your ${acName} has been delivered. Loan of $${Math.round(remaining).toLocaleString('en-US')} created with ${bank?.shortName || 'bank'}. Weekly payment: $${Math.round(weeklyPayment).toLocaleString('en-US')}.`,
+                link: '/fleet',
+                priority: 2,
+                gameTime: now
+              });
+            }
+
+            // Auto-schedule maintenance if preferences were set at order time
+            if (ua.status === 'active') {
+              const autoCheckTypes = [];
+              if (ua.autoScheduleDaily) autoCheckTypes.push('daily');
+              if (ua.autoScheduleWeekly) autoCheckTypes.push('weekly');
+              if (ua.autoScheduleA) autoCheckTypes.push('A');
+              if (ua.autoScheduleC) autoCheckTypes.push('C');
+              if (ua.autoScheduleD) autoCheckTypes.push('D');
+              if (autoCheckTypes.length > 0) {
+                try {
+                  const fleetRouter = require('../routes/fleet');
+                  if (fleetRouter.createAutoScheduledMaintenance) {
+                    await fleetRouter.createAutoScheduledMaintenance(ua.id, autoCheckTypes, worldId);
+                  }
+                } catch (schedErr) {
+                  // Non-critical: maintenance can be scheduled manually
+                }
+              }
+            }
+          }
+        } catch (mErr) {
+          console.error(`Error processing deliveries for membership ${membership.id}:`, mErr.message);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing deliveries:', error.message);
+    }
+  }
+
+  /**
    * Process airline reputation for all memberships in a world
    * Reputation (0-100) based on: fleet age, maintenance, route profitability, fleet size
    */
@@ -1797,7 +2013,7 @@ class WorldTimeService {
       const aircraftToRefresh = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
-          status: { [Op.notIn]: ['storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out'] },
+          status: { [Op.notIn]: ['on_order', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out'] },
           [Op.or]: [
             { autoScheduleDaily: true },
             { autoScheduleWeekly: true },

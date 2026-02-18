@@ -13,7 +13,7 @@ const BANKS = {
     riskAppetite: 'conservative',
     tagline: 'Trusted aviation finance since 1923',
     description: 'Old-money aviation bank with a long history of financing flag carriers. Strict requirements but reliable, low-rate lending for established airlines.',
-    baseRate: 4.5,
+    baseRate: 2.5,
     minCreditScore: 650,
     maxLoanPct: 0.40,
     earlyRepaymentFee: 3.0,
@@ -28,7 +28,7 @@ const BANKS = {
     riskAppetite: 'moderate',
     tagline: 'Asia-Pacific aviation specialists',
     description: 'Regional specialist with deep understanding of growth markets. Moderate requirements with reasonable rates and flexible terms.',
-    baseRate: 5.5,
+    baseRate: 3.5,
     minCreditScore: 550,
     maxLoanPct: 0.60,
     earlyRepaymentFee: 2.0,
@@ -43,7 +43,7 @@ const BANKS = {
     riskAppetite: 'moderate',
     tagline: 'No surprises. No hidden fees.',
     description: 'Straightforward commercial lender with transparent terms. No early repayment fees make Atlas a popular choice for airlines planning ahead.',
-    baseRate: 6.0,
+    baseRate: 4.0,
     minCreditScore: 500,
     maxLoanPct: 0.70,
     earlyRepaymentFee: 0,
@@ -58,7 +58,7 @@ const BANKS = {
     riskAppetite: 'aggressive',
     tagline: 'Ambitious airlines deserve ambitious backing',
     description: 'High risk tolerance lender based in the Middle East. Will approve larger loans at higher rates. Generous payment holiday allowance for cash-flow management.',
-    baseRate: 7.5,
+    baseRate: 5.5,
     minCreditScore: 400,
     maxLoanPct: 0.90,
     earlyRepaymentFee: 0,
@@ -73,7 +73,7 @@ const BANKS = {
     riskAppetite: 'conservative',
     tagline: 'The lowest rates in aviation finance',
     description: 'Premium lender offering the best interest rates in the industry. Demands excellent credit and charges steep penalties for early exit. For established, stable airlines only.',
-    baseRate: 3.8,
+    baseRate: 1.8,
     minCreditScore: 700,
     maxLoanPct: 0.50,
     earlyRepaymentFee: 5.0,
@@ -88,7 +88,7 @@ const BANKS = {
     riskAppetite: 'aggressive',
     tagline: 'Everyone deserves a chance to fly',
     description: 'Will lend to almost anyone regardless of credit history. Rates are high but so is their risk tolerance. Generous loan limits and maximum payment holiday flexibility.',
-    baseRate: 8.5,
+    baseRate: 6.5,
     minCreditScore: 350,
     maxLoanPct: 1.00,
     earlyRepaymentFee: 0,
@@ -103,7 +103,7 @@ const BANKS = {
     riskAppetite: 'moderate',
     tagline: 'Precision banking for precision airlines',
     description: 'Swiss banking tradition meets aviation finance. Well-balanced offering with competitive rates, modest early repayment fees, and one payment holiday option.',
-    baseRate: 5.0,
+    baseRate: 3.0,
     minCreditScore: 600,
     maxLoanPct: 0.55,
     earlyRepaymentFee: 1.0,
@@ -181,7 +181,7 @@ function calculateOfferRate(bankId, creditScore, loanType) {
 function calculateMaxLoanAmount(bankId, netWorth) {
   const bank = BANKS[bankId];
   if (!bank) return 0;
-  return Math.max(0, Math.round(netWorth * bank.maxLoanPct));
+  return Math.max(0, Math.round(netWorth * bank.maxLoanPct * 10));
 }
 
 /**

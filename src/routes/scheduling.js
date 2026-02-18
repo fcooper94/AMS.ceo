@@ -184,6 +184,12 @@ router.get('/data', async (req, res) => {
 
     const aircraftIds = fleet.map(a => a.id);
 
+    // Clean up any maintenance accidentally created for on-order aircraft
+    const onOrderIds = fleet.filter(a => a.status === 'on_order').map(a => a.id);
+    if (onOrderIds.length > 0) {
+      await RecurringMaintenance.destroy({ where: { aircraftId: { [Op.in]: onOrderIds } } });
+    }
+
     // Step 2: Check if maintenance refresh is needed (debounce to avoid slow loads)
     const lastRefresh = maintenanceRefreshCache.get(worldMembershipId) || 0;
     const needsRefresh = Date.now() - lastRefresh > REFRESH_DEBOUNCE_MS;

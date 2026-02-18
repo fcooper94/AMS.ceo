@@ -171,7 +171,7 @@ async function loadMaintenanceData() {
       throw new Error(data.error || 'Failed to fetch maintenance data');
     }
 
-    allAircraft = data;
+    allAircraft = data.filter(ac => ac.status !== 'on_order');
 
     // Extract unique aircraft types for filter
     const typeSet = new Set();
