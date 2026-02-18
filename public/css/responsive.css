@@ -260,6 +260,17 @@
     white-space: nowrap;
   }
 
+  /* Schedule grid table: keep as proper table so width: 100% works */
+  #scheduleGrid table {
+    display: table !important;
+    overflow-x: visible !important;
+  }
+
+  #scheduleGrid table thead,
+  #scheduleGrid table tbody {
+    min-width: 0 !important;
+  }
+
   /* -- Routes Create page -- */
   /* Step indicators */
   div[style*="display: flex"][style*="gap: 0.5rem"][style*="margin-bottom: 0.75rem"] > div[id^="step"] {
@@ -419,6 +430,18 @@
   div[style*="display: flex"][style*="gap: 0.25rem"][style*="margin-top: 0.35rem"] {
     flex-wrap: wrap;
   }
+
+  /* -- Routes Create: airport list compact -- */
+  /* Hide competition column (6th) on tablet */
+  .airport-list-header > span:nth-child(6),
+  .airport-row > div:nth-child(6) {
+    display: none;
+  }
+
+  .airport-row,
+  .airport-list-header {
+    grid-template-columns: 1fr 48px 70px 40px 54px !important;
+  }
 }
 
 /* ============================================================
@@ -442,9 +465,12 @@
 
   /* World info - tap to expand on iPhone */
   .nav-world-info {
-    padding: 0.15rem 0.4rem;
+    padding: 0;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    background: none;
+    border: none;
+    box-shadow: none;
   }
 
   /* Hide everything except time */
@@ -777,6 +803,246 @@
 
   .ops-panel .panel-body[style*="padding: 0"] {
     padding: 0 !important;
+  }
+
+  /* -- Routes Create: selected destination panel padding -- */
+  #selectedDestinationPanelStep1 .panel-body {
+    padding: 1rem !important;
+  }
+
+  /* Stats grid: 2x2 instead of 4 columns */
+  #selectedDestStats {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* -- Routes Create: airport list on iPhone -- */
+  /* Hide competition (6th) AND class (5th) columns */
+  .airport-list-header > span:nth-child(5),
+  .airport-row > div:nth-child(5),
+  .airport-list-header > span:nth-child(6),
+  .airport-row > div:nth-child(6) {
+    display: none;
+  }
+
+  .airport-row,
+  .airport-list-header {
+    grid-template-columns: 1fr 42px 60px 36px !important;
+    gap: 0.15rem !important;
+    padding: 0.35rem 0.5rem !important;
+  }
+
+  /* Truncate airport name on mobile */
+  .airport-row .airport-select-zone {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .airport-row .airport-select-zone span:first-child {
+    font-size: 0.8rem !important;
+  }
+
+  .airport-row .airport-select-zone span:last-child {
+    font-size: 0.65rem !important;
+  }
+
+  /* -- All fixed overlay modals on iPhone -- */
+  #aircraftDetailOverlay,
+  #globalMaintenanceModal,
+  #maintenanceModalOverlay {
+    padding: 0.5rem !important;
+    align-items: flex-start !important;
+  }
+
+  #aircraftDetailOverlay > div,
+  #globalMaintenanceModal > div,
+  #maintenanceModalOverlay > div {
+    max-height: calc(100vh - 1rem) !important;
+    overflow-y: auto !important;
+    border-radius: 8px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Global maintenance: compact check rows */
+  #globalMaintenanceModal span[style*="min-width: 100px"] {
+    min-width: 70px !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Hide description text in check rows */
+  #globalMaintenanceModal span[style*="color: var(--text-muted)"][style*="font-size: 0.8rem"] {
+    display: none !important;
+  }
+
+  /* Aircraft details: header compact */
+  #aircraftDetailOverlay > div > div:first-child {
+    padding: 0.75rem 1rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  #aircraftDetailOverlay > div > div:first-child h2 {
+    font-size: 1.1rem !important;
+  }
+
+  /* Aircraft details: stats row 3 columns instead of 6 */
+  #aircraftDetailOverlay > div > div:nth-child(2) > div:first-child {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+
+  #aircraftDetailOverlay > div > div:nth-child(2) > div:first-child > div > div:last-child {
+    font-size: 1rem !important;
+  }
+
+  /* Aircraft details: main grid stack vertically */
+  #aircraftDetailOverlay > div > div:nth-child(2) > div:nth-child(2) {
+    grid-template-columns: 1fr !important;
+    gap: 0.5rem !important;
+  }
+
+  /* -- Scheduling: compact on iPhone -- */
+  #scheduleGrid table {
+    font-size: 0.75rem !important;
+  }
+
+  /* Narrow the AIRCRAFT column - all sticky-left cells */
+  #scheduleGrid th:first-child,
+  #scheduleGrid td:first-child {
+    min-width: 60px !important;
+    width: 60px !important;
+    max-width: 60px !important;
+    padding: 0.3rem 0.4rem !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .aircraft-registration {
+    font-size: 0.75rem !important;
+  }
+
+  .aircraft-status-badge {
+    font-size: 0.55rem !important;
+    padding: 0.05rem 0.2rem !important;
+  }
+
+  /* Narrow the ACTIONS column */
+  #scheduleGrid th:last-child,
+  #scheduleGrid td:last-child {
+    min-width: 34px !important;
+    width: 34px !important;
+    max-width: 34px !important;
+    padding: 0.2rem !important;
+  }
+
+  /* Replace ACTIONS text with icon */
+  #scheduleGrid th:last-child {
+    font-size: 0 !important;
+    line-height: 0 !important;
+  }
+
+  #scheduleGrid th:last-child::after {
+    content: '\2699';
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  #scheduleGrid td:last-child > div {
+    flex-direction: column !important;
+    gap: 0.15rem !important;
+  }
+
+  #scheduleGrid td:last-child button {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* -- Routes page: search bar stack on iPhone -- */
+  #routeSearchInput,
+  #aircraftTypeFilter {
+    min-width: 0 !important;
+    width: 100% !important;
+    flex: none !important;
+  }
+
+  /* Stack the search + filter row vertically */
+  #routeSearchInput + #aircraftTypeFilter,
+  #routeSearchInput {
+    flex: none !important;
+  }
+
+  /* Target the parent flex container */
+  .ops-panel .panel-body > div[style*="display: flex"][style*="gap: 1rem"] {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+
+  /* -- Routes table: single scrollbar on iPhone -- */
+  #routesTable {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ops-panel table {
+    display: table;
+    overflow-x: visible !important;
+    min-width: 600px;
+  }
+
+  /* -- Maintenance status modal: compact grid on iPhone -- */
+  #maintenanceModalOverlay > div {
+    padding: 1rem !important;
+  }
+
+  #maintenanceModalOverlay div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr 60px 40px 56px !important;
+    gap: 0.25rem !important;
+  }
+
+  /* Hide Last Completed, Valid Until, Next Scheduled columns (3rd, 4th, 5th) */
+  #maintenanceModalOverlay div[style*="grid-template-columns"] > :nth-child(3),
+  #maintenanceModalOverlay div[style*="grid-template-columns"] > :nth-child(4),
+  #maintenanceModalOverlay div[style*="grid-template-columns"] > :nth-child(5) {
+    display: none !important;
+  }
+
+  /* Compact check name in maintenance modal */
+  #maintenanceModalOverlay div[style*="grid-template-columns"] > div:first-child span:last-child {
+    font-size: 0.7rem !important;
+  }
+
+  /* Auto Schedule All row: wrap on narrow screens */
+  #maintenanceModalOverlay div[style*="justify-content: space-between"][style*="gap: 1rem"] {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    padding: 0.75rem !important;
+  }
+
+  /* Compact bottom buttons */
+  #saveAutoScheduleBtn,
+  #closeMaintenanceModalBtn {
+    padding: 0.6rem 1rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* -- Schedule grid: hide manufacturer in type group headers -- */
+  .type-manufacturer {
+    display: none !important;
+  }
+
+  /* -- Clear schedule modal: stack buttons vertically -- */
+  #clearChoiceModal .modal-footer {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #clearChoiceModal .modal-footer .btn {
+    width: 100% !important;
+    text-align: center !important;
   }
 
   /* -- World Selection page -- */

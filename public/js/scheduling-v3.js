@@ -5626,10 +5626,13 @@ function renderDailySchedule() {
       const aircraftInGroup = grouped[typeKey];
 
       // Group header row
+      const _a0 = aircraftInGroup[0]?.aircraft || {};
+      const _mfr = _a0.manufacturer || '';
+      const _mdl = `${_a0.model || ''}${_a0.variant ? (_a0.variant.startsWith('-') ? _a0.variant : '-' + _a0.variant) : ''}`;
       html += `
         <tr style="background: rgba(88, 166, 255, 0.08); border-bottom: 1px solid var(--border-color); border-top: 2px solid var(--border-color);">
           <td style="padding: 0.5rem 1rem; color: var(--text-secondary); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; position: sticky; left: 0; background: rgba(88, 166, 255, 0.08); border-right: 2px solid var(--border-color); z-index: 5;">
-            ${typeKey} <span style="color: var(--text-muted); font-weight: 500;">(${aircraftInGroup.length})</span>
+            <span class="type-manufacturer">${_mfr} </span>${_mdl} <span style="color: var(--text-muted); font-weight: 500;">(${aircraftInGroup.length})</span>
           </td>
           <td colspan="${timeColumns.length + 1}" style="background: rgba(88, 166, 255, 0.08);"></td>
         </tr>
@@ -5712,10 +5715,13 @@ function renderWeeklySchedule() {
       const aircraftInGroup = grouped[typeKey];
 
       // Group header row
+      const _a0w = aircraftInGroup[0]?.aircraft || {};
+      const _mfrw = _a0w.manufacturer || '';
+      const _mdlw = `${_a0w.model || ''}${_a0w.variant ? (_a0w.variant.startsWith('-') ? _a0w.variant : '-' + _a0w.variant) : ''}`;
       html += `
         <tr style="background: rgba(88, 166, 255, 0.08); border-bottom: 1px solid var(--border-color); border-top: 2px solid var(--border-color);">
           <td style="padding: 0.5rem 1rem; color: var(--text-secondary); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; position: sticky; left: 0; background: rgba(88, 166, 255, 0.08); border-right: 2px solid var(--border-color); z-index: 5;">
-            ${typeKey} <span style="color: var(--text-muted); font-weight: 500;">(${aircraftInGroup.length})</span>
+            <span class="type-manufacturer">${_mfrw} </span>${_mdlw} <span style="color: var(--text-muted); font-weight: 500;">(${aircraftInGroup.length})</span>
           </td>
           <td colspan="${dayColumns.length + 1}" style="background: rgba(88, 166, 255, 0.08);"></td>
         </tr>
