@@ -2013,7 +2013,9 @@ router.get('/:aircraftId/details', async (req, res) => {
         nextCCheck: nextCCheck ? nextCCheck.toISOString() : null,
         nextDCheck: nextDCheck ? nextDCheck.toISOString() : null,
         cCheckIntervalDays: cCheckInterval,
-        dCheckIntervalDays: dCheckInterval
+        dCheckIntervalDays: dCheckInterval,
+        cCheckCost: aircraft.aircraft?.cCheckCost ? parseFloat(aircraft.aircraft.cCheckCost) : null,
+        dCheckCost: aircraft.aircraft?.dCheckCost ? parseFloat(aircraft.aircraft.dCheckCost) : null
       }
     });
   } catch (error) {
