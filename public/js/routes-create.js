@@ -2205,6 +2205,52 @@ function calculateFlightTimeForLeg(distanceNM, aircraftData, depLat, depLng, arr
   return calculateFlightMinutes(distanceNM, cruiseSpeed, depLng, arrLng, depLat, arrLat);
 }
 
+// Check aircraft range against route distance and show/hide warning
+function checkAircraftRange() {
+  const warningEl = document.getElementById('rangeWarning');
+  if (!warningEl) return true; // no warning element yet
+
+  const aircraftSelect = document.getElementById('assignedAircraft');
+  if (!aircraftSelect.value || !selectedDestinationAirport) {
+    warningEl.style.display = 'none';
+    return true;
+  }
+
+  const aircraftData = aircraftDataById[aircraftSelect.value];
+  if (!aircraftData || !aircraftData.rangeNm) {
+    warningEl.style.display = 'none';
+    return true;
+  }
+
+  const rangeNm = aircraftData.rangeNm;
+
+  if (selectedTechStopAirport) {
+    // With tech stop: check each individual leg
+    const leg1 = Math.round(selectedTechStopAirport.distanceFromDeparture || 0);
+    const leg2 = Math.round(selectedTechStopAirport.distanceToDestination || 0);
+    const problems = [];
+    if (leg1 > rangeNm) problems.push(`Leg 1 (${baseAirport.icaoCode} → ${selectedTechStopAirport.icaoCode}): ${leg1} NM`);
+    if (leg2 > rangeNm) problems.push(`Leg 2 (${selectedTechStopAirport.icaoCode} → ${selectedDestinationAirport.icaoCode}): ${leg2} NM`);
+
+    if (problems.length > 0) {
+      warningEl.innerHTML = `<strong>Aircraft range exceeded</strong> — ${aircraftData.manufacturer} ${aircraftData.model} range is ${rangeNm.toLocaleString()} NM<br>${problems.join('<br>')}`;
+      warningEl.style.display = 'block';
+      return false;
+    }
+  } else {
+    // Direct route: check full distance
+    const dist = Math.round(selectedDestinationAirport.distance || 0);
+    if (dist > rangeNm) {
+      warningEl.innerHTML = `<strong>Aircraft range exceeded</strong> — ${aircraftData.manufacturer} ${aircraftData.model} range is ${rangeNm.toLocaleString()} NM but route distance is ${dist.toLocaleString()} NM. Add a technical stop to bring each leg within range.`;
+      warningEl.style.display = 'block';
+      return false;
+    }
+  }
+
+  warningEl.style.display = 'none';
+  return true;
+}
+
 // Calculate and display detailed flight timing
 function calculateFlightTiming() {
   const timingContainer = document.getElementById('flightTimingDisplay');
@@ -2259,6 +2305,9 @@ function calculateFlightTiming() {
     document.getElementById('calculatedReturnTime').value = '--:--';
     return;
   }
+
+  // Check aircraft range
+  checkAircraftRange();
 
   // Use routing distance if tech stop is present, otherwise use direct distance
   const effectiveDistance = selectedTechStopAirport && selectedDestinationAirport.routingDistance
@@ -2976,6 +3025,14 @@ async function submitNewRoute() {
 
   if (!assignedAircraftId) {
     showWarningModal('Please select an aircraft type for route calculations', 'assignedAircraft');
+    return;
+  }
+
+  // Validate aircraft range
+  if (!checkAircraftRange()) {
+    const acData = aircraftDataById[assignedAircraftId];
+    const acName = acData ? `${acData.manufacturer} ${acData.model}` : 'Selected aircraft';
+    showWarningModal(`${acName} does not have sufficient range for this route. Add a technical stop to bring each leg within the aircraft's range (${acData ? acData.rangeNm.toLocaleString() : '?'} NM).`, 'assignedAircraft');
     return;
   }
 

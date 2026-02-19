@@ -502,10 +502,58 @@ router.post('/', async (req, res) => {
     }
 
     // Validate tech stop airport exists if provided
+    let techStopAirport = null;
     if (techStopAirportId) {
-      const techStopAirport = await Airport.findByPk(techStopAirportId);
+      techStopAirport = await Airport.findByPk(techStopAirportId);
       if (!techStopAirport) {
         return res.status(404).json({ error: 'Tech stop airport not found' });
+      }
+    }
+
+    // Validate aircraft range against route distance
+    if (assignedAircraftId) {
+      const userAircraft = await UserAircraft.findOne({
+        where: { id: assignedAircraftId, worldMembershipId: membership.id },
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      });
+      if (userAircraft && userAircraft.aircraft && userAircraft.aircraft.rangeNm) {
+        const rangeNm = userAircraft.aircraft.rangeNm;
+        const depAirport = await Airport.findByPk(departureAirportId);
+        const arrAirport = await Airport.findByPk(arrivalAirportId);
+
+        if (depAirport && arrAirport) {
+          const haversine = (lat1, lon1, lat2, lon2) => {
+            const R = 3440.065;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          };
+
+          if (techStopAirport) {
+            // Check each leg individually
+            const leg1 = Math.round(haversine(depAirport.latitude, depAirport.longitude, techStopAirport.latitude, techStopAirport.longitude));
+            const leg2 = Math.round(haversine(techStopAirport.latitude, techStopAirport.longitude, arrAirport.latitude, arrAirport.longitude));
+            if (leg1 > rangeNm || leg2 > rangeNm) {
+              const problems = [];
+              if (leg1 > rangeNm) problems.push(`Leg 1: ${leg1} NM`);
+              if (leg2 > rangeNm) problems.push(`Leg 2: ${leg2} NM`);
+              return res.status(400).json({
+                error: 'Aircraft range exceeded',
+                message: `${userAircraft.aircraft.manufacturer} ${userAircraft.aircraft.model} range is ${rangeNm} NM. ${problems.join(', ')} exceeds range even with tech stop.`
+              });
+            }
+          } else {
+            // Direct route
+            const dist = Math.round(haversine(depAirport.latitude, depAirport.longitude, arrAirport.latitude, arrAirport.longitude));
+            if (dist > rangeNm) {
+              return res.status(400).json({
+                error: 'Aircraft range exceeded',
+                message: `${userAircraft.aircraft.manufacturer} ${userAircraft.aircraft.model} range is ${rangeNm} NM but route distance is ${dist} NM. Add a technical stop to bring each leg within range.`
+              });
+            }
+          }
+        }
       }
     }
 
