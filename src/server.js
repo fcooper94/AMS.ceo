@@ -505,11 +505,36 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-server.listen(PORT, async () => {
-  // Only show detailed startup message in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`
+// Auto-sync database schema on startup (adds missing columns/tables without dropping data)
+const sequelize = require('./config/database');
+(async () => {
+  try {
+    // Ensure all models and associations are loaded
+    require('./models');
+
+    // Pre-add any new enum values before sync (Sequelize can't ALTER TYPE ADD VALUE)
+    const enumUpdates = [
+      { type: 'enum_user_aircraft_status', value: 'on_order' },
+      { type: 'enum_user_aircraft_acquisition_type', value: 'lease' },
+    ];
+    for (const { type, value } of enumUpdates) {
+      try {
+        await sequelize.query(`ALTER TYPE "public"."${type}" ADD VALUE IF NOT EXISTS '${value}'`);
+      } catch (_) { /* type may not exist yet — sync will create it */ }
+    }
+
+    await sequelize.sync({ alter: true });
+    console.log('✓ Database schema synced');
+  } catch (err) {
+    console.error('✗ Database auto-sync warning:', err.message);
+    console.error('  Server will start anyway — run "npm run db:sync" manually if needed');
+  }
+
+  // Start server after sync
+  server.listen(PORT, async () => {
+    // Only show detailed startup message in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`
 ╔════════════════════════════════════════╗
 ║     Airline Control Server v1.0.0      ║
 ╠════════════════════════════════════════╣
@@ -517,34 +542,35 @@ server.listen(PORT, async () => {
 ║  Environment: ${process.env.NODE_ENV || 'development'}              ║
 ║  WebSocket: enabled                    ║
 ╚════════════════════════════════════════╝
-  `);
-  } else {
-    console.log(`Server running on port ${PORT}`);
-  }
+    `);
+    } else {
+      console.log(`Server running on port ${PORT}`);
+    }
 
-  // Initialize airway routing graph (non-blocking, loads in background)
-  airwayService.initialize();
+    // Initialize airway routing graph (non-blocking, loads in background)
+    airwayService.initialize();
 
-  // Start world time service for all active worlds
-  const worldStarted = await worldTimeService.startAll();
-  if (!worldStarted && process.env.NODE_ENV === 'development') {
-    console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
-  }
+    // Start world time service for all active worlds
+    const worldStarted = await worldTimeService.startAll();
+    if (!worldStarted && process.env.NODE_ENV === 'development') {
+      console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
+    }
 
-  // Pre-warm airport cache for all active worlds (non-blocking)
-  if (worldStarted) {
-    const { World } = require('./models');
-    World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
-      for (const world of worlds) {
-        airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
-          console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
-        }).catch(err => {
-          console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
-        });
-      }
-    }).catch(() => {});
-  }
-});
+    // Pre-warm airport cache for all active worlds (non-blocking)
+    if (worldStarted) {
+      const { World } = require('./models');
+      World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
+        for (const world of worlds) {
+          airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
+            console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
+          }).catch(err => {
+            console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
+          });
+        }
+      }).catch(() => {});
+    }
+  });
+})();
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
