@@ -27,12 +27,24 @@ async function calculateCreditScore(membership) {
   factors.reputation = { score: repPts, max: 110, label: 'Reputation' };
   earned += repPts;
 
+  // Run all DB queries in parallel for speed
+  const [recentWeeks, fleet, activeLoans, world, allLoans] = await Promise.all([
+    WeeklyFinancial.findAll({
+      where: { worldMembershipId: membership.id },
+      order: [['week_start', 'DESC']],
+      limit: 8
+    }),
+    UserAircraft.findAll({
+      where: { worldMembershipId: membership.id, status: 'active' }
+    }),
+    Loan.findAll({
+      where: { worldMembershipId: membership.id, status: 'active' }
+    }),
+    World.findByPk(membership.worldId),
+    Loan.findAll({ where: { worldMembershipId: membership.id } })
+  ]);
+
   // 2. Profitability (20% → max 110 pts) — average weekly net profit from recent data
-  const recentWeeks = await WeeklyFinancial.findAll({
-    where: { worldMembershipId: membership.id },
-    order: [['week_start', 'DESC']],
-    limit: 8
-  });
   let profitPts = 55; // Neutral if no data
   if (recentWeeks.length > 0) {
     const avgProfit = recentWeeks.reduce((sum, w) => {
@@ -56,9 +68,6 @@ async function calculateCreditScore(membership) {
   earned += profitPts;
 
   // 3. Fleet Value (15% → max 83 pts)
-  const fleet = await UserAircraft.findAll({
-    where: { worldMembershipId: membership.id, status: 'active' }
-  });
   const fleetValue = fleet.reduce((sum, a) => sum + (parseFloat(a.purchasePrice) || 0), 0);
   // Scale: $0 → 0pts, $50M+ → 83pts
   const fleetPts = Math.min(83, Math.round((fleetValue / 50000000) * 83));
@@ -66,9 +75,6 @@ async function calculateCreditScore(membership) {
   earned += fleetPts;
 
   // 4. Debt Ratio (20% → max 110 pts) — lower debt = higher score
-  const activeLoans = await Loan.findAll({
-    where: { worldMembershipId: membership.id, status: 'active' }
-  });
   const totalDebt = activeLoans.reduce((sum, l) => sum + (parseFloat(l.remainingPrincipal) || 0), 0);
   const balance = parseFloat(membership.balance) || 0;
   const netWorth = balance + fleetValue;
@@ -83,7 +89,6 @@ async function calculateCreditScore(membership) {
 
   // 5. Time in Business (10% → max 55 pts)
   const joinedAt = membership.joinedAt || membership.createdAt;
-  const world = await World.findByPk(membership.worldId);
   const gameTime = world?.currentTime ? new Date(world.currentTime) : new Date();
   const weeksInBusiness = Math.max(0, (gameTime - new Date(joinedAt)) / (7 * 24 * 60 * 60 * 1000));
   // 0 weeks → 0pts, 52+ weeks → 55pts (1 game year)
@@ -92,7 +97,6 @@ async function calculateCreditScore(membership) {
   earned += timePts;
 
   // 6. Payment History (15% → max 83 pts)
-  const allLoans = await Loan.findAll({ where: { worldMembershipId: membership.id } });
   let historyPts = 83; // Full points if no loan history (clean slate)
   if (allLoans.length > 0) {
     const totalMissed = allLoans.reduce((sum, l) => sum + (l.missedPayments || 0), 0);
