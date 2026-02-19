@@ -4,8 +4,8 @@
   "description": "A persistent, real-time airline operations management platform integrated with live flight simulation networks",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node src/scripts/syncDb.js && node src/server.js",
+    "dev": "node src/scripts/syncDb.js && nodemon src/server.js",
     "db:sync": "node src/scripts/syncDb.js",
     "db:fix-maintenance-schema": "node src/scripts/fixRecurringMaintenanceSchema.js",
     "db:seed-aircraft": "node src/scripts/seedAircraft.js",
