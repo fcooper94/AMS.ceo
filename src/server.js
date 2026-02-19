@@ -7,6 +7,7 @@ const { Server } = require('socket.io');
 const session = require('express-session');
 const passport = require('./config/passport');
 const path = require('path');
+const sequelize = require('./config/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,6 +25,41 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// --- Database sync gate ---
+// Server starts listening immediately so Railway sees a healthy container.
+// All requests are held at the gate until the DB sync finishes.
+let dbReady = false;
+
+// Sync status endpoint (always available, even during sync)
+app.get('/api/sync-status', (req, res) => {
+  res.json({ ready: dbReady });
+});
+
+// Health check (always available for Railway)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: dbReady ? 'healthy' : 'syncing',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Gate middleware — serves maintenance page until DB is ready
+app.use((req, res, next) => {
+  if (dbReady) return next();
+
+  // Let sync-status and health through (already handled above)
+  if (req.path === '/api/sync-status' || req.path === '/api/health') return next();
+
+  // API requests get a 503 with retry hint
+  if (req.path.startsWith('/api/')) {
+    return res.status(503).json({ error: 'Server starting up', syncing: true });
+  }
+
+  // All page requests get the maintenance page
+  return res.sendFile(path.join(__dirname, '../public/db-updating.html'));
+});
 
 // Middleware
 app.use(cors());
@@ -476,21 +512,6 @@ app.get('/faqs', async (req, res) => {
   }
 });
 
-// API routes
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-
-// API Routes (to be implemented)
-// app.use('/api/flights', require('./routes/flights'));
-// app.use('/api/aircraft', require('./routes/aircraft'));
-// app.use('/api/airlines', require('./routes/airlines'));
-// app.use('/api/vatsim', require('./routes/vatsim'));
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
@@ -505,8 +526,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Auto-sync database schema on startup (adds missing columns/tables without dropping data)
-const sequelize = require('./config/database');
+// --- Start server immediately, then sync DB in background ---
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT} (syncing database...)`);
+});
+
+// Run DB sync, then initialize services
 (async () => {
   try {
     // Ensure all models and associations are loaded
@@ -527,14 +552,16 @@ const sequelize = require('./config/database');
     console.log('✓ Database schema synced');
   } catch (err) {
     console.error('✗ Database auto-sync warning:', err.message);
-    console.error('  Server will start anyway — run "npm run db:sync" manually if needed');
+    console.error('  Server will continue — run "npm run db:sync" manually if needed');
   }
 
-  // Start server after sync
-  server.listen(PORT, async () => {
-    // Only show detailed startup message in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`
+  // Mark as ready — gate middleware will now let requests through
+  dbReady = true;
+  console.log('✓ Server ready');
+
+  // Only show detailed startup message in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`
 ╔════════════════════════════════════════╗
 ║     Airline Control Server v1.0.0      ║
 ╠════════════════════════════════════════╣
@@ -543,33 +570,30 @@ const sequelize = require('./config/database');
 ║  WebSocket: enabled                    ║
 ╚════════════════════════════════════════╝
     `);
-    } else {
-      console.log(`Server running on port ${PORT}`);
-    }
+  }
 
-    // Initialize airway routing graph (non-blocking, loads in background)
-    airwayService.initialize();
+  // Initialize airway routing graph (non-blocking, loads in background)
+  airwayService.initialize();
 
-    // Start world time service for all active worlds
-    const worldStarted = await worldTimeService.startAll();
-    if (!worldStarted && process.env.NODE_ENV === 'development') {
-      console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
-    }
+  // Start world time service for all active worlds
+  const worldStarted = await worldTimeService.startAll();
+  if (!worldStarted && process.env.NODE_ENV === 'development') {
+    console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
+  }
 
-    // Pre-warm airport cache for all active worlds (non-blocking)
-    if (worldStarted) {
-      const { World } = require('./models');
-      World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
-        for (const world of worlds) {
-          airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
-            console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
-          }).catch(err => {
-            console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
-          });
-        }
-      }).catch(() => {});
-    }
-  });
+  // Pre-warm airport cache for all active worlds (non-blocking)
+  if (worldStarted) {
+    const { World } = require('./models');
+    World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
+      for (const world of worlds) {
+        airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
+          console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
+        }).catch(err => {
+          console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
+        });
+      }
+    }).catch(() => {});
+  }
 })();
 
 // Graceful shutdown

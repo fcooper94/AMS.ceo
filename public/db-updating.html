@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMS.ceo - Updating</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%230066cc'/%3E%3Ctext x='50' y='42' font-family='Arial, sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3EAMS%3C/text%3E%3Ctext x='50' y='70' font-family='Arial, sans-serif' font-size='18' font-weight='600' fill='%2399ccff' text-anchor='middle' dominant-baseline='central'%3E.ceo%3C/text%3E%3C/svg%3E">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #111827;
+      --surface-elevated: #1e293b;
+      --border: #1e293b;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --accent-glow: rgba(37, 99, 235, 0.15);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 480px;
+      padding: 2rem;
+    }
+
+    .brand {
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 2.5rem;
+    }
+
+    .brand span {
+      color: #93c5fd;
+      font-size: 0.55em;
+      font-weight: 400;
+    }
+
+    .icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      background: var(--accent-glow);
+      border: 2px solid rgba(37, 99, 235, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .icon svg {
+      width: 28px;
+      height: 28px;
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      animation: spin 3s linear infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.2); }
+      50% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background: var(--surface-elevated);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #60a5fa);
+      border-radius: 2px;
+      width: 0%;
+      animation: progress 25s ease-out forwards;
+    }
+
+    @keyframes progress {
+      0%   { width: 0%; }
+      10%  { width: 15%; }
+      30%  { width: 40%; }
+      60%  { width: 65%; }
+      80%  { width: 80%; }
+      95%  { width: 92%; }
+      100% { width: 95%; }
+    }
+
+    .status {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      margin-right: 6px;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand">AMS<span>.ceo</span></div>
+
+    <div class="icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+    </div>
+
+    <h1>We'll Be Back Shortly</h1>
+    <p class="subtitle">
+      Database sync and update in progress.<br>
+      This usually takes less than a minute.
+    </p>
+
+    <div class="progress-track">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <div class="status">
+      <span class="status-dot"></span>
+      <span id="statusText">Synchronising database schema...</span>
+    </div>
+  </div>
+
+  <div class="footer">&copy; 2026 AMS.ceo &mdash; Airline Management Sim</div>
+
+  <script>
+    const statusText = document.getElementById('statusText');
+    const progressBar = document.getElementById('progressBar');
+    let pollCount = 0;
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/sync-status');
+        const data = await res.json();
+
+        if (data.ready) {
+          statusText.textContent = 'Update complete — redirecting...';
+          progressBar.style.animation = 'none';
+          progressBar.style.width = '100%';
+          progressBar.style.transition = 'width 0.3s ease';
+          setTimeout(() => { window.location.href = '/'; }, 600);
+          return;
+        }
+
+        pollCount++;
+        if (pollCount > 6) {
+          statusText.textContent = 'Almost there, applying final changes...';
+        } else if (pollCount > 3) {
+          statusText.textContent = 'Updating tables and columns...';
+        }
+      } catch (_) {
+        // Server might still be starting — keep polling
+      }
+
+      setTimeout(checkStatus, 3000);
+    }
+
+    setTimeout(checkStatus, 2000);
+  </script>
+</body>
+</html>
