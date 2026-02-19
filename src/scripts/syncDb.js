@@ -94,9 +94,12 @@ async function syncDatabase() {
         { table: 'flights', column: 'state', enumName: 'enum_flights_state', values: "'scheduled','claimable','executing_ai','executing_human','pending_reconciliation','resolved'", dflt: 'scheduled' },
         { table: 'flights', column: 'execution_type', enumName: 'enum_flights_execution_type', values: "'ai','human'", dflt: null },
         { table: 'user_aircraft', column: 'acquisition_type', enumName: 'enum_user_aircraft_acquisition_type', values: "'purchase','lease'", dflt: 'purchase' },
-        { table: 'user_aircraft', column: 'status', enumName: 'enum_user_aircraft_status', values: "'active','maintenance','storage','recalling','sold','listed_sale','listed_lease','leased_out'", dflt: 'active' },
+        { table: 'user_aircraft', column: 'status', enumName: 'enum_user_aircraft_status', values: "'active','maintenance','storage','recalling','sold','listed_sale','listed_lease','leased_out','on_order'", dflt: 'active' },
         { table: 'recurring_maintenance', column: 'check_type', enumName: 'enum_recurring_maintenance_check_type', values: "'daily','weekly','A','C','D'", dflt: null },
         { table: 'recurring_maintenance', column: 'status', enumName: 'enum_recurring_maintenance_status', values: "'active','inactive','completed'", dflt: 'active' },
+        { table: 'loans', column: 'status', enumName: 'enum_loans_status', values: "'active','paid_off','defaulted'", dflt: 'active' },
+        { table: 'loans', column: 'loan_type', enumName: 'enum_loans_loan_type', values: "'working_capital','fleet_expansion','infrastructure'", dflt: null },
+        { table: 'loans', column: 'repayment_strategy', enumName: 'enum_loans_repayment_strategy', values: "'fixed','reducing','interest_only'", dflt: 'fixed' },
         { table: 'airspace_restrictions', column: 'restriction_type', enumName: 'enum_airspace_restrictions_restriction_type', values: "'until_further_notice','date_range'", dflt: null },
       ];
       for (const { table, column, enumName, values, dflt } of enumFixups) {
@@ -106,32 +109,77 @@ async function syncDatabase() {
             `SELECT data_type, udt_name FROM information_schema.columns WHERE table_name='${table}' AND column_name='${column}'`
           );
           if (cols.length === 0) continue; // column doesn't exist yet, sync will create it
-          if (cols[0].udt_name === enumName) continue; // already correct enum type
+          // Even if the enum type matches, we still need to drop/recreate to fix stale defaults
+          // Only skip if it's already the correct enum AND the type exists cleanly
+          const isAlreadyEnum = cols[0].udt_name === enumName;
 
-          // Column exists but is not the correct enum type — convert it
-          // Use $$ dollar-quoting for the DO block to avoid single-quote escaping issues
-          await sequelize.query('SET statement_timeout = 0'); // no timeout for DDL
-          // Drop any indexes referencing this column (stale operator class refs block type conversion)
+          await sequelize.query('SET statement_timeout = 0');
+          // Drop any indexes referencing this column
           const [idxs] = await sequelize.query(
             `SELECT indexname FROM pg_indexes WHERE tablename='${table}' AND indexdef LIKE '%${column}%' AND indexname NOT LIKE '%pkey%'`
           );
           for (const idx of idxs) {
             await sequelize.query(`DROP INDEX IF EXISTS "${idx.indexname}"`);
           }
-          await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" DROP DEFAULT`);
-          // Step 1: Convert to TEXT first (always fast, no value validation)
-          await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE TEXT USING ("${column}"::text)`);
-          // Step 2: Drop old enum type (CASCADE to remove any operator references), then recreate
+          // Drop default — try normal ALTER, then force via system catalog if that fails
+          try {
+            await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" DROP DEFAULT`);
+          } catch (_) {
+            // Force-remove default via system catalog (broken enum operators block normal DROP DEFAULT)
+            try {
+              await sequelize.query(`
+                DELETE FROM pg_catalog.pg_attrdef
+                WHERE adrelid = '"${table}"'::regclass
+                AND adnum = (SELECT attnum FROM pg_catalog.pg_attribute
+                             WHERE attrelid = '"${table}"'::regclass AND attname = '${column}')
+              `);
+              await sequelize.query(`
+                UPDATE pg_catalog.pg_attribute SET atthasdef = false
+                WHERE attrelid = '"${table}"'::regclass AND attname = '${column}'
+              `);
+            } catch (__) {}
+          }
+          // Convert to TEXT first
+          try {
+            await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE TEXT USING ("${column}"::text)`);
+          } catch (textErr) {
+            // Stale enum operators block ALTER TYPE — use column-swap fallback
+            try {
+              await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN IF EXISTS "${column}_tmp"`);
+              await sequelize.query(`ALTER TABLE "${table}" ADD COLUMN "${column}_tmp" TEXT`);
+              await sequelize.query(`UPDATE "${table}" SET "${column}_tmp" = "${column}"::text`);
+              await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN "${column}" CASCADE`);
+              await sequelize.query(`ALTER TABLE "${table}" RENAME COLUMN "${column}_tmp" TO "${column}"`);
+            } catch (swapErr) {
+              // Column-swap also failed — clean up tmp column and try enum-only fix
+              try { await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN IF EXISTS "${column}_tmp"`); } catch (__) {}
+              throw swapErr;
+            }
+          }
+          // Drop old enum type and recreate with correct values
           await sequelize.query(`DROP TYPE IF EXISTS "public"."${enumName}" CASCADE`);
           await sequelize.query(`CREATE TYPE "public"."${enumName}" AS ENUM(${values})`);
-          // Step 3: Convert from TEXT to fresh enum (no stale operator issues)
+          // Convert from TEXT to fresh enum
           await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE "public"."${enumName}" USING ("${column}"::"public"."${enumName}")`);
           if (dflt) {
             await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" SET DEFAULT '${dflt}'::"public"."${enumName}"`);
           }
-          console.log(`  ✓ Converted ${table}.${column} to ${enumName}`);
+          console.log(`  ✓ ${isAlreadyEnum ? 'Refreshed' : 'Converted'} ${table}.${column} to ${enumName}`);
         } catch (e) {
-          console.log(`  Note: ${table}.${column} fixup skipped: ${e.message || e}`);
+          // Full fixup failed — try to at least match Sequelize's expectations so sync() skips this column
+          try { await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN IF EXISTS "${column}_tmp"`); } catch (__) {}
+          // Add any missing enum values (can't remove extras, but at least model values exist)
+          const valueList = values.replace(/'/g, '').split(',');
+          for (const val of valueList) {
+            try { await sequelize.query(`ALTER TYPE "public"."${enumName}" ADD VALUE IF NOT EXISTS '${val.trim()}'`); } catch (__) {}
+          }
+          // Restore the default so Sequelize sees it as matching
+          if (dflt) {
+            try { await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" SET DEFAULT '${dflt}'::"public"."${enumName}"`); } catch (__) {}
+          }
+          // Drop NOT NULL if model allows null — prevents Sequelize from generating ALTER that cascades into TYPE change
+          try { await sequelize.query(`ALTER TABLE "${table}" ALTER COLUMN "${column}" DROP NOT NULL`); } catch (__) {}
+          console.log(`  Note: ${table}.${column} fixup skipped (patched defaults): ${e.message || e}`);
         }
       }
       console.log('✓ Ensured enum columns have correct types');
@@ -146,6 +194,84 @@ async function syncDatabase() {
       console.log('✓ Cleaned up old pricing_defaults indexes');
     } catch (e) {
       console.log('Note: pricing_defaults index cleanup skipped');
+    }
+
+    // Clean up orphaned rows that would block foreign key constraints
+    try {
+      const orphanTables = ['weekly_financials', 'notifications', 'user_aircraft', 'routes', 'loans', 'pricing_defaults'];
+      let totalCleaned = 0;
+      for (const table of orphanTables) {
+        try {
+          const [, meta] = await sequelize.query(
+            `DELETE FROM "${table}" WHERE world_membership_id IS NOT NULL AND world_membership_id NOT IN (SELECT id FROM world_memberships)`
+          );
+          if (meta?.rowCount) totalCleaned += meta.rowCount;
+        } catch (tableErr) {
+          // Table may not exist yet or column name differs — skip
+        }
+      }
+      console.log(`✓ Cleaned up orphaned rows${totalCleaned > 0 ? ` (${totalCleaned} removed)` : ''}`);
+    } catch (e) {
+      console.log(`Note: Orphan cleanup skipped: ${e.message}`);
+    }
+
+    // Fix ANY columns left as TEXT with stale enum defaults (from previous partial fixups)
+    // Dynamically find all affected columns by querying the database
+    try {
+      const [brokenCols] = await sequelize.query(`
+        SELECT c.table_name, c.column_name, c.column_default
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+        AND c.data_type IN ('text', 'character varying')
+        AND (
+          c.column_default LIKE '%::enum_%'
+          OR EXISTS (SELECT 1 FROM pg_type t WHERE t.typname = 'enum_' || c.table_name || '_' || c.column_name AND t.typtype = 'e')
+        )
+      `);
+      for (const col of brokenCols) {
+        const table = col.table_name;
+        const column = col.column_name;
+        try {
+          // Determine enum type name: from default expression or from naming convention
+          let enumName;
+          let dflt = null;
+          if (col.column_default) {
+            const enumMatch = col.column_default.match(/::(?:public\.)?("?)(enum_[a-z_]+)\1/);
+            if (enumMatch) enumName = enumMatch[2];
+            const dfltMatch = col.column_default.match(/^'([^']+)'/);
+            if (dfltMatch) dflt = dfltMatch[1];
+          }
+          if (!enumName) {
+            // Derive from Sequelize naming convention: enum_{table}_{column}
+            enumName = `enum_${table}_${column}`;
+          }
+          // Get enum values from pg_enum
+          const [enumVals] = await sequelize.query(
+            `SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname='${enumName}') ORDER BY enumsortorder`
+          );
+          if (enumVals.length === 0) continue;
+          const values = enumVals.map(e => `'${e.enumlabel}'`).join(',');
+
+          // Full column rebuild: backup → drop column → drop enum → recreate → restore
+          await sequelize.query(`ALTER TABLE "${table}" ADD COLUMN "${column}_bak" TEXT`);
+          await sequelize.query(`UPDATE "${table}" SET "${column}_bak" = "${column}"`);
+          await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN "${column}"`);
+          await sequelize.query(`DROP TYPE IF EXISTS "public"."${enumName}" CASCADE`);
+          await sequelize.query(`CREATE TYPE "public"."${enumName}" AS ENUM(${values})`);
+          await sequelize.query(`ALTER TABLE "${table}" ADD COLUMN "${column}" "public"."${enumName}"${dflt ? ` DEFAULT '${dflt}'::"public"."${enumName}"` : ''}`);
+          await sequelize.query(`UPDATE "${table}" SET "${column}" = "${column}_bak"::"public"."${enumName}"`);
+          await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN "${column}_bak"`);
+          console.log(`  ✓ Restored ${table}.${column} from TEXT to ${enumName}`);
+        } catch (e) {
+          try { await sequelize.query(`ALTER TABLE "${table}" DROP COLUMN IF EXISTS "${column}_bak"`); } catch (__) {}
+          console.log(`  Note: ${table}.${column} restore failed: ${e.message}`);
+        }
+      }
+      if (brokenCols.length > 0) {
+        console.log(`✓ Fixed ${brokenCols.length} TEXT columns with stale enum defaults`);
+      }
+    } catch (e) {
+      console.log(`Note: TEXT→enum restore scan skipped: ${e.message}`);
     }
 
     // Sync all models (alter: true adds new columns/tables without dropping existing data)

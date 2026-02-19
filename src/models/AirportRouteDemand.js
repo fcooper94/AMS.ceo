@@ -33,15 +33,13 @@ const AirportRouteDemand = sequelize.define('AirportRouteDemand', {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 50,
-    field: 'base_demand',
-    comment: 'Legacy field - kept for backward compat, set to demand_2000'
+    field: 'base_demand'
   },
   demandCategory: {
     type: DataTypes.ENUM('very_high', 'high', 'medium', 'low', 'very_low'),
     allowNull: false,
     defaultValue: 'medium',
-    field: 'demand_category',
-    comment: 'Category based on modern-era demand level'
+    field: 'demand_category'
   },
   routeType: {
     type: DataTypes.ENUM('business', 'leisure', 'mixed', 'cargo', 'regional'),
