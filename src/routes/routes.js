@@ -3,6 +3,7 @@ const router = express.Router();
 const { Route, WorldMembership, Airport, UserAircraft, Aircraft, User, AirspaceRestriction } = require('../models');
 const { Op } = require('sequelize');
 const airportSlotService = require('../services/airportSlotService');
+const { migrateOldRates } = require('../config/cargoTypes');
 
 /**
  * Get all routes for the current user's airline
@@ -455,6 +456,7 @@ router.post('/', async (req, res) => {
       cargoLightRate,
       cargoStandardRate,
       cargoHeavyRate,
+      cargoRates,
       transportType,
       customWaypoints
     } = req.body;
@@ -632,6 +634,7 @@ router.post('/', async (req, res) => {
       cargoLightRate: cargoLightRate || 0,
       cargoStandardRate: cargoStandardRate || 0,
       cargoHeavyRate: cargoHeavyRate || 0,
+      cargoRates: cargoRates || migrateOldRates(cargoLightRate, cargoStandardRate, cargoHeavyRate),
       transportType: transportType || 'both'
     });
 

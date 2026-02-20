@@ -6,6 +6,7 @@ const sequelize = require('../config/database');
 const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
+const { migrateOldConfig } = require('../config/cargoTypes');
 const { STORAGE_AIRPORTS, calculateStorageDistanceNm, calculateRecallDays } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
 const { getBank, calculateOfferRate, calculateFixedPayment, TERM_RANGES } = require('../data/bankConfig');
 
@@ -2095,15 +2096,39 @@ router.post('/purchase', async (req, res) => {
       economyPlusSeats,
       businessSeats,
       firstSeats,
-      // Cargo allocation
-      cargoLightKg,
-      cargoStandardKg,
-      cargoHeavyKg,
+      toilets,
+      // Cargo allocation (new JSON format)
+      cargoConfig: _cargoConfig,
+      mainDeckCargoConfig: _mainDeckCargoConfig,
+      cargoHoldCargoConfig: _cargoHoldCargoConfig,
+      // Deprecated individual fields (backward compat)
+      cargoLightKg: _cargoLightKg,
+      cargoStandardKg: _cargoStandardKg,
+      cargoHeavyKg: _cargoHeavyKg,
+      mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg,
+      cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg,
       // Financing (new aircraft orders only)
       financingMethod,  // 'cash' or 'loan'
       financingBankId,
       financingTermWeeks
     } = req.body;
+    // Resolve cargo config: prefer JSON, fall back to old individual fields
+    let cargoConfig = _cargoConfig || null;
+    let mainDeckCargoConfig = _mainDeckCargoConfig || null;
+    let cargoHoldCargoConfig = _cargoHoldCargoConfig || null;
+    if (!cargoConfig && (_cargoLightKg != null || _cargoStandardKg != null || _cargoHeavyKg != null)) {
+      const lKg = mainDeckLightKg != null ? (mainDeckLightKg || 0) + (cargoHoldLightKg || 0) : (_cargoLightKg || 0);
+      const sKg = mainDeckStandardKg != null ? (mainDeckStandardKg || 0) + (cargoHoldStandardKg || 0) : (_cargoStandardKg || 0);
+      const hKg = mainDeckHeavyKg != null ? (mainDeckHeavyKg || 0) + (cargoHoldHeavyKg || 0) : (_cargoHeavyKg || 0);
+      cargoConfig = migrateOldConfig(lKg, sKg, hKg);
+      if (mainDeckLightKg != null) {
+        mainDeckCargoConfig = migrateOldConfig(mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg);
+        cargoHoldCargoConfig = migrateOldConfig(cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg);
+      }
+    }
+    const cargoLightKg = cargoConfig?.general || _cargoLightKg || null;
+    const cargoStandardKg = cargoConfig?.express || _cargoStandardKg || null;
+    const cargoHeavyKg = cargoConfig?.heavy || _cargoHeavyKg || null;
 
     if (!aircraftId || !category || !purchasePrice || !registration) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -2268,10 +2293,21 @@ router.post('/purchase', async (req, res) => {
         economyPlusSeats: economyPlusSeats || null,
         businessSeats: businessSeats || null,
         firstSeats: firstSeats || null,
+        toilets: toilets || null,
         // Cargo allocation
         cargoLightKg: cargoLightKg || null,
         cargoStandardKg: cargoStandardKg || null,
-        cargoHeavyKg: cargoHeavyKg || null
+        cargoHeavyKg: cargoHeavyKg || null,
+        mainDeckLightKg: mainDeckLightKg || null,
+        mainDeckStandardKg: mainDeckStandardKg || null,
+        mainDeckHeavyKg: mainDeckHeavyKg || null,
+        cargoHoldLightKg: cargoHoldLightKg || null,
+        cargoHoldStandardKg: cargoHoldStandardKg || null,
+        cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+        // JSON cargo config
+        cargoConfig: cargoConfig || null,
+        mainDeckCargoConfig: mainDeckCargoConfig || null,
+        cargoHoldCargoConfig: cargoHoldCargoConfig || null
       });
 
       // Deduct deposit only
@@ -2355,9 +2391,19 @@ router.post('/purchase', async (req, res) => {
         economyPlusSeats: economyPlusSeats || null,
         businessSeats: businessSeats || null,
         firstSeats: firstSeats || null,
+        toilets: toilets || null,
         cargoLightKg: cargoLightKg || null,
         cargoStandardKg: cargoStandardKg || null,
-        cargoHeavyKg: cargoHeavyKg || null
+        cargoHeavyKg: cargoHeavyKg || null,
+        mainDeckLightKg: mainDeckLightKg || null,
+        mainDeckStandardKg: mainDeckStandardKg || null,
+        mainDeckHeavyKg: mainDeckHeavyKg || null,
+        cargoHoldLightKg: cargoHoldLightKg || null,
+        cargoHoldStandardKg: cargoHoldStandardKg || null,
+        cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+        cargoConfig: cargoConfig || null,
+        mainDeckCargoConfig: mainDeckCargoConfig || null,
+        cargoHoldCargoConfig: cargoHoldCargoConfig || null
       });
 
       // Auto-schedule maintenance
@@ -2449,15 +2495,39 @@ router.post('/bulk-purchase', async (req, res) => {
       economyPlusSeats,
       businessSeats,
       firstSeats,
-      // Cargo allocation
-      cargoLightKg,
-      cargoStandardKg,
-      cargoHeavyKg,
+      toilets,
+      // Cargo allocation (new JSON format)
+      cargoConfig: _blkCargoConfig,
+      mainDeckCargoConfig: _blkMainDeckCargoConfig,
+      cargoHoldCargoConfig: _blkCargoHoldCargoConfig,
+      // Deprecated individual fields
+      cargoLightKg: _blkCargoLightKg,
+      cargoStandardKg: _blkCargoStandardKg,
+      cargoHeavyKg: _blkCargoHeavyKg,
+      mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg,
+      cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg,
       // Financing (new aircraft orders)
       financingMethod,
       financingBankId,
       financingTermWeeks
     } = req.body;
+    // Resolve cargo config
+    let cargoConfig = _blkCargoConfig || null;
+    let mainDeckCargoConfig = _blkMainDeckCargoConfig || null;
+    let cargoHoldCargoConfig = _blkCargoHoldCargoConfig || null;
+    if (!cargoConfig && (_blkCargoLightKg != null || _blkCargoStandardKg != null || _blkCargoHeavyKg != null)) {
+      const lKg = mainDeckLightKg != null ? (mainDeckLightKg || 0) + (cargoHoldLightKg || 0) : (_blkCargoLightKg || 0);
+      const sKg = mainDeckStandardKg != null ? (mainDeckStandardKg || 0) + (cargoHoldStandardKg || 0) : (_blkCargoStandardKg || 0);
+      const hKg = mainDeckHeavyKg != null ? (mainDeckHeavyKg || 0) + (cargoHoldHeavyKg || 0) : (_blkCargoHeavyKg || 0);
+      cargoConfig = migrateOldConfig(lKg, sKg, hKg);
+      if (mainDeckLightKg != null) {
+        mainDeckCargoConfig = migrateOldConfig(mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg);
+        cargoHoldCargoConfig = migrateOldConfig(cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg);
+      }
+    }
+    const cargoLightKg = cargoConfig?.general || _blkCargoLightKg || null;
+    const cargoStandardKg = cargoConfig?.express || _blkCargoStandardKg || null;
+    const cargoHeavyKg = cargoConfig?.heavy || _blkCargoHeavyKg || null;
 
     // Basic validation
     if (!aircraftId || !purchasePrice || !Array.isArray(registrations) || registrations.length === 0) {
@@ -2628,9 +2698,19 @@ router.post('/bulk-purchase', async (req, res) => {
           economyPlusSeats: economyPlusSeats || null,
           businessSeats: businessSeats || null,
           firstSeats: firstSeats || null,
+          toilets: toilets || null,
           cargoLightKg: cargoLightKg || null,
           cargoStandardKg: cargoStandardKg || null,
-          cargoHeavyKg: cargoHeavyKg || null
+          cargoHeavyKg: cargoHeavyKg || null,
+          mainDeckLightKg: mainDeckLightKg || null,
+          mainDeckStandardKg: mainDeckStandardKg || null,
+          mainDeckHeavyKg: mainDeckHeavyKg || null,
+          cargoHoldLightKg: cargoHoldLightKg || null,
+          cargoHoldStandardKg: cargoHoldStandardKg || null,
+          cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+          cargoConfig: cargoConfig || null,
+          mainDeckCargoConfig: mainDeckCargoConfig || null,
+          cargoHoldCargoConfig: cargoHoldCargoConfig || null
         }, { transaction: t });
 
         createdAircraft.push(userAircraft);
@@ -2708,11 +2788,40 @@ router.post('/lease', async (req, res) => {
       autoScheduleD,
       // Player-to-player listing
       playerListingId,
-      // Cargo allocation
-      cargoLightKg,
-      cargoStandardKg,
-      cargoHeavyKg
+      // Cabin configuration
+      economySeats,
+      economyPlusSeats,
+      businessSeats,
+      firstSeats,
+      toilets,
+      // Cargo allocation (new JSON format)
+      cargoConfig: _leaseCargoConfig,
+      mainDeckCargoConfig: _leaseMainDeckCargoConfig,
+      cargoHoldCargoConfig: _leaseCargoHoldCargoConfig,
+      // Deprecated individual fields
+      cargoLightKg: _leaseCargoLightKg,
+      cargoStandardKg: _leaseCargoStandardKg,
+      cargoHeavyKg: _leaseCargoHeavyKg,
+      mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg,
+      cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg
     } = req.body;
+    // Resolve cargo config
+    let cargoConfig = _leaseCargoConfig || null;
+    let mainDeckCargoConfig = _leaseMainDeckCargoConfig || null;
+    let cargoHoldCargoConfig = _leaseCargoHoldCargoConfig || null;
+    if (!cargoConfig && (_leaseCargoLightKg != null || _leaseCargoStandardKg != null || _leaseCargoHeavyKg != null)) {
+      const lKg = mainDeckLightKg != null ? (mainDeckLightKg || 0) + (cargoHoldLightKg || 0) : (_leaseCargoLightKg || 0);
+      const sKg = mainDeckStandardKg != null ? (mainDeckStandardKg || 0) + (cargoHoldStandardKg || 0) : (_leaseCargoStandardKg || 0);
+      const hKg = mainDeckHeavyKg != null ? (mainDeckHeavyKg || 0) + (cargoHoldHeavyKg || 0) : (_leaseCargoHeavyKg || 0);
+      cargoConfig = migrateOldConfig(lKg, sKg, hKg);
+      if (mainDeckLightKg != null) {
+        mainDeckCargoConfig = migrateOldConfig(mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg);
+        cargoHoldCargoConfig = migrateOldConfig(cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg);
+      }
+    }
+    const cargoLightKg = cargoConfig?.general || _leaseCargoLightKg || null;
+    const cargoStandardKg = cargoConfig?.express || _leaseCargoStandardKg || null;
+    const cargoHeavyKg = cargoConfig?.heavy || _leaseCargoHeavyKg || null;
 
     if (!aircraftId || !leaseWeeklyPayment || !leaseDurationMonths || !registration) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -2882,10 +2991,25 @@ router.post('/lease', async (req, res) => {
       autoScheduleA: autoScheduleA === true,
       autoScheduleC: autoScheduleC === true,
       autoScheduleD: autoScheduleD === true,
+      // Cabin configuration
+      economySeats: economySeats || null,
+      economyPlusSeats: economyPlusSeats || null,
+      businessSeats: businessSeats || null,
+      firstSeats: firstSeats || null,
+      toilets: toilets || null,
       // Cargo allocation
       cargoLightKg: cargoLightKg || null,
       cargoStandardKg: cargoStandardKg || null,
-      cargoHeavyKg: cargoHeavyKg || null
+      cargoHeavyKg: cargoHeavyKg || null,
+      mainDeckLightKg: mainDeckLightKg || null,
+      mainDeckStandardKg: mainDeckStandardKg || null,
+      mainDeckHeavyKg: mainDeckHeavyKg || null,
+      cargoHoldLightKg: cargoHoldLightKg || null,
+      cargoHoldStandardKg: cargoHoldStandardKg || null,
+      cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+      cargoConfig: cargoConfig || null,
+      mainDeckCargoConfig: mainDeckCargoConfig || null,
+      cargoHoldCargoConfig: cargoHoldCargoConfig || null
     });
 
     // Create auto-scheduled maintenance for explicitly enabled check types
@@ -2990,10 +3114,34 @@ router.post('/bulk-lease', async (req, res) => {
       autoScheduleA,
       autoScheduleC,
       autoScheduleD,
-      cargoLightKg,
-      cargoStandardKg,
-      cargoHeavyKg
+      // Cargo allocation (new JSON format)
+      cargoConfig: _blkLeaseCargoConfig,
+      mainDeckCargoConfig: _blkLeaseMainDeckCargoConfig,
+      cargoHoldCargoConfig: _blkLeaseCargoHoldCargoConfig,
+      // Deprecated individual fields
+      cargoLightKg: _blkLeaseCargoLightKg,
+      cargoStandardKg: _blkLeaseCargoStandardKg,
+      cargoHeavyKg: _blkLeaseCargoHeavyKg,
+      mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg,
+      cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg
     } = req.body;
+    // Resolve cargo config
+    let cargoConfig = _blkLeaseCargoConfig || null;
+    let mainDeckCargoConfig = _blkLeaseMainDeckCargoConfig || null;
+    let cargoHoldCargoConfig = _blkLeaseCargoHoldCargoConfig || null;
+    if (!cargoConfig && (_blkLeaseCargoLightKg != null || _blkLeaseCargoStandardKg != null || _blkLeaseCargoHeavyKg != null)) {
+      const lKg = mainDeckLightKg != null ? (mainDeckLightKg || 0) + (cargoHoldLightKg || 0) : (_blkLeaseCargoLightKg || 0);
+      const sKg = mainDeckStandardKg != null ? (mainDeckStandardKg || 0) + (cargoHoldStandardKg || 0) : (_blkLeaseCargoStandardKg || 0);
+      const hKg = mainDeckHeavyKg != null ? (mainDeckHeavyKg || 0) + (cargoHoldHeavyKg || 0) : (_blkLeaseCargoHeavyKg || 0);
+      cargoConfig = migrateOldConfig(lKg, sKg, hKg);
+      if (mainDeckLightKg != null) {
+        mainDeckCargoConfig = migrateOldConfig(mainDeckLightKg, mainDeckStandardKg, mainDeckHeavyKg);
+        cargoHoldCargoConfig = migrateOldConfig(cargoHoldLightKg, cargoHoldStandardKg, cargoHoldHeavyKg);
+      }
+    }
+    const cargoLightKg = cargoConfig?.general || _blkLeaseCargoLightKg || null;
+    const cargoStandardKg = cargoConfig?.express || _blkLeaseCargoStandardKg || null;
+    const cargoHeavyKg = cargoConfig?.heavy || _blkLeaseCargoHeavyKg || null;
 
     if (!aircraftId || !leaseWeeklyPayment || !leaseDurationMonths || !Array.isArray(registrations) || registrations.length === 0) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -3135,7 +3283,16 @@ router.post('/bulk-lease', async (req, res) => {
           autoScheduleD: autoScheduleD === true,
           cargoLightKg: cargoLightKg || null,
           cargoStandardKg: cargoStandardKg || null,
-          cargoHeavyKg: cargoHeavyKg || null
+          cargoHeavyKg: cargoHeavyKg || null,
+          mainDeckLightKg: mainDeckLightKg || null,
+          mainDeckStandardKg: mainDeckStandardKg || null,
+          mainDeckHeavyKg: mainDeckHeavyKg || null,
+          cargoHoldLightKg: cargoHoldLightKg || null,
+          cargoHoldStandardKg: cargoHoldStandardKg || null,
+          cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+          cargoConfig: cargoConfig || null,
+          mainDeckCargoConfig: mainDeckCargoConfig || null,
+          cargoHoldCargoConfig: cargoHoldCargoConfig || null
         };
 
         if (isImmediate) {
@@ -5231,6 +5388,108 @@ router.post('/:aircraftId/take-out-of-storage', async (req, res) => {
     });
   } catch (error) {
     console.error('Error taking aircraft out of storage:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/:aircraftId/reconfig-cargo
+ * Instantly reconfigure cargo allocations on an owned aircraft
+ */
+router.post('/:aircraftId/reconfig-cargo', async (req, res) => {
+  try {
+    const { aircraft } = await getOwnedAircraft(req, req.params.aircraftId);
+
+    if (!['active', 'maintenance', 'cabin_refit', 'storage'].includes(aircraft.status)) {
+      return res.status(400).json({ error: 'Aircraft must be active, in maintenance, cabin refit, or storage to reconfigure cargo' });
+    }
+
+    const { cargoConfig, mainDeckCargoConfig, cargoHoldCargoConfig } = req.body;
+
+    const updateData = {};
+    if (cargoConfig !== undefined) updateData.cargoConfig = cargoConfig;
+    if (mainDeckCargoConfig !== undefined) updateData.mainDeckCargoConfig = mainDeckCargoConfig;
+    if (cargoHoldCargoConfig !== undefined) updateData.cargoHoldCargoConfig = cargoHoldCargoConfig;
+
+    // Update legacy fields from cargoConfig for backwards compatibility
+    if (cargoConfig) {
+      updateData.cargoLightKg = cargoConfig.general || 0;
+      updateData.cargoStandardKg = cargoConfig.express || 0;
+      updateData.cargoHeavyKg = cargoConfig.heavy || 0;
+    }
+
+    await aircraft.update(updateData);
+
+    console.log(`Cargo reconfig: ${aircraft.registration} - config updated`);
+    res.json({
+      message: 'Cargo configuration updated successfully',
+      aircraft
+    });
+  } catch (error) {
+    console.error('Error reconfiguring cargo:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/:aircraftId/reconfig-cabin
+ * Start a cabin refit that takes the aircraft out of service for a duration based on type
+ */
+router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
+  try {
+    const { aircraft, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
+
+    if (aircraft.status !== 'active') {
+      return res.status(400).json({ error: 'Aircraft must be active to start a cabin refit' });
+    }
+
+    const { economySeats, economyPlusSeats, businessSeats, firstSeats, toilets } = req.body;
+
+    // Determine refit duration based on aircraft type and capacity
+    const acType = aircraft.aircraft?.type || 'Narrowbody';
+    const passengerCapacity = aircraft.aircraft?.passengerCapacity || 0;
+
+    let refitDays;
+    if (passengerCapacity > 400) {
+      refitDays = 7;
+    } else if (acType === 'Widebody') {
+      refitDays = 5;
+    } else if (acType === 'Narrowbody') {
+      refitDays = 2;
+    } else if (acType === 'Regional') {
+      refitDays = 1;
+    } else {
+      refitDays = 2; // default fallback
+    }
+
+    // Get current game time
+    const world = await World.findByPk(activeWorldId);
+    const gameNow = world ? new Date(world.currentTime) : new Date();
+
+    const cabinRefitEndDate = new Date(gameNow.getTime() + refitDays * 24 * 60 * 60 * 1000);
+
+    const updateData = {
+      status: 'cabin_refit',
+      cabinRefitEndDate
+    };
+    if (economySeats !== undefined) updateData.economySeats = economySeats;
+    if (economyPlusSeats !== undefined) updateData.economyPlusSeats = economyPlusSeats;
+    if (businessSeats !== undefined) updateData.businessSeats = businessSeats;
+    if (firstSeats !== undefined) updateData.firstSeats = firstSeats;
+    if (toilets !== undefined) updateData.toilets = toilets;
+
+    await aircraft.update(updateData);
+
+    console.log(`Cabin refit started: ${aircraft.registration} - ${refitDays} days (${acType}, ${passengerCapacity} pax) - ends ${cabinRefitEndDate.toISOString()}`);
+    res.json({
+      message: `Cabin refit started. Aircraft will be available in ${refitDays} game day${refitDays > 1 ? 's' : ''}.`,
+      aircraft,
+      refitDays,
+      cabinRefitEndDate: cabinRefitEndDate.toISOString(),
+      newStatus: 'cabin_refit'
+    });
+  } catch (error) {
+    console.error('Error starting cabin refit:', error);
     res.status(error.status || 500).json({ error: error.message });
   }
 });

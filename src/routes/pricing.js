@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { PricingDefault, WorldMembership, User, World } = require('../models');
 const eraEconomicService = require('../services/eraEconomicService');
+const { defaultCargoRates, migrateOldRates } = require('../config/cargoTypes');
 
 /**
  * Get global pricing defaults for the current world membership
@@ -55,11 +56,16 @@ router.get('/global', async (req, res) => {
         cargoLightRate: Math.round(80 * eraMultiplier),
         cargoStandardRate: Math.round(120 * eraMultiplier),
         cargoHeavyRate: Math.round(200 * eraMultiplier),
+        cargoRates: defaultCargoRates(eraMultiplier),
         isEraDefault: true
       });
     }
 
-    res.json(pricing);
+    const result = pricing.toJSON();
+    if (!result.cargoRates) {
+      result.cargoRates = migrateOldRates(result.cargoLightRate, result.cargoStandardRate, result.cargoHeavyRate);
+    }
+    res.json(result);
   } catch (error) {
     console.error('Error fetching global pricing:', error);
     res.status(500).json({ error: 'Failed to fetch global pricing' });
@@ -100,7 +106,8 @@ router.post('/global', async (req, res) => {
       firstPrice,
       cargoLightRate,
       cargoStandardRate,
-      cargoHeavyRate
+      cargoHeavyRate,
+      cargoRates
     } = req.body;
 
     // Upsert global pricing
@@ -113,7 +120,8 @@ router.post('/global', async (req, res) => {
       firstPrice: firstPrice || 0,
       cargoLightRate: cargoLightRate || 0,
       cargoStandardRate: cargoStandardRate || 0,
-      cargoHeavyRate: cargoHeavyRate || 0
+      cargoHeavyRate: cargoHeavyRate || 0,
+      cargoRates: cargoRates || migrateOldRates(cargoLightRate, cargoStandardRate, cargoHeavyRate)
     });
 
     res.json(pricing);
@@ -206,7 +214,8 @@ router.post('/aircraft-types', async (req, res) => {
       firstPrice,
       cargoLightRate,
       cargoStandardRate,
-      cargoHeavyRate
+      cargoHeavyRate,
+      cargoRates
     } = req.body;
 
     if (!aircraftTypeKey) {
@@ -224,7 +233,8 @@ router.post('/aircraft-types', async (req, res) => {
       firstPrice: firstPrice || null,
       cargoLightRate: cargoLightRate || null,
       cargoStandardRate: cargoStandardRate || null,
-      cargoHeavyRate: cargoHeavyRate || null
+      cargoHeavyRate: cargoHeavyRate || null,
+      cargoRates: cargoRates || null
     });
 
     res.json(pricing);

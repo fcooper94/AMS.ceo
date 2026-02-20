@@ -160,8 +160,13 @@ const UserAircraft = sequelize.define('UserAircraft', {
   },
   // Status
   status: {
-    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out', 'on_order'),
+    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out', 'on_order', 'cabin_refit'),
     defaultValue: 'active'
+  },
+  cabinRefitEndDate: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'cabin_refit_end_date'
   },
   // Location
   currentAirport: {
@@ -292,6 +297,12 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'first_seats',
     comment: 'Number of First class seats configured'
   },
+  toilets: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'toilets',
+    comment: 'Number of lavatories configured'
+  },
   // Order tracking (for new aircraft with delivery delay)
   orderDate: {
     type: DataTypes.DATE,
@@ -365,6 +376,62 @@ const UserAircraft = sequelize.define('UserAircraft', {
     allowNull: true,
     field: 'cargo_heavy_kg',
     comment: 'Kg allocated to heavy cargo'
+  },
+  // Per-compartment cargo allocation (cargo aircraft only)
+  mainDeckLightKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'main_deck_light_kg',
+    comment: 'Main deck kg allocated to light cargo'
+  },
+  mainDeckStandardKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'main_deck_standard_kg',
+    comment: 'Main deck kg allocated to standard cargo'
+  },
+  mainDeckHeavyKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'main_deck_heavy_kg',
+    comment: 'Main deck kg allocated to heavy cargo'
+  },
+  cargoHoldLightKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_hold_light_kg',
+    comment: 'Cargo hold kg allocated to light cargo'
+  },
+  cargoHoldStandardKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_hold_standard_kg',
+    comment: 'Cargo hold kg allocated to standard cargo'
+  },
+  cargoHoldHeavyKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_hold_heavy_kg',
+    comment: 'Cargo hold kg allocated to heavy cargo'
+  },
+  // NEW: JSON cargo configuration (replaces individual cargo columns above)
+  cargoConfig: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cargo_config',
+    comment: 'JSON object with kg per cargo type: {general, express, heavy, oversized, perishable, dangerous, liveAnimal, highValue}'
+  },
+  mainDeckCargoConfig: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'main_deck_cargo_config',
+    comment: 'JSON object with main deck kg per cargo type (cargo aircraft only)'
+  },
+  cargoHoldCargoConfig: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cargo_hold_cargo_config',
+    comment: 'JSON object with cargo hold kg per cargo type (cargo aircraft only)'
   }
 }, {
   tableName: 'user_aircraft',

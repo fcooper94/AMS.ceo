@@ -155,6 +155,13 @@ const Route = sequelize.define('Route', {
     field: 'cargo_heavy_rate',
     comment: 'Heavy cargo rate per ton'
   },
+  // NEW: JSON cargo rates (replaces individual rate columns above)
+  cargoRates: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cargo_rates',
+    comment: 'JSON object with per-ton rates per cargo type: {general, express, heavy, oversized, perishable, dangerous, liveAnimal, highValue}'
+  },
   // Transport type
   transportType: {
     type: DataTypes.ENUM('both', 'passengers_only', 'cargo_only'),

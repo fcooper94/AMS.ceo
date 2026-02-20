@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 const path = require('path');
 const { STORAGE_AIRPORTS } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
+const { CARGO_TYPES, CARGO_TYPE_KEYS, migrateOldConfig, migrateOldRates } = require('../config/cargoTypes');
 
 /**
  * World Time Service
@@ -715,6 +716,11 @@ class WorldTimeService {
    * Process revenue for a completed template flight and update route statistics
    */
   async processTemplateRevenue(template, worldId, currentGameTime, gameDate) {
+    // Skip revenue for aircraft that are in cabin refit (flights suspended, not removed)
+    if (template.aircraft && template.aircraft.status === 'cabin_refit') {
+      return;
+    }
+
     // Delegate to the existing processFlightRevenue logic
     await this.processFlightRevenue(template, worldId, currentGameTime);
 
@@ -952,10 +958,31 @@ class WorldTimeService {
                              (businessPrice * 0.06) + (firstPrice * 0.02);
       const ticketRevenue = Math.round(passengers * avgTicketPrice);
 
-      // Cargo revenue (simplified)
-      const cargoRevenue = Math.round(
-        (parseFloat(route.cargoStandardRate) || 0) * (distance / 1000) * 5 // ~5 tons avg
-      );
+      // Cargo revenue — per-type calculation using actual allocations and demand factors
+      let cargoRevenue = 0;
+      const cargoConfig = aircraft?.cargoConfig
+        || (aircraft ? migrateOldConfig(aircraft.cargoLightKg, aircraft.cargoStandardKg, aircraft.cargoHeavyKg) : null);
+      const cargoRates = route.cargoRates
+        || migrateOldRates(route.cargoLightRate, route.cargoStandardRate, route.cargoHeavyRate);
+
+      if (cargoConfig) {
+        // Distance modifier: short haul (<500nm) 0.80, medium 1.0, long (>2000nm) 1.15
+        let distanceModifier = 1.0;
+        if (distance < 500) distanceModifier = 0.80;
+        else if (distance > 2000) distanceModifier = 1.15;
+        else distanceModifier = 0.80 + 0.20 * ((distance - 500) / 1500);
+
+        for (const typeKey of CARGO_TYPE_KEYS) {
+          const allocatedKg = cargoConfig[typeKey] || 0;
+          const rate = parseFloat(cargoRates[typeKey]) || 0;
+          if (allocatedKg <= 0 || rate <= 0) continue;
+          const tons = allocatedKg / 1000;
+          const variance = 0.90 + Math.random() * 0.20; // ±10%
+          const demandFactor = CARGO_TYPES[typeKey].baseDemand * distanceModifier * variance;
+          cargoRevenue += tons * rate * demandFactor;
+        }
+        cargoRevenue = Math.round(cargoRevenue);
+      }
 
       const totalRevenue = ticketRevenue + cargoRevenue;
 
@@ -1982,6 +2009,16 @@ class WorldTimeService {
             await ac.update({ status: 'active' });
             if (process.env.NODE_ENV === 'development') {
               console.log(`✓ ${ac.registration} returned to service after ${checkCompleted} Check maintenance`);
+            }
+          }
+        }
+
+        // Check if cabin refit is complete
+        if (ac.status === 'cabin_refit' && ac.cabinRefitEndDate) {
+          if (currentGameTime >= new Date(ac.cabinRefitEndDate)) {
+            await ac.update({ status: 'active', cabinRefitEndDate: null });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`✓ ${ac.registration} returned to service after cabin refit`);
             }
           }
         }

@@ -28,29 +28,23 @@ async function fetchGlobalPricing() {
       populateGlobalPricing();
     } else {
       console.warn('[PRICING] No global pricing found, using defaults');
-      // Initialize with empty defaults
       globalPricing = {
         economyPrice: 0,
         economyPlusPrice: 0,
         businessPrice: 0,
         firstPrice: 0,
-        cargoLightRate: 0,
-        cargoStandardRate: 0,
-        cargoHeavyRate: 0
+        cargoRates: {}
       };
       populateGlobalPricing();
     }
   } catch (error) {
     console.error('[PRICING] Error fetching global pricing:', error);
-    // Still initialize with defaults on error
     globalPricing = {
       economyPrice: 0,
       economyPlusPrice: 0,
       businessPrice: 0,
       firstPrice: 0,
-      cargoLightRate: 0,
-      cargoStandardRate: 0,
-      cargoHeavyRate: 0
+      cargoRates: {}
     };
     populateGlobalPricing();
   }
@@ -62,21 +56,38 @@ function populateGlobalPricing() {
   document.getElementById('global-economyPlus').value = globalPricing.economyPlusPrice || '';
   document.getElementById('global-business').value = globalPricing.businessPrice || '';
   document.getElementById('global-first').value = globalPricing.firstPrice || '';
-  document.getElementById('global-cargoLight').value = globalPricing.cargoLightRate || '';
-  document.getElementById('global-cargoStandard').value = globalPricing.cargoStandardRate || '';
-  document.getElementById('global-cargoHeavy').value = globalPricing.cargoHeavyRate || '';
+
+  // Populate 8 cargo rate inputs from cargoRates JSON
+  const rates = globalPricing.cargoRates || {};
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    CARGO_TYPE_KEYS.forEach(k => {
+      const el = document.getElementById(`global-cargoRate-${k}`);
+      if (el) el.value = rates[k] || '';
+    });
+  }
 }
 
 // Save global pricing
 async function saveGlobalPricing() {
+  // Build cargoRates JSON from 8 inputs
+  const cargoRates = {};
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    CARGO_TYPE_KEYS.forEach(k => {
+      const el = document.getElementById(`global-cargoRate-${k}`);
+      cargoRates[k] = el ? parseFloat(el.value) || 0 : 0;
+    });
+  }
+
   const pricing = {
     economyPrice: parseFloat(document.getElementById('global-economy').value) || 0,
     economyPlusPrice: parseFloat(document.getElementById('global-economyPlus').value) || 0,
     businessPrice: parseFloat(document.getElementById('global-business').value) || 0,
     firstPrice: parseFloat(document.getElementById('global-first').value) || 0,
-    cargoLightRate: parseFloat(document.getElementById('global-cargoLight').value) || 0,
-    cargoStandardRate: parseFloat(document.getElementById('global-cargoStandard').value) || 0,
-    cargoHeavyRate: parseFloat(document.getElementById('global-cargoHeavy').value) || 0
+    cargoRates,
+    // Backward compat
+    cargoLightRate: cargoRates.general || 0,
+    cargoStandardRate: cargoRates.express || 0,
+    cargoHeavyRate: cargoRates.heavy || 0
   };
 
   try {
@@ -199,19 +210,29 @@ function displayAircraftTypePricing(aircraftTypes) {
     return;
   }
 
+  // Build cargo type headers dynamically
+  const cargoTypeKeys = typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS : ['general', 'express', 'heavy', 'oversized', 'perishable', 'dangerous', 'liveAnimal', 'highValue'];
+  const cargoTypeLabels = typeof CARGO_TYPES !== 'undefined' ? CARGO_TYPES : {};
+  const globalRates = globalPricing.cargoRates || {};
+
+  let cargoHeaders = '';
+  cargoTypeKeys.forEach(k => {
+    const ct = cargoTypeLabels[k];
+    const label = ct ? ct.code : k.substring(0, 3).toUpperCase();
+    cargoHeaders += `<th class="cargo-header">${label}</th>`;
+  });
+
   let html = `
     <table class="aircraft-pricing-table">
       <thead>
         <tr>
-          <th style="width: 22%;">Aircraft Type</th>
+          <th style="width: 16%;">Aircraft Type</th>
           <th class="pax-header">Econ</th>
           <th class="pax-header">Econ+</th>
           <th class="pax-header">Biz</th>
           <th class="pax-header">First</th>
-          <th class="cargo-header">Light</th>
-          <th class="cargo-header">Std</th>
-          <th class="cargo-header">Heavy</th>
-          <th style="width: 50px;"></th>
+          ${cargoHeaders}
+          <th style="width: 45px;"></th>
         </tr>
       </thead>
       <tbody>
@@ -220,6 +241,14 @@ function displayAircraftTypePricing(aircraftTypes) {
   Object.keys(aircraftTypes).sort().forEach(typeKey => {
     const type = aircraftTypes[typeKey];
     const pricing = aircraftTypePricing[typeKey] || {};
+    const pricingRates = pricing.cargoRates || {};
+
+    let cargoCells = '';
+    cargoTypeKeys.forEach(k => {
+      const val = pricingRates[k] || '';
+      const placeholder = globalRates[k] || '0';
+      cargoCells += `<td><input type="number" id="aircraft-${typeKey}-cargoRate-${k}" value="${val}" placeholder="${placeholder}" min="0" step="10" /></td>`;
+    });
 
     html += `
         <tr>
@@ -231,9 +260,7 @@ function displayAircraftTypePricing(aircraftTypes) {
           <td><input type="number" id="aircraft-${typeKey}-economyPlus" value="${pricing.economyPlusPrice || ''}" placeholder="${globalPricing.economyPlusPrice || '0'}" min="0" step="1" /></td>
           <td><input type="number" id="aircraft-${typeKey}-business" value="${pricing.businessPrice || ''}" placeholder="${globalPricing.businessPrice || '0'}" min="0" step="1" /></td>
           <td><input type="number" id="aircraft-${typeKey}-first" value="${pricing.firstPrice || ''}" placeholder="${globalPricing.firstPrice || '0'}" min="0" step="1" /></td>
-          <td><input type="number" id="aircraft-${typeKey}-cargoLight" value="${pricing.cargoLightRate || ''}" placeholder="${globalPricing.cargoLightRate || '0'}" min="0" step="10" /></td>
-          <td><input type="number" id="aircraft-${typeKey}-cargoStandard" value="${pricing.cargoStandardRate || ''}" placeholder="${globalPricing.cargoStandardRate || '0'}" min="0" step="10" /></td>
-          <td><input type="number" id="aircraft-${typeKey}-cargoHeavy" value="${pricing.cargoHeavyRate || ''}" placeholder="${globalPricing.cargoHeavyRate || '0'}" min="0" step="10" /></td>
+          ${cargoCells}
           <td class="save-btn-cell"><button onclick="saveAircraftTypePricing('${typeKey}')" class="btn btn-primary">SAVE</button></td>
         </tr>
     `;
@@ -254,15 +281,24 @@ async function saveAircraftTypePricing(typeKey) {
     return value ? parseFloat(value) : null;
   };
 
+  // Build cargoRates JSON from 8 inputs
+  const cargoRates = {};
+  const cargoTypeKeys = typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS : ['general', 'express', 'heavy', 'oversized', 'perishable', 'dangerous', 'liveAnimal', 'highValue'];
+  cargoTypeKeys.forEach(k => {
+    cargoRates[k] = getValue(`aircraft-${typeKey}-cargoRate-${k}`);
+  });
+
   const pricing = {
     aircraftTypeKey: typeKey,
     economyPrice: getValue(`aircraft-${typeKey}-economy`),
     economyPlusPrice: getValue(`aircraft-${typeKey}-economyPlus`),
     businessPrice: getValue(`aircraft-${typeKey}-business`),
     firstPrice: getValue(`aircraft-${typeKey}-first`),
-    cargoLightRate: getValue(`aircraft-${typeKey}-cargoLight`),
-    cargoStandardRate: getValue(`aircraft-${typeKey}-cargoStandard`),
-    cargoHeavyRate: getValue(`aircraft-${typeKey}-cargoHeavy`)
+    cargoRates,
+    // Backward compat
+    cargoLightRate: cargoRates.general || null,
+    cargoStandardRate: cargoRates.express || null,
+    cargoHeavyRate: cargoRates.heavy || null
   };
 
   try {
@@ -356,6 +392,28 @@ function filterRoutes() {
   displayRoutes();
 }
 
+// Build cargo rate inputs for a route by category
+function _buildRouteCargoInputs(route, category) {
+  const keys = typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS : [];
+  const types = typeof CARGO_TYPES !== 'undefined' ? CARGO_TYPES : {};
+  const routeRates = route.cargoRates || {};
+
+  return keys
+    .filter(k => (types[k]?.category || 'core') === category)
+    .map(k => {
+      const ct = types[k];
+      const label = ct ? ct.code : k.substring(0, 3).toUpperCase();
+      const val = routeRates[k] || '';
+      return `
+        <div class="price-field">
+          <label>${label}</label>
+          <div class="price-field-wrapper">
+            <input type="number" id="route-${route.id}-cargoRate-${k}" value="${val}" placeholder="Def" min="0" step="10" />
+          </div>
+        </div>`;
+    }).join('');
+}
+
 // Display routes
 function displayRoutes() {
   const container = document.getElementById('routePricingList');
@@ -426,26 +484,13 @@ function displayRoutes() {
               </div>
             </div>
           </div>
-          <div class="pricing-row-label">Cargo</div>
+          <div class="pricing-row-label">Core Cargo</div>
           <div class="pricing-row cargo">
-            <div class="price-field">
-              <label>Light</label>
-              <div class="price-field-wrapper">
-                <input type="number" id="route-${route.id}-cargoLight" value="${route.cargoLightRate || ''}" placeholder="Def" min="0" step="10" />
-              </div>
-            </div>
-            <div class="price-field">
-              <label>Std</label>
-              <div class="price-field-wrapper">
-                <input type="number" id="route-${route.id}-cargoStandard" value="${route.cargoStandardRate || ''}" placeholder="Def" min="0" step="10" />
-              </div>
-            </div>
-            <div class="price-field">
-              <label>Heavy</label>
-              <div class="price-field-wrapper">
-                <input type="number" id="route-${route.id}-cargoHeavy" value="${route.cargoHeavyRate || ''}" placeholder="Def" min="0" step="10" />
-              </div>
-            </div>
+            ${_buildRouteCargoInputs(route, 'core')}
+          </div>
+          <div class="pricing-row-label">Special Cargo</div>
+          <div class="pricing-row cargo">
+            ${_buildRouteCargoInputs(route, 'special')}
           </div>
           <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
             <button onclick="event.stopPropagation(); clearRoutePricing('${route.id}')" class="btn btn-secondary save-btn-small">CLEAR</button>
@@ -468,18 +513,28 @@ function toggleRoutePricing(routeId) {
 // Save route pricing
 async function saveRoutePricing(routeId) {
   const getValue = (id) => {
-    const value = document.getElementById(id).value;
-    return value ? parseFloat(value) : 0;
+    const el = document.getElementById(id);
+    if (!el) return 0;
+    return el.value ? parseFloat(el.value) : 0;
   };
+
+  // Build cargoRates JSON from 8 inputs
+  const cargoRates = {};
+  const cargoTypeKeys = typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS : [];
+  cargoTypeKeys.forEach(k => {
+    cargoRates[k] = getValue(`route-${routeId}-cargoRate-${k}`);
+  });
 
   const pricing = {
     economyPrice: getValue(`route-${routeId}-economy`),
     economyPlusPrice: getValue(`route-${routeId}-economyPlus`),
     businessPrice: getValue(`route-${routeId}-business`),
     firstPrice: getValue(`route-${routeId}-first`),
-    cargoLightRate: getValue(`route-${routeId}-cargoLight`),
-    cargoStandardRate: getValue(`route-${routeId}-cargoStandard`),
-    cargoHeavyRate: getValue(`route-${routeId}-cargoHeavy`)
+    cargoRates,
+    // Backward compat
+    cargoLightRate: cargoRates.general || 0,
+    cargoStandardRate: cargoRates.express || 0,
+    cargoHeavyRate: cargoRates.heavy || 0
   };
 
   try {
@@ -508,11 +563,17 @@ async function clearRoutePricing(routeId) {
     return;
   }
 
+  // Build empty cargoRates
+  const cargoRates = {};
+  const cargoTypeKeys = typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS : [];
+  cargoTypeKeys.forEach(k => { cargoRates[k] = 0; });
+
   const pricing = {
     economyPrice: 0,
     economyPlusPrice: 0,
     businessPrice: 0,
     firstPrice: 0,
+    cargoRates,
     cargoLightRate: 0,
     cargoStandardRate: 0,
     cargoHeavyRate: 0

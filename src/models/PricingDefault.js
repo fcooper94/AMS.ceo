@@ -75,6 +75,13 @@ const PricingDefault = sequelize.define('PricingDefault', {
     allowNull: true,
     field: 'cargo_heavy_rate',
     comment: 'Heavy cargo rate per ton'
+  },
+  // NEW: JSON cargo rates (replaces individual rate columns above)
+  cargoRates: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cargo_rates',
+    comment: 'JSON object with per-ton rates per cargo type'
   }
 }, {
   tableName: 'pricing_defaults',

@@ -94,7 +94,7 @@ async function syncDatabase() {
         { table: 'flights', column: 'state', enumName: 'enum_flights_state', values: "'scheduled','claimable','executing_ai','executing_human','pending_reconciliation','resolved'", dflt: 'scheduled' },
         { table: 'flights', column: 'execution_type', enumName: 'enum_flights_execution_type', values: "'ai','human'", dflt: null },
         { table: 'user_aircraft', column: 'acquisition_type', enumName: 'enum_user_aircraft_acquisition_type', values: "'purchase','lease'", dflt: 'purchase' },
-        { table: 'user_aircraft', column: 'status', enumName: 'enum_user_aircraft_status', values: "'active','maintenance','storage','recalling','sold','listed_sale','listed_lease','leased_out','on_order'", dflt: 'active' },
+        { table: 'user_aircraft', column: 'status', enumName: 'enum_user_aircraft_status', values: "'active','maintenance','storage','recalling','sold','listed_sale','listed_lease','leased_out','on_order','cabin_refit'", dflt: 'active' },
         { table: 'recurring_maintenance', column: 'check_type', enumName: 'enum_recurring_maintenance_check_type', values: "'daily','weekly','A','C','D'", dflt: null },
         { table: 'recurring_maintenance', column: 'status', enumName: 'enum_recurring_maintenance_status', values: "'active','inactive','completed'", dflt: 'active' },
         { table: 'loans', column: 'status', enumName: 'enum_loans_status', values: "'active','paid_off','defaulted'", dflt: 'active' },

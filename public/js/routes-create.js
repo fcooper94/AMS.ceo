@@ -726,13 +726,18 @@ function updatePassengerClassAvailability(aircraftData) {
   const economyPlusField = document.getElementById('economyPlusPrice');
   const businessField = document.getElementById('businessPrice');
   const firstField = document.getElementById('firstPrice');
-  const cargoLightField = document.getElementById('cargoLightRate');
-  const cargoStandardField = document.getElementById('cargoStandardRate');
-  const cargoHeavyField = document.getElementById('cargoHeavyRate');
+  // Collect cargo rate fields dynamically from CARGO_TYPE_KEYS
+  const cargoFields = [];
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    CARGO_TYPE_KEYS.forEach(k => {
+      const f = document.getElementById(`cargoRate_${k}`);
+      if (f) cargoFields.push(f);
+    });
+  }
 
   if (!aircraftData) {
     // No aircraft selected - enable all fields
-    [economyField, economyPlusField, businessField, firstField, cargoLightField, cargoStandardField, cargoHeavyField].forEach(field => {
+    [economyField, economyPlusField, businessField, firstField, ...cargoFields].forEach(field => {
       if (field) {
         field.disabled = false;
         field.style.opacity = '1';
@@ -787,34 +792,23 @@ function updatePassengerClassAvailability(aircraftData) {
     updateFieldLabel(firstField, hasFirst);
   }
 
-  // Light cargo
-  if (cargoLightField) {
-    const hasCargoLight = aircraftData?.hasCargoLight !== false;
-    cargoLightField.disabled = !hasCargoLight;
-    cargoLightField.style.opacity = hasCargoLight ? '1' : '0.5';
-    cargoLightField.style.cursor = hasCargoLight ? 'text' : 'not-allowed';
-    if (!hasCargoLight) cargoLightField.value = '';
-    updateFieldLabel(cargoLightField, hasCargoLight);
-  }
-
-  // Standard cargo
-  if (cargoStandardField) {
-    const hasCargoStandard = aircraftData?.hasCargoStandard !== false;
-    cargoStandardField.disabled = !hasCargoStandard;
-    cargoStandardField.style.opacity = hasCargoStandard ? '1' : '0.5';
-    cargoStandardField.style.cursor = hasCargoStandard ? 'text' : 'not-allowed';
-    if (!hasCargoStandard) cargoStandardField.value = '';
-    updateFieldLabel(cargoStandardField, hasCargoStandard);
-  }
-
-  // Heavy cargo
-  if (cargoHeavyField) {
-    const hasCargoHeavy = aircraftData?.hasCargoHeavy === true;
-    cargoHeavyField.disabled = !hasCargoHeavy;
-    cargoHeavyField.style.opacity = hasCargoHeavy ? '1' : '0.5';
-    cargoHeavyField.style.cursor = hasCargoHeavy ? 'text' : 'not-allowed';
-    if (!hasCargoHeavy) cargoHeavyField.value = '';
-    updateFieldLabel(cargoHeavyField, hasCargoHeavy);
+  // Enable/disable cargo rate inputs based on aircraft type
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    const aircraftType = aircraftData?.type || '';
+    for (const typeKey of CARGO_TYPE_KEYS) {
+      const field = document.getElementById(`cargoRate_${typeKey}`);
+      if (!field) continue;
+      const typeDef = CARGO_TYPES[typeKey];
+      const available = !typeDef.cargoOnly || aircraftType === 'Cargo';
+      field.disabled = !available;
+      field.style.opacity = available ? '1' : '0.5';
+      field.style.cursor = available ? 'text' : 'not-allowed';
+      if (!available) field.value = '';
+      // Update label styling
+      const label = field.closest('div')?.querySelector('label');
+      if (label) label.style.opacity = available ? '1' : '0.5';
+      updateFieldLabel(field, available);
+    }
   }
 
   console.log('Updated class/cargo availability:', {
@@ -822,9 +816,10 @@ function updatePassengerClassAvailability(aircraftData) {
     economyPlus: aircraftData?.hasEconomyPlus === true,
     business: aircraftData?.hasBusiness === true,
     first: aircraftData?.hasFirst === true,
-    cargoLight: aircraftData?.hasCargoLight !== false,
-    cargoStandard: aircraftData?.hasCargoStandard !== false,
-    cargoHeavy: aircraftData?.hasCargoHeavy === true
+    cargoTypes: typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS.reduce((acc, k) => {
+      acc[k] = !CARGO_TYPES[k].cargoOnly || (aircraftData?.type || '') === 'Cargo';
+      return acc;
+    }, {}) : 'CARGO_TYPE_KEYS not loaded'
   });
 }
 
@@ -890,17 +885,24 @@ function applyDefaultPricing(aircraftData) {
   const economyPlusField = document.getElementById('economyPlusPrice');
   const businessField = document.getElementById('businessPrice');
   const firstField = document.getElementById('firstPrice');
-  const cargoLightField = document.getElementById('cargoLightRate');
-  const cargoStandardField = document.getElementById('cargoStandardRate');
-  const cargoHeavyField = document.getElementById('cargoHeavyRate');
-
   if (economyField && !economyField.disabled && !economyField.value) economyField.value = getPrice('economyPrice');
   if (economyPlusField && !economyPlusField.disabled && !economyPlusField.value) economyPlusField.value = getPrice('economyPlusPrice');
   if (businessField && !businessField.disabled && !businessField.value) businessField.value = getPrice('businessPrice');
   if (firstField && !firstField.disabled && !firstField.value) firstField.value = getPrice('firstPrice');
-  if (cargoLightField && !cargoLightField.disabled && !cargoLightField.value) cargoLightField.value = getPrice('cargoLightRate');
-  if (cargoStandardField && !cargoStandardField.disabled && !cargoStandardField.value) cargoStandardField.value = getPrice('cargoStandardRate');
-  if (cargoHeavyField && !cargoHeavyField.disabled && !cargoHeavyField.value) cargoHeavyField.value = getPrice('cargoHeavyRate');
+
+  // Apply cargo rate defaults from cargoRates JSON (with fallback to old fields)
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    for (const typeKey of CARGO_TYPE_KEYS) {
+      const field = document.getElementById(`cargoRate_${typeKey}`);
+      if (field && !field.disabled && !field.value) {
+        // Try new JSON rates first, then fall back to old fields
+        const jsonRate = typePricing?.cargoRates?.[typeKey] ?? globalPricing?.cargoRates?.[typeKey];
+        if (jsonRate != null) {
+          field.value = jsonRate;
+        }
+      }
+    }
+  }
 }
 
 // Calculate distance between two coordinates (Haversine formula)
@@ -2667,9 +2669,14 @@ function adjustAllTicketPrices(percentage) {
 
 // Bulk adjust all cargo rates
 function adjustAllCargoRates(percentage) {
-  adjustPrice('cargoLightRate', percentage);
-  adjustPrice('cargoStandardRate', percentage);
-  adjustPrice('cargoHeavyRate', percentage);
+  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+    CARGO_TYPE_KEYS.forEach(k => {
+      const field = document.getElementById(`cargoRate_${k}`);
+      if (field && !field.disabled && field.value) {
+        adjustPrice(`cargoRate_${k}`, percentage);
+      }
+    });
+  }
 }
 
 // ── Custom ATC Route ──────────────────────────────────────────────────────────
@@ -3089,9 +3096,19 @@ async function submitNewRoute() {
             economyPlusPrice: economyPlusPrice,
             businessPrice: businessPrice,
             firstPrice: firstPrice,
-            cargoLightRate: parseFloat(document.getElementById('cargoLightRate').value) || 0,
-            cargoStandardRate: parseFloat(document.getElementById('cargoStandardRate').value) || 0,
-            cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
+            cargoRates: (() => {
+              const rates = {};
+              if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+                CARGO_TYPE_KEYS.forEach(k => {
+                  const el = document.getElementById(`cargoRate_${k}`);
+                  rates[k] = parseFloat(el?.value) || 0;
+                });
+              }
+              return rates;
+            })(),
+            cargoLightRate: parseFloat(document.getElementById('cargoRate_general')?.value) || 0,
+            cargoStandardRate: parseFloat(document.getElementById('cargoRate_express')?.value) || 0,
+            cargoHeavyRate: parseFloat(document.getElementById('cargoRate_heavy')?.value) || 0,
             transportType: transportType,
             demand: 0,
             customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined
@@ -3140,9 +3157,19 @@ async function submitNewRoute() {
           economyPlusPrice: economyPlusPrice,
           businessPrice: businessPrice,
           firstPrice: firstPrice,
-          cargoLightRate: parseFloat(document.getElementById('cargoLightRate').value) || 0,
-          cargoStandardRate: parseFloat(document.getElementById('cargoStandardRate').value) || 0,
-          cargoHeavyRate: parseFloat(document.getElementById('cargoHeavyRate').value) || 0,
+          cargoRates: (() => {
+            const rates = {};
+            if (typeof CARGO_TYPE_KEYS !== 'undefined') {
+              CARGO_TYPE_KEYS.forEach(k => {
+                const el = document.getElementById(`cargoRate_${k}`);
+                rates[k] = parseFloat(el?.value) || 0;
+              });
+            }
+            return rates;
+          })(),
+          cargoLightRate: parseFloat(document.getElementById('cargoRate_general')?.value) || 0,
+          cargoStandardRate: parseFloat(document.getElementById('cargoRate_express')?.value) || 0,
+          cargoHeavyRate: parseFloat(document.getElementById('cargoRate_heavy')?.value) || 0,
           transportType: transportType,
           demand: 0,
           customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined

@@ -45,11 +45,80 @@ const CLASS_COLORS = {
 };
 
 // Fuselage visual widths per aircraft type
-const FUSELAGE_WIDTHS = { Regional: 150, Narrowbody: 190, Widebody: 270 };
+const FUSELAGE_WIDTHS = { Regional: 220, Narrowbody: 280, Widebody: 400 };
+
+// Per-aircraft layout overrides for single-deck widebodies
+// (Double-deck aircraft like A380/747 have their own configs in DOUBLE_DECK)
+const WIDEBODY_OVERRIDES = [
+  {
+    match: /777/i,
+    fuselageWidth: 420,
+    layout: {
+      economy:     [3, 4, 3],  // 10 abreast
+      economyPlus: [3, 3, 3],  // 9 abreast
+      business:    [2, 2, 2],  // 6 abreast
+      first:       [1, 2, 1]   // 4 abreast
+    }
+  },
+  {
+    match: /767/i,
+    fuselageWidth: 340,
+    layout: {
+      economy:     [2, 3, 2],  // 7 abreast
+      economyPlus: [2, 3, 2],  // 7 abreast
+      business:    [2, 2],     // 4 abreast
+      first:       [1, 1]      // 2 abreast
+    }
+  }
+];
 
 // Row pixel heights per class
 const ROW_HEIGHTS = { economy: 10, economyPlus: 12, business: 16, first: 24 };
 const ROW_GAP = 2;
+
+/** Calculate default / min / max toilet counts for an aircraft (always even — pairs) */
+function _toiletDefaults(passengerCapacity) {
+  const min = passengerCapacity > 12 ? 4 : 0;
+  let def = passengerCapacity < 12 ? 0 : Math.max(min, Math.ceil(passengerCapacity / 50));
+  if (def % 2 !== 0) def++;
+  let mx = Math.min(12, Math.max(def + 2, Math.ceil(passengerCapacity / 30)));
+  if (mx % 2 !== 0) mx++;
+  mx = Math.min(12, mx);
+  return { min, default: def, max: mx };
+}
+
+/** Render a single toilet cubicle square with toilet icon */
+function _renderToiletCubicle(x, y, size) {
+  let s = '';
+  // Cubicle background
+  s += `<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="2"
+          fill="rgba(100,116,139,0.18)" stroke="rgba(100,116,139,0.35)" stroke-width="0.5"/>`;
+  // Toilet icon (side view) — scaled to cubicle size
+  const cx = x + size / 2, cy = y + size / 2;
+  const sc = size / 28;
+  // Tank/cistern
+  s += `<rect x="${cx - 4*sc}" y="${cy - 7*sc}" width="${8*sc}" height="${4*sc}" rx="${1.2*sc}"
+          fill="rgba(148,163,184,0.3)" stroke="rgba(148,163,184,0.55)" stroke-width="0.4"/>`;
+  // Bowl
+  s += `<path d="M${cx - 4*sc},${cy - 2*sc} L${cx - 5*sc},${cy + 1*sc} Q${cx - 5*sc},${cy + 7*sc} ${cx},${cy + 7*sc} Q${cx + 5*sc},${cy + 7*sc} ${cx + 5*sc},${cy + 1*sc} L${cx + 4*sc},${cy - 2*sc} Z"
+          fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.55)" stroke-width="0.4"/>`;
+  return s;
+}
+
+/** Render an inline lavatory block with toilet cubicle squares inside */
+function _renderLavatoryBlock(x, y, width, height, toiletCount) {
+  let s = '';
+  // Block background (dashed outline)
+  s += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="3"
+          fill="rgba(100,116,139,0.06)" stroke="rgba(100,116,139,0.18)" stroke-width="0.5" stroke-dasharray="3,2"/>`;
+  // Cubicle squares inside — one on each side
+  const cubSize = Math.min(height - 4, 28);
+  const cubY = y + (height - cubSize) / 2;
+  const pad = 4;
+  if (toiletCount >= 1) s += _renderToiletCubicle(x + pad, cubY, cubSize);
+  if (toiletCount >= 2) s += _renderToiletCubicle(x + width - pad - cubSize, cubY, cubSize);
+  return s;
+}
 
 // Double-deck aircraft — fixed deck dimensions and layouts
 const DOUBLE_DECK = [
@@ -57,8 +126,10 @@ const DOUBLE_DECK = [
     match: /A380/i,
     upperRatio: 0.40,
     cockpitDeck: 'main',     // A380 cockpit is on main/lower deck
-    mainWidth: 290,
-    upperWidth: 250,
+    mainWidth: 420,
+    upperWidth: 370,
+    minToiletsUpper: 4,      // front + back pairs on both decks
+    minToiletsMain: 4,
     mainLayout: {
       economy:     [3, 4, 3],  // 10 abreast
       economyPlus: [2, 4, 2],  // 8 abreast
@@ -76,8 +147,10 @@ const DOUBLE_DECK = [
     match: /747/i,
     upperRatio: 0.20,
     cockpitDeck: 'upper',    // 747 cockpit is on upper deck (the hump)
-    mainWidth: 280,
-    upperWidth: 190,
+    mainWidth: 400,
+    upperWidth: 280,
+    minToiletsUpper: 2,      // one pair in the small hump
+    minToiletsMain: 4,       // front + back pairs
     mainLayout: {
       economy:     [3, 4, 3],  // 10 abreast
       economyPlus: [2, 4, 2],  // 8 abreast
@@ -108,13 +181,28 @@ function seatsPerRow(aircraftType, cabinClass) {
 }
 
 // --- Shared fuselage SVG renderer ---
-function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true) {
+function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0) {
   if (!deckLayout) return '';
 
   const aisleWidth = 16;
   const seatGap = 2;
-  const bodyPadding = 8;
-  const bodyWidth = fWidth - bodyPadding * 2;
+  const fW = fWidth;
+
+  // Fuselage wall positions (0.10–0.90)
+  const fuseLeft = fW * 0.10;
+  const fuseRight = fW * 0.90;
+  const bodyPad = 6;
+  const seatLeft = fuseLeft + bodyPad;
+  const seatRight = fuseRight - bodyPad;
+  const seatWidth = seatRight - seatLeft;
+
+  // Toilet distribution as pairs: 1st pair → front, 2nd pair → back, rest → mid-cabin
+  const totalPairs = Math.floor(toiletCount / 2);
+  const frontPair = totalPairs >= 1 ? 1 : 0;     // 1 pair (2 toilets) at nose
+  const backPair = totalPairs >= 2 ? 1 : 0;       // 1 pair (2 toilets) at tail
+  const midPairs = Math.max(0, totalPairs - 2);    // remaining pairs inline in economy
+  const TOILET_BLOCK_H = 3 * (ROW_HEIGHTS.economy + ROW_GAP);
+  const TOILET_GAP = 4;
 
   const sections = [];
   const classOrder = ['first', 'business', 'economyPlus', 'economy'];
@@ -130,19 +218,31 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     sections.push({ cls, groups, perRow, numRows, rowH, lastRowSeats });
   }
 
+  // Calculate total visual height
   let totalH = 0;
+  if (frontPair) totalH += TOILET_BLOCK_H + TOILET_GAP;
   for (const s of sections) {
-    totalH += s.numRows * (s.rowH + ROW_GAP);
-    totalH += 18;
+    totalH += s.numRows * (s.rowH + ROW_GAP) + 18;
   }
+  totalH += midPairs * (TOILET_BLOCK_H + TOILET_GAP);
+  if (backPair) totalH += TOILET_BLOCK_H + TOILET_GAP;
   if (totalH === 0) totalH = 40;
 
   const noseH = 50;
   const tailH = 35;
   const svgH = noseH + totalH + tailH + 10;
   const gradId = svgId || 'fuselageGrad';
-  const fW = fWidth;
+  const clipId = `fClip_${svgId || 'def'}`;
   const noseR = fW / 2.5;
+
+  const fuselagePath = `
+    M ${fuseLeft} ${noseH}
+    Q ${fuseLeft} ${noseH - noseR}, ${fW / 2} ${5}
+    Q ${fuseRight} ${noseH - noseR}, ${fuseRight} ${noseH}
+    L ${fuseRight} ${svgH - tailH}
+    Q ${fuseRight} ${svgH - 5}, ${fW / 2} ${svgH}
+    Q ${fuseLeft} ${svgH - 5}, ${fuseLeft} ${svgH - tailH}
+    Z`;
 
   let html = `
     <svg viewBox="0 0 ${fW} ${svgH}" preserveAspectRatio="xMidYMin meet" style="width:100%;height:100%;" xmlns="http://www.w3.org/2000/svg">
@@ -152,19 +252,12 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
           <stop offset="50%" stop-color="rgba(100,116,139,0.05)"/>
           <stop offset="100%" stop-color="rgba(100,116,139,0.15)"/>
         </linearGradient>
+        <clipPath id="${clipId}"><path d="${fuselagePath}"/></clipPath>
       </defs>
-      <path d="
-        M ${fW * 0.15} ${noseH}
-        Q ${fW * 0.15} ${noseH - noseR}, ${fW / 2} ${5}
-        Q ${fW * 0.85} ${noseH - noseR}, ${fW * 0.85} ${noseH}
-        L ${fW * 0.85} ${svgH - tailH}
-        Q ${fW * 0.85} ${svgH - 5}, ${fW / 2} ${svgH}
-        Q ${fW * 0.15} ${svgH - 5}, ${fW * 0.15} ${svgH - tailH}
-        Z
-      " fill="url(#${gradId})" stroke="rgba(100,116,139,0.3)" stroke-width="1.5"/>
+      <path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.3)" stroke-width="1.5"/>
   `;
 
-  // Cockpit windows (only on the deck that has the cockpit)
+  // Cockpit windows
   if (showCockpit) {
     const cwY = noseH - 12;
     html += `
@@ -173,63 +266,178 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     `;
   }
 
+  // All cabin content clipped to fuselage outline
+  html += `<g clip-path="url(#${clipId})">`;
 
-  // Seats start closer to the nose when there's no cockpit on this deck
-  let curY = showCockpit ? noseH + 6 : noseH - 10;
+  const seatStartY = showCockpit ? noseH + 6 : noseH - 10;
+  let curY = seatStartY;
+
+  // Helper: render one seat row
+  function drawSeatRow(s, cc, y) {
+    let rowHtml = '';
+    const isLastRow = (s._row === s.numRows - 1);
+    const seatsThisRow = isLastRow ? s.lastRowSeats : s.perRow;
+    let seatIdx = 0;
+    let x = seatLeft;
+    for (let gi = 0; gi < s.groups.length; gi++) {
+      const groupSize = s.groups[gi];
+      for (let gs = 0; gs < groupSize; gs++) {
+        const classAisles = s.groups.length - 1;
+        const seatW = (seatWidth - classAisles * aisleWidth - (s.perRow - 1) * seatGap) / s.perRow;
+        if (seatIdx < seatsThisRow) {
+          rowHtml += `<rect x="${x}" y="${y}" width="${seatW}" height="${s.rowH}" rx="2"
+                    fill="${cc.bg}" stroke="${cc.border}" stroke-width="0.5" opacity="0.85"/>`;
+        } else {
+          rowHtml += `<rect x="${x}" y="${y}" width="${seatW}" height="${s.rowH}" rx="2"
+                    fill="rgba(100,116,139,0.1)" stroke="rgba(100,116,139,0.2)" stroke-width="0.5"/>`;
+        }
+        x += seatW + seatGap;
+        seatIdx++;
+      }
+      if (gi < s.groups.length - 1) x += aisleWidth - seatGap;
+    }
+    return rowHtml;
+  }
+
+  // Front lavatory pair
+  if (frontPair) {
+    html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
+    curY += TOILET_BLOCK_H + TOILET_GAP;
+  }
+
+  // Render sections — mid-cabin toilets inserted within economy
   for (const s of sections) {
     const cc = CLASS_COLORS[s.cls];
+    // Section header
     html += `
       <line x1="${fW * 0.2}" y1="${curY + 2}" x2="${fW * 0.8}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.5"/>
       <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="7" font-weight="600" font-family="system-ui, sans-serif" opacity="0.8">${cc.label.toUpperCase()}</text>
     `;
     curY += 18;
 
-    for (let row = 0; row < s.numRows; row++) {
-      const isLastRow = (row === s.numRows - 1);
-      const seatsThisRow = isLastRow ? s.lastRowSeats : s.perRow;
-      let seatIdx = 0;
-      let x = bodyPadding;
+    if (s.cls === 'economy' && midPairs > 0) {
+      // Split economy rows into (midPairs+1) chunks with toilet pairs between
+      const chunkSize = Math.max(1, Math.floor(s.numRows / (midPairs + 1)));
+      let rowsInChunk = 0;
+      let pairsInserted = 0;
 
-      for (let gi = 0; gi < s.groups.length; gi++) {
-        const groupSize = s.groups[gi];
-        for (let gs = 0; gs < groupSize; gs++) {
-          const classAisles = s.groups.length - 1;
-          const seatW = (bodyWidth - classAisles * aisleWidth - (s.perRow - 1) * seatGap) / s.perRow;
-          if (seatIdx < seatsThisRow) {
-            html += `<rect x="${x}" y="${curY}" width="${seatW}" height="${s.rowH}" rx="2"
-                      fill="${cc.bg}" stroke="${cc.border}" stroke-width="0.5" opacity="0.85"/>`;
-          } else {
-            html += `<rect x="${x}" y="${curY}" width="${seatW}" height="${s.rowH}" rx="2"
-                      fill="rgba(100,116,139,0.1)" stroke="rgba(100,116,139,0.2)" stroke-width="0.5"/>`;
-          }
-          x += seatW + seatGap;
-          seatIdx++;
+      for (let row = 0; row < s.numRows; row++) {
+        // Insert toilet pair block when chunk is full
+        if (pairsInserted < midPairs && rowsInChunk >= chunkSize) {
+          html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
+          curY += TOILET_BLOCK_H + TOILET_GAP;
+          pairsInserted++;
+          rowsInChunk = 0;
         }
-        if (gi < s.groups.length - 1) x += aisleWidth - seatGap;
+        s._row = row;
+        html += drawSeatRow(s, cc, curY);
+        curY += s.rowH + ROW_GAP;
+        rowsInChunk++;
       }
-      curY += s.rowH + ROW_GAP;
+      // Remaining pairs at end of economy
+      while (pairsInserted < midPairs) {
+        html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
+        curY += TOILET_BLOCK_H + TOILET_GAP;
+        pairsInserted++;
+      }
+    } else {
+      for (let row = 0; row < s.numRows; row++) {
+        s._row = row;
+        html += drawSeatRow(s, cc, curY);
+        curY += s.rowH + ROW_GAP;
+      }
     }
   }
 
+  // Back lavatory pair
+  if (backPair) {
+    html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
+    curY += TOILET_BLOCK_H + TOILET_GAP;
+  }
+
+  html += `</g>`;
   html += `</svg>`;
   return html;
 }
 
 
 // ======================================================================
+// Refit confirmation modal — shown over the cabin configurator overlay
+// ======================================================================
+function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, result) {
+  const { registration, days, aircraftName } = confirmInfo;
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;justify-content:center;align-items:center;padding:1rem;';
+
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;width:100%;max-width:420px;overflow:hidden;">
+      <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:0.75rem;">
+        <div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;background:rgba(245,158,11,0.15);color:#f59e0b;">&#9888;</div>
+        <div>
+          <h3 style="margin:0;font-size:1rem;color:var(--text-primary);font-weight:600;">Confirm Cabin Refit</h3>
+          <div style="font-size:0.75rem;color:var(--accent-color);font-weight:600;font-family:monospace;">${registration}</div>
+        </div>
+      </div>
+      <div style="padding:1.25rem;">
+        <p style="margin:0 0 0.75rem 0;color:var(--text-secondary);font-size:0.85rem;line-height:1.5;">
+          ${aircraftName || 'This aircraft'} will be taken <strong style="color:var(--warning-color);">out of service for ${days} day${days > 1 ? 's' : ''}</strong> (game time) while the cabin is reconfigured.
+        </p>
+        <p style="margin:0 0 0.75rem 0;color:var(--text-secondary);font-size:0.85rem;line-height:1.5;">
+          During the refit, <strong>${registration}</strong> cannot be assigned to routes or fly.
+        </p>
+        <p style="margin:0;color:var(--text-muted);font-size:0.75rem;font-style:italic;">
+          Any routes currently using this aircraft will be unassigned.
+        </p>
+      </div>
+      <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border-color);display:flex;gap:0.5rem;justify-content:flex-end;">
+        <button id="refitCancelBtn" style="padding:0.5rem 1.25rem;font-size:0.85rem;font-weight:600;border-radius:6px;cursor:pointer;background:var(--surface-elevated);color:var(--text-secondary);border:1px solid var(--border-color);transition:all 0.15s;">Cancel</button>
+        <button id="refitConfirmBtn" style="padding:0.5rem 1.25rem;font-size:0.85rem;font-weight:600;border-radius:6px;cursor:pointer;background:#d29922;color:#fff;border:1px solid transparent;transition:all 0.15s;">Begin Refit</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  document.getElementById('refitCancelBtn').addEventListener('click', () => {
+    modal.remove();
+  });
+
+  document.getElementById('refitConfirmBtn').addEventListener('click', () => {
+    modal.remove();
+    document.body.removeChild(configuratorOverlay);
+    if (onApply) onApply(result);
+  });
+
+  // Hover effects
+  const confirmBtn = document.getElementById('refitConfirmBtn');
+  confirmBtn.addEventListener('mouseover', () => { confirmBtn.style.background = '#b57d12'; });
+  confirmBtn.addEventListener('mouseout', () => { confirmBtn.style.background = '#d29922'; });
+  const cancelBtn = document.getElementById('refitCancelBtn');
+  cancelBtn.addEventListener('mouseover', () => { cancelBtn.style.background = 'var(--border-color)'; cancelBtn.style.color = 'var(--text-primary)'; });
+  cancelBtn.addEventListener('mouseout', () => { cancelBtn.style.background = 'var(--surface-elevated)'; cancelBtn.style.color = 'var(--text-secondary)'; });
+}
+
+
+// ======================================================================
 // Single-deck cabin configurator
 // ======================================================================
-function showCabinConfigurator(aircraft, onApply, existingConfig) {
+function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   if (!aircraft || !SEAT_LAYOUTS[aircraft.type]) return;
 
   const ddConfig = getDoubleDeckConfig(aircraft);
   if (ddConfig) {
-    showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig);
+    showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig, options);
     return;
   }
 
   const acType = aircraft.type;
-  const layouts = SEAT_LAYOUTS[acType];
+
+  // Check for per-aircraft layout override (e.g. 777 = 10-abreast, 767 = 7-abreast)
+  const acStr = `${aircraft.manufacturer || ''} ${aircraft.model || ''} ${aircraft.icaoCode || ''}`;
+  const wbOverride = acType === 'Widebody' ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
+  const layouts = wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType];
 
   function classPerRow(cls) {
     return layouts[cls] ? layouts[cls].reduce((s, g) => s + g, 0) : 0;
@@ -238,17 +446,34 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
   const econPerRow = classPerRow('economy');
   const totalSpace = aircraft.passengerCapacity / econPerRow;
 
+  // Round existing seats down to full rows so we never start with partial rows
+  function roundToRow(seats, cls) {
+    const pr = classPerRow(cls);
+    return pr > 0 ? Math.floor((seats || 0) / pr) * pr : (seats || 0);
+  }
   const config = {
-    first:       existingConfig?.firstSeats || 0,
-    business:    existingConfig?.businessSeats || 0,
-    economyPlus: existingConfig?.economyPlusSeats || 0,
+    first:       roundToRow(existingConfig?.firstSeats, 'first'),
+    business:    roundToRow(existingConfig?.businessSeats, 'business'),
+    economyPlus: roundToRow(existingConfig?.economyPlusSeats, 'economyPlus'),
     economy:     0
   };
+
+  // Toilet state
+  const toiletInfo = _toiletDefaults(aircraft.passengerCapacity);
+  let toilets = existingConfig?.toilets != null ? existingConfig.toilets : toiletInfo.default;
+  toilets = Math.max(toiletInfo.min, Math.min(toiletInfo.max, toilets));
+
+  function midToiletRows() {
+    // First 2 pairs (4 toilets) at nose/tail — free. Each mid-cabin pair costs 3 economy rows.
+    const midPairs = Math.max(0, Math.floor(toilets / 2) - 2);
+    return midPairs * 3;
+  }
 
   function recalcEconomy() {
     const usedSpace = calcSpaceUsed(config.first, 'first')
                     + calcSpaceUsed(config.business, 'business')
-                    + calcSpaceUsed(config.economyPlus, 'economyPlus');
+                    + calcSpaceUsed(config.economyPlus, 'economyPlus')
+                    + midToiletRows() * PITCH.economy;
     const remainingSpace = Math.max(0, totalSpace - usedSpace);
     config.economy = Math.floor(remainingSpace) * econPerRow;
   }
@@ -267,16 +492,19 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
     const used = calcSpaceUsed(config.first, 'first')
                + calcSpaceUsed(config.business, 'business')
                + calcSpaceUsed(config.economyPlus, 'economyPlus')
-               + calcSpaceUsed(config.economy, 'economy');
+               + calcSpaceUsed(config.economy, 'economy')
+               + midToiletRows() * PITCH.economy;
     return Math.min(100, Math.round((used / totalSpace) * 100));
   }
 
   function canAdd(cabinClass) {
     const perRow = classPerRow(cabinClass);
     const testCount = config[cabinClass] + perRow;
+    const toiletSpace = midToiletRows() * PITCH.economy;
     const testUsed = calcSpaceUsed(testCount, cabinClass)
                    + (['first','business','economyPlus'].filter(c => c !== cabinClass)
-                       .reduce((s, c) => s + calcSpaceUsed(config[c], c), 0));
+                       .reduce((s, c) => s + calcSpaceUsed(config[c], c), 0))
+                   + toiletSpace;
     return testUsed <= totalSpace - 1;
   }
 
@@ -295,7 +523,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
     padding: 1rem;
   `;
 
-  const fuselageWidth = FUSELAGE_WIDTHS[acType] || 190;
+  const fuselageWidth = (wbOverride && wbOverride.fuselageWidth) || FUSELAGE_WIDTHS[acType] || 190;
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
@@ -325,6 +553,31 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
           ${buildClassCtrl('economyPlus')}
           ${buildEconDisp()}
         </div>
+
+        <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); margin-top: 0.4rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: rgba(148,163,184,0.8);">LAVATORIES</span>
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+              <button class="toilet-adj-btn" data-delta="-2"
+                style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
+                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
+                       display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
+              <span id="toiletCount" style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${toilets}</span>
+              <button class="toilet-adj-btn" data-delta="2"
+                style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
+                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
+                       display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+            </div>
+          </div>
+          <div id="toiletNote" style="font-size: 0.55rem; color: var(--text-muted);">Added in pairs · first 4 at nose/tail · extras replace 3 rows each</div>
+        </div>
+
+        ${options?.refitWarning ? `
+        <div style="margin-top: 0.75rem; padding: 0.5rem 0.65rem; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-left: 3px solid #f59e0b; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 0.9rem; flex-shrink: 0;">&#9888;</span>
+          <span style="font-size: 0.65rem; color: var(--warning-color); line-height: 1.3;">${options.refitWarning}</span>
+        </div>
+        ` : ''}
 
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
           <button id="cabinApplyBtn" class="btn btn-primary" style="flex: 1; padding: 0.6rem; font-size: 0.85rem;">Apply</button>
@@ -397,7 +650,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
   function renderDiagram() {
     const container = document.getElementById('cabinDiagramContainer');
     if (!container) return;
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad') + renderLegend();
+    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets) + renderLegend();
   }
 
   function updateUI() {
@@ -428,8 +681,36 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
         plusBtn.style.cursor = canAdd(cls) ? 'pointer' : 'default';
       }
     }
+    // Toilet count + note
+    const tcEl = document.getElementById('toiletCount');
+    if (tcEl) tcEl.textContent = toilets;
+    const noteEl = document.getElementById('toiletNote');
+    if (noteEl) {
+      const midPrs = Math.max(0, Math.floor(toilets / 2) - 2);
+      noteEl.textContent = midPrs > 0
+        ? `${midPrs} mid-cabin pair${midPrs > 1 ? 's' : ''} replacing ${midPrs * 3 * econPerRow} seats`
+        : 'Added in pairs · first 4 at nose/tail';
+    }
+    // Toilet button states
+    const tMin = overlay.querySelector('.toilet-adj-btn[data-delta="-2"]');
+    const tPlus = overlay.querySelector('.toilet-adj-btn[data-delta="2"]');
+    if (tMin) { tMin.style.opacity = toilets > toiletInfo.min ? '1' : '0.3'; tMin.style.cursor = toilets > toiletInfo.min ? 'pointer' : 'default'; }
+    if (tPlus) { tPlus.style.opacity = toilets < toiletInfo.max ? '1' : '0.3'; tPlus.style.cursor = toilets < toiletInfo.max ? 'pointer' : 'default'; }
     renderDiagram();
   }
+
+  // Toilet buttons
+  overlay.querySelectorAll('.toilet-adj-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const delta = parseInt(btn.dataset.delta);
+      const newVal = toilets + delta;
+      if (newVal >= toiletInfo.min && newVal <= toiletInfo.max) {
+        toilets = newVal;
+        updateUI();
+      }
+    });
+  });
 
   overlay.querySelectorAll('.cabin-adj-btn').forEach(btn => {
     let holdTimer = null, holdInterval = null;
@@ -457,14 +738,18 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
   });
 
   document.getElementById('cabinApplyBtn').addEventListener('click', () => {
-    document.body.removeChild(overlay);
-    if (onApply) {
-      onApply({
-        firstSeats: config.first,
-        businessSeats: config.business,
-        economyPlusSeats: config.economyPlus,
-        economySeats: config.economy
-      });
+    const result = {
+      firstSeats: config.first,
+      businessSeats: config.business,
+      economyPlusSeats: config.economyPlus,
+      economySeats: config.economy,
+      toilets: toilets
+    };
+    if (options?.refitConfirm) {
+      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result);
+    } else {
+      document.body.removeChild(overlay);
+      if (onApply) onApply(result);
     }
   });
 
@@ -479,7 +764,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig) {
 // ======================================================================
 // Double-deck cabin configurator — separate controls per deck
 // ======================================================================
-function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig) {
+function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig, options) {
   const acType = aircraft.type;
 
   // Deck capacities
@@ -512,10 +797,47 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
       mainConfig[cls] = seats - toUpper;
       remaining -= toUpper;
     }
+    // Round each deck's seats down to full rows
+    for (const cls of ['first', 'business', 'economyPlus']) {
+      const upr = deckPerRow(ddConfig.upperLayout, cls);
+      if (upr > 0) upperConfig[cls] = Math.floor(upperConfig[cls] / upr) * upr;
+      const mpr = deckPerRow(ddConfig.mainLayout, cls);
+      if (mpr > 0) mainConfig[cls] = Math.floor(mainConfig[cls] / mpr) * mpr;
+    }
   } else {
     // Start with each deck filled with economy
     upperConfig.economy = Math.floor(upperTotalSpace) * upperEconPerRow;
     mainConfig.economy = Math.floor(mainTotalSpace) * mainEconPerRow;
+  }
+
+  // Toilet state — each deck has its own minimum (from config)
+  const toiletInfo = _toiletDefaults(totalCapacity);
+  const minUpper = ddConfig.minToiletsUpper || 2;
+  const minMain = ddConfig.minToiletsMain || 4;
+  toiletInfo.min = Math.max(toiletInfo.min, minUpper + minMain);
+  if (toiletInfo.default < toiletInfo.min) toiletInfo.default = toiletInfo.min;
+  if (toiletInfo.max < toiletInfo.min) toiletInfo.max = toiletInfo.min;
+  let toilets = existingConfig?.toilets != null ? existingConfig.toilets : toiletInfo.default;
+  toilets = Math.max(toiletInfo.min, Math.min(toiletInfo.max, toilets));
+
+  // Toilet split per deck — each deck gets its configured minimum,
+  // extra mid-cabin pairs distributed proportionally between decks
+  function getDeckToilets() {
+    const extra = Math.max(0, toilets - minUpper - minMain);
+    let upperExtra = Math.round(extra * ddConfig.upperRatio);
+    if (upperExtra % 2 !== 0) upperExtra = Math.max(0, upperExtra - 1);
+    return { upper: minUpper + upperExtra, main: minMain + (extra - upperExtra) };
+  }
+  function deckMidPenalty(deckToiletCount) {
+    // Each mid-cabin pair (beyond first 2 pairs) costs 3 economy rows
+    return Math.max(0, Math.floor(deckToiletCount / 2) - 2) * 3;
+  }
+
+  // Apply initial toilet penalty to economy (recalcDeckEconomy is hoisted)
+  {
+    const dt0 = getDeckToilets();
+    recalcDeckEconomy(upperConfig, ddConfig.upperLayout, upperTotalSpace, deckMidPenalty(dt0.upper));
+    recalcDeckEconomy(mainConfig, ddConfig.mainLayout, mainTotalSpace, deckMidPenalty(dt0.main));
   }
 
   function canDeckAdd(dc, layout, totalSp, cls) {
@@ -523,8 +845,11 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
     if (perRow === 0) return false;
 
     if (cls === 'economy') {
-      // Economy: must fit alongside everything else
-      let totalUsed = 0;
+      // Economy: must fit alongside everything else INCLUDING toilet space
+      const dt = getDeckToilets();
+      const deckT = dc === upperConfig ? dt.upper : dt.main;
+      const toiletSpace = deckMidPenalty(deckT) * PITCH.economy;
+      let totalUsed = toiletSpace;
       for (const c of ['first', 'business', 'economyPlus', 'economy']) {
         const pr = deckPerRow(layout, c);
         const count = c === 'economy' ? dc[c] + perRow : dc[c];
@@ -543,8 +868,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
     }
   }
 
-  // After adding premium seats, shrink economy to fit within remaining space
-  function trimEconomy(dc, layout, totalSp) {
+  // Recalculate economy to fill remaining space (auto-fill, like single-deck)
+  function recalcDeckEconomy(dc, layout, totalSp, midPenalty) {
     const econPR = deckPerRow(layout, 'economy');
     if (econPR === 0) return;
     let premiumUsed = 0;
@@ -552,8 +877,9 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
       const pr = deckPerRow(layout, c);
       if (pr > 0 && dc[c] > 0) premiumUsed += Math.ceil(dc[c] / pr) * PITCH[c];
     }
+    premiumUsed += (midPenalty || 0) * PITCH.economy;
     const maxEconRows = Math.floor(Math.max(0, totalSp - premiumUsed) / PITCH.economy);
-    dc.economy = Math.min(dc.economy, maxEconRows * econPR);
+    dc.economy = maxEconRows * econPR;
   }
 
   function deckSpacePct(dc, layout, totalSp) {
@@ -634,6 +960,12 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
         </div>
       </div>
 
+      ${options?.refitWarning ? `
+      <div style="padding: 0.4rem 1.25rem; border-top: 1px solid rgba(245,158,11,0.2); background: rgba(245,158,11,0.06); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+        <span style="font-size: 0.85rem; flex-shrink: 0;">&#9888;</span>
+        <span style="font-size: 0.65rem; color: var(--warning-color); line-height: 1.3;">${options.refitWarning}</span>
+      </div>
+      ` : ''}
       <!-- Summary footer -->
       <div style="padding: 0.6rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; flex-shrink: 0;">
         <div style="display: flex; align-items: baseline; gap: 0.4rem;">
@@ -641,6 +973,18 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
           <span style="font-size: 0.65rem; color: var(--text-muted);">passengers</span>
         </div>
         <div id="ddLegend" style="display: flex; gap: 0.5rem; flex: 1; flex-wrap: wrap;"></div>
+        <div style="display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; background: var(--surface-elevated); border-radius: 5px; border: 1px solid rgba(148,163,184,0.2);">
+          <span style="font-size: 0.6rem; font-weight: 600; color: rgba(148,163,184,0.8);">WC</span>
+          <button class="dd-toilet-btn" data-delta="-2"
+            style="width: 20px; height: 20px; border: 1px solid var(--border-color); border-radius: 3px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.75rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
+          <span id="ddToiletCount" style="font-weight: 700; font-size: 0.75rem; color: var(--text-primary); min-width: 1.4rem; text-align: center;">${toilets}</span>
+          <button class="dd-toilet-btn" data-delta="2"
+            style="width: 20px; height: 20px; border: 1px solid var(--border-color); border-radius: 3px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.75rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+        </div>
         <button id="ddApplyBtn" class="btn btn-primary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Apply</button>
         <button id="ddCancelBtn" class="btn btn-secondary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Cancel</button>
       </div>
@@ -733,11 +1077,20 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
       legendEl.innerHTML = lh;
     }
 
-    // Diagrams
+    // Toilet count + button states
+    const tcEl = document.getElementById('ddToiletCount');
+    if (tcEl) tcEl.textContent = toilets;
+    const tMin = overlay.querySelector('.dd-toilet-btn[data-delta="-2"]');
+    const tPlus = overlay.querySelector('.dd-toilet-btn[data-delta="2"]');
+    if (tMin) { tMin.style.opacity = toilets > toiletInfo.min ? '1' : '0.3'; tMin.style.cursor = toilets > toiletInfo.min ? 'pointer' : 'default'; }
+    if (tPlus) { tPlus.style.opacity = toilets < toiletInfo.max ? '1' : '0.3'; tPlus.style.cursor = toilets < toiletInfo.max ? 'pointer' : 'default'; }
+
+    // Diagrams — split toilets evenly between decks (always pairs)
+    const dt = getDeckToilets();
     const ud = document.getElementById('upperDiagram');
-    if (ud) ud.innerHTML = renderFuselage(upperConfig, ddConfig.upperLayout, ddConfig.upperWidth, 'gradUpper', ddConfig.cockpitDeck === 'upper');
+    if (ud) ud.innerHTML = renderFuselage(upperConfig, ddConfig.upperLayout, ddConfig.upperWidth, 'gradUpper', ddConfig.cockpitDeck === 'upper', dt.upper);
     const md = document.getElementById('mainDiagram');
-    if (md) md.innerHTML = renderFuselage(mainConfig, ddConfig.mainLayout, ddConfig.mainWidth, 'gradMain', ddConfig.cockpitDeck === 'main');
+    if (md) md.innerHTML = renderFuselage(mainConfig, ddConfig.mainLayout, ddConfig.mainWidth, 'gradMain', ddConfig.cockpitDeck === 'main', dt.main);
   }
 
   // --- Wire buttons ---
@@ -753,13 +1106,18 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
       const ts = deck === 'upper' ? upperTotalSpace : mainTotalSpace;
       const perRow = deckPerRow(layout, cls);
 
+      const dt = getDeckToilets();
+      const penalty = deck === 'upper' ? deckMidPenalty(dt.upper) : deckMidPenalty(dt.main);
       if (delta > 0 && canDeckAdd(dc, layout, ts, cls)) {
         dc[cls] += perRow;
         if (cls !== 'economy') {
-          trimEconomy(dc, layout, ts);
+          recalcDeckEconomy(dc, layout, ts, penalty);
         }
       } else if (delta < 0 && dc[cls] > 0) {
         dc[cls] = Math.max(0, dc[cls] - perRow);
+        if (cls !== 'economy') {
+          recalcDeckEconomy(dc, layout, ts, penalty);
+        }
       }
       updateUI();
     }
@@ -775,16 +1133,37 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig)
     btn.addEventListener('touchcancel', stopHold);
   });
 
+  // Toilet buttons
+  overlay.querySelectorAll('.dd-toilet-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const delta = parseInt(btn.dataset.delta);
+      const newVal = toilets + delta;
+      if (newVal >= toiletInfo.min && newVal <= toiletInfo.max) {
+        toilets = newVal;
+        // Adding toilets may cost economy rows — trim both decks using per-deck penalty
+        const dt = getDeckToilets();
+        recalcDeckEconomy(upperConfig, ddConfig.upperLayout, upperTotalSpace, deckMidPenalty(dt.upper));
+        recalcDeckEconomy(mainConfig, ddConfig.mainLayout, mainTotalSpace, deckMidPenalty(dt.main));
+        updateUI();
+      }
+    });
+  });
+
   // Apply — sum both decks
   document.getElementById('ddApplyBtn').addEventListener('click', () => {
-    document.body.removeChild(overlay);
-    if (onApply) {
-      onApply({
-        firstSeats: upperConfig.first + mainConfig.first,
-        businessSeats: upperConfig.business + mainConfig.business,
-        economyPlusSeats: upperConfig.economyPlus + mainConfig.economyPlus,
-        economySeats: upperConfig.economy + mainConfig.economy
-      });
+    const result = {
+      firstSeats: upperConfig.first + mainConfig.first,
+      businessSeats: upperConfig.business + mainConfig.business,
+      economyPlusSeats: upperConfig.economyPlus + mainConfig.economyPlus,
+      economySeats: upperConfig.economy + mainConfig.economy,
+      toilets: toilets
+    };
+    if (options?.refitConfirm) {
+      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result);
+    } else {
+      document.body.removeChild(overlay);
+      if (onApply) onApply(result);
     }
   });
 
@@ -806,5 +1185,6 @@ function cabinConfigSummary(cfg) {
   if (cfg.businessSeats > 0) parts.push(cfg.businessSeats + 'J');
   if (cfg.economyPlusSeats > 0) parts.push(cfg.economyPlusSeats + 'W');
   if (cfg.economySeats > 0) parts.push(cfg.economySeats + 'Y');
+  if (cfg.toilets > 0) parts.push(cfg.toilets + ' WC');
   return parts.join(' / ');
 }

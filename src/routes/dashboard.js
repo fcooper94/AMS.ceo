@@ -37,7 +37,7 @@ router.get('/notifications', async (req, res) => {
     // --- Fetch fleet, routes, and persistent notifications in parallel ---
     const [fleet, routes, persistentNotifs] = await Promise.all([
       UserAircraft.findAll({
-        where: { worldMembershipId: membership.id, status: ['active', 'maintenance'] },
+        where: { worldMembershipId: membership.id, status: ['active', 'maintenance', 'cabin_refit'] },
         include: [{ model: Aircraft, as: 'aircraft', attributes: ['manufacturer', 'model', 'variant'] }]
       }),
       Route.findAll({
@@ -65,7 +65,7 @@ router.get('/notifications', async (req, res) => {
 
       // Get maintenance records and scheduled flights in parallel
       const allFleetIds = fleet.map(ac => ac.id);
-      const activeFleet = fleet.filter(ac => ac.status === 'active');
+      const activeFleet = fleet.filter(ac => ac.status === 'active' || ac.status === 'cabin_refit');
       const [heavyMaint, aircraftWithFlights] = await Promise.all([
         RecurringMaintenance.findAll({
           where: {

@@ -64,8 +64,8 @@ let registrationPrefix = 'N-'; // Default prefix, will be updated from world inf
 let baseCountry = null;
 let isSinglePlayer = false; // SP worlds cache inventory in sessionStorage
 let purchaseQuantity = 1; // Quantity for bulk new aircraft purchases
-let selectedCabinConfig = null; // Cabin class configuration for new aircraft
-let selectedCargoConfig = null; // Cargo type allocation for new aircraft
+let selectedCabinConfig = null; // Cabin class configuration
+let selectedCargoConfig = null; // Cargo type allocation
 
 // Contract signing animation
 function showContractSigningAnimation(type, aircraftName, registration, price) {
@@ -671,6 +671,8 @@ function showAircraftDetails(aircraftId) {
   purchaseQuantity = 1; // Reset quantity on each detail view
   selectedCabinConfig = null; // Reset cabin config
   selectedCargoConfig = null; // Reset cargo config
+  window.selectedCabinConfig = null;
+  window.selectedCargoConfig = null;
   selectedFinancingMethod = 'cash'; // Reset financing state
   selectedBankId = null;
   selectedLoanTermWeeks = 156;
@@ -798,23 +800,29 @@ function showAircraftDetails(aircraftId) {
     </div>
     ` : ''}
 
-    ${isNew && aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? `
-    <div id="cabinConfigBtn" onclick="openCabinConfigurator()" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); border: 1px dashed rgba(139, 92, 246, 0.4); border-radius: 6px; padding: 0.4rem 0.6rem; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;" onmouseover="this.style.borderColor='#8B5CF6'; this.style.background='linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)'" onmouseout="this.style.borderColor='rgba(139, 92, 246, 0.4)'; this.style.background='linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)'">
-      <div>
-        <div style="color: #8B5CF6; font-weight: 600; font-size: 0.75rem;">CONFIGURE CABIN</div>
-        <div id="cabinConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Default: ${aircraft.passengerCapacity}Y (all economy) · Click to customize</div>
+    ${(aircraft.type !== 'Cargo' || aircraft.cargoCapacityKg > 0) ? `
+    <div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.3rem;">REQUIRED BEFORE PURCHASE</div>
+    ` : ''}
+
+    ${aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? `
+    <div id="cabinConfigBtn" onclick="openCabinConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCabinConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCabinConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
+      <div id="cabinConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
+      <div style="flex: 1;">
+        <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cabin</div>
+        <div id="cabinConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set seat layout</div>
       </div>
-      <div style="color: #8B5CF6; font-size: 1rem;">&#9654;</div>
+      <div style="color: rgba(239, 68, 68, 0.6); font-size: 0.9rem;">&#9654;</div>
     </div>
     ` : ''}
 
-    ${isNew && aircraft.cargoCapacityKg > 0 ? `
-    <div id="cargoConfigBtn" onclick="openCargoConfigurator()" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%); border: 1px dashed rgba(245, 158, 11, 0.4); border-radius: 6px; padding: 0.4rem 0.6rem; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;" onmouseover="this.style.borderColor='#F59E0B'; this.style.background='linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.4)'; this.style.background='linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)'">
-      <div>
-        <div style="color: #F59E0B; font-weight: 600; font-size: 0.75rem;">CONFIGURE CARGO</div>
-        <div id="cargoConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Default: ${(aircraft.cargoCapacityKg / 1000).toFixed(1)}t light freight \u00B7 Click to customize</div>
+    ${aircraft.cargoCapacityKg > 0 ? `
+    <div id="cargoConfigBtn" onclick="openCargoConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCargoConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCargoConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
+      <div id="cargoConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
+      <div style="flex: 1;">
+        <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cargo</div>
+        <div id="cargoConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set cargo allocation</div>
       </div>
-      <div style="color: #F59E0B; font-size: 1rem;">&#9654;</div>
+      <div style="color: rgba(239, 68, 68, 0.6); font-size: 0.9rem;">&#9654;</div>
     </div>
     ` : ''}
 
@@ -824,7 +832,7 @@ function showAircraftDetails(aircraftId) {
     ` : `
     <div style="display: grid; grid-template-columns: ${aircraft.purchasePrice && aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
       ${aircraft.purchasePrice ? `
-      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processPurchase()">
+      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="processPurchase()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
           <div>
             <div style="color: #10b981; font-weight: 700; font-size: 0.8rem;">PURCHASE</div>
@@ -840,7 +848,7 @@ function showAircraftDetails(aircraftId) {
       ` : ''}
 
       ${aircraft.leasePrice ? `
-      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processLease()">
+      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="processLease()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
           <div>
             <div style="color: #3b82f6; font-weight: 700; font-size: 0.8rem;">LEASE</div>
@@ -939,7 +947,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
 
       ${aircraft.leasePrice ? `
       <!-- OPERATING LEASE button -->
-      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); processLease()">
+      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="processLease()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
           <div>
             <div style="color: #3b82f6; font-weight: 700; font-size: 0.85rem;">OPERATING LEASE</div>
@@ -1834,16 +1842,27 @@ function openCabinConfigurator() {
   if (!selectedAircraft || typeof showCabinConfigurator !== 'function') return;
   showCabinConfigurator(selectedAircraft, (config) => {
     selectedCabinConfig = config;
-    // Update the button to show the summary
+    window.selectedCabinConfig = config;
     const summaryEl = document.getElementById('cabinConfigSummary');
     const btnEl = document.getElementById('cabinConfigBtn');
+    const checkEl = document.getElementById('cabinConfigCheck');
     if (summaryEl && config) {
       const summary = typeof cabinConfigSummary === 'function' ? cabinConfigSummary(config) : 'Configured';
-      summaryEl.innerHTML = `<span style="color: #10B981;">&#10003;</span> ${summary}`;
+      summaryEl.innerHTML = summary;
+      summaryEl.style.color = 'var(--text-secondary)';
+    }
+    if (checkEl) {
+      checkEl.innerHTML = '&#10003;';
+      checkEl.style.borderColor = '#10B981';
+      checkEl.style.color = '#10B981';
+      checkEl.style.background = 'rgba(16, 185, 129, 0.1)';
     }
     if (btnEl) {
-      btnEl.style.borderStyle = 'solid';
       btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      btnEl.style.background = 'rgba(16, 185, 129, 0.06)';
+      btnEl.querySelector('div:last-child').style.color = 'rgba(16, 185, 129, 0.6)';
+      const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
+      if (labelEl) labelEl.style.color = '#10B981';
     }
   }, selectedCabinConfig);
 }
@@ -1853,17 +1872,58 @@ function openCargoConfigurator() {
   if (!selectedAircraft || typeof showCargoConfigurator !== 'function') return;
   showCargoConfigurator(selectedAircraft, (config) => {
     selectedCargoConfig = config;
+    window.selectedCargoConfig = config;
     const summaryEl = document.getElementById('cargoConfigSummary');
     const btnEl = document.getElementById('cargoConfigBtn');
+    const checkEl = document.getElementById('cargoConfigCheck');
     if (summaryEl && config) {
       const summary = typeof cargoConfigSummary === 'function' ? cargoConfigSummary(config) : 'Configured';
-      summaryEl.innerHTML = `<span style="color: #10B981;">&#10003;</span> ${summary}`;
+      summaryEl.innerHTML = summary;
+      summaryEl.style.color = 'var(--text-secondary)';
+    }
+    if (checkEl) {
+      checkEl.innerHTML = '&#10003;';
+      checkEl.style.borderColor = '#10B981';
+      checkEl.style.color = '#10B981';
+      checkEl.style.background = 'rgba(16, 185, 129, 0.1)';
     }
     if (btnEl) {
-      btnEl.style.borderStyle = 'solid';
       btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      btnEl.style.background = 'rgba(16, 185, 129, 0.06)';
+      btnEl.querySelector('div:last-child').style.color = 'rgba(16, 185, 129, 0.6)';
+      const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
+      if (labelEl) labelEl.style.color = '#10B981';
     }
   }, selectedCargoConfig);
+}
+
+// Check if required configurations are missing (returns error message or null)
+function getMissingConfigs() {
+  if (!selectedAircraft) return null;
+  const parts = [];
+  const needsCabin = selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0;
+  const needsCargo = selectedAircraft.cargoCapacityKg > 0;
+  if (needsCabin && !selectedCabinConfig) parts.push('cabin layout');
+  if (needsCargo && !selectedCargoConfig) parts.push('cargo allocation');
+  if (parts.length === 0) return null;
+  return `Please configure ${parts.join(' and ')} before proceeding`;
+}
+
+// Flash the uncompleted config buttons red
+function flashMissingConfigs() {
+  const needsCabin = selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0;
+  const needsCargo = selectedAircraft.cargoCapacityKg > 0;
+  const btns = [];
+  if (needsCabin && !selectedCabinConfig) btns.push(document.getElementById('cabinConfigBtn'));
+  if (needsCargo && !selectedCargoConfig) btns.push(document.getElementById('cargoConfigBtn'));
+  for (const btn of btns) {
+    if (!btn) continue;
+    btn.style.borderColor = '#EF4444';
+    btn.style.boxShadow = '0 0 8px rgba(239, 68, 68, 0.4)';
+    setTimeout(() => {
+      btn.style.boxShadow = 'none';
+    }, 1500);
+  }
 }
 
 // Close aircraft detail modal
@@ -1948,6 +2008,7 @@ function showPurchaseConfirmationModal() {
   const purchaseBtn = document.getElementById('confirmPurchaseBtn');
   if (purchaseBtn) {
     purchaseBtn.addEventListener('click', () => {
+      if (getMissingConfigs()) { processPurchase(); return; }
       document.body.removeChild(overlay);
       processPurchase();
     });
@@ -1956,6 +2017,7 @@ function showPurchaseConfirmationModal() {
   const leaseBtn = document.getElementById('confirmLeaseBtn');
   if (leaseBtn) {
     leaseBtn.addEventListener('click', () => {
+      if (getMissingConfigs()) { processLease(); return; }
       document.body.removeChild(overlay);
       processLease();
     });
@@ -1970,6 +2032,15 @@ function showPurchaseConfirmationModal() {
 function processPurchase() {
   if (!selectedAircraft) return;
 
+  // Validate required configurations
+  const missing = getMissingConfigs();
+  if (missing) {
+    showErrorMessage(missing);
+    flashMissingConfigs();
+    return;
+  }
+
+  closeAircraftDetailModal();
   const isNewOrder = currentCategory === 'new' && !selectedAircraft.isPlayerListing;
 
   if (isNewOrder) {
@@ -2092,9 +2163,10 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
       economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
       businessSeats: selectedCabinConfig?.businessSeats || null,
       firstSeats: selectedCabinConfig?.firstSeats || null,
-      cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
-      cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
-      cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
+      toilets: selectedCabinConfig?.toilets || null,
+      cargoConfig: selectedCargoConfig?.cargoConfig || null,
+      mainDeckCargoConfig: selectedCargoConfig?.mainDeckCargoConfig || null,
+      cargoHoldCargoConfig: selectedCargoConfig?.cargoHoldCargoConfig || null
     };
 
     // Add financing info for new aircraft orders
@@ -2165,9 +2237,10 @@ async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
       economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
       businessSeats: selectedCabinConfig?.businessSeats || null,
       firstSeats: selectedCabinConfig?.firstSeats || null,
-      cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
-      cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
-      cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null,
+      toilets: selectedCabinConfig?.toilets || null,
+      cargoConfig: selectedCargoConfig?.cargoConfig || null,
+      mainDeckCargoConfig: selectedCargoConfig?.mainDeckCargoConfig || null,
+      cargoHoldCargoConfig: selectedCargoConfig?.cargoHoldCargoConfig || null,
       // Financing
       financingMethod: selectedFinancingMethod
     };
@@ -2478,6 +2551,16 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
 // Show lease confirmation dialog — route new aircraft to bulk lease order flow
 function processLease() {
   if (!selectedAircraft) return;
+
+  // Validate required configurations
+  const missing = getMissingConfigs();
+  if (missing) {
+    showErrorMessage(missing);
+    flashMissingConfigs();
+    return;
+  }
+
+  closeAircraftDetailModal();
   if (currentCategory === 'new') {
     showLeaseOrderDialog();
   } else {
@@ -3179,9 +3262,9 @@ async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
         autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
         autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
         autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
-        cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
-        cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
-        cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
+        cargoConfig: selectedCargoConfig?.cargoConfig || null,
+        mainDeckCargoConfig: selectedCargoConfig?.mainDeckCargoConfig || null,
+        cargoHoldCargoConfig: selectedCargoConfig?.cargoHoldCargoConfig || null
       })
     });
 
@@ -3586,10 +3669,16 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
         autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
         // Player-to-player listing
         playerListingId: selectedAircraft.playerListingId || null,
+        // Cabin configuration
+        economySeats: selectedCabinConfig?.economySeats || null,
+        economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
+        businessSeats: selectedCabinConfig?.businessSeats || null,
+        firstSeats: selectedCabinConfig?.firstSeats || null,
+        toilets: selectedCabinConfig?.toilets || null,
         // Cargo allocation
-        cargoLightKg: selectedCargoConfig?.cargoLightKg || null,
-        cargoStandardKg: selectedCargoConfig?.cargoStandardKg || null,
-        cargoHeavyKg: selectedCargoConfig?.cargoHeavyKg || null
+        cargoConfig: selectedCargoConfig?.cargoConfig || null,
+        mainDeckCargoConfig: selectedCargoConfig?.mainDeckCargoConfig || null,
+        cargoHoldCargoConfig: selectedCargoConfig?.cargoHoldCargoConfig || null
       })
     });
 

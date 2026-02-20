@@ -70,6 +70,7 @@ async function loadFleet() {
     }
 
     fleetData = fleet;
+    window._fleetData = fleet;
     filteredFleet = fleet;
     populateTypeFilter();
     updateAircraftCount();
@@ -229,6 +230,7 @@ function displayFleet() {
       else if (userAircraft.status === 'listed_lease') { badgeText = 'List'; badgeClass = 'status-listed-lease'; }
       else if (userAircraft.status === 'leased_out') { badgeText = 'L-Out'; badgeClass = 'status-leased-out'; }
       else if (userAircraft.status === 'maintenance') { badgeText = 'Maint'; badgeClass = 'status-maintenance'; }
+      else if (userAircraft.status === 'cabin_refit') { badgeText = 'Refit'; badgeClass = 'status-maintenance'; }
       else if (userAircraft.status === 'on_order') { badgeText = 'Order'; badgeClass = 'status-on-order'; }
       else { badgeText = isOwned ? 'Own' : 'Lse'; badgeClass = isOwned ? 'status-owned' : 'status-leased'; }
 
@@ -283,8 +285,8 @@ async function showAircraftDetails(userAircraftId) {
 
   // Cabin config
   const hasSeats = ua.economySeats || ua.economyPlusSeats || ua.businessSeats || ua.firstSeats;
-  const hasCargo = ua.cargoLightKg || ua.cargoStandardKg || ua.cargoHeavyKg;
-  const totalConfigured = (ua.economySeats || 0) + (ua.economyPlusSeats || 0) + (ua.businessSeats || 0) + (ua.firstSeats || 0);
+  const hasCargo = (ua.cargoConfig && Object.values(ua.cargoConfig).some(v => v > 0))
+    || ua.cargoLightKg || ua.cargoStandardKg || ua.cargoHeavyKg;
 
   // Ownership line
   let ownershipHtml = '';
@@ -312,148 +314,211 @@ async function showAircraftDetails(userAircraftId) {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:2000;display:flex;justify-content:center;align-items:center;padding:1rem;';
 
   overlay.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:900px;max-height:95vh;overflow-y:auto;">
-      <!-- Hero: Image banner with overlay info -->
-      <div style="position:relative;height:180px;overflow:hidden;border-radius:7px 7px 0 0;background:var(--surface-elevated);">
-        ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="width:100%;height:100%;object-fit:contain;object-position:center 40%;filter:invert(1);mix-blend-mode:screen;opacity:0.35;padding:0.5rem 2rem 2.5rem;"
-          data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
-          onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.style.display='none';}">` : ''}
-        <div style="position:absolute;bottom:0;left:0;right:0;padding:0.75rem 1.25rem;background:linear-gradient(transparent,rgba(0,0,0,0.8));">
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-            <div>
-              <div style="display:flex;gap:0.3rem;margin-bottom:0.2rem;">
-                <span style="background:rgba(59,130,246,0.2);color:#60a5fa;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:600;">${ac.type}</span>
-                <span style="background:rgba(16,185,129,0.2);color:#34d399;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:600;">${ac.rangeCategory}</span>
-                ${ac.icaoCode ? `<span style="background:rgba(139,92,246,0.2);color:#a78bfa;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:600;font-family:monospace;">${ac.icaoCode}</span>` : ''}
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:950px;max-height:95vh;overflow-y:auto;display:flex;flex-direction:column;">
+
+      <!-- Header Bar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1rem;border-bottom:1px solid var(--border-color);flex-shrink:0;">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text-primary);">${acName}</div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <span style="font-size:0.65rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:3px;${isLeased ? 'background:rgba(139,92,246,0.2);color:#a78bfa;' : 'background:rgba(16,185,129,0.2);color:#34d399;'}">${isLeased ? 'LEASED' : ua.status === 'storage' ? 'STORED' : ua.status === 'on_order' ? 'ON ORDER' : 'OWNED'}</span>
+          <div style="font-size:1.2rem;font-weight:700;color:var(--accent-color);font-family:monospace;">${ua.registration}</div>
+          <button onclick="document.getElementById('aircraftDetailOverlay').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;padding:0.2rem 0.4rem;line-height:1;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+        </div>
+      </div>
+
+      <!-- Top Section: Image Left + Details Right -->
+      <div style="display:flex;gap:1rem;padding:0.75rem 1rem;">
+
+        <!-- Left: Image + Ownership -->
+        <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
+          <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:180px;">
+            ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"
+              data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
+              onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</div>';}">` : `<span style="color:var(--text-muted);font-size:0.75rem;">No image</span>`}
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-secondary);padding:0.1rem 0;">${ownershipHtml}</div>
+        </div>
+
+        <!-- Right: Badges + Specs + Condition + Quick Info -->
+        <div style="flex:1;display:flex;flex-direction:column;gap:0.4rem;">
+
+          <!-- Type Badges -->
+          <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+            <span style="background:rgba(59,130,246,0.15);color:var(--accent-color);padding:0.15rem 0.5rem;border-radius:3px;font-size:0.65rem;font-weight:600;">${ac.type}</span>
+            <span style="background:rgba(16,185,129,0.15);color:#10b981;padding:0.15rem 0.5rem;border-radius:3px;font-size:0.65rem;font-weight:600;">${ac.rangeCategory}</span>
+            ${ac.icaoCode ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;padding:0.15rem 0.5rem;border-radius:3px;font-size:0.65rem;font-weight:600;font-family:monospace;">${ac.icaoCode}</span>` : ''}
+          </div>
+
+          <!-- Specifications Grid (3x2) -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.4rem;">
+            <h4 style="margin:0 0 0.3rem 0;color:var(--text-muted);font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;">Specifications</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.25rem;">
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Pax</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.passengerCapacity || 'N/A'}</div>
               </div>
-              <div style="font-size:1.3rem;font-weight:700;color:#fff;">${acName}</div>
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Range</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${formatCurrency(ac.rangeNm)}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
+              </div>
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Speed</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.cruiseSpeed || 'N/A'}<span style="font-size:0.5rem;font-weight:400;">kts</span></div>
+              </div>
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Fuel</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${formatCurrency(burnRate)}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
+              </div>
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cargo</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.cargoCapacityKg ? (ac.cargoCapacityKg / 1000).toFixed(1) : '0'}<span style="font-size:0.5rem;font-weight:400;">t</span></div>
+              </div>
+              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Maint</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">$${formatCurrency(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
+              </div>
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:1.6rem;font-weight:700;color:var(--accent-color);font-family:monospace;line-height:1;">${ua.registration}</div>
-              <span style="font-size:0.65rem;font-weight:600;padding:0.15rem 0.4rem;border-radius:3px;${isLeased ? 'background:rgba(139,92,246,0.2);color:#a78bfa;' : 'background:rgba(16,185,129,0.2);color:#34d399;'}">${isLeased ? 'LEASED' : 'OWNED'}</span>
+          </div>
+
+          <!-- Condition Row (4 columns) -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.4rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.25rem;">
+              <div style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Age</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ua.ageYears || 0}<span style="font-size:0.55rem;font-weight:400;">y</span></div>
+              </div>
+              <div style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cond</div>
+                <div style="color:${condClr};font-weight:700;font-size:0.85rem;">${cond}%</div>
+              </div>
+              <div id="cCheckCell" style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">C Check</div>
+                <div id="cCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.75rem;">...</div>
+              </div>
+              <div id="dCheckCell" style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+                <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">D Check</div>
+                <div id="dCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.75rem;">...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Info: Location, Flight Hours, Routes -->
+          <div style="display:flex;gap:0.4rem;font-size:0.7rem;">
+            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+              <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
+            </div>
+            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+              <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrency(parseFloat(ua.totalFlightHours) || 0)}</strong>
+            </div>
+            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+              <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Ownership bar -->
-      <div style="padding:0.4rem 1.25rem;background:var(--surface-elevated);border-bottom:1px solid var(--border-color);font-size:0.8rem;color:var(--text-secondary);">
-        ${ownershipHtml}
+      <!-- Configuration Section -->
+      <div style="padding:0 1rem 0.6rem;">
+        <div style="font-size:0.6rem;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:0.3rem;text-transform:uppercase;">Configuration</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
+
+          <!-- Cabin Column -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;display:flex;flex-direction:column;">
+            <div style="color:#a78bfa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Cabin</div>
+            ${hasSeats ? `
+            <div style="flex:1;">
+              ${[
+                { seats: ua.economySeats, label: 'Economy', color: '#60a5fa' },
+                { seats: ua.economyPlusSeats, label: 'Economy+', color: '#34d399' },
+                { seats: ua.businessSeats, label: 'Business', color: '#fbbf24' },
+                { seats: ua.firstSeats, label: 'First', color: '#a78bfa' }
+              ].filter(c => c.seats).map(c => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <div style="display:flex;align-items:center;gap:0.4rem;">
+                  <span style="width:3px;height:14px;border-radius:2px;background:${c.color};flex-shrink:0;"></span>
+                  <span style="font-size:0.7rem;color:${c.color};">${c.label}</span>
+                </div>
+                <span style="font-weight:700;font-size:0.8rem;">${c.seats}</span>
+              </div>`).join('')}
+            </div>
+            ` : `<div style="color:var(--text-muted);font-size:0.75rem;flex:1;display:flex;align-items:center;">Default layout &mdash; ${ac.passengerCapacity} pax</div>`}
+            ${ua.status === 'active' && ac.type !== 'Cargo' && ac.passengerCapacity > 0 ? `
+            <button onclick="reconfigureCabin('${ua.id}')" style="width:100%;margin-top:0.4rem;padding:0.3rem 0.5rem;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:4px;color:#a78bfa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#a78bfa';this.style.background='rgba(139,92,246,0.18)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.3)';this.style.background='rgba(139,92,246,0.1)'">Reconfigure Cabin</button>
+            ` : ''}
+          </div>
+
+          <!-- Cargo Column -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;display:flex;flex-direction:column;">
+            <div style="color:#60a5fa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Cargo</div>
+            ${hasCargo ? (() => {
+              const _cargoConfig = ua.cargoConfig || (ua.cargoLightKg || ua.cargoStandardKg || ua.cargoHeavyKg ? {
+                general: ua.cargoLightKg || 0, express: ua.cargoStandardKg || 0, heavy: ua.cargoHeavyKg || 0,
+                oversized: 0, perishable: 0, dangerous: 0, liveAnimal: 0, highValue: 0
+              } : null);
+              const _hasDualDeck = ua.mainDeckCargoConfig || ua.mainDeckLightKg != null;
+              const _renderCargoRows = (cfg) => {
+                if (!cfg) return '';
+                return CARGO_TYPE_KEYS.filter(k => (cfg[k] || 0) > 0).map(k => {
+                  const ct = CARGO_TYPES[k];
+                  const val = cfg[k];
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <div style="display:flex;align-items:center;gap:0.4rem;">
+                      <span style="width:6px;height:6px;border-radius:50%;background:${ct.color};flex-shrink:0;"></span>
+                      <span style="font-size:0.7rem;color:${ct.color};">${ct.label}</span>
+                    </div>
+                    <span style="font-weight:700;font-size:0.8rem;">${(val / 1000).toFixed(1)}t</span>
+                  </div>`;
+                }).join('');
+              };
+              if (_hasDualDeck) {
+                const mdConfig = ua.mainDeckCargoConfig || (ua.mainDeckLightKg != null ? {
+                  general: ua.mainDeckLightKg || 0, express: ua.mainDeckStandardKg || 0, heavy: ua.mainDeckHeavyKg || 0,
+                  oversized: 0, perishable: 0, dangerous: 0, liveAnimal: 0, highValue: 0
+                } : null);
+                const chConfig = ua.cargoHoldCargoConfig || (ua.cargoHoldLightKg != null ? {
+                  general: ua.cargoHoldLightKg || 0, express: ua.cargoHoldStandardKg || 0, heavy: ua.cargoHoldHeavyKg || 0,
+                  oversized: 0, perishable: 0, dangerous: 0, liveAnimal: 0, highValue: 0
+                } : null);
+                return `<div style="flex:1;">
+                <div style="font-size:0.5rem;color:rgba(139,92,246,0.8);text-transform:uppercase;font-weight:600;margin-bottom:0.15rem;">Main Deck</div>
+                ${_renderCargoRows(mdConfig)}
+                <div style="font-size:0.5rem;color:rgba(59,130,246,0.8);text-transform:uppercase;font-weight:600;margin:0.3rem 0 0.15rem;padding-top:0.3rem;border-top:1px solid var(--border-color);">Cargo Hold</div>
+                ${_renderCargoRows(chConfig)}
+                </div>`;
+              } else {
+                return `<div style="flex:1;">${_renderCargoRows(_cargoConfig)}</div>`;
+              }
+            })() : `<div style="color:var(--text-muted);font-size:0.75rem;flex:1;display:flex;align-items:center;">No cargo configured</div>`}
+            ${ua.status === 'active' && ac.cargoCapacityKg > 0 ? `
+            <button onclick="reconfigureCargo('${ua.id}')" style="width:100%;margin-top:0.4rem;padding:0.3rem 0.5rem;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:4px;color:#60a5fa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#60a5fa';this.style.background='rgba(59,130,246,0.18)'" onmouseout="this.style.borderColor='rgba(59,130,246,0.3)';this.style.background='rgba(59,130,246,0.1)'">Reconfigure Cargo</button>
+            ` : ''}
+          </div>
+        </div>
       </div>
 
-      <!-- Quick stats row -->
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border-color);border-bottom:1px solid var(--border-color);">
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Condition</div>
-          <div style="font-size:1rem;font-weight:700;color:${condClr};">${cond}%</div>
-        </div>
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Age</div>
-          <div style="font-size:1rem;font-weight:700;">${ua.ageYears||0} <span style="font-size:0.6rem;font-weight:400;">yrs</span></div>
-        </div>
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Location</div>
-          <div style="font-size:1rem;font-weight:700;color:var(--accent-color);">${ua.currentAirport||'N/A'}</div>
-        </div>
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Flight Hrs</div>
-          <div style="font-size:1rem;font-weight:700;">${formatCurrency(parseFloat(ua.totalFlightHours)||0)}</div>
-        </div>
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Capacity</div>
-          <div style="font-size:1rem;font-weight:700;">${ac.passengerCapacity||0} <span style="font-size:0.6rem;font-weight:400;">pax</span></div>
-        </div>
-        <div style="background:var(--surface);padding:0.5rem;text-align:center;">
-          <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;letter-spacing:0.5px;">Routes</div>
-          <div style="font-size:1rem;font-weight:700;" id="routeCount">...</div>
-        </div>
-      </div>
+      <!-- Costs + Performance Section -->
+      <div style="padding:0 1rem 0.6rem;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
 
-      <!-- Main content grid -->
-      <div style="padding:0.75rem 1.25rem;display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
-
-        <!-- Specifications -->
-        <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-          <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Specifications</div>
-          <div style="font-size:0.8rem;">
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Range</span><span style="font-weight:600;">${formatCurrency(ac.rangeNm)} nm</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Speed</span><span style="font-weight:600;">${ac.cruiseSpeed} kts</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel Capacity</span><span style="font-weight:600;">${formatCurrency(ac.fuelCapacityLiters)} L</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Burn Rate</span><span style="font-weight:600;">${formatCurrency(burnRate)} L/h</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${ac.cargoCapacityKg ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Crew</span><span style="font-weight:600;">${ac.requiredPilots||2} pilots + ${ac.requiredCabinCrew||0} cabin</span></div>
-            ${ac.cargoCapacityKg ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Cargo Capacity</span><span style="font-weight:600;">${formatCurrency(ac.cargoCapacityKg)} kg</span></div>` : ''}
-          </div>
-        </div>
-
-        <!-- Operating Costs -->
-        <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-          <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Operating Costs</div>
-          <div style="font-size:0.8rem;">
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">$${formatCurrency(fuelHr)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">$${formatCurrency(maintHr)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Total / hr</span><span style="font-weight:600;color:var(--warning-color);">$${formatCurrency(totalHr)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${isLeased ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Weekly Estimate</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrency(weeklyOps)}</span></div>
-            ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">$${formatCurrency(leaseWk)}/wk</span></div>` : ''}
-          </div>
-        </div>
-
-        <!-- Cabin / Cargo Configuration -->
-        ${hasSeats || hasCargo ? `
-        <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-          <div style="color:#a78bfa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">${hasCargo && !hasSeats ? 'Cargo Configuration' : 'Cabin Configuration'}</div>
-          ${hasSeats ? `
-          <div style="display:flex;gap:0.3rem;margin-bottom:0.3rem;">
-            ${ua.economySeats ? `<div style="flex:${ua.economySeats};background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.3);border-radius:3px;padding:0.2rem 0.4rem;text-align:center;min-width:0;">
-              <div style="font-size:0.5rem;color:#60a5fa;text-transform:uppercase;">Economy</div>
-              <div style="font-weight:700;font-size:0.85rem;">${ua.economySeats}</div>
-            </div>` : ''}
-            ${ua.economyPlusSeats ? `<div style="flex:${ua.economyPlusSeats};background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.3);border-radius:3px;padding:0.2rem 0.4rem;text-align:center;min-width:0;">
-              <div style="font-size:0.5rem;color:#34d399;text-transform:uppercase;">Econ+</div>
-              <div style="font-weight:700;font-size:0.85rem;">${ua.economyPlusSeats}</div>
-            </div>` : ''}
-            ${ua.businessSeats ? `<div style="flex:${ua.businessSeats};background:rgba(217,119,6,0.2);border:1px solid rgba(217,119,6,0.3);border-radius:3px;padding:0.2rem 0.4rem;text-align:center;min-width:0;">
-              <div style="font-size:0.5rem;color:#fbbf24;text-transform:uppercase;">Business</div>
-              <div style="font-weight:700;font-size:0.85rem;">${ua.businessSeats}</div>
-            </div>` : ''}
-            ${ua.firstSeats ? `<div style="flex:${ua.firstSeats};background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.3);border-radius:3px;padding:0.2rem 0.4rem;text-align:center;min-width:0;">
-              <div style="font-size:0.5rem;color:#a78bfa;text-transform:uppercase;">First</div>
-              <div style="font-weight:700;font-size:0.85rem;">${ua.firstSeats}</div>
-            </div>` : ''}
-          </div>
-          <div style="font-size:0.7rem;color:var(--text-muted);">${totalConfigured} of ${ac.passengerCapacity} max seats configured</div>
-          ` : ''}
-          ${hasCargo ? `
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.3rem;${hasSeats ? 'margin-top:0.3rem;padding-top:0.3rem;border-top:1px solid var(--border-color);' : ''}">
-            <div style="text-align:center;padding:0.2rem;">
-              <div style="font-size:0.5rem;color:var(--text-muted);text-transform:uppercase;">Light</div>
-              <div style="font-weight:700;font-size:0.85rem;">${formatCurrency(ua.cargoLightKg||0)} <span style="font-size:0.55rem;font-weight:400;">kg</span></div>
-            </div>
-            <div style="text-align:center;padding:0.2rem;">
-              <div style="font-size:0.5rem;color:var(--text-muted);text-transform:uppercase;">Standard</div>
-              <div style="font-weight:700;font-size:0.85rem;">${formatCurrency(ua.cargoStandardKg||0)} <span style="font-size:0.55rem;font-weight:400;">kg</span></div>
-            </div>
-            <div style="text-align:center;padding:0.2rem;">
-              <div style="font-size:0.5rem;color:var(--text-muted);text-transform:uppercase;">Heavy</div>
-              <div style="font-weight:700;font-size:0.85rem;">${formatCurrency(ua.cargoHeavyKg||0)} <span style="font-size:0.55rem;font-weight:400;">kg</span></div>
+          <!-- Operating Costs -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
+            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Operating Costs</div>
+            <div style="font-size:0.8rem;">
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">$${formatCurrency(fuelHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">$${formatCurrency(maintHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Total / hr</span><span style="font-weight:600;color:var(--warning-color);">$${formatCurrency(totalHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${isLeased ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Weekly Estimate</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrency(weeklyOps)}</span></div>
+              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">$${formatCurrency(leaseWk)}/wk</span></div>` : ''}
             </div>
           </div>
-          ` : ''}
-        </div>
-        ` : `
-        <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-          <div style="color:#a78bfa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Cabin</div>
-          <div style="color:var(--text-muted);font-size:0.8rem;">Default layout &mdash; ${ac.passengerCapacity} pax</div>
-        </div>
-        `}
 
-        <!-- Routes & Heavy Checks -->
-        <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
-            <div>
+          <!-- Route Performance + Heavy Checks -->
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
+            <div style="margin-bottom:0.5rem;">
               <div style="color:var(--success-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.3rem;">Route Performance</div>
               <div id="routeInfo" style="color:var(--text-muted);font-size:0.8rem;">Loading...</div>
             </div>
-            <div>
+            <div style="border-top:1px solid var(--border-color);padding-top:0.4rem;">
               <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.3rem;">Heavy Checks</div>
               <div id="maintInfo" style="color:var(--text-muted);font-size:0.8rem;">Loading...</div>
             </div>
@@ -462,7 +527,7 @@ async function showAircraftDetails(userAircraftId) {
       </div>
 
       <!-- Action Buttons -->
-      <div style="padding:0.6rem 1.25rem;border-top:1px solid var(--border-color);display:flex;gap:0.5rem;">
+      <div style="padding:0.6rem 1rem;border-top:1px solid var(--border-color);display:flex;gap:0.5rem;flex-shrink:0;">
         ${buildActionButtons(userAircraft)}
       </div>
     </div>
@@ -520,11 +585,49 @@ async function showAircraftDetails(userAircraftId) {
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;"><span style="color:var(--text-muted);">D-Check</span><span>N/A${dCost}</span></div>`;
     }
     maintInfoEl.innerHTML = mh;
+
+    // Populate C/D check cells in condition row
+    const cCheckEl = document.getElementById('cCheckValue');
+    const dCheckEl = document.getElementById('dCheckValue');
+    if (cCheckEl) {
+      if (maint.nextCCheck) {
+        const cd = new Date(maint.nextCCheck);
+        const du = Math.ceil((cd - new Date()) / 86400000);
+        const cc = isStored ? '#94a3b8' : du < 30 ? 'var(--danger-color)' : du < 90 ? 'var(--warning-color)' : 'var(--text-primary)';
+        cCheckEl.textContent = cd.toLocaleDateString('en-GB');
+        cCheckEl.style.color = cc;
+        if (!isStored && du < 30) {
+          const cell = document.getElementById('cCheckCell');
+          if (cell) cell.style.background = 'rgba(239,68,68,0.08)';
+        }
+      } else {
+        cCheckEl.textContent = 'N/A';
+      }
+    }
+    if (dCheckEl) {
+      if (maint.nextDCheck) {
+        const dd = new Date(maint.nextDCheck);
+        const du = Math.ceil((dd - new Date()) / 86400000);
+        const dc = isStored ? '#94a3b8' : du < 90 ? 'var(--danger-color)' : du < 180 ? 'var(--warning-color)' : 'var(--text-primary)';
+        dCheckEl.textContent = dd.toLocaleDateString('en-GB');
+        dCheckEl.style.color = dc;
+        if (!isStored && du < 90) {
+          const cell = document.getElementById('dCheckCell');
+          if (cell) cell.style.background = 'rgba(239,68,68,0.08)';
+        }
+      } else {
+        dCheckEl.textContent = 'N/A';
+      }
+    }
   } catch (error) {
     console.error('Error fetching aircraft details:', error);
     document.getElementById('routeCount').textContent = '?';
     document.getElementById('routeInfo').innerHTML = '<span style="color:var(--danger-color);">Error</span>';
     document.getElementById('maintInfo').innerHTML = '<span style="color:var(--danger-color);">Error</span>';
+    const cEl = document.getElementById('cCheckValue');
+    const dEl = document.getElementById('dCheckValue');
+    if (cEl) { cEl.textContent = '?'; cEl.style.color = 'var(--danger-color)'; }
+    if (dEl) { dEl.textContent = '?'; dEl.style.color = 'var(--danger-color)'; }
   }
 
   // Close handlers
@@ -1145,7 +1248,111 @@ function formatCurrency(amount) {
   });
 }
 
+// ── Reconfigure Cargo (instant) ───────────────────────────────────────────────
+function reconfigureCargo(userAircraftId) {
+  const ua = window._fleetData?.find(a => a.id === userAircraftId)
+    || (typeof userFleet !== 'undefined' && userFleet.find(a => a.id === userAircraftId));
+  if (!ua || !ua.aircraft) return;
+
+  const aircraft = {
+    ...ua.aircraft,
+    cargoCapacityKg: ua.aircraft.cargoCapacityKg
+  };
+
+  // Build existing config from current state
+  const existingConfig = ua.cargoConfig || ua.mainDeckCargoConfig ? {
+    cargoConfig: ua.cargoConfig,
+    mainDeckCargoConfig: ua.mainDeckCargoConfig,
+    cargoHoldCargoConfig: ua.cargoHoldCargoConfig
+  } : null;
+
+  if (typeof showCargoConfigurator !== 'function') return;
+
+  showCargoConfigurator(aircraft, async (config) => {
+    try {
+      const res = await fetch(`/api/fleet/${userAircraftId}/reconfig-cargo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cargoConfig: config.cargoConfig || null,
+          mainDeckCargoConfig: config.mainDeckCargoConfig || null,
+          cargoHoldCargoConfig: config.cargoHoldCargoConfig || null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update cargo config');
+      // Close detail overlay and reload fleet
+      const overlay = document.getElementById('aircraftDetailOverlay');
+      if (overlay) document.body.removeChild(overlay);
+      loadFleet();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }, existingConfig);
+}
+
+// ── Reconfigure Cabin (triggers refit downtime) ──────────────────────────────
+function reconfigureCabin(userAircraftId) {
+  const ua = window._fleetData?.find(a => a.id === userAircraftId)
+    || (typeof userFleet !== 'undefined' && userFleet.find(a => a.id === userAircraftId));
+  if (!ua || !ua.aircraft) return;
+
+  const aircraft = {
+    ...ua.aircraft,
+    passengerCapacity: ua.aircraft.passengerCapacity
+  };
+
+  const existingConfig = ua.economySeats || ua.businessSeats || ua.firstSeats || ua.economyPlusSeats ? {
+    economySeats: ua.economySeats,
+    economyPlusSeats: ua.economyPlusSeats,
+    businessSeats: ua.businessSeats,
+    firstSeats: ua.firstSeats,
+    toilets: ua.toilets
+  } : null;
+
+  if (typeof showCabinConfigurator !== 'function') return;
+
+  // Calculate refit duration
+  const acType = ua.aircraft.type;
+  const pax = ua.aircraft.passengerCapacity || 0;
+  let days = 2;
+  if (acType === 'Regional') days = 1;
+  else if (acType === 'Narrowbody') days = 2;
+  else if (acType === 'Widebody') days = pax > 400 ? 7 : 5;
+
+  const acName = `${ua.aircraft.manufacturer} ${ua.aircraft.model}`;
+
+  showCabinConfigurator(aircraft, async (config) => {
+    try {
+      const res = await fetch(`/api/fleet/${userAircraftId}/reconfig-cabin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          economySeats: config.economySeats || 0,
+          economyPlusSeats: config.economyPlusSeats || 0,
+          businessSeats: config.businessSeats || 0,
+          firstSeats: config.firstSeats || 0,
+          toilets: config.toilets || 0
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start cabin refit');
+      const overlay = document.getElementById('aircraftDetailOverlay');
+      if (overlay) document.body.removeChild(overlay);
+      loadFleet();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }, existingConfig, {
+    refitWarning: `Cabin refit will take ${ua.registration} out of service for ${days} day${days > 1 ? 's' : ''} (game time).`,
+    refitConfirm: { registration: ua.registration, days, aircraftName: acName }
+  });
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
-  loadFleet();
+  // Only auto-load fleet on the fleet page (has fleetGrid element)
+  if (document.getElementById('fleetGrid')) {
+    loadFleet();
+  }
 });

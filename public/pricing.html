@@ -1,6 +1,6 @@
 <!-- TITLE: Price Management - AMS.ceo -->
 <!-- SUBTITLE: Manage Pricing Strategy -->
-<!-- SCRIPTS: /js/pricing.js -->
+<!-- SCRIPTS: /js/cargo-types.js, /js/pricing.js -->
 
 <style>
   /* Aircraft Type Pricing Table */
@@ -196,7 +196,7 @@
   }
 
   .global-pricing-grid.cargo {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   /* Hierarchy badges compact */
@@ -289,7 +289,7 @@
   }
 
   .pricing-row.cargo {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .pricing-row:last-child {
@@ -398,24 +398,57 @@
             </div>
           </div>
         </div>
-        <div class="pricing-row-label">Cargo Rates (per ton)</div>
-        <div class="global-pricing-grid cargo">
+        <div class="pricing-row-label">Core Cargo Rates ($ per ton)</div>
+        <div class="global-pricing-grid cargo" style="margin-bottom: 0.4rem;">
           <div class="price-field">
-            <label>Light</label>
+            <label>General</label>
             <div class="price-field-wrapper">
-              <input type="number" id="global-cargoLight" min="0" step="10" placeholder="0" />
+              <input type="number" id="global-cargoRate-general" min="0" step="10" placeholder="0" />
             </div>
           </div>
           <div class="price-field">
-            <label>Standard</label>
+            <label>Express</label>
             <div class="price-field-wrapper">
-              <input type="number" id="global-cargoStandard" min="0" step="10" placeholder="0" />
+              <input type="number" id="global-cargoRate-express" min="0" step="10" placeholder="0" />
             </div>
           </div>
           <div class="price-field">
             <label>Heavy</label>
             <div class="price-field-wrapper">
-              <input type="number" id="global-cargoHeavy" min="0" step="10" placeholder="0" />
+              <input type="number" id="global-cargoRate-heavy" min="0" step="10" placeholder="0" />
+            </div>
+          </div>
+          <div class="price-field">
+            <label>Oversized</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoRate-oversized" min="0" step="10" placeholder="0" />
+            </div>
+          </div>
+        </div>
+        <div class="pricing-row-label">Special Cargo Rates ($ per ton)</div>
+        <div class="global-pricing-grid cargo">
+          <div class="price-field">
+            <label>Perishable</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoRate-perishable" min="0" step="10" placeholder="0" />
+            </div>
+          </div>
+          <div class="price-field">
+            <label>Dangerous</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoRate-dangerous" min="0" step="10" placeholder="0" />
+            </div>
+          </div>
+          <div class="price-field">
+            <label>Live Animals</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoRate-liveAnimal" min="0" step="10" placeholder="0" />
+            </div>
+          </div>
+          <div class="price-field">
+            <label>High-Value</label>
+            <div class="price-field-wrapper">
+              <input type="number" id="global-cargoRate-highValue" min="0" step="10" placeholder="0" />
             </div>
           </div>
         </div>

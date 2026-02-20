@@ -62,6 +62,18 @@ const Aircraft = sequelize.define('Aircraft', {
     field: 'cargo_capacity_kg',
     comment: 'Cargo capacity in kilograms'
   },
+  mainDeckCapacityKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'main_deck_capacity_kg',
+    comment: 'Main deck cargo capacity in kg (cargo aircraft only)'
+  },
+  cargoHoldCapacityKg: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'cargo_hold_capacity_kg',
+    comment: 'Lower cargo hold capacity in kg (cargo aircraft only)'
+  },
   fuelCapacityLiters: {
     type: DataTypes.INTEGER,
     allowNull: false,

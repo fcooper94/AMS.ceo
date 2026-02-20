@@ -4,6 +4,12 @@ let allWeeks = [];
 let weekPage = 0;
 const WEEKS_PER_PAGE = 4;
 
+const GROUP_COLORS = {
+  income:   { accent: '#10B981', bg: 'rgba(16,185,129,0.06)', border: 'rgba(16,185,129,0.25)', text: '#34D399' },
+  outgoing: { accent: '#f85149', bg: 'rgba(248,81,73,0.05)',  border: 'rgba(248,81,73,0.2)',   text: '#f87171' },
+  neutral:  { accent: 'var(--accent-color)', bg: 'var(--surface-elevated)', border: 'var(--border-color)', text: 'var(--accent-color)' }
+};
+
 async function loadFinancialData() {
   try {
     const res = await fetch('/api/finances');
@@ -37,6 +43,13 @@ function renderSummary(data) {
   setText('statFlights', data.allTime.totalFlights.toLocaleString());
   setText('statPax', data.allTime.totalPassengers.toLocaleString());
   setText('statOverhead', fmtMoney(data.weeklyOverheads.total) + '/wk');
+  // Net P&L with color
+  const net = (data.allTime.totalRevenue || 0) - (data.allTime.totalCosts || 0);
+  const netEl = document.getElementById('statNet');
+  if (netEl) {
+    netEl.textContent = (net < 0 ? '-' : '') + fmtMoney(Math.abs(net));
+    netEl.style.color = net > 0 ? 'var(--success-color)' : net < 0 ? '#f85149' : 'var(--text-muted)';
+  }
 }
 
 // ── Pagination ───────────────────────────────────────────────────────────────
@@ -103,64 +116,98 @@ function renderWeeklyPL() {
 
   // Rows
   let rows = '';
-  rows += wkSection('REVENUE');
-  rows += wkRow('Flight Revenue', weeks, 'flightRevenue', false);
-  rows += wkTotal('Total Revenue', weeks, 'flightRevenue', false);
-  rows += wkSpacer(cols);
 
-  rows += wkSection('OPERATING COSTS');
-  rows += wkRow('Fuel', weeks, 'fuelCosts', true);
-  rows += wkRow('Crew', weeks, 'crewCosts', true);
-  rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true);
-  rows += wkRow('Airport Fees', weeks, 'airportFees', true);
-  rows += wkTotal('Total Op. Costs', weeks, 'operatingCosts', true);
-  rows += wkSpacer(cols);
+  // ── INCOME ──
+  rows += wkGroupHeader('INCOME', 'income');
+  rows += wkRow('Flight Revenue', weeks, 'flightRevenue', false, 'income');
+  rows += wkTotal('Total Income', weeks, 'flightRevenue', false, 'income');
 
-  rows += wkSection('OVERHEADS');
-  rows += wkRow('Staff', weeks, 'staffCosts', true);
-  rows += wkRow('Leases', weeks, 'leaseCosts', true);
-  rows += wkRow('Contractors', weeks, 'contractorCosts', true);
-  rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true);
-  rows += wkRow('Loan Payments', weeks, 'loanPayments', true);
-  rows += wkTotal('Total Overheads', weeks, 'overheads', true);
-  rows += wkSpacer(cols);
+  rows += wkDivider(cols);
 
-  // Net Profit highlight
+  // ── OUTGOINGS ──
+  rows += wkGroupHeader('OUTGOINGS', 'outgoing');
+
+  // Operating Costs sub-section
+  rows += wkSubSection('Operating Costs');
+  rows += wkRow('Fuel', weeks, 'fuelCosts', true, 'outgoing');
+  rows += wkRow('Crew', weeks, 'crewCosts', true, 'outgoing');
+  rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true, 'outgoing');
+  rows += wkRow('Airport Fees', weeks, 'airportFees', true, 'outgoing');
+  rows += wkSubTotal('Subtotal Op. Costs', weeks, 'operatingCosts', true);
+
+  // Overheads sub-section
+  rows += wkSubSection('Overheads');
+  rows += wkRow('Staff', weeks, 'staffCosts', true, 'outgoing');
+  rows += wkRow('Leases', weeks, 'leaseCosts', true, 'outgoing');
+  rows += wkRow('Contractors', weeks, 'contractorCosts', true, 'outgoing');
+  rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true, 'outgoing');
+  rows += wkRow('Loan Payments', weeks, 'loanPayments', true, 'outgoing');
+  rows += wkSubTotal('Subtotal Overheads', weeks, 'overheads', true);
+
+  // Total Outgoings
+  rows += wkTotal('Total Outgoings', weeks, 'totalCosts', true, 'outgoing');
+
+  rows += wkDivider(cols);
+
+  // ── NET PROFIT ──
   rows += wkHighlight('NET PROFIT', weeks, 'netProfit');
 
-  // Stats
+  // ── STATS ──
   rows += wkSpacer(cols);
-  rows += wkSection('STATS');
+  rows += wkGroupHeader('STATS', 'neutral');
   rows += wkStatRow('Flights', weeks, 'flights');
   rows += wkStatRow('Passengers', weeks, 'passengers');
 
   tbody.innerHTML = rows;
 }
 
-function wkSection(title) {
-  return `<tr style="background:var(--surface-elevated);">
-    <td colspan="99" style="padding:0.35rem 0.6rem;font-weight:700;color:var(--accent-color);font-size:0.7rem;letter-spacing:0.5px;border-top:1px solid var(--border-color);">${title}</td></tr>`;
+function wkGroupHeader(title, group) {
+  const g = GROUP_COLORS[group] || GROUP_COLORS.neutral;
+  return `<tr style="background:${g.bg};">
+    <td colspan="99" style="padding:0.45rem 0.6rem;font-weight:700;color:${g.text};font-size:0.7rem;letter-spacing:0.8px;border-left:3px solid ${g.accent};border-top:1px solid ${g.border};">${title}</td></tr>`;
 }
 
-function wkRow(label, weeks, key, isExpense) {
-  let cells = `<td style="padding:0.3rem 0.6rem;color:var(--text-secondary);font-size:0.8rem;">${label}</td>`;
+function wkSubSection(title) {
+  return `<tr style="background:rgba(255,255,255,0.015);">
+    <td colspan="99" style="padding:0.25rem 0.6rem 0.25rem 1.2rem;font-weight:600;color:var(--text-muted);font-size:0.65rem;letter-spacing:0.4px;text-transform:uppercase;">${title}</td></tr>`;
+}
+
+function wkRow(label, weeks, key, isExpense, group) {
+  const tint = group === 'income' ? 'rgba(16,185,129,0.02)' : group === 'outgoing' ? 'rgba(248,81,73,0.015)' : 'transparent';
+  let cells = `<td style="padding:0.3rem 0.6rem 0.3rem 1.2rem;color:var(--text-secondary);font-size:0.8rem;">${label}</td>`;
   for (const w of weeks) {
     const v = w[key] || 0;
     const prefix = isExpense && v > 0 ? '-' : '';
     const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
     cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
   }
-  return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
+  return `<tr style="background:${tint};border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
 }
 
-function wkTotal(label, weeks, key, isExpense) {
-  let cells = `<td style="padding:0.4rem 0.6rem;font-weight:600;color:var(--text-primary);font-size:0.8rem;">${label}</td>`;
+function wkSubTotal(label, weeks, key, isExpense) {
+  let cells = `<td style="padding:0.3rem 0.6rem 0.3rem 1.2rem;font-weight:600;color:var(--text-muted);font-size:0.75rem;font-style:italic;">${label}</td>`;
   for (const w of weeks) {
     const v = w[key] || 0;
     const prefix = isExpense && v > 0 ? '-' : '';
-    cells += `<td style="padding:0.4rem 0.6rem;text-align:right;font-weight:600;font-family:'Courier New',monospace;color:var(--text-primary);font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-weight:600;font-family:'Courier New',monospace;color:var(--text-muted);font-size:0.75rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
   }
-  return `<tr style="background:rgba(255,255,255,0.02);border-top:1px solid var(--border-color);border-bottom:1px solid var(--border-color);">${cells}</tr>`;
+  return `<tr style="border-bottom:1px solid rgba(255,255,255,0.06);">${cells}</tr>`;
+}
+
+function wkTotal(label, weeks, key, isExpense, group) {
+  const g = GROUP_COLORS[group] || GROUP_COLORS.neutral;
+  const valColor = group === 'income' ? g.text : group === 'outgoing' ? g.text : 'var(--text-primary)';
+  let cells = `<td style="padding:0.45rem 0.6rem;font-weight:700;color:var(--text-primary);font-size:0.8rem;">${label}</td>`;
+  for (const w of weeks) {
+    const v = w[key] || 0;
+    const prefix = isExpense && v > 0 ? '-' : '';
+    cells += `<td style="padding:0.45rem 0.6rem;text-align:right;font-weight:700;font-family:'Courier New',monospace;color:${valColor};font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
+  }
+  return `<tr style="background:${g.bg};border-top:1px solid ${g.border};border-bottom:1px solid ${g.border};">${cells}</tr>`;
+}
+
+function wkDivider(cols) {
+  return `<tr style="height:0.5rem;border-bottom:1px solid var(--border-color);"><td colspan="${cols}"></td></tr>`;
 }
 
 function wkHighlight(label, weeks, key) {

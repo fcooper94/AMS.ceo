@@ -412,7 +412,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '100', icaoCode: 'B741', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 5300, cruiseSpeed: 490,
-    passengerCapacity: 366, cargoCapacityKg: 40000, fuelCapacityLiters: 183380,
+    passengerCapacity: 452, cargoCapacityKg: 40000, fuelCapacityLiters: 183380,
     purchasePrice: 180000000, usedPrice: 80000000, maintenanceCostPerHour: 3500,
     maintenanceCostPerMonth: 315000, fuelBurnPerHour: 11500,
     firstIntroduced: 1970, availableFrom: 1970, availableUntil: 1993,
@@ -445,7 +445,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A300', variant: 'B4', icaoCode: 'A30B', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 3900, cruiseSpeed: 470,
-    passengerCapacity: 266, cargoCapacityKg: 28000, fuelCapacityLiters: 62900,
+    passengerCapacity: 345, cargoCapacityKg: 28000, fuelCapacityLiters: 62900,
     purchasePrice: 85000000, usedPrice: 35000000, maintenanceCostPerHour: 2400,
     maintenanceCostPerMonth: 192000, fuelBurnPerHour: 5800,
     firstIntroduced: 1974, availableFrom: 1974, availableUntil: 2007,
@@ -650,7 +650,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '757', variant: '200', icaoCode: 'B752', type: 'Narrowbody',
     rangeCategory: 'Long Haul', rangeNm: 3900, cruiseSpeed: 470,
-    passengerCapacity: 200, cargoCapacityKg: 15000, fuelCapacityLiters: 42680,
+    passengerCapacity: 228, cargoCapacityKg: 15000, fuelCapacityLiters: 42680,
     purchasePrice: 80000000, usedPrice: 35000000, maintenanceCostPerHour: 1900,
     maintenanceCostPerMonth: 152000, fuelBurnPerHour: 3200,
     firstIntroduced: 1983, availableFrom: 1983, availableUntil: 2005,
@@ -661,7 +661,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '767', variant: '300ER', icaoCode: 'B763', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6385, cruiseSpeed: 470,
-    passengerCapacity: 269, cargoCapacityKg: 32000, fuelCapacityLiters: 91380,
+    passengerCapacity: 350, cargoCapacityKg: 32000, fuelCapacityLiters: 91380,
     purchasePrice: 140000000, usedPrice: 60000000, maintenanceCostPerHour: 2600,
     maintenanceCostPerMonth: 234000, fuelBurnPerHour: 5500,
     firstIntroduced: 1982, availableFrom: 1982, availableUntil: null,
@@ -672,7 +672,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A310', variant: '300', icaoCode: 'A310', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 5150, cruiseSpeed: 470,
-    passengerCapacity: 220, cargoCapacityKg: 25000, fuelCapacityLiters: 68250,
+    passengerCapacity: 280, cargoCapacityKg: 25000, fuelCapacityLiters: 68250,
     purchasePrice: 95000000, usedPrice: 40000000, maintenanceCostPerHour: 2300,
     maintenanceCostPerMonth: 184000, fuelBurnPerHour: 5000,
     firstIntroduced: 1983, availableFrom: 1983, availableUntil: 2007,
@@ -683,7 +683,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A320', variant: '200', icaoCode: 'A320', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 3300, cruiseSpeed: 470,
-    passengerCapacity: 180, cargoCapacityKg: 18000, fuelCapacityLiters: 24210,
+    passengerCapacity: 186, cargoCapacityKg: 18000, fuelCapacityLiters: 24210,
     purchasePrice: 95000000, usedPrice: 40000000, maintenanceCostPerHour: 1600,
     maintenanceCostPerMonth: 128000, fuelBurnPerHour: 2500,
     firstIntroduced: 1988, availableFrom: 1988, availableUntil: null,
@@ -696,7 +696,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '400', icaoCode: 'B744', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7260, cruiseSpeed: 493,
-    passengerCapacity: 416, cargoCapacityKg: 45000, fuelCapacityLiters: 216840,
+    passengerCapacity: 524, cargoCapacityKg: 45000, fuelCapacityLiters: 216840,
     purchasePrice: 260000000, usedPrice: 120000000, maintenanceCostPerHour: 4000,
     maintenanceCostPerMonth: 360000, fuelBurnPerHour: 12000,
     firstIntroduced: 1989, availableFrom: 1989, availableUntil: 2018,
@@ -967,7 +967,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '200ER', icaoCode: 'B772', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7065, cruiseSpeed: 490,
-    passengerCapacity: 317, cargoCapacityKg: 38000, fuelCapacityLiters: 171170,
+    passengerCapacity: 440, cargoCapacityKg: 38000, fuelCapacityLiters: 171170,
     purchasePrice: 250000000, usedPrice: 110000000, maintenanceCostPerHour: 3200,
     maintenanceCostPerMonth: 288000, fuelBurnPerHour: 7500,
     firstIntroduced: 1995, availableFrom: 1995, availableUntil: null,
@@ -978,7 +978,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '300ER', icaoCode: 'B77W', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7370, cruiseSpeed: 490,
-    passengerCapacity: 396, cargoCapacityKg: 42000, fuelCapacityLiters: 181280,
+    passengerCapacity: 550, cargoCapacityKg: 42000, fuelCapacityLiters: 181280,
     purchasePrice: 320000000, usedPrice: 160000000, maintenanceCostPerHour: 3400,
     maintenanceCostPerMonth: 306000, fuelBurnPerHour: 7900,
     firstIntroduced: 2004, availableFrom: 2004, availableUntil: null,
@@ -989,7 +989,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A330', variant: '300', icaoCode: 'A333', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6350, cruiseSpeed: 470,
-    passengerCapacity: 335, cargoCapacityKg: 42000, fuelCapacityLiters: 139090,
+    passengerCapacity: 440, cargoCapacityKg: 42000, fuelCapacityLiters: 139090,
     purchasePrice: 220000000, usedPrice: 95000000, maintenanceCostPerHour: 2900,
     maintenanceCostPerMonth: 261000, fuelBurnPerHour: 6400,
     firstIntroduced: 1993, availableFrom: 1993, availableUntil: null,
@@ -1000,7 +1000,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A340', variant: '300', icaoCode: 'A343', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7400, cruiseSpeed: 470,
-    passengerCapacity: 295, cargoCapacityKg: 38000, fuelCapacityLiters: 147850,
+    passengerCapacity: 440, cargoCapacityKg: 38000, fuelCapacityLiters: 147850,
     purchasePrice: 240000000, usedPrice: 100000000, maintenanceCostPerHour: 3100,
     maintenanceCostPerMonth: 279000, fuelBurnPerHour: 8800,
     firstIntroduced: 1993, availableFrom: 1993, availableUntil: 2011,
@@ -1011,7 +1011,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'McDonnell Douglas', model: 'MD-11', variant: null, icaoCode: 'MD11', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7240, cruiseSpeed: 490,
-    passengerCapacity: 323, cargoCapacityKg: 42000, fuelCapacityLiters: 146210,
+    passengerCapacity: 410, cargoCapacityKg: 42000, fuelCapacityLiters: 146210,
     purchasePrice: 200000000, usedPrice: 85000000, maintenanceCostPerHour: 3000,
     maintenanceCostPerMonth: 270000, fuelBurnPerHour: 8600,
     firstIntroduced: 1990, availableFrom: 1990, availableUntil: 2000,
@@ -1055,7 +1055,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A321', variant: null, icaoCode: 'A321', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 3200, cruiseSpeed: 470,
-    passengerCapacity: 220, cargoCapacityKg: 19000, fuelCapacityLiters: 30190,
+    passengerCapacity: 236, cargoCapacityKg: 19000, fuelCapacityLiters: 30190,
     purchasePrice: 110000000, usedPrice: 52000000, maintenanceCostPerHour: 1750,
     maintenanceCostPerMonth: 140000, fuelBurnPerHour: 2650,
     firstIntroduced: 1994, availableFrom: 1994, availableUntil: null,
@@ -1305,7 +1305,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '787', variant: '8', icaoCode: 'B788', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7355, cruiseSpeed: 488,
-    passengerCapacity: 242, cargoCapacityKg: 38000, fuelCapacityLiters: 126206,
+    passengerCapacity: 359, cargoCapacityKg: 38000, fuelCapacityLiters: 126206,
     purchasePrice: 248000000, usedPrice: 140000000, maintenanceCostPerHour: 2700,
     maintenanceCostPerMonth: 243000, fuelBurnPerHour: 5200,
     firstIntroduced: 2011, availableFrom: 2011, availableUntil: null,
@@ -1316,7 +1316,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '787', variant: '9', icaoCode: 'B789', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7635, cruiseSpeed: 488,
-    passengerCapacity: 296, cargoCapacityKg: 45000, fuelCapacityLiters: 126372,
+    passengerCapacity: 406, cargoCapacityKg: 45000, fuelCapacityLiters: 126372,
     purchasePrice: 280000000, usedPrice: 180000000, maintenanceCostPerHour: 2800,
     maintenanceCostPerMonth: 252000, fuelBurnPerHour: 5400,
     firstIntroduced: 2014, availableFrom: 2014, availableUntil: null,
@@ -1327,7 +1327,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '787', variant: '10', icaoCode: 'B78X', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6430, cruiseSpeed: 488,
-    passengerCapacity: 330, cargoCapacityKg: 48000, fuelCapacityLiters: 126372,
+    passengerCapacity: 440, cargoCapacityKg: 48000, fuelCapacityLiters: 126372,
     purchasePrice: 325000000, usedPrice: 220000000, maintenanceCostPerHour: 2950,
     maintenanceCostPerMonth: 265500, fuelBurnPerHour: 5600,
     firstIntroduced: 2018, availableFrom: 2018, availableUntil: null,
@@ -1338,7 +1338,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A350', variant: '900', icaoCode: 'A359', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8100, cruiseSpeed: 487,
-    passengerCapacity: 325, cargoCapacityKg: 50000, fuelCapacityLiters: 141480,
+    passengerCapacity: 440, cargoCapacityKg: 50000, fuelCapacityLiters: 141480,
     purchasePrice: 317400000, usedPrice: 200000000, maintenanceCostPerHour: 3200,
     maintenanceCostPerMonth: 288000, fuelBurnPerHour: 5800,
     firstIntroduced: 2013, availableFrom: 2013, availableUntil: null,
@@ -1349,7 +1349,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '8', icaoCode: 'B748', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8000, cruiseSpeed: 493,
-    passengerCapacity: 467, cargoCapacityKg: 55000, fuelCapacityLiters: 238610,
+    passengerCapacity: 524, cargoCapacityKg: 55000, fuelCapacityLiters: 238610,
     purchasePrice: 420000000, usedPrice: 280000000, maintenanceCostPerHour: 4500,
     maintenanceCostPerMonth: 405000, fuelBurnPerHour: 11000,
     firstIntroduced: 2012, availableFrom: 2012, availableUntil: 2023,
@@ -1531,7 +1531,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '737', variant: 'MAX 8', icaoCode: 'B38M', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 3550, cruiseSpeed: 475,
-    passengerCapacity: 178, cargoCapacityKg: 20000, fuelCapacityLiters: 36000,
+    passengerCapacity: 189, cargoCapacityKg: 20000, fuelCapacityLiters: 36000,
     purchasePrice: 125000000, usedPrice: 85000000, maintenanceCostPerHour: 1800,
     maintenanceCostPerMonth: 144000, fuelBurnPerHour: 2500,
     firstIntroduced: 2017, availableFrom: 2017, availableUntil: null,
@@ -1564,7 +1564,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A320', variant: 'neo', icaoCode: 'A20N', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 3300, cruiseSpeed: 470,
-    passengerCapacity: 180, cargoCapacityKg: 18000, fuelCapacityLiters: 34000,
+    passengerCapacity: 194, cargoCapacityKg: 18000, fuelCapacityLiters: 34000,
     purchasePrice: 110000000, usedPrice: 75000000, maintenanceCostPerHour: 1600,
     maintenanceCostPerMonth: 128000, fuelBurnPerHour: 2400,
     firstIntroduced: 2015, availableFrom: 2015, availableUntil: null,
@@ -1575,7 +1575,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A321', variant: 'neo', icaoCode: 'A21N', type: 'Narrowbody',
     rangeCategory: 'Medium Haul', rangeNm: 4000, cruiseSpeed: 470,
-    passengerCapacity: 220, cargoCapacityKg: 19000, fuelCapacityLiters: 32840,
+    passengerCapacity: 244, cargoCapacityKg: 19000, fuelCapacityLiters: 32840,
     purchasePrice: 129000000, usedPrice: 92000000, maintenanceCostPerHour: 1750,
     maintenanceCostPerMonth: 140000, fuelBurnPerHour: 2550,
     firstIntroduced: 2016, availableFrom: 2016, availableUntil: null,
@@ -1586,7 +1586,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A321', variant: 'LR', icaoCode: 'A21N', type: 'Narrowbody',
     rangeCategory: 'Long Haul', rangeNm: 4000, cruiseSpeed: 470,
-    passengerCapacity: 206, cargoCapacityKg: 17000, fuelCapacityLiters: 32840,
+    passengerCapacity: 244, cargoCapacityKg: 17000, fuelCapacityLiters: 32840,
     purchasePrice: 142000000, usedPrice: 105000000, maintenanceCostPerHour: 1800,
     maintenanceCostPerMonth: 144000, fuelBurnPerHour: 2650,
     firstIntroduced: 2018, availableFrom: 2018, availableUntil: null,
@@ -1597,7 +1597,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A321', variant: 'XLR', icaoCode: 'A21N', type: 'Narrowbody',
     rangeCategory: 'Long Haul', rangeNm: 4700, cruiseSpeed: 470,
-    passengerCapacity: 220, cargoCapacityKg: 18000, fuelCapacityLiters: 39465,
+    passengerCapacity: 244, cargoCapacityKg: 18000, fuelCapacityLiters: 39465,
     purchasePrice: 150000000, usedPrice: 115000000, maintenanceCostPerHour: 1850,
     maintenanceCostPerMonth: 148000, fuelBurnPerHour: 2750,
     firstIntroduced: 2024, availableFrom: 2024, availableUntil: null,
@@ -1630,7 +1630,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '8X', icaoCode: 'B778', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8730, cruiseSpeed: 490,
-    passengerCapacity: 384, cargoCapacityKg: 47000, fuelCapacityLiters: 197977,
+    passengerCapacity: 420, cargoCapacityKg: 47000, fuelCapacityLiters: 197977,
     purchasePrice: 410000000, usedPrice: 330000000, maintenanceCostPerHour: 3600,
     maintenanceCostPerMonth: 324000, fuelBurnPerHour: 7900,
     firstIntroduced: 2025, availableFrom: 2025, availableUntil: null,
@@ -1641,7 +1641,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '9X', icaoCode: 'B779', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7285, cruiseSpeed: 490,
-    passengerCapacity: 426, cargoCapacityKg: 50000, fuelCapacityLiters: 197977,
+    passengerCapacity: 470, cargoCapacityKg: 50000, fuelCapacityLiters: 197977,
     purchasePrice: 442000000, usedPrice: 350000000, maintenanceCostPerHour: 3800,
     maintenanceCostPerMonth: 342000, fuelBurnPerHour: 8200,
     firstIntroduced: 2025, availableFrom: 2025, availableUntil: null,
@@ -1652,7 +1652,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A350', variant: '1000', icaoCode: 'A35K', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8700, cruiseSpeed: 487,
-    passengerCapacity: 369, cargoCapacityKg: 55000, fuelCapacityLiters: 156000,
+    passengerCapacity: 480, cargoCapacityKg: 55000, fuelCapacityLiters: 156000,
     purchasePrice: 366500000, usedPrice: 280000000, maintenanceCostPerHour: 3500,
     maintenanceCostPerMonth: 315000, fuelBurnPerHour: 6200,
     firstIntroduced: 2018, availableFrom: 2018, availableUntil: null,
@@ -1679,7 +1679,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: 'F', icaoCode: 'B77L', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 5625, cruiseSpeed: 489,
-    passengerCapacity: 0, cargoCapacityKg: 102000, fuelCapacityLiters: 117340,
+    passengerCapacity: 0, cargoCapacityKg: 102000, mainDeckCapacityKg: 65000, cargoHoldCapacityKg: 37000,
+    fuelCapacityLiters: 117340,
     purchasePrice: 350000000, usedPrice: 280000000, maintenanceCostPerHour: 3500,
     maintenanceCostPerMonth: 315000, fuelBurnPerHour: 6200,
     firstIntroduced: 2009, availableFrom: 2009, availableUntil: null,
@@ -1690,7 +1691,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '8F', icaoCode: 'B748', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4390, cruiseSpeed: 493,
-    passengerCapacity: 0, cargoCapacityKg: 134000, fuelCapacityLiters: 238610,
+    passengerCapacity: 0, cargoCapacityKg: 134000, mainDeckCapacityKg: 86000, cargoHoldCapacityKg: 48000,
+    fuelCapacityLiters: 238610,
     purchasePrice: 420000000, usedPrice: 320000000, maintenanceCostPerHour: 4800,
     maintenanceCostPerMonth: 432000, fuelBurnPerHour: 11500,
     firstIntroduced: 2011, availableFrom: 2011, availableUntil: null,
@@ -1701,7 +1703,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A330', variant: '200F', icaoCode: 'A332', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4000, cruiseSpeed: 470,
-    passengerCapacity: 0, cargoCapacityKg: 70000, fuelCapacityLiters: 139090,
+    passengerCapacity: 0, cargoCapacityKg: 70000, mainDeckCapacityKg: 46000, cargoHoldCapacityKg: 24000,
+    fuelCapacityLiters: 139090,
     purchasePrice: 240000000, usedPrice: 180000000, maintenanceCostPerHour: 3000,
     maintenanceCostPerMonth: 270000, fuelBurnPerHour: 6800,
     firstIntroduced: 2010, availableFrom: 2010, availableUntil: null,
@@ -1712,7 +1715,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '767', variant: '300F', icaoCode: 'B763', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 3255, cruiseSpeed: 470,
-    passengerCapacity: 0, cargoCapacityKg: 54400, fuelCapacityLiters: 91380,
+    passengerCapacity: 0, cargoCapacityKg: 54400, mainDeckCapacityKg: 36000, cargoHoldCapacityKg: 18400,
+    fuelCapacityLiters: 91380,
     purchasePrice: 200000000, usedPrice: 140000000, maintenanceCostPerHour: 2700,
     maintenanceCostPerMonth: 243000, fuelBurnPerHour: 5800,
     firstIntroduced: 1995, availableFrom: 1995, availableUntil: null,
@@ -1723,7 +1727,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'McDonnell Douglas', model: 'MD-11', variant: 'F', icaoCode: 'MD11', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4030, cruiseSpeed: 490,
-    passengerCapacity: 0, cargoCapacityKg: 88680, fuelCapacityLiters: 146210,
+    passengerCapacity: 0, cargoCapacityKg: 88680, mainDeckCapacityKg: 58000, cargoHoldCapacityKg: 30680,
+    fuelCapacityLiters: 146210,
     purchasePrice: 210000000, usedPrice: 150000000, maintenanceCostPerHour: 3100,
     maintenanceCostPerMonth: 279000, fuelBurnPerHour: 8800,
     firstIntroduced: 1991, availableFrom: 1991, availableUntil: null,
@@ -2003,7 +2008,8 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Ilyushin', model: 'Il-76', variant: 'TD', icaoCode: 'IL76', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 2700, cruiseSpeed: 430,
-    passengerCapacity: 0, cargoCapacityKg: 48000, fuelCapacityLiters: 84830,
+    passengerCapacity: 0, cargoCapacityKg: 48000, mainDeckCapacityKg: 40000, cargoHoldCapacityKg: 8000,
+    fuelCapacityLiters: 84830,
     purchasePrice: 60000000, usedPrice: 28000000, maintenanceCostPerHour: 2200,
     maintenanceCostPerMonth: 176000, fuelBurnPerHour: 7500,
     firstIntroduced: 1974, availableFrom: 1974, availableUntil: null,
@@ -2333,7 +2339,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A300', variant: 'B2', icaoCode: 'A30B', type: 'Widebody',
     rangeCategory: 'Short Haul', rangeNm: 2100, cruiseSpeed: 470,
-    passengerCapacity: 253, cargoCapacityKg: 16500, fuelCapacityLiters: 47500,
+    passengerCapacity: 345, cargoCapacityKg: 16500, fuelCapacityLiters: 47500,
     purchasePrice: 45000000, usedPrice: 18000000, maintenanceCostPerHour: 2300,
     maintenanceCostPerMonth: 184000, fuelBurnPerHour: 5500,
     firstIntroduced: 1974, availableFrom: 1974, availableUntil: 1984,
@@ -2344,7 +2350,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A300', variant: '600', icaoCode: 'A306', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 4050, cruiseSpeed: 470,
-    passengerCapacity: 266, cargoCapacityKg: 18500, fuelCapacityLiters: 62000,
+    passengerCapacity: 345, cargoCapacityKg: 18500, fuelCapacityLiters: 62000,
     purchasePrice: 80000000, usedPrice: 35000000, maintenanceCostPerHour: 2400,
     maintenanceCostPerMonth: 192000, fuelBurnPerHour: 5200,
     firstIntroduced: 1984, availableFrom: 1984, availableUntil: 2007,
@@ -2355,7 +2361,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A310', variant: '200', icaoCode: 'A310', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 3700, cruiseSpeed: 470,
-    passengerCapacity: 220, cargoCapacityKg: 14500, fuelCapacityLiters: 47190,
+    passengerCapacity: 280, cargoCapacityKg: 14500, fuelCapacityLiters: 47190,
     purchasePrice: 60000000, usedPrice: 25000000, maintenanceCostPerHour: 2100,
     maintenanceCostPerMonth: 168000, fuelBurnPerHour: 4600,
     firstIntroduced: 1983, availableFrom: 1983, availableUntil: 1998,
@@ -2366,7 +2372,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A318', variant: null, icaoCode: 'A318', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 3100, cruiseSpeed: 450,
-    passengerCapacity: 117, cargoCapacityKg: 8200, fuelCapacityLiters: 24210,
+    passengerCapacity: 132, cargoCapacityKg: 8200, fuelCapacityLiters: 24210,
     purchasePrice: 62000000, usedPrice: 26000000, maintenanceCostPerHour: 1300,
     maintenanceCostPerMonth: 104000, fuelBurnPerHour: 2500,
     firstIntroduced: 2003, availableFrom: 2003, availableUntil: 2013,
@@ -2377,7 +2383,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A320', variant: '100', icaoCode: 'A320', type: 'Narrowbody',
     rangeCategory: 'Short Haul', rangeNm: 2850, cruiseSpeed: 447,
-    passengerCapacity: 150, cargoCapacityKg: 10000, fuelCapacityLiters: 15700,
+    passengerCapacity: 180, cargoCapacityKg: 10000, fuelCapacityLiters: 15700,
     purchasePrice: 50000000, usedPrice: 20000000, maintenanceCostPerHour: 1350,
     maintenanceCostPerMonth: 108000, fuelBurnPerHour: 2650,
     firstIntroduced: 1988, availableFrom: 1988, availableUntil: 1989,
@@ -2399,7 +2405,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '767', variant: '200', icaoCode: 'B762', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 5800, cruiseSpeed: 460,
-    passengerCapacity: 216, cargoCapacityKg: 16000, fuelCapacityLiters: 63200,
+    passengerCapacity: 287, cargoCapacityKg: 16000, fuelCapacityLiters: 63200,
     purchasePrice: 95000000, usedPrice: 40000000, maintenanceCostPerHour: 2200,
     maintenanceCostPerMonth: 176000, fuelBurnPerHour: 4600,
     firstIntroduced: 1982, availableFrom: 1982, availableUntil: 2001,
@@ -2410,7 +2416,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '767', variant: '300', icaoCode: 'B763', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 5800, cruiseSpeed: 460,
-    passengerCapacity: 269, cargoCapacityKg: 20000, fuelCapacityLiters: 63200,
+    passengerCapacity: 350, cargoCapacityKg: 20000, fuelCapacityLiters: 63200,
     purchasePrice: 120000000, usedPrice: 50000000, maintenanceCostPerHour: 2400,
     maintenanceCostPerMonth: 192000, fuelBurnPerHour: 5000,
     firstIntroduced: 1986, availableFrom: 1986, availableUntil: 2002,
@@ -2421,7 +2427,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '767', variant: '400ER', icaoCode: 'B764', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 5650, cruiseSpeed: 460,
-    passengerCapacity: 304, cargoCapacityKg: 22000, fuelCapacityLiters: 91380,
+    passengerCapacity: 371, cargoCapacityKg: 22000, fuelCapacityLiters: 91380,
     purchasePrice: 180000000, usedPrice: 75000000, maintenanceCostPerHour: 2600,
     maintenanceCostPerMonth: 208000, fuelBurnPerHour: 5400,
     firstIntroduced: 2000, availableFrom: 2000, availableUntil: 2003,
@@ -2432,7 +2438,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A330', variant: '200', icaoCode: 'A332', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7250, cruiseSpeed: 470,
-    passengerCapacity: 247, cargoCapacityKg: 19200, fuelCapacityLiters: 139100,
+    passengerCapacity: 406, cargoCapacityKg: 19200, fuelCapacityLiters: 139100,
     purchasePrice: 210000000, usedPrice: 90000000, maintenanceCostPerHour: 2600,
     maintenanceCostPerMonth: 208000, fuelBurnPerHour: 5400,
     firstIntroduced: 1998, availableFrom: 1998, availableUntil: null,
@@ -2443,7 +2449,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A330', variant: '800', icaoCode: 'A338', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8150, cruiseSpeed: 470,
-    passengerCapacity: 257, cargoCapacityKg: 19500, fuelCapacityLiters: 139100,
+    passengerCapacity: 406, cargoCapacityKg: 19500, fuelCapacityLiters: 139100,
     purchasePrice: 250000000, usedPrice: 120000000, maintenanceCostPerHour: 2500,
     maintenanceCostPerMonth: 200000, fuelBurnPerHour: 5000,
     firstIntroduced: 2020, availableFrom: 2020, availableUntil: null,
@@ -2454,7 +2460,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A330', variant: '900', icaoCode: 'A339', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7200, cruiseSpeed: 470,
-    passengerCapacity: 287, cargoCapacityKg: 22000, fuelCapacityLiters: 139100,
+    passengerCapacity: 440, cargoCapacityKg: 22000, fuelCapacityLiters: 139100,
     purchasePrice: 280000000, usedPrice: 135000000, maintenanceCostPerHour: 2600,
     maintenanceCostPerMonth: 208000, fuelBurnPerHour: 5200,
     firstIntroduced: 2018, availableFrom: 2018, availableUntil: null,
@@ -2465,7 +2471,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A340', variant: '200', icaoCode: 'A342', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7450, cruiseSpeed: 470,
-    passengerCapacity: 261, cargoCapacityKg: 17500, fuelCapacityLiters: 147000,
+    passengerCapacity: 375, cargoCapacityKg: 17500, fuelCapacityLiters: 147000,
     purchasePrice: 140000000, usedPrice: 55000000, maintenanceCostPerHour: 3000,
     maintenanceCostPerMonth: 240000, fuelBurnPerHour: 6500,
     firstIntroduced: 1993, availableFrom: 1993, availableUntil: 2005,
@@ -2475,8 +2481,8 @@ const COMPREHENSIVE_AIRCRAFT = [
 
   {
     manufacturer: 'Airbus', model: 'A340', variant: '500', icaoCode: 'A345', type: 'Widebody',
-    rangeCategory: 'Ultra Long Haul', rangeNm: 9000, cruiseSpeed: 470,
-    passengerCapacity: 313, cargoCapacityKg: 20000, fuelCapacityLiters: 214810,
+    rangeCategory: 'Long Haul', rangeNm: 9000, cruiseSpeed: 470,
+    passengerCapacity: 375, cargoCapacityKg: 20000, fuelCapacityLiters: 214810,
     purchasePrice: 230000000, usedPrice: 85000000, maintenanceCostPerHour: 3400,
     maintenanceCostPerMonth: 272000, fuelBurnPerHour: 7500,
     firstIntroduced: 2002, availableFrom: 2002, availableUntil: 2011,
@@ -2487,7 +2493,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A340', variant: '600', icaoCode: 'A346', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7900, cruiseSpeed: 470,
-    passengerCapacity: 380, cargoCapacityKg: 25000, fuelCapacityLiters: 195880,
+    passengerCapacity: 475, cargoCapacityKg: 25000, fuelCapacityLiters: 195880,
     purchasePrice: 240000000, usedPrice: 90000000, maintenanceCostPerHour: 3500,
     maintenanceCostPerMonth: 280000, fuelBurnPerHour: 7800,
     firstIntroduced: 2002, availableFrom: 2002, availableUntil: 2011,
@@ -2498,7 +2504,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '200', icaoCode: 'B772', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 5240, cruiseSpeed: 480,
-    passengerCapacity: 305, cargoCapacityKg: 20000, fuelCapacityLiters: 117340,
+    passengerCapacity: 440, cargoCapacityKg: 20000, fuelCapacityLiters: 117340,
     purchasePrice: 180000000, usedPrice: 75000000, maintenanceCostPerHour: 2800,
     maintenanceCostPerMonth: 224000, fuelBurnPerHour: 6700,
     firstIntroduced: 1995, availableFrom: 1995, availableUntil: 2008,
@@ -2509,7 +2515,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '777', variant: '300', icaoCode: 'B773', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 5960, cruiseSpeed: 480,
-    passengerCapacity: 386, cargoCapacityKg: 25000, fuelCapacityLiters: 117340,
+    passengerCapacity: 550, cargoCapacityKg: 25000, fuelCapacityLiters: 117340,
     purchasePrice: 260000000, usedPrice: 100000000, maintenanceCostPerHour: 3100,
     maintenanceCostPerMonth: 248000, fuelBurnPerHour: 7400,
     firstIntroduced: 1998, availableFrom: 1998, availableUntil: 2006,
@@ -2520,7 +2526,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Airbus', model: 'A350', variant: '800', icaoCode: 'A358', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 8250, cruiseSpeed: 480,
-    passengerCapacity: 276, cargoCapacityKg: 18500, fuelCapacityLiters: 129000,
+    passengerCapacity: 360, cargoCapacityKg: 18500, fuelCapacityLiters: 129000,
     purchasePrice: 260000000, usedPrice: 120000000, maintenanceCostPerHour: 2600,
     maintenanceCostPerMonth: 208000, fuelBurnPerHour: 5200,
     firstIntroduced: 2016, availableFrom: 2016, availableUntil: 2018,
@@ -2531,7 +2537,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '200', icaoCode: 'B742', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6560, cruiseSpeed: 480,
-    passengerCapacity: 366, cargoCapacityKg: 30000, fuelCapacityLiters: 198390,
+    passengerCapacity: 452, cargoCapacityKg: 30000, fuelCapacityLiters: 198390,
     purchasePrice: 120000000, usedPrice: 50000000, maintenanceCostPerHour: 3400,
     maintenanceCostPerMonth: 272000, fuelBurnPerHour: 10800,
     firstIntroduced: 1971, availableFrom: 1971, availableUntil: 1991,
@@ -2542,7 +2548,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'Boeing', model: '747', variant: '300', icaoCode: 'B743', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6800, cruiseSpeed: 480,
-    passengerCapacity: 400, cargoCapacityKg: 32000, fuelCapacityLiters: 198390,
+    passengerCapacity: 496, cargoCapacityKg: 32000, fuelCapacityLiters: 198390,
     purchasePrice: 140000000, usedPrice: 55000000, maintenanceCostPerHour: 3500,
     maintenanceCostPerMonth: 280000, fuelBurnPerHour: 10600,
     firstIntroduced: 1983, availableFrom: 1983, availableUntil: 1990,
@@ -2553,7 +2559,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   {
     manufacturer: 'McDonnell Douglas', model: 'DC-10', variant: '10', icaoCode: 'DC10', type: 'Widebody',
     rangeCategory: 'Medium Haul', rangeNm: 3800, cruiseSpeed: 480,
-    passengerCapacity: 270, cargoCapacityKg: 24000, fuelCapacityLiters: 82300,
+    passengerCapacity: 380, cargoCapacityKg: 24000, fuelCapacityLiters: 82300,
     purchasePrice: 80000000, usedPrice: 32000000, maintenanceCostPerHour: 2800,
     maintenanceCostPerMonth: 224000, fuelBurnPerHour: 8200,
     firstIntroduced: 1971, availableFrom: 1971, availableUntil: 1989,

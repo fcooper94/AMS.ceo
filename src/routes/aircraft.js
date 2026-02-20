@@ -113,6 +113,8 @@ router.get('/', async (req, res) => {
             cruiseSpeed: variant.cruiseSpeed,
             passengerCapacity: variant.passengerCapacity,
             cargoCapacityKg: variant.cargoCapacityKg,
+            mainDeckCapacityKg: variant.mainDeckCapacityKg || null,
+            cargoHoldCapacityKg: variant.cargoHoldCapacityKg || null,
             fuelCapacityLiters: variant.fuelCapacityLiters,
             purchasePrice: parseFloat(listing.purchasePrice),
             leasePrice: listing.leasePrice ? parseFloat(listing.leasePrice) : null,
@@ -450,6 +452,8 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         cruiseSpeed: variant.cruiseSpeed,
         passengerCapacity: variant.passengerCapacity,
         cargoCapacityKg: variant.cargoCapacityKg,
+        mainDeckCapacityKg: variant.mainDeckCapacityKg || null,
+        cargoHoldCapacityKg: variant.cargoHoldCapacityKg || null,
         fuelCapacityLiters: variant.fuelCapacityLiters,
         purchasePrice: parseFloat(usedPrice.toFixed(2)), // Depreciated price
         leasePrice: parseFloat(leasePrice.toFixed(2)),
