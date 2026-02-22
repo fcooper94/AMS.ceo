@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { World, WorldMembership, User, Airport, UserAircraft, Route } = require('../models');
+const { World, WorldMembership, User, Airport, UserAircraft, Route, Loan, Notification } = require('../models');
 const eraEconomicService = require('../services/eraEconomicService');
 const { getAICount } = require('../data/aiDifficultyConfig');
+const { getBank, calculateOfferRate, calculateFixedPayment } = require('../data/bankConfig');
 
 /**
  * Get all available worlds for user to join
@@ -231,6 +232,65 @@ router.post('/join', async (req, res) => {
       engineeringContractor: mpEngineeringTier
     });
 
+    // Auto-approve a starter loan so new airlines can afford their first aircraft
+    let starterLoanInfo = null;
+    try {
+      const STARTER_LOAN_BASE_2024 = 20_000_000; // $20M in 2024 USD
+      const starterBankId = 'atlas';
+      const starterLoanType = 'fleet_expansion';
+      const starterTermWeeks = 104; // 2 game years
+      const starterCreditScore = 600;
+
+      const starterAmount = eraEconomicService.convertToEraPrice(STARTER_LOAN_BASE_2024, worldYear);
+      const starterBank = getBank(starterBankId);
+      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType);
+      const starterPayment = calculateFixedPayment(starterAmount, starterRate, starterTermWeeks);
+
+      const gameDate = world.currentTime
+        ? new Date(world.currentTime).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
+      await Loan.create({
+        worldMembershipId: membership.id,
+        bankId: starterBankId,
+        loanType: starterLoanType,
+        status: 'active',
+        principalAmount: starterAmount,
+        remainingPrincipal: starterAmount,
+        interestRate: starterRate,
+        termWeeks: starterTermWeeks,
+        weeksRemaining: starterTermWeeks,
+        repaymentStrategy: 'fixed',
+        weeklyPayment: starterPayment,
+        earlyRepaymentFee: starterBank.earlyRepaymentFee,
+        paymentHolidaysTotal: starterBank.paymentHolidays,
+        paymentHolidaysUsed: 0,
+        isOnHoliday: false,
+        missedPayments: 0,
+        originationGameDate: gameDate,
+        creditScoreAtOrigin: starterCreditScore
+      });
+
+      // Credit the loan amount to the airline's balance
+      membership.balance = parseFloat(membership.balance) + starterAmount;
+      await membership.save();
+
+      starterLoanInfo = { amount: starterAmount, rate: starterRate, weeklyPayment: starterPayment, termWeeks: starterTermWeeks, bank: 'Atlas Commercial Bank' };
+
+      await Notification.create({
+        worldMembershipId: membership.id,
+        type: 'loan_approved',
+        title: 'Starter Loan — Atlas Commercial Bank',
+        message: `Your airline has been approved for a $${Math.round(starterAmount).toLocaleString()} starter loan at ${starterRate}% APR over ${starterTermWeeks} weeks. Weekly repayment: $${Math.round(starterPayment).toLocaleString()}.`
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Starter loan of $${starterAmount.toLocaleString()} created for membership ${membership.id}`);
+      }
+    } catch (loanErr) {
+      console.error('Starter loan creation failed (non-fatal):', loanErr.message);
+    }
+
     // Deduct credits for joining (skip for unlimited users)
     if (!user.unlimitedCredits) {
       user.credits -= JOIN_COST_CREDITS;
@@ -250,6 +310,7 @@ router.post('/join', async (req, res) => {
         iataCode: membership.iataCode,
         balance: membership.balance
       },
+      starterLoan: starterLoanInfo,
       creditsDeducted: user.unlimitedCredits ? 0 : JOIN_COST_CREDITS,
       creditsRemaining: user.unlimitedCredits ? 'unlimited' : user.credits
     });
@@ -703,6 +764,14 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    if (!/^[A-Z]{3}$/.test(airlineCode)) {
+      return res.status(400).json({ error: 'ICAO code must be 3 uppercase letters' });
+    }
+
+    if (!/^[A-Z]{2}$/.test(iataCode)) {
+      return res.status(400).json({ error: 'IATA code must be 2 uppercase letters' });
+    }
+
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -733,12 +802,15 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(400).json({ error: 'You already have an airline in this world' });
     }
 
-    // Check codes aren't taken by AI in this world
-    const codeTaken = await WorldMembership.findOne({
-      where: { worldId, [Op.or]: [{ airlineCode }, { iataCode }] }
-    });
-    if (codeTaken) {
-      return res.status(400).json({ error: 'Airline code or IATA code already in use in this world' });
+    // Check codes aren't taken in this world
+    const icaoTaken = await WorldMembership.findOne({ where: { worldId, airlineCode } });
+    if (icaoTaken) {
+      return res.status(400).json({ error: 'ICAO code already taken in this world' });
+    }
+
+    const iataTaken = await WorldMembership.findOne({ where: { worldId, iataCode } });
+    if (iataTaken) {
+      return res.status(400).json({ error: 'IATA code already taken in this world' });
     }
 
     // Verify airport exists
@@ -747,8 +819,16 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(404).json({ error: 'Selected airport not found' });
     }
 
-    // Calculate starting capital for the world's era
-    const startingBalance = eraEconomicService.getStartingCapital(world.era);
+    // Calculate starting capital using current world time (consistent with /join)
+    const worldYear = new Date(world.currentTime).getFullYear();
+    const startingBalance = eraEconomicService.getStartingCapital(worldYear);
+
+    // Credit deduction start (offset by free weeks)
+    const freeWeeks = world.freeWeeks || 0;
+    let creditDeductionStart = new Date(world.currentTime);
+    if (freeWeeks > 0) {
+      creditDeductionStart = new Date(creditDeductionStart.getTime() + (freeWeeks * 7 * 24 * 60 * 60 * 1000));
+    }
 
     // Create new membership
     const membership = await WorldMembership.create({
@@ -761,11 +841,63 @@ router.post('/rejoin-sp', async (req, res) => {
       baseAirportId,
       balance: startingBalance,
       reputation: 50,
-      isAI: false,
+      lastCreditDeduction: creditDeductionStart,
       cleaningContractor: rejCleaningTier,
       groundContractor: rejGroundTier,
       engineeringContractor: rejEngineeringTier
     });
+
+    // Auto-approve starter loan (same logic as /join)
+    let starterLoanInfo = null;
+    try {
+      const STARTER_LOAN_BASE_2024 = 20_000_000;
+      const starterBankId = 'atlas';
+      const starterLoanType = 'fleet_expansion';
+      const starterTermWeeks = 104;
+      const starterCreditScore = 600;
+
+      const starterAmount = eraEconomicService.convertToEraPrice(STARTER_LOAN_BASE_2024, worldYear);
+      const starterBank = getBank(starterBankId);
+      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType);
+      const starterPayment = calculateFixedPayment(starterAmount, starterRate, starterTermWeeks);
+
+      const gameDate = new Date(world.currentTime).toISOString().split('T')[0];
+
+      await Loan.create({
+        worldMembershipId: membership.id,
+        bankId: starterBankId,
+        loanType: starterLoanType,
+        status: 'active',
+        principalAmount: starterAmount,
+        remainingPrincipal: starterAmount,
+        interestRate: starterRate,
+        termWeeks: starterTermWeeks,
+        weeksRemaining: starterTermWeeks,
+        repaymentStrategy: 'fixed',
+        weeklyPayment: starterPayment,
+        earlyRepaymentFee: starterBank.earlyRepaymentFee,
+        paymentHolidaysTotal: starterBank.paymentHolidays,
+        paymentHolidaysUsed: 0,
+        isOnHoliday: false,
+        missedPayments: 0,
+        originationGameDate: gameDate,
+        creditScoreAtOrigin: starterCreditScore
+      });
+
+      membership.balance = parseFloat(membership.balance) + starterAmount;
+      await membership.save();
+
+      starterLoanInfo = { amount: starterAmount, rate: starterRate, weeklyPayment: starterPayment, termWeeks: starterTermWeeks };
+
+      await Notification.create({
+        worldMembershipId: membership.id,
+        type: 'loan_approved',
+        title: 'Starter Loan — Atlas Commercial Bank',
+        message: `Your airline has been approved for a $${Math.round(starterAmount).toLocaleString()} starter loan at ${starterRate}% APR over ${starterTermWeeks} weeks. Weekly repayment: $${Math.round(starterPayment).toLocaleString()}.`
+      });
+    } catch (loanErr) {
+      console.error('Starter loan creation failed (non-fatal):', loanErr.message);
+    }
 
     // Set as active world
     req.session.activeWorldId = worldId;
@@ -773,13 +905,12 @@ router.post('/rejoin-sp', async (req, res) => {
     res.json({
       success: true,
       message: 'Rejoined world successfully',
-      membershipId: membership.id
+      membershipId: membership.id,
+      starterLoan: starterLoanInfo
     });
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error rejoining SP world:', error);
-    }
-    res.status(500).json({ error: 'Failed to rejoin world' });
+    console.error('Error rejoining SP world:', error);
+    res.status(500).json({ error: error.message || 'Failed to rejoin world' });
   }
 });
 

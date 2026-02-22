@@ -8,7 +8,7 @@ const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
 const routeIndicatorService = require('../services/routeIndicatorService');
 const { Op } = require('sequelize');
-const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification } = require('../models');
+const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification, WeeklyFinancial, Loan } = require('../models');
 
 /**
  * Get current world information (from session)
@@ -867,6 +867,18 @@ router.post('/bankruptcy', async (req, res) => {
 
     // 7. Delete notifications
     await Notification.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 7b. Delete weekly financials
+    await WeeklyFinancial.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 7c. Delete loans
+    await Loan.destroy({
       where: { worldMembershipId: membership.id },
       transaction
     });

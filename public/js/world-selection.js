@@ -1156,12 +1156,14 @@ function handleRejoinAirportSearch() {
 
   rejoinSearchTimeout = setTimeout(async () => {
     try {
-      const res = await fetch(`/api/airports/search?q=${encodeURIComponent(query)}&limit=8`);
+      const worldParam = rejoinWorldId ? `&worldId=${rejoinWorldId}` : '';
+      const res = await fetch(`/api/world/airports?search=${encodeURIComponent(query)}${worldParam}`);
       if (!res.ok) return;
-      const airports = await res.json();
+      const data = await res.json();
+      const airports = data.airports || data;
 
       const resultsDiv = document.getElementById('rejoinAirportResults');
-      if (airports.length === 0) {
+      if (!Array.isArray(airports) || airports.length === 0) {
         resultsDiv.innerHTML = '<div style="padding: 0.75rem; color: var(--text-muted); text-align: center;">No airports found</div>';
       } else {
         resultsDiv.innerHTML = airports.map(ap => `
@@ -1219,8 +1221,8 @@ async function confirmRejoin() {
     return;
   }
 
-  if (airlineCode.length < 3 || airlineCode.length > 4) {
-    errorDiv.textContent = 'ICAO code must be 3-4 characters.';
+  if (!/^[A-Z]{3}$/.test(airlineCode)) {
+    errorDiv.textContent = 'ICAO code must be exactly 3 uppercase letters.';
     errorDiv.style.display = 'block';
     return;
   }
@@ -1248,8 +1250,9 @@ async function confirmRejoin() {
     });
 
     if (response.ok) {
+      const worldIdToEnter = rejoinWorldId;
       closeRejoinModal();
-      enterWorld(rejoinWorldId, 'Joining world...');
+      enterWorld(worldIdToEnter, 'Joining world...');
     } else {
       const data = await response.json();
       errorDiv.textContent = data.error || 'Failed to rejoin world.';

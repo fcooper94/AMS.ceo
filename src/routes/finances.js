@@ -78,7 +78,9 @@ router.get('/', async (req, res) => {
         totalCosts: Math.round(totalCosts),
         netProfit: Math.round(netProfit),
         flights: w.flights || 0,
-        passengers: w.passengers || 0
+        passengers: w.passengers || 0,
+        passengerRevenueBreakdown: w.passengerRevenueBreakdown || {},
+        cargoRevenueBreakdown: w.cargoRevenueBreakdown || {}
       };
     });
 

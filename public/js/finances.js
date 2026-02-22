@@ -3,6 +3,21 @@
 let allWeeks = [];
 let weekPage = 0;
 const WEEKS_PER_PAGE = 4;
+let passengerExpanded = false;
+let cargoExpanded = false;
+let opCostsExpanded = false;
+let overheadsExpanded = false;
+
+const CARGO_BREAKDOWN_LABELS = {
+  general:    'General',
+  express:    'Express',
+  heavy:      'Heavy',
+  oversized:  'Oversized',
+  perishable: 'Perishable',
+  dangerous:  'Dangerous',
+  liveAnimal: 'Live Animal',
+  highValue:  'High Value'
+};
 
 const GROUP_COLORS = {
   income:   { accent: '#10B981', bg: 'rgba(16,185,129,0.06)', border: 'rgba(16,185,129,0.25)', text: '#34D399' },
@@ -119,7 +134,19 @@ function renderWeeklyPL() {
 
   // ── INCOME ──
   rows += wkGroupHeader('INCOME', 'income');
-  rows += wkRow('Flight Revenue', weeks, 'flightRevenue', false, 'income');
+  rows += wkRevenueToggleRow('Passenger Revenue', passengerExpanded, 'togglePassengerBreakdown', weeks, 'passengerRevenueBreakdown');
+  if (passengerExpanded) {
+    rows += wkBreakdownRow('Economy',      weeks, 'passengerRevenueBreakdown', 'economy');
+    rows += wkBreakdownRow('Economy Plus', weeks, 'passengerRevenueBreakdown', 'economyPlus');
+    rows += wkBreakdownRow('Business',     weeks, 'passengerRevenueBreakdown', 'business');
+    rows += wkBreakdownRow('First Class',  weeks, 'passengerRevenueBreakdown', 'first');
+  }
+  rows += wkRevenueToggleRow('Cargo Revenue', cargoExpanded, 'toggleCargoBreakdown', weeks, 'cargoRevenueBreakdown');
+  if (cargoExpanded) {
+    for (const [key, label] of Object.entries(CARGO_BREAKDOWN_LABELS)) {
+      rows += wkBreakdownRow(label, weeks, 'cargoRevenueBreakdown', key);
+    }
+  }
   rows += wkTotal('Total Income', weeks, 'flightRevenue', false, 'income');
 
   rows += wkDivider(cols);
@@ -127,22 +154,24 @@ function renderWeeklyPL() {
   // ── OUTGOINGS ──
   rows += wkGroupHeader('OUTGOINGS', 'outgoing');
 
-  // Operating Costs sub-section
-  rows += wkSubSection('Operating Costs');
-  rows += wkRow('Fuel', weeks, 'fuelCosts', true, 'outgoing');
-  rows += wkRow('Crew', weeks, 'crewCosts', true, 'outgoing');
-  rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true, 'outgoing');
-  rows += wkRow('Airport Fees', weeks, 'airportFees', true, 'outgoing');
-  rows += wkSubTotal('Subtotal Op. Costs', weeks, 'operatingCosts', true);
+  // Operating Costs
+  rows += wkOutgoingToggleRow('Operating Costs', opCostsExpanded, 'toggleOpCosts', weeks, 'operatingCosts');
+  if (opCostsExpanded) {
+    rows += wkRow('Fuel', weeks, 'fuelCosts', true, 'outgoing');
+    rows += wkRow('Crew', weeks, 'crewCosts', true, 'outgoing');
+    rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true, 'outgoing');
+    rows += wkRow('Airport Fees', weeks, 'airportFees', true, 'outgoing');
+  }
 
-  // Overheads sub-section
-  rows += wkSubSection('Overheads');
-  rows += wkRow('Staff', weeks, 'staffCosts', true, 'outgoing');
-  rows += wkRow('Leases', weeks, 'leaseCosts', true, 'outgoing');
-  rows += wkRow('Contractors', weeks, 'contractorCosts', true, 'outgoing');
-  rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true, 'outgoing');
-  rows += wkRow('Loan Payments', weeks, 'loanPayments', true, 'outgoing');
-  rows += wkSubTotal('Subtotal Overheads', weeks, 'overheads', true);
+  // Overheads
+  rows += wkOutgoingToggleRow('Overheads', overheadsExpanded, 'toggleOverheads', weeks, 'overheads');
+  if (overheadsExpanded) {
+    rows += wkRow('Staff', weeks, 'staffCosts', true, 'outgoing');
+    rows += wkRow('Leases', weeks, 'leaseCosts', true, 'outgoing');
+    rows += wkRow('Contractors', weeks, 'contractorCosts', true, 'outgoing');
+    rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true, 'outgoing');
+    rows += wkRow('Loan Payments', weeks, 'loanPayments', true, 'outgoing');
+  }
 
   // Total Outgoings
   rows += wkTotal('Total Outgoings', weeks, 'totalCosts', true, 'outgoing');
@@ -231,6 +260,68 @@ function wkStatRow(label, weeks, key) {
 
 function wkSpacer(cols) {
   return `<tr style="height:0.3rem;"><td colspan="${cols}"></td></tr>`;
+}
+
+// ── Revenue breakdown helpers ─────────────────────────────────────────────────
+
+function toggleOpCosts() {
+  opCostsExpanded = !opCostsExpanded;
+  renderWeeklyPL();
+}
+
+function toggleOverheads() {
+  overheadsExpanded = !overheadsExpanded;
+  renderWeeklyPL();
+}
+
+function wkOutgoingToggleRow(label, isExpanded, toggleFn, weeks, key) {
+  const chevron = isExpanded ? '&#9660;' : '&#9654;';
+  let cells = `<td style="padding:0.3rem 0.6rem 0.3rem 1.2rem;color:var(--text-secondary);font-size:0.8rem;">
+    <span style="color:var(--text-muted);margin-right:0.3rem;font-size:0.65rem;">${chevron}</span>${label}</td>`;
+  for (const w of weeks) {
+    const v = w[key] || 0;
+    const prefix = v > 0 ? '-' : '';
+    const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
+    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}$${fmtNum(Math.abs(v))}</td>`;
+  }
+  return `<tr onclick="${toggleFn}()" style="background:rgba(248,81,73,0.015);border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;" onmouseenter="this.style.background='rgba(248,81,73,0.03)'" onmouseleave="this.style.background='rgba(248,81,73,0.015)'">${cells}</tr>`;
+}
+
+function togglePassengerBreakdown() {
+  passengerExpanded = !passengerExpanded;
+  renderWeeklyPL();
+}
+
+function toggleCargoBreakdown() {
+  cargoExpanded = !cargoExpanded;
+  renderWeeklyPL();
+}
+
+function wkRevenueToggleRow(label, isExpanded, toggleFn, weeks, breakdownKey) {
+  const chevron = isExpanded ? '&#9660;' : '&#9654;';
+  let cells = `<td style="padding:0.3rem 0.6rem 0.3rem 1.2rem;color:var(--text-secondary);font-size:0.8rem;">
+    <span style="color:var(--text-muted);margin-right:0.3rem;font-size:0.65rem;">${chevron}</span>${label}</td>`;
+  for (const w of weeks) {
+    const v = Object.values(w[breakdownKey] || {}).reduce((s, x) => s + x, 0);
+    const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
+    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">$${fmtNum(v)}</td>`;
+  }
+  return `<tr onclick="${toggleFn}()" style="background:rgba(16,185,129,0.02);border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;" onmouseenter="this.style.background='rgba(16,185,129,0.05)'" onmouseleave="this.style.background='rgba(16,185,129,0.02)'">${cells}</tr>`;
+}
+
+function wkBreakdownSubSection(title) {
+  return `<tr style="background:rgba(16,185,129,0.015);">
+    <td colspan="99" style="padding:0.2rem 0.6rem 0.2rem 2rem;font-weight:600;color:rgba(52,211,153,0.6);font-size:0.62rem;letter-spacing:0.4px;text-transform:uppercase;">${title}</td></tr>`;
+}
+
+function wkBreakdownRow(label, weeks, jsonKey, subKey) {
+  let cells = `<td style="padding:0.25rem 0.6rem 0.25rem 2.4rem;color:var(--text-muted);font-size:0.75rem;">${label}</td>`;
+  for (const w of weeks) {
+    const v = ((w[jsonKey] || {})[subKey]) || 0;
+    const color = v === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(52,211,153,0.7)';
+    cells += `<td style="padding:0.25rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.75rem;">$${fmtNum(v)}</td>`;
+  }
+  return `<tr style="background:rgba(16,185,129,0.01);border-bottom:1px solid rgba(255,255,255,0.02);">${cells}</tr>`;
 }
 
 // ── Route Performance ────────────────────────────────────────────────────────

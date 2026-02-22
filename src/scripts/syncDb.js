@@ -274,6 +274,18 @@ async function syncDatabase() {
       console.log(`Note: TEXT→enum restore scan skipped: ${e.message}`);
     }
 
+    // Add revenue breakdown JSONB columns to weekly_financials if missing
+    try {
+      await sequelize.query(`
+        ALTER TABLE weekly_financials
+          ADD COLUMN IF NOT EXISTS passenger_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
+          ADD COLUMN IF NOT EXISTS cargo_revenue_breakdown JSONB DEFAULT '{}'::jsonb
+      `);
+      console.log('✓ Ensured revenue breakdown columns exist on weekly_financials');
+    } catch (e) {
+      console.log('Note: Revenue breakdown columns may already exist or table not yet created');
+    }
+
     // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 

@@ -958,8 +958,17 @@ class WorldTimeService {
                              (businessPrice * 0.06) + (firstPrice * 0.02);
       const ticketRevenue = Math.round(passengers * avgTicketPrice);
 
+      // Per-cabin breakdown (same math, stored separately for reporting)
+      const cabinRevenue = {
+        economy:     Math.round(passengers * 0.80 * economyPrice),
+        economyPlus: Math.round(passengers * 0.12 * economyPlusPrice),
+        business:    Math.round(passengers * 0.06 * businessPrice),
+        first:       Math.round(passengers * 0.02 * firstPrice)
+      };
+
       // Cargo revenue — per-type calculation using actual allocations and demand factors
       let cargoRevenue = 0;
+      const cargoByType = {};
       const cargoConfig = aircraft?.cargoConfig
         || (aircraft ? migrateOldConfig(aircraft.cargoLightKg, aircraft.cargoStandardKg, aircraft.cargoHeavyKg) : null);
       const cargoRates = route.cargoRates
@@ -979,7 +988,9 @@ class WorldTimeService {
           const tons = allocatedKg / 1000;
           const variance = 0.90 + Math.random() * 0.20; // ±10%
           const demandFactor = CARGO_TYPES[typeKey].baseDemand * distanceModifier * variance;
-          cargoRevenue += tons * rate * demandFactor;
+          const typeRevenue = Math.round(tons * rate * demandFactor);
+          cargoRevenue += typeRevenue;
+          if (typeRevenue > 0) cargoByType[typeKey] = typeRevenue;
         }
         cargoRevenue = Math.round(cargoRevenue);
       }
@@ -1037,6 +1048,22 @@ class WorldTimeService {
           airportFees: airportFees,
           flights: 1,
           passengers: passengers
+        });
+
+        // Merge per-cabin and per-cargo breakdown into JSONB columns
+        await weekRecord.reload();
+        const pb = weekRecord.passengerRevenueBreakdown || {};
+        const cb = weekRecord.cargoRevenueBreakdown || {};
+        await weekRecord.update({
+          passengerRevenueBreakdown: {
+            economy:     (pb.economy     || 0) + cabinRevenue.economy,
+            economyPlus: (pb.economyPlus || 0) + cabinRevenue.economyPlus,
+            business:    (pb.business    || 0) + cabinRevenue.business,
+            first:       (pb.first       || 0) + cabinRevenue.first
+          },
+          cargoRevenueBreakdown: Object.fromEntries(
+            CARGO_TYPE_KEYS.map(k => [k, (cb[k] || 0) + (cargoByType[k] || 0)])
+          )
         });
       } catch (wfErr) {
         // Non-critical — don't break revenue processing

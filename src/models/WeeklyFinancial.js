@@ -32,6 +32,18 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     defaultValue: 0,
     field: 'flight_revenue'
   },
+  passengerRevenueBreakdown: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    field: 'passenger_revenue_breakdown',
+    comment: 'Per-cabin revenue: {economy, economyPlus, business, first}'
+  },
+  cargoRevenueBreakdown: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    field: 'cargo_revenue_breakdown',
+    comment: 'Per-cargo-type revenue: {general, express, heavy, oversized, perishable, dangerous, liveAnimal, highValue}'
+  },
 
   // Flight operating costs (broken down)
   fuelCosts: {

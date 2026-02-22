@@ -548,6 +548,15 @@ server.listen(PORT, () => {
       } catch (_) { /* type may not exist yet — sync will create it */ }
     }
 
+    // Pre-add JSONB columns that Sequelize alter may miss
+    try {
+      await sequelize.query(`
+        ALTER TABLE weekly_financials
+          ADD COLUMN IF NOT EXISTS passenger_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
+          ADD COLUMN IF NOT EXISTS cargo_revenue_breakdown JSONB DEFAULT '{}'::jsonb
+      `);
+    } catch (_) { /* table may not exist yet — sync will create it */ }
+
     await sequelize.sync({ alter: true });
     console.log('✓ Database schema synced');
   } catch (err) {
