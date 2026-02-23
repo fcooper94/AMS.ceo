@@ -568,6 +568,12 @@ server.listen(PORT, () => {
           ADD COLUMN IF NOT EXISTS marketing_costs DECIMAL(15,2) DEFAULT 0
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
+    try {
+      await sequelize.query(`
+        ALTER TABLE marketing_campaigns
+          ADD COLUMN IF NOT EXISTS audience_levels JSONB DEFAULT '{}'::jsonb
+      `);
+    } catch (_) { /* table may not exist yet — sync will create it */ }
 
     await sequelize.sync({ alter: true });
     console.log('✓ Database schema synced');

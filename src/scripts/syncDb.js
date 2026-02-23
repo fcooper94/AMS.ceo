@@ -297,6 +297,17 @@ async function syncDatabase() {
       console.log('Note: marketing_costs column may already exist or table not yet created');
     }
 
+    // Add audience_levels column to marketing_campaigns if missing
+    try {
+      await sequelize.query(`
+        ALTER TABLE marketing_campaigns
+          ADD COLUMN IF NOT EXISTS audience_levels JSONB DEFAULT '{}'::jsonb
+      `);
+      console.log('✓ Ensured audience_levels column exists on marketing_campaigns');
+    } catch (e) {
+      console.log('Note: audience_levels column may already exist or table not yet created');
+    }
+
     // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 

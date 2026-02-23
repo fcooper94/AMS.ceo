@@ -2,6 +2,7 @@
 
 let marketingData = null;
 let selectedChannels = new Set();
+let selectedAudienceLevels = {};
 
 async function loadMarketingData() {
   try {
@@ -13,12 +14,50 @@ async function loadMarketingData() {
     document.getElementById('marketingBalance').textContent = '$' + fmtMoney(data.balance);
     document.getElementById('marketingGameYear').textContent = data.gameYear;
 
+    checkEraChange(data.eraMultiplier, data.eraName, data.gameYear);
     renderActiveCampaigns(data.campaigns.filter(c => c.isActive));
   } catch (err) {
     console.error('Marketing load error:', err);
     document.getElementById('activeCampaigns').innerHTML =
       '<div class="empty-message">Failed to load marketing data.</div>';
   }
+}
+
+// ── Era Toast ─────────────────────────────────────────────────────────────────
+
+function checkEraChange(eraMultiplier, eraName, gameYear) {
+  const storageKey = 'mktg_era_notified';
+  const stored = parseFloat(localStorage.getItem(storageKey) || '0');
+
+  // Show toast if multiplier has increased since last visit
+  if (eraMultiplier > stored) {
+    localStorage.setItem(storageKey, String(eraMultiplier));
+    // Don't show on very first visit (no stored value yet) to avoid noise on initial load
+    if (stored > 0) {
+      showEraToast(eraName, gameYear);
+    } else {
+      // First ever visit — just silently record, no toast
+    }
+  }
+}
+
+let eraToastTimer = null;
+
+function showEraToast(eraName, gameYear) {
+  const toast = document.getElementById('eraToast');
+  document.getElementById('eraToastMsg').textContent =
+    `Marketing costs have increased. Campaigns now priced for ${gameYear}.`;
+  document.getElementById('eraToastEra').textContent = eraName.toUpperCase();
+
+  toast.classList.add('toast-visible');
+
+  if (eraToastTimer) clearTimeout(eraToastTimer);
+  eraToastTimer = setTimeout(dismissEraToast, 9000);
+}
+
+function dismissEraToast() {
+  document.getElementById('eraToast').classList.remove('toast-visible');
+  if (eraToastTimer) { clearTimeout(eraToastTimer); eraToastTimer = null; }
 }
 
 function fmtMoney(n) {
@@ -42,26 +81,27 @@ function renderActiveCampaigns(campaigns) {
   if (marketingData) {
     for (const ch of marketingData.availableChannels) channelMap[ch.key] = ch;
   }
+  const levelsMeta = marketingData?.audienceLevelsMeta || {};
 
   let html = '';
   for (const c of campaigns) {
-    const channelNames = (c.channels || []).map(k => channelMap[k]?.name || k).join(', ');
+    const audienceLevels = c.audienceLevels || {};
+    const channelNames = (c.channels || []).map(k => {
+      const name = channelMap[k]?.name || k;
+      const lvl = audienceLevels[k];
+      const lvlLabel = lvl ? (levelsMeta[lvl]?.label || lvl) : '';
+      return lvlLabel ? `${name} (${lvlLabel})` : name;
+    }).join(', ');
     const channelIcons = (c.channels || []).map(k => channelMap[k]?.icon || '').join(' ');
 
-    let progressHtml = '';
-    let durationLabel = 'Indefinite';
-    if (c.durationWeeks) {
-      const startMs = new Date(c.gameStartDate).getTime();
+    let durationMain = 'Indefinite';
+    if (c.durationWeeks && c.gameEndDate) {
       const endMs = new Date(c.gameEndDate).getTime();
-      const nowMs = marketingData.currentGameDate ? new Date(marketingData.currentGameDate).getTime() : startMs;
-      const totalMs = endMs - startMs;
-      const elapsedMs = Math.max(0, nowMs - startMs);
-      const pct = Math.min(100, Math.round((elapsedMs / totalMs) * 100));
-      durationLabel = `${c.durationWeeks} weeks`;
-      progressHtml = `
-        <div class="campaign-progress-bar" title="${pct}% complete">
-          <div class="campaign-progress-fill" style="width:${pct}%"></div>
-        </div>`;
+      const nowMs = marketingData.currentGameDate ? new Date(marketingData.currentGameDate).getTime() : Date.now();
+      const remainingWeeks = Math.ceil(Math.max(0, endMs - nowMs) / (7 * 24 * 60 * 60 * 1000));
+      durationMain = remainingWeeks > 0
+        ? `${remainingWeeks} wk${remainingWeeks !== 1 ? 's' : ''} remaining`
+        : 'Ending soon';
     }
 
     const boostColor = c.demandBoost > 0 ? 'var(--success-color)' : 'var(--text-muted)';
@@ -74,11 +114,11 @@ function renderActiveCampaigns(campaigns) {
         <div class="active-campaign-meta">
           <span>$${fmtMoney(c.weeklyBudget)}/wk</span>
           <span style="color:${boostColor};">+${Number(c.demandBoost).toFixed(1)}% demand</span>
-          <span>${durationLabel}</span>
-          ${c.gameEndDate ? `<span>Ends: ${c.gameEndDate}</span>` : ''}
         </div>
       </div>
-      ${progressHtml}
+      <div class="campaign-duration-badge">
+        <div class="campaign-duration-main">${durationMain}</div>
+      </div>
       <button class="btn btn-secondary" onclick="cancelCampaign('${c.id}')" style="flex-shrink:0; font-size:0.75rem; padding:0.3rem 0.75rem;">Cancel</button>
     </div>`;
   }
@@ -111,8 +151,8 @@ function renderChannelGrid(channels, gameYear) {
       <div class="channel-name">${ch.name}</div>
       <div class="channel-desc">${ch.description}</div>
       <div class="channel-meta">
-        <span class="channel-cost">$${fmtMoney(ch.weeklyBudget)}/wk</span>
-        <span class="channel-boost">+${ch.demandBoost}%</span>
+        <span class="channel-cost">from $${fmtMoney(ch.baseWeeklyCost)}/wk</span>
+        <span class="channel-boost">+${ch.demandBoost}%+</span>
       </div>
     </div>`;
   }
@@ -154,6 +194,7 @@ function openCampaignModal() {
 
   // Reset state
   selectedChannels.clear();
+  selectedAudienceLevels = {};
   modalCurrentStep = 1;
 
   // Populate channel grid
@@ -176,20 +217,20 @@ function goToModalStep(step) {
   modalCurrentStep = step;
 
   // Show/hide step content
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 4; i++) {
     const el = document.getElementById(`modalStep${i}`);
     if (el) el.style.display = i === step ? '' : 'none';
   }
 
   // Update step indicator dots and lines
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 4; i++) {
     const dot = document.getElementById(`stepDot${i}`);
     if (dot) {
       dot.classList.toggle('step-dot-active', i === step);
       dot.classList.toggle('step-dot-done', i < step);
     }
   }
-  for (let i = 1; i <= 2; i++) {
+  for (let i = 1; i <= 3; i++) {
     const line = document.getElementById(`stepLine${i}`);
     if (line) line.classList.toggle('step-line-done', i < step);
   }
@@ -200,23 +241,81 @@ function goToModalStep(step) {
   // Next/Launch button
   const nextBtn = document.getElementById('modalNextBtn');
   nextBtn.disabled = false;
-  nextBtn.textContent = step === 3 ? '🚀 Launch' : 'Next →';
+  nextBtn.textContent = step === 4 ? '🚀 Launch' : 'Next →';
 
   // No-selection hint
   document.getElementById('noSelectionHint').style.display = 'none';
 
   // Step-specific setup
-  if (step === 2) renderStep2Preview();
-  if (step === 3) renderModalReview();
+  if (step === 2) renderAudienceStep();
+  if (step === 3) renderStep3Preview();
+  if (step === 4) renderModalReview();
 }
 
-function renderStep2Preview() {
+function renderAudienceStep() {
+  if (!marketingData) return;
+  const chMap = {};
+  for (const ch of marketingData.availableChannels) chMap[ch.key] = ch;
+  const levels = marketingData.audienceLevelsMeta || {};
+
+  let html = '';
+  for (const key of selectedChannels) {
+    const ch = chMap[key];
+    if (!ch) continue;
+    // Default to first available audience level for this channel
+    if (!selectedAudienceLevels[key]) selectedAudienceLevels[key] = ch.audiences[0];
+    const currentLevel = selectedAudienceLevels[key];
+
+    const levelBtns = ch.audiences.map(lvl => {
+      const meta = levels[lvl] || {};
+      const cost = Math.round(ch.baseWeeklyCost * (meta.costMultiplier || 1));
+      const boost = (ch.demandBoost * (meta.boostMultiplier || 1)).toFixed(1);
+      const isActive = lvl === currentLevel;
+      return `<button class="audience-level-btn${isActive ? ' audience-level-active' : ''}"
+        onclick="selectAudience('${key}', '${lvl}')">
+        ${meta.icon || ''} ${meta.label || lvl}
+        <span class="audience-level-cost">$${fmtMoney(cost)}/wk · +${boost}%</span>
+      </button>`;
+    }).join('');
+
+    html += `
+    <div class="audience-ch-row">
+      <div class="audience-ch-name">${ch.icon || ''} ${ch.name}</div>
+      <div class="audience-level-btns" id="audienceBtns-${key}">${levelBtns}</div>
+    </div>`;
+  }
+
+  document.getElementById('audienceStep').innerHTML = html;
+}
+
+function selectAudience(channelKey, level) {
+  selectedAudienceLevels[channelKey] = level;
+
   const chMap = {};
   if (marketingData) for (const ch of marketingData.availableChannels) chMap[ch.key] = ch;
+  const ch = chMap[channelKey];
+  if (!ch) return;
+
+  const container = document.getElementById(`audienceBtns-${channelKey}`);
+  if (!container) return;
+  const btns = container.querySelectorAll('.audience-level-btn');
+  btns.forEach((btn, i) => {
+    btn.classList.toggle('audience-level-active', ch.audiences[i] === level);
+  });
+}
+
+function renderStep3Preview() {
+  const chMap = {};
+  if (marketingData) for (const ch of marketingData.availableChannels) chMap[ch.key] = ch;
+  const levels = marketingData?.audienceLevelsMeta || {};
   const pills = [...selectedChannels]
-    .map(k => `<span class="camp-preview-pill">${chMap[k]?.icon || ''} ${chMap[k]?.name || k}</span>`)
+    .map(k => {
+      const lvl = selectedAudienceLevels[k] || chMap[k]?.audiences?.[0] || '';
+      const lvlLabel = levels[lvl]?.label || lvl;
+      return `<span class="camp-preview-pill">${chMap[k]?.icon || ''} ${chMap[k]?.name || k} · ${lvlLabel}</span>`;
+    })
     .join('');
-  document.getElementById('step2ChannelPreview').innerHTML = pills ||
+  document.getElementById('step3ChannelPreview').innerHTML = pills ||
     '<span style="color:var(--text-muted);font-size:0.75rem;">No channels selected</span>';
 }
 
@@ -224,15 +323,21 @@ function renderModalReview() {
   if (!marketingData) return;
   const chMap = {};
   for (const ch of marketingData.availableChannels) chMap[ch.key] = ch;
+  const levels = marketingData.audienceLevelsMeta || {};
 
   let totalCost = 0, rawBoost = 0;
   const channelPills = [];
   for (const key of selectedChannels) {
     const ch = chMap[key];
     if (ch) {
-      totalCost += ch.weeklyBudget;
-      rawBoost += ch.demandBoost;
-      channelPills.push(`<span class="review-ch-pill">${ch.icon || ''} ${ch.name}</span>`);
+      const lvl = selectedAudienceLevels[key] || ch.audiences[0];
+      const multiplier = levels[lvl]?.costMultiplier || 1.0;
+      const boostMult = levels[lvl]?.boostMultiplier || 1.0;
+      const chCost = Math.round(ch.baseWeeklyCost * multiplier);
+      totalCost += chCost;
+      rawBoost += ch.demandBoost * boostMult;
+      const lvlLabel = levels[lvl]?.label || lvl;
+      channelPills.push(`<span class="review-ch-pill">${ch.icon || ''} ${ch.name} <span style="color:var(--text-muted);font-size:0.68rem;font-weight:400;">${lvlLabel}</span></span>`);
     }
   }
 
@@ -254,7 +359,7 @@ function modalNextStep() {
     hint.style.display = 'inline';
     return;
   }
-  if (modalCurrentStep === 3) {
+  if (modalCurrentStep === 4) {
     launchCampaign();
     return;
   }
@@ -315,7 +420,7 @@ async function launchCampaign() {
     const res = await fetch('/api/marketing', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channels: [...selectedChannels], durationWeeks })
+      body: JSON.stringify({ channels: [...selectedChannels], audienceLevels: selectedAudienceLevels, durationWeeks })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to launch');
@@ -325,6 +430,7 @@ async function launchCampaign() {
     const channelLabels = [...selectedChannels].map(k => chMap[k]?.name || k).join('  ·  ');
 
     selectedChannels.clear();
+    selectedAudienceLevels = {};
     closeCampaignModal();
     await showLaunchAnimation(channelLabels);
     await loadMarketingData();
@@ -335,14 +441,42 @@ async function launchCampaign() {
   }
 }
 
-async function cancelCampaign(id) {
-  if (!confirm('Cancel this campaign?')) return;
+let cancelTargetId = null;
+
+function cancelCampaign(id) {
+  const chMap = {};
+  if (marketingData) for (const ch of marketingData.availableChannels) chMap[ch.key] = ch;
+
+  // Find the campaign to get its channel names
+  const campaign = marketingData?.campaigns?.find(c => c.id === id);
+  const channelNames = campaign
+    ? (campaign.channels || []).map(k => chMap[k]?.name || k).join(', ')
+    : 'Campaign';
+
+  cancelTargetId = id;
+  document.getElementById('cancelModalCampaignName').textContent = channelNames;
+  document.getElementById('cancelModal').classList.add('modal-open');
+}
+
+function closeCancelModal() {
+  document.getElementById('cancelModal').classList.remove('modal-open');
+  cancelTargetId = null;
+}
+
+async function confirmCancelCampaign() {
+  if (!cancelTargetId) return;
+  const btn = document.getElementById('cancelModalConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Cancelling...';
   try {
-    const res = await fetch(`/api/marketing/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/marketing/${cancelTargetId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to cancel');
+    closeCancelModal();
     await loadMarketingData();
   } catch (err) {
     alert('Failed to cancel campaign: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Cancel Campaign';
   }
 }
 

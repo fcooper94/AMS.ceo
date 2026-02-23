@@ -58,6 +58,13 @@ const MarketingCampaign = sequelize.define('MarketingCampaign', {
     field: 'duration_weeks',
     comment: 'Total planned weeks (null = indefinite)'
   },
+  audienceLevels: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {},
+    field: 'audience_levels',
+    comment: 'Per-channel audience level e.g. {"tv":"national","radio":"local"}'
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

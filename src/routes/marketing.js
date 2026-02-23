@@ -3,7 +3,7 @@ const router = express.Router();
 const { WorldMembership, User, World } = require('../models');
 const MarketingCampaign = require('../models/MarketingCampaign');
 const CHANNELS = require('../data/marketingChannels');
-const { calcCappedBoost } = require('../data/marketingChannels');
+const { calcCappedBoost, AUDIENCE_LEVELS, getChannelBoost } = require('../data/marketingChannels');
 const eraEconomicService = require('../services/eraEconomicService');
 
 /**
@@ -31,6 +31,13 @@ router.get('/', async (req, res) => {
     const gameYear = gameTime.getFullYear();
     const currentGameDate = gameTime.toISOString().split('T')[0];
     const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+    const eraName = gameYear < 1958 ? 'Propeller Era'
+      : gameYear < 1970 ? 'Early Jet Era'
+      : gameYear < 1980 ? 'Widebody Era'
+      : gameYear < 1990 ? 'Deregulation Era'
+      : gameYear < 2000 ? 'Modern Era'
+      : gameYear < 2010 ? 'Next-Gen Era'
+      : 'Contemporary Era';
 
     const campaigns = await MarketingCampaign.findAll({
       where: { worldMembershipId: membership.id },
@@ -38,9 +45,9 @@ router.get('/', async (req, res) => {
       limit: 30
     });
 
-    // Build available channels list (era-filtered)
+    // Build available channels list (era-filtered), include audiences
     const availableChannels = Object.entries(CHANNELS)
-      .filter(([key, ch]) => key !== 'calcCappedBoost' && typeof ch === 'object')
+      .filter(([key, ch]) => key !== 'calcCappedBoost' && key !== 'AUDIENCE_LEVELS' && typeof ch === 'object')
       .map(([key, ch]) => ({
         key,
         name: ch.name,
@@ -48,14 +55,16 @@ router.get('/', async (req, res) => {
         icon: ch.icon,
         availableFrom: ch.availableFrom,
         available: gameYear >= ch.availableFrom,
-        weeklyBudget: Math.round(ch.baseWeeklyCost * eraMultiplier),
-        demandBoost: ch.demandBoost
+        baseWeeklyCost: Math.round(ch.baseWeeklyCost * eraMultiplier),
+        demandBoost: getChannelBoost(key, gameYear),
+        audiences: ch.audiences
       }));
 
     res.json({
       campaigns: campaigns.map(c => ({
         id: c.id,
         channels: c.channels,
+        audienceLevels: c.audienceLevels || {},
         weeklyBudget: parseFloat(c.weeklyBudget),
         demandBoost: parseFloat(c.demandBoost),
         gameStartDate: c.gameStartDate,
@@ -65,9 +74,11 @@ router.get('/', async (req, res) => {
         createdAt: c.createdAt
       })),
       availableChannels,
+      audienceLevelsMeta: AUDIENCE_LEVELS,
       gameYear,
       currentGameDate,
       eraMultiplier,
+      eraName,
       balance: parseFloat(membership.balance) || 0
     });
   } catch (err) {
@@ -78,7 +89,7 @@ router.get('/', async (req, res) => {
 
 /**
  * POST / — Launch a new campaign bundle
- * Body: { channels: ['tv','radio'], durationWeeks: 4 | null }
+ * Body: { channels: ['tv','radio'], audienceLevels: { tv: 'national', radio: 'local' }, durationWeeks: 4 | null }
  */
 router.post('/', async (req, res) => {
   try {
@@ -87,7 +98,7 @@ router.post('/', async (req, res) => {
     const activeWorldId = req.session?.activeWorldId;
     if (!activeWorldId) return res.status(400).json({ error: 'No active world selected' });
 
-    const { channels, durationWeeks } = req.body;
+    const { channels, audienceLevels = {}, durationWeeks } = req.body;
 
     if (!Array.isArray(channels) || channels.length === 0) {
       return res.status(400).json({ error: 'Select at least one channel' });
@@ -113,13 +124,31 @@ router.post('/', async (req, res) => {
       if (gameYear < ch.availableFrom) {
         return res.status(400).json({ error: `${ch.name} is not available until ${ch.availableFrom}` });
       }
+      // Validate audience level
+      const level = audienceLevels[key] || ch.audiences[0];
+      if (!ch.audiences.includes(level)) {
+        return res.status(400).json({ error: `${ch.name} does not support ${level} audience` });
+      }
     }
 
-    // Calculate combined cost (era-scaled) and capped demand boost
+    // Calculate combined cost: baseWeeklyCost × eraMultiplier × audienceMultiplier per channel
+    const resolvedAudienceLevels = {};
     const weeklyBudget = channels.reduce((sum, k) => {
-      return sum + Math.round(CHANNELS[k].baseWeeklyCost * eraMultiplier);
+      const ch = CHANNELS[k];
+      const level = audienceLevels[k] || ch.audiences[0];
+      resolvedAudienceLevels[k] = level;
+      const audienceMultiplier = AUDIENCE_LEVELS[level]?.costMultiplier || 1.0;
+      return sum + Math.round(ch.baseWeeklyCost * eraMultiplier * audienceMultiplier);
     }, 0);
-    const demandBoost = calcCappedBoost(channels);
+
+    // Calculate demand boost: base boost × audience boost multiplier per channel, then cap
+    const rawBoost = channels.reduce((sum, k) => {
+      const ch = CHANNELS[k];
+      const level = resolvedAudienceLevels[k];
+      const audienceBoostMult = AUDIENCE_LEVELS[level]?.boostMultiplier || 1.0;
+      return sum + getChannelBoost(k, gameYear) * audienceBoostMult;
+    }, 0);
+    const demandBoost = rawBoost <= 20 ? rawBoost : 20 + (rawBoost - 20) * 0.5;
 
     // Calculate game start/end dates
     const gameStartDate = gameTime.toISOString().split('T')[0];
@@ -134,6 +163,7 @@ router.post('/', async (req, res) => {
     const campaign = await MarketingCampaign.create({
       worldMembershipId: membership.id,
       channels,
+      audienceLevels: resolvedAudienceLevels,
       weeklyBudget,
       demandBoost,
       gameStartDate,
@@ -147,6 +177,7 @@ router.post('/', async (req, res) => {
       campaign: {
         id: campaign.id,
         channels: campaign.channels,
+        audienceLevels: campaign.audienceLevels,
         weeklyBudget: parseFloat(campaign.weeklyBudget),
         demandBoost: parseFloat(campaign.demandBoost),
         gameStartDate: campaign.gameStartDate,

@@ -176,6 +176,30 @@
     flex-wrap: wrap;
   }
 
+  .campaign-duration-badge {
+    flex-shrink: 0;
+    text-align: center;
+    min-width: 130px;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-elevated);
+  }
+  .campaign-duration-main {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    line-height: 1.2;
+  }
+  .campaign-duration-sub {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-top: 0.15rem;
+  }
+
   .campaign-progress-bar {
     width: 120px;
     height: 5px;
@@ -221,6 +245,60 @@
     background: var(--accent-color);
     border-color: var(--accent-color);
     color: #fff;
+  }
+
+  /* ── Audience Step ────────────────────────────────────────────────────────── */
+  .audience-ch-row {
+    margin-bottom: 0.85rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .audience-ch-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .audience-level-btns {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .audience-level-btn {
+    background: var(--surface);
+    border: 1.5px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    min-width: 80px;
+  }
+  .audience-level-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+  }
+  .audience-level-btn.audience-level-active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+  }
+  .audience-level-cost {
+    font-size: 0.6rem;
+    font-weight: 400;
+    opacity: 0.8;
   }
 
   /* ── Launch Overlay ───────────────────────────────────────────────────── */
@@ -592,6 +670,141 @@
     display: none;
     animation: campStepIn 0.2s ease both;
   }
+
+  /* ── Cancel Confirm Modal ─────────────────────────────────────────────── */
+  .cancel-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 5, 15, 0.78);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 8500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .cancel-modal-overlay.modal-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cancel-modal {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 420px;
+    padding: 1.75rem;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    transform: scale(0.95) translateY(8px);
+    transition: transform 0.2s ease;
+  }
+  .cancel-modal-overlay.modal-open .cancel-modal {
+    transform: scale(1) translateY(0);
+  }
+  .cancel-modal-icon {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 0.75rem;
+  }
+  .cancel-modal-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+    text-align: center;
+    margin-bottom: 0.4rem;
+  }
+  .cancel-modal-campaign {
+    font-size: 0.78rem;
+    color: var(--accent-color);
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    padding: 0.4rem 0.75rem;
+    background: rgba(59,130,246,0.08);
+    border-radius: 6px;
+  }
+  .cancel-modal-body {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+  }
+  .cancel-modal-actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .cancel-modal-actions .btn {
+    flex: 1;
+  }
+  .btn-danger {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+  }
+  .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+
+  /* ── Era Toast Notification ───────────────────────────────────────────────── */
+  #eraToast {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 9500;
+    background: var(--surface);
+    border: 1px solid var(--accent-color);
+    border-left: 3px solid var(--accent-color);
+    border-radius: 8px;
+    padding: 0.85rem 1.1rem;
+    max-width: 320px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    transform: translateX(calc(100% + 2rem));
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #eraToast.toast-visible {
+    transform: translateX(0);
+  }
+  .era-toast-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .era-toast-body {}
+  .era-toast-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: var(--accent-color);
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+  }
+  .era-toast-msg {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .era-toast-era {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+  }
+  .era-toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .era-toast-close:hover { color: var(--text-primary); }
 </style>
 
 <div class="dashboard-container">
@@ -623,6 +836,17 @@
   </main>
 </div>
 
+<!-- Era price change toast -->
+<div id="eraToast">
+  <div class="era-toast-icon">📈</div>
+  <div class="era-toast-body">
+    <div class="era-toast-title">ERA UPDATE</div>
+    <div class="era-toast-msg" id="eraToastMsg">Marketing costs have increased.</div>
+    <div class="era-toast-era" id="eraToastEra"></div>
+  </div>
+  <button class="era-toast-close" onclick="dismissEraToast()">✕</button>
+</div>
+
 <!-- Step-by-step campaign modal -->
 <div id="campaignModal" class="camp-modal-overlay">
   <div class="camp-modal">
@@ -640,9 +864,12 @@
       <div class="camp-step-dot" id="stepDot2">2</div>
       <div class="camp-step-line" id="stepLine2"></div>
       <div class="camp-step-dot" id="stepDot3">3</div>
+      <div class="camp-step-line" id="stepLine3"></div>
+      <div class="camp-step-dot" id="stepDot4">4</div>
     </div>
     <div class="camp-step-labels">
       <span>Channels</span>
+      <span>Audience</span>
       <span>Duration</span>
       <span>Review</span>
     </div>
@@ -656,10 +883,16 @@
         <div id="modalChannelGrid" class="channel-grid"></div>
       </div>
 
-      <!-- Step 2: Duration -->
+      <!-- Step 2: Audience Levels -->
       <div id="modalStep2" class="camp-step-content" style="display:none">
+        <p class="camp-step-hint">Choose the reach level for each channel. Wider audiences cost more but reach more passengers.</p>
+        <div id="audienceStep"></div>
+      </div>
+
+      <!-- Step 3: Duration -->
+      <div id="modalStep3" class="camp-step-content" style="display:none">
         <p class="camp-step-hint" style="margin-bottom:0.5rem;">Running for:</p>
-        <div class="camp-selected-preview" id="step2ChannelPreview"></div>
+        <div class="camp-selected-preview" id="step3ChannelPreview"></div>
         <div style="margin-bottom:0.5rem; font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">DURATION</div>
         <div class="duration-pills" id="durationPills">
           <button class="duration-pill" data-weeks="1" onclick="selectDuration(this)">1 Week</button>
@@ -671,9 +904,9 @@
         </div>
       </div>
 
-      <!-- Step 3: Review -->
-      <div id="modalStep3" class="camp-step-content" style="display:none">
-        <div class="review-section-label">CHANNELS</div>
+      <!-- Step 4: Review -->
+      <div id="modalStep4" class="camp-step-content" style="display:none">
+        <div class="review-section-label">CHANNELS &amp; AUDIENCE</div>
         <div id="reviewChannels" class="review-channel-pills"></div>
         <div class="review-stats">
           <div class="review-stat-row">
@@ -705,6 +938,20 @@
       <button class="btn btn-primary" id="modalNextBtn" onclick="modalNextStep()">Next →</button>
     </div>
 
+  </div>
+</div>
+
+<!-- Cancel campaign confirmation modal -->
+<div id="cancelModal" class="cancel-modal-overlay">
+  <div class="cancel-modal">
+    <div class="cancel-modal-icon">📢</div>
+    <div class="cancel-modal-title">CANCEL CAMPAIGN?</div>
+    <div class="cancel-modal-campaign" id="cancelModalCampaignName"></div>
+    <div class="cancel-modal-body">This campaign will stop immediately and no further weekly costs will be charged. This action cannot be undone.</div>
+    <div class="cancel-modal-actions">
+      <button class="btn btn-secondary" onclick="closeCancelModal()">Keep Running</button>
+      <button class="btn btn-danger" id="cancelModalConfirmBtn" onclick="confirmCancelCampaign()">Cancel Campaign</button>
+    </div>
   </div>
 </div>
 
