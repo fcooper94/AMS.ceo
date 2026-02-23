@@ -1,0 +1,792 @@
+<!-- TITLE: Marketing - AMS.ceo -->
+<!-- SUBTITLE: Marketing Campaigns -->
+<!-- SCRIPTS: /js/marketing.js -->
+
+<style>
+  .channel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .channel-card {
+    background: var(--surface);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+  }
+
+  .channel-card:hover:not(.channel-locked) {
+    border-color: var(--accent-color);
+    background: var(--surface-elevated);
+  }
+
+  .channel-card.channel-selected {
+    border-color: var(--accent-color);
+    background: rgba(59,130,246,0.08);
+  }
+
+  .channel-card.channel-locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .channel-tick {
+    display: none;
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.1rem;
+    height: 1.1rem;
+    background: var(--success-color);
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    color: #fff;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .channel-card.channel-selected .channel-tick {
+    display: flex;
+  }
+
+  .channel-card {
+    position: relative;
+  }
+
+  .channel-icon {
+    font-size: 1.4rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .channel-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.2rem;
+  }
+
+  .channel-desc {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+  }
+
+  .channel-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+  }
+
+  .channel-cost {
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+  }
+
+  .channel-boost {
+    color: var(--success-color);
+    font-weight: 700;
+  }
+
+  .channel-era-badge {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 0.1rem 0.3rem;
+    margin-bottom: 0.35rem;
+    display: inline-block;
+  }
+
+  .campaign-summary {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .summary-stat-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .summary-stat-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+  }
+
+  .active-campaign-card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .active-campaign-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .active-campaign-channels {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .active-campaign-meta {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+
+  .campaign-progress-bar {
+    width: 120px;
+    height: 5px;
+    background: var(--surface-elevated);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .campaign-progress-fill {
+    height: 100%;
+    background: var(--accent-color);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .duration-pills {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+
+  .duration-pill {
+    background: var(--surface);
+    border: 1.5px solid var(--border-color);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.9rem;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    font-family: inherit;
+  }
+
+  .duration-pill:hover {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+  }
+
+  .duration-pill.duration-pill-active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+  }
+
+  /* ── Launch Overlay ───────────────────────────────────────────────────── */
+  #launchOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 10, 22, 0.92);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  #launchOverlay.launch-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .launch-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .launch-globe-wrap {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .launch-ripple {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid rgba(59, 130, 246, 0.55);
+    width: 100%;
+    height: 100%;
+    animation: launchRipple 2.4s ease-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes launchRipple {
+    0%   { transform: scale(0.5); opacity: 0.8; }
+    100% { transform: scale(2.1); opacity: 0; }
+  }
+
+  .launch-globe-svg {
+    width: 170px;
+    height: 170px;
+    filter: drop-shadow(0 0 18px rgba(59,130,246,0.45));
+    position: relative;
+    z-index: 1;
+  }
+
+  .launch-city-dot {
+    fill: #60a5fa;
+    opacity: 0;
+    animation: cityDotIn 0.5s ease forwards;
+  }
+  @keyframes cityDotIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .launch-signal-line {
+    stroke: #3b82f6;
+    stroke-width: 0.8;
+    stroke-dasharray: 3 3;
+    opacity: 0;
+    animation: signalLineIn 0.6s ease forwards;
+  }
+  @keyframes signalLineIn {
+    from { opacity: 0; stroke-dashoffset: 20; }
+    to   { opacity: 0.5; stroke-dashoffset: 0; }
+  }
+
+  .launch-on-air {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: #22c55e;
+    text-transform: uppercase;
+  }
+  .launch-on-air-dot {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #22c55e;
+    animation: onAirPulse 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes onAirPulse {
+    from { opacity: 1; box-shadow: 0 0 10px #22c55e; }
+    to   { opacity: 0.2; box-shadow: none; }
+  }
+
+  .launch-title {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 5px;
+    color: #fff;
+    text-align: center;
+    animation: launchSlideUp 0.45s ease 0.1s both;
+  }
+  .launch-channels-label {
+    font-size: 0.78rem;
+    color: #60a5fa;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.5px;
+    max-width: 320px;
+    animation: launchSlideUp 0.45s ease 0.22s both;
+  }
+  .launch-sub {
+    font-size: 0.66rem;
+    color: rgba(255,255,255,0.35);
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    animation: launchSlideUp 0.45s ease 0.34s both;
+  }
+  @keyframes launchSlideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .launch-progress {
+    width: 220px;
+    height: 2px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+  }
+  .launch-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #1d4ed8, #3b82f6);
+    border-radius: 2px;
+    transition: width 3s linear;
+  }
+
+  /* ── Campaign Modal ───────────────────────────────────────────────────── */
+  .camp-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 5, 15, 0.78);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 8000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .camp-modal-overlay.modal-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .camp-modal {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    width: 92%;
+    max-width: 760px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    transform: scale(0.96) translateY(12px);
+    transition: transform 0.25s ease;
+  }
+  .camp-modal-overlay.modal-open .camp-modal {
+    transform: scale(1) translateY(0);
+  }
+
+  .camp-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+  .camp-modal-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: var(--text-primary);
+  }
+  .camp-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    line-height: 1;
+    transition: color 0.15s;
+    border-radius: 4px;
+  }
+  .camp-modal-close:hover { color: var(--text-primary); background: var(--surface-elevated); }
+
+  .camp-step-indicator {
+    display: flex;
+    align-items: center;
+    padding: 1.2rem 2rem 0;
+    flex-shrink: 0;
+  }
+  .camp-step-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .camp-step-dot.step-dot-active {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+  }
+  .camp-step-dot.step-dot-done {
+    border-color: var(--success-color);
+    background: var(--success-color);
+    color: #fff;
+  }
+  .camp-step-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border-color);
+    transition: background 0.3s;
+  }
+  .camp-step-line.step-line-done { background: var(--success-color); }
+
+  .camp-step-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 2rem 0;
+    flex-shrink: 0;
+  }
+  .camp-step-labels span {
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    width: 26px;
+    text-align: center;
+  }
+
+  .camp-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .camp-step-content { animation: campStepIn 0.22s ease both; }
+  @keyframes campStepIn {
+    from { opacity: 0; transform: translateX(14px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .camp-step-hint {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-bottom: 1rem;
+  }
+
+  .camp-selected-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.65rem 1rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    min-height: 2.4rem;
+    align-items: center;
+  }
+  .camp-preview-pill {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: 12px;
+    padding: 0.18rem 0.6rem;
+  }
+
+  .review-section-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+  .review-channel-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 1.25rem;
+  }
+  .review-ch-pill {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.3rem 0.7rem;
+  }
+  .review-stats {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .review-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.7rem 1rem;
+    font-size: 0.82rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+  }
+  .review-stat-row:last-child { border-bottom: none; }
+  .review-stat-row.review-stat-total {
+    background: var(--surface-elevated);
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+  }
+  .review-stat-value {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+  }
+
+  .camp-modal-footer {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+  .camp-no-selection-hint {
+    font-size: 0.72rem;
+    color: #f59e0b;
+    display: none;
+    animation: campStepIn 0.2s ease both;
+  }
+</style>
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>MARKETING</h1>
+      <p class="subtitle">ADVERTISING CAMPAIGNS</p>
+    </div>
+
+    <!-- Balance bar -->
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="color: var(--text-secondary); font-size: 0.875rem; font-weight: 600; margin-bottom: 0.25rem;">AVAILABLE FUNDS</div>
+        <div style="color: var(--text-primary); font-size: 1.5rem; font-weight: 700;" id="marketingBalance">$--</div>
+      </div>
+      <div>
+        <div style="color: var(--text-secondary); font-size: 0.875rem; font-weight: 600; margin-bottom: 0.25rem;">GAME YEAR</div>
+        <div style="color: var(--text-primary); font-size: 1rem; font-weight: 600;" id="marketingGameYear">--</div>
+      </div>
+    </div>
+
+    <!-- Active Campaigns -->
+    <h2 class="section-title">ACTIVE CAMPAIGNS</h2>
+    <div id="activeCampaigns" style="margin-bottom: 2rem;">
+      <div class="empty-message">Loading campaigns...</div>
+    </div>
+
+    <button class="btn btn-primary" onclick="openCampaignModal()" style="margin-bottom: 2rem;">+ Launch New Campaign</button>
+  </main>
+</div>
+
+<!-- Step-by-step campaign modal -->
+<div id="campaignModal" class="camp-modal-overlay">
+  <div class="camp-modal">
+
+    <!-- Header -->
+    <div class="camp-modal-header">
+      <div class="camp-modal-title">LAUNCH CAMPAIGN</div>
+      <button class="camp-modal-close" onclick="closeCampaignModal()">✕</button>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="camp-step-indicator">
+      <div class="camp-step-dot step-dot-active" id="stepDot1">1</div>
+      <div class="camp-step-line" id="stepLine1"></div>
+      <div class="camp-step-dot" id="stepDot2">2</div>
+      <div class="camp-step-line" id="stepLine2"></div>
+      <div class="camp-step-dot" id="stepDot3">3</div>
+    </div>
+    <div class="camp-step-labels">
+      <span>Channels</span>
+      <span>Duration</span>
+      <span>Review</span>
+    </div>
+
+    <!-- Body -->
+    <div class="camp-modal-body">
+
+      <!-- Step 1: Select Channels -->
+      <div id="modalStep1" class="camp-step-content">
+        <p class="camp-step-hint">Select one or more advertising channels. Greyed-out channels aren't available in your game era.</p>
+        <div id="modalChannelGrid" class="channel-grid"></div>
+      </div>
+
+      <!-- Step 2: Duration -->
+      <div id="modalStep2" class="camp-step-content" style="display:none">
+        <p class="camp-step-hint" style="margin-bottom:0.5rem;">Running for:</p>
+        <div class="camp-selected-preview" id="step2ChannelPreview"></div>
+        <div style="margin-bottom:0.5rem; font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">DURATION</div>
+        <div class="duration-pills" id="durationPills">
+          <button class="duration-pill" data-weeks="1" onclick="selectDuration(this)">1 Week</button>
+          <button class="duration-pill" data-weeks="2" onclick="selectDuration(this)">2 Weeks</button>
+          <button class="duration-pill duration-pill-active" data-weeks="4" onclick="selectDuration(this)">4 Weeks</button>
+          <button class="duration-pill" data-weeks="8" onclick="selectDuration(this)">8 Weeks</button>
+          <button class="duration-pill" data-weeks="12" onclick="selectDuration(this)">12 Weeks</button>
+          <button class="duration-pill" data-weeks="0" onclick="selectDuration(this)">Indefinite</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Review -->
+      <div id="modalStep3" class="camp-step-content" style="display:none">
+        <div class="review-section-label">CHANNELS</div>
+        <div id="reviewChannels" class="review-channel-pills"></div>
+        <div class="review-stats">
+          <div class="review-stat-row">
+            <span>Weekly Cost</span>
+            <span id="reviewWeeklyCost" class="review-stat-value">--</span>
+          </div>
+          <div class="review-stat-row">
+            <span>Demand Boost</span>
+            <span id="reviewBoost" class="review-stat-value" style="color:var(--success-color)">--</span>
+          </div>
+          <div class="review-stat-row">
+            <span>Duration</span>
+            <span id="reviewDuration" class="review-stat-value">--</span>
+          </div>
+          <div class="review-stat-row review-stat-total">
+            <span>Total Commitment</span>
+            <span id="reviewTotal" class="review-stat-value">--</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="camp-modal-footer">
+      <button class="btn btn-secondary" id="modalBackBtn" onclick="modalPrevStep()" style="display:none">← Back</button>
+      <span class="camp-no-selection-hint" id="noSelectionHint">Select at least one channel to continue</span>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" id="modalNextBtn" onclick="modalNextStep()">Next →</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Global outreach launch animation -->
+<div id="launchOverlay">
+  <div class="launch-card">
+    <div class="launch-globe-wrap">
+      <div class="launch-ripple" style="--d:0s"></div>
+      <div class="launch-ripple" style="--d:0.6s"></div>
+      <div class="launch-ripple" style="--d:1.2s"></div>
+      <div class="launch-ripple" style="--d:1.8s"></div>
+
+      <svg class="launch-globe-svg" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="gClip"><circle cx="80" cy="80" r="62"/></clipPath>
+          <radialGradient id="gFill" cx="36%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#0d2137"/>
+            <stop offset="100%" stop-color="#050c1c"/>
+          </radialGradient>
+          <radialGradient id="gGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Globe fill -->
+        <circle cx="80" cy="80" r="62" fill="url(#gFill)"/>
+        <circle cx="80" cy="80" r="62" fill="url(#gGlow)"/>
+
+        <!-- Grid lines -->
+        <g clip-path="url(#gClip)" stroke="#1a4a7a" stroke-width="0.65" fill="none" opacity="0.85">
+          <!-- Latitude lines -->
+          <ellipse cx="80" cy="80" rx="62" ry="15"/>
+          <ellipse cx="80" cy="55" rx="54" ry="13"/>
+          <ellipse cx="80" cy="38" rx="31" ry="8"/>
+          <ellipse cx="80" cy="105" rx="54" ry="13"/>
+          <ellipse cx="80" cy="122" rx="31" ry="8"/>
+          <!-- Longitude lines -->
+          <ellipse cx="80" cy="80" rx="15" ry="62"/>
+          <ellipse cx="80" cy="80" rx="42" ry="62"/>
+          <line x1="18" y1="80" x2="142" y2="80"/>
+        </g>
+
+        <!-- Globe border -->
+        <circle cx="80" cy="80" r="62" fill="none" stroke="#1e5a9a" stroke-width="1.2"/>
+
+        <!-- Shine highlight -->
+        <ellipse cx="60" cy="54" rx="18" ry="11" fill="white" opacity="0.035"/>
+
+        <!-- Signal lines from center -->
+        <line class="launch-signal-line" x1="80" y1="80" x2="93" y2="52" style="animation-delay:0.35s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="56" y2="56" style="animation-delay:0.65s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="118" y2="53" style="animation-delay:0.85s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="114" y2="98" style="animation-delay:1.05s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="62" y2="96" style="animation-delay:0.55s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="104" y2="67" style="animation-delay:1.25s"/>
+        <line class="launch-signal-line" x1="80" y1="80" x2="113" y2="79" style="animation-delay:0.95s"/>
+
+        <!-- City dots -->
+        <circle class="launch-city-dot" cx="93"  cy="52"  r="2.8" style="animation-delay:0.4s"/>
+        <circle class="launch-city-dot" cx="56"  cy="56"  r="2.4" style="animation-delay:0.7s"/>
+        <circle class="launch-city-dot" cx="118" cy="53"  r="2.2" style="animation-delay:0.9s"/>
+        <circle class="launch-city-dot" cx="114" cy="98"  r="2"   style="animation-delay:1.1s"/>
+        <circle class="launch-city-dot" cx="62"  cy="96"  r="2"   style="animation-delay:0.6s"/>
+        <circle class="launch-city-dot" cx="104" cy="67"  r="1.8" style="animation-delay:1.3s"/>
+        <circle class="launch-city-dot" cx="113" cy="79"  r="1.8" style="animation-delay:1.0s"/>
+
+        <!-- Center broadcast point -->
+        <circle cx="80" cy="80" r="4" fill="#3b82f6" opacity="0.95"/>
+        <circle cx="80" cy="80" r="6.5" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.4"/>
+      </svg>
+    </div>
+
+    <div class="launch-on-air">
+      <div class="launch-on-air-dot"></div>
+      ON AIR
+    </div>
+    <div class="launch-title">CAMPAIGN LAUNCHED</div>
+    <div class="launch-channels-label" id="launchChannelNames"></div>
+    <div class="launch-sub">Broadcasting to global audiences</div>
+    <div class="launch-progress">
+      <div class="launch-progress-fill" id="launchProgressFill"></div>
+    </div>
+  </div>
+</div>

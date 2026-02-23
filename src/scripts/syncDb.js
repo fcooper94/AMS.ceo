@@ -286,6 +286,17 @@ async function syncDatabase() {
       console.log('Note: Revenue breakdown columns may already exist or table not yet created');
     }
 
+    // Add marketing costs column to weekly_financials if missing
+    try {
+      await sequelize.query(`
+        ALTER TABLE weekly_financials
+          ADD COLUMN IF NOT EXISTS marketing_costs DECIMAL(15,2) DEFAULT 0
+      `);
+      console.log('✓ Ensured marketing_costs column exists on weekly_financials');
+    } catch (e) {
+      console.log('Note: marketing_costs column may already exist or table not yet created');
+    }
+
     // Sync all models (alter: true adds new columns/tables without dropping existing data)
     await sequelize.sync({ alter: true });
 

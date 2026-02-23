@@ -171,6 +171,7 @@ function renderWeeklyPL() {
     rows += wkRow('Contractors', weeks, 'contractorCosts', true, 'outgoing');
     rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true, 'outgoing');
     rows += wkRow('Loan Payments', weeks, 'loanPayments', true, 'outgoing');
+    rows += wkRow('Marketing', weeks, 'marketingCosts', true, 'outgoing');
   }
 
   // Total Outgoings

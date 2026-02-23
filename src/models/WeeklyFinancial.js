@@ -102,6 +102,14 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     field: 'loan_payments'
   },
 
+  // Marketing spend (recorded alongside overheads each week)
+  marketingCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'marketing_costs',
+    comment: 'Weekly marketing campaign spend across all active campaigns'
+  },
+
   // Stats
   flights: {
     type: DataTypes.INTEGER,

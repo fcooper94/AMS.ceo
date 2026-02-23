@@ -170,6 +170,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const staffRoutes = require('./routes/staff');
 const loansRoutes = require('./routes/loans');
 const airspaceRoutes = require('./routes/airspace');
+const marketingRoutes = require('./routes/marketing');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -326,6 +327,7 @@ app.use('/api/dashboard', requireWorld, dashboardRoutes);
 app.use('/api/staff', requireWorld, staffRoutes);
 app.use('/api/loans', requireWorld, loansRoutes);
 app.use('/api/airspace', requireWorld, airspaceRoutes);
+app.use('/api/marketing', requireWorld, marketingRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -398,6 +400,15 @@ app.get('/maintenance', requireWorld, async (req, res) => {
 app.get('/finances', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/finances.html'), '/finances');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/marketing', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/marketing.html'), '/marketing');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
@@ -548,12 +559,13 @@ server.listen(PORT, () => {
       } catch (_) { /* type may not exist yet — sync will create it */ }
     }
 
-    // Pre-add JSONB columns that Sequelize alter may miss
+    // Pre-add columns that Sequelize alter may miss
     try {
       await sequelize.query(`
         ALTER TABLE weekly_financials
           ADD COLUMN IF NOT EXISTS passenger_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
-          ADD COLUMN IF NOT EXISTS cargo_revenue_breakdown JSONB DEFAULT '{}'::jsonb
+          ADD COLUMN IF NOT EXISTS cargo_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
+          ADD COLUMN IF NOT EXISTS marketing_costs DECIMAL(15,2) DEFAULT 0
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
 

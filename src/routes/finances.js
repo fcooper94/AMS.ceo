@@ -56,8 +56,9 @@ router.get('/', async (req, res) => {
       const contractors = parseFloat(w.contractorCosts) || 0;
       const commonality = parseFloat(w.fleetCommonalityCosts) || 0;
       const loanPay = parseFloat(w.loanPayments) || 0;
+      const marketing = parseFloat(w.marketingCosts) || 0;
       const opCosts = fuel + crew + maint + fees;
-      const overheads = staff + leases + contractors + commonality + loanPay;
+      const overheads = staff + leases + contractors + commonality + loanPay + marketing;
       const totalCosts = opCosts + overheads;
       const netProfit = rev - totalCosts;
 
@@ -74,6 +75,7 @@ router.get('/', async (req, res) => {
         contractorCosts: Math.round(contractors),
         fleetCommonalityCosts: Math.round(commonality),
         loanPayments: Math.round(loanPay),
+        marketingCosts: Math.round(marketing),
         overheads: Math.round(overheads),
         totalCosts: Math.round(totalCosts),
         netProfit: Math.round(netProfit),

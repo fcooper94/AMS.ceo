@@ -50,6 +50,8 @@ class WorldTimeService {
     // Weekly overhead recording
     this.lastOverheadWeek = {}; // Map of worldId -> last game week (Monday date) overheads were recorded
     this.isProcessingOverheads = false;
+    // Marketing boost cache — Map<membershipId, boostPct> cleared at start of each flight-check cycle
+    this.marketingBoostCache = new Map();
     // Weekly loan payment processing
     this.lastLoanWeek = {}; // Map of worldId -> last game week loans were processed
     this.isProcessingLoans = false;
@@ -350,6 +352,8 @@ class WorldTimeService {
     if (!this.isProcessingFlights && now - this.lastFlightCheck >= this.flightCheckInterval) {
       this.lastFlightCheck = now;
       this.isProcessingFlights = true;
+      // Clear marketing boost cache at the start of each flight-check cycle so it's fresh per cycle
+      this.marketingBoostCache.clear();
       this.processFlights(worldId, gameTime)
         .catch(err => console.error('Error processing flights:', err.message))
         .finally(() => { this.isProcessingFlights = false; });
@@ -775,6 +779,22 @@ class WorldTimeService {
           // Demand lookup failed, use defaults
         }
 
+        // Apply marketing boost from active campaigns (cached per cycle)
+        try {
+          const membershipId = route.worldMembershipId;
+          if (!this.marketingBoostCache.has(membershipId)) {
+            const MarketingCampaign = require('../models/MarketingCampaign');
+            const totalBoost = await MarketingCampaign.sum('demand_boost', {
+              where: { worldMembershipId: membershipId, isActive: true }
+            });
+            this.marketingBoostCache.set(membershipId, totalBoost || 0);
+          }
+          const marketingBoostPct = this.marketingBoostCache.get(membershipId) || 0;
+          if (marketingBoostPct > 0) {
+            demandFactor *= (1 + marketingBoostPct / 100);
+          }
+        } catch (_) { /* non-critical — skip if error */ }
+
         // 3. Route maturity factor: new routes ramp up over game-weeks (0.55–1.00)
         // Exponential ramp: ~0.68 at 2wk, ~0.82 at 4wk, ~0.95 at 8wk, ~1.0 at 12wk
         let maturityFactor = 1.0;
@@ -1166,6 +1186,27 @@ class WorldTimeService {
               overheadRecorded: true
             });
           }
+
+          // Charge active marketing campaign costs and auto-expire finished campaigns
+          try {
+            const MarketingCampaign = require('../models/MarketingCampaign');
+            const currentDateStr = gameTime.toISOString().split('T')[0];
+            const activeCampaigns = await MarketingCampaign.findAll({
+              where: { worldMembershipId: membership.id, isActive: true }
+            });
+            let marketingCost = 0;
+            for (const campaign of activeCampaigns) {
+              if (campaign.gameEndDate && campaign.gameEndDate <= currentDateStr) {
+                await campaign.update({ isActive: false });
+              } else {
+                marketingCost += parseFloat(campaign.weeklyBudget) || 0;
+              }
+            }
+            if (marketingCost > 0) {
+              await record.increment({ marketingCosts: Math.round(marketingCost) });
+              await membership.decrement('balance', { by: Math.round(marketingCost) });
+            }
+          } catch (_) { /* non-critical — skip on error */ }
         } catch (mErr) {
           // Skip individual membership errors
         }

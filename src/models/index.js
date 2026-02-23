@@ -18,6 +18,7 @@ const AirportZoneMapping = require('./AirportZoneMapping');
 const WeeklyFinancial = require('./WeeklyFinancial');
 const Loan = require('./Loan');
 const AirspaceRestriction = require('./AirspaceRestriction');
+const MarketingCampaign = require('./MarketingCampaign');
 
 // Define associations
 User.belongsToMany(World, {
@@ -110,6 +111,10 @@ Notification.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as:
 WorldMembership.hasMany(AirspaceRestriction, { foreignKey: 'world_membership_id', as: 'airspaceRestrictions' });
 AirspaceRestriction.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
 
+// Marketing campaign associations
+WorldMembership.hasMany(MarketingCampaign, { foreignKey: 'world_membership_id', as: 'marketingCampaigns' });
+MarketingCampaign.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
+
 module.exports = {
   User,
   World,
@@ -130,5 +135,6 @@ module.exports = {
   AirportZoneMapping,
   WeeklyFinancial,
   Loan,
-  AirspaceRestriction
+  AirspaceRestriction,
+  MarketingCampaign
 };
