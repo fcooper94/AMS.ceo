@@ -4512,6 +4512,8 @@ async function viewFlightDetailsWeekly(flightId) {
 
   // Calculate aircraft available time (when post-flight ends and aircraft is ready for duty)
   const availableMins = arrHomeMins + postFlightTotal;
+  // Earliest departure = available + pre-flight buffer so the new flight clears conflict checks
+  const earliestDepMins = availableMins + preFlightTotal;
   let availableText = '';
   let availableTimeForNextFlight = ''; // HH:MM format for route creation
   if (dCheckDue) {
@@ -4523,13 +4525,13 @@ async function viewFlightDetailsWeekly(flightId) {
     availableText = `<span style="color: #a371f7;">${formatDateShort(releaseDate)} (after C Check)</span>`;
     availableTimeForNextFlight = '08:00'; // Default morning time after heavy maintenance
   } else {
-    const availableDay = Math.floor(availableMins / 1440);
-    let availableDateStr = scheduledDate;
-    if (availableDay > 0) {
-      availableDateStr = addDaysToDate(scheduledDate, availableDay);
+    const depDay = Math.floor(earliestDepMins / 1440);
+    let depDateStr = scheduledDate;
+    if (depDay > 0) {
+      depDateStr = addDaysToDate(scheduledDate, depDay);
     }
-    availableTimeForNextFlight = formatTime(availableMins % 1440); // Time of day in HH:MM
-    availableText = `<span style="color: #7ee787;">${availableDay > 0 ? formatDateShort(availableDateStr) + ' ' : ''}${formatTime(availableMins)}</span>`;
+    availableTimeForNextFlight = formatTime(earliestDepMins % 1440); // Earliest safe departure time
+    availableText = `<span style="color: #7ee787;">${depDay > 0 ? formatDateShort(depDateStr) + ' ' : ''}${formatTime(earliestDepMins)}</span>`;
   }
 
   // Check if aircraft is currently airborne (visible on map)
@@ -7530,8 +7532,8 @@ async function showConflictModal(conflict) {
           <span style="color: #58a6ff; font-weight: 600;">${conflict.routeNumber}${conflict.returnRouteNumber ? ' / ' + conflict.returnRouteNumber : ''}</span>
           <span style="color: #8b949e;">Sector:</span>
           <span style="color: #f0f6fc;">${conflict.departure} → ${conflict.arrival}</span>
-          <span style="color: #8b949e;">Date:</span>
-          <span style="color: #f0f6fc;">${conflict.date}</span>
+          <span style="color: #8b949e;">Day:</span>
+          <span style="color: #f0f6fc;">${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][conflict.dayOfWeek] || conflict.date || '—'}</span>
           <span style="color: #8b949e;">Time:</span>
           <span style="color: #f0f6fc;">${conflict.departureTime} → ${conflict.arrivalTime}</span>
         </div>

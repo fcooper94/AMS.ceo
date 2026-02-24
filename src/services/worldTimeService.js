@@ -964,26 +964,36 @@ class WorldTimeService {
         // Load factor calculation failed, use default
       }
 
-      // Calculate passengers and revenue
+      // Calculate passengers and revenue based on actual cabin configuration
       const passengers = Math.round(paxCapacity * loadFactor);
       const economyPrice = parseFloat(route.economyPrice) || 0;
-
-      // Revenue: weighted average across cabin classes
-      // Assume 80% economy, 12% economy+, 6% business, 2% first
       const economyPlusPrice = parseFloat(route.economyPlusPrice) || economyPrice * 1.3;
       const businessPrice = parseFloat(route.businessPrice) || economyPrice * 2.5;
       const firstPrice = parseFloat(route.firstPrice) || economyPrice * 4;
 
-      const avgTicketPrice = (economyPrice * 0.80) + (economyPlusPrice * 0.12) +
-                             (businessPrice * 0.06) + (firstPrice * 0.02);
+      // Use actual seat counts from aircraft cabin configuration
+      const ecoSeats = parseInt(aircraft?.economySeats) || 0;
+      const ecoPlusSeats = parseInt(aircraft?.economyPlusSeats) || 0;
+      const bizSeats = parseInt(aircraft?.businessSeats) || 0;
+      const firstSeats = parseInt(aircraft?.firstSeats) || 0;
+      const totalSeats = ecoSeats + ecoPlusSeats + bizSeats + firstSeats || paxCapacity;
+
+      // Distribute passengers proportionally to configured seats
+      const ecoFrac = totalSeats > 0 ? ecoSeats / totalSeats : 1;
+      const ecoPlusFrac = totalSeats > 0 ? ecoPlusSeats / totalSeats : 0;
+      const bizFrac = totalSeats > 0 ? bizSeats / totalSeats : 0;
+      const firstFrac = totalSeats > 0 ? firstSeats / totalSeats : 0;
+
+      const avgTicketPrice = (economyPrice * ecoFrac) + (economyPlusPrice * ecoPlusFrac) +
+                             (businessPrice * bizFrac) + (firstPrice * firstFrac);
       const ticketRevenue = Math.round(passengers * avgTicketPrice);
 
-      // Per-cabin breakdown (same math, stored separately for reporting)
+      // Per-cabin breakdown based on actual seat distribution
       const cabinRevenue = {
-        economy:     Math.round(passengers * 0.80 * economyPrice),
-        economyPlus: Math.round(passengers * 0.12 * economyPlusPrice),
-        business:    Math.round(passengers * 0.06 * businessPrice),
-        first:       Math.round(passengers * 0.02 * firstPrice)
+        economy:     Math.round(passengers * ecoFrac * economyPrice),
+        economyPlus: Math.round(passengers * ecoPlusFrac * economyPlusPrice),
+        business:    Math.round(passengers * bizFrac * businessPrice),
+        first:       Math.round(passengers * firstFrac * firstPrice)
       };
 
       // Cargo revenue — per-type calculation using actual allocations and demand factors
@@ -1178,41 +1188,38 @@ class WorldTimeService {
           });
 
           if (!record.overheadRecorded) {
+            // Charge active marketing campaign costs and auto-expire finished campaigns
+            let marketingCost = 0;
+            try {
+              const MarketingCampaign = require('../models/MarketingCampaign');
+              const currentDateStr = gameTime.toISOString().split('T')[0];
+              const activeCampaigns = await MarketingCampaign.findAll({
+                where: { worldMembershipId: membership.id, isActive: true }
+              });
+              for (const campaign of activeCampaigns) {
+                if (campaign.gameEndDate && campaign.gameEndDate <= currentDateStr) {
+                  await campaign.update({ isActive: false });
+                } else {
+                  marketingCost += parseFloat(campaign.weeklyBudget) || 0;
+                }
+              }
+            } catch (_) { /* non-critical — skip on error */ }
+
             await record.update({
               staffCosts: Math.round(staffCost),
               leaseCosts: Math.round(leaseCosts),
               contractorCosts: Math.round(contractorCost),
               fleetCommonalityCosts: Math.round(commonalityCost),
+              marketingCosts: Math.round(marketingCost),
               overheadRecorded: true
             });
 
-            // Deduct overhead costs from airline balance
-            const totalOverheads = Math.round(staffCost) + Math.round(leaseCosts) + Math.round(contractorCost) + Math.round(commonalityCost);
+            // Deduct all overhead + marketing costs from airline balance
+            const totalOverheads = Math.round(staffCost) + Math.round(leaseCosts) + Math.round(contractorCost) + Math.round(commonalityCost) + Math.round(marketingCost);
             if (totalOverheads > 0) {
               await membership.decrement('balance', { by: totalOverheads });
             }
           }
-
-          // Charge active marketing campaign costs and auto-expire finished campaigns
-          try {
-            const MarketingCampaign = require('../models/MarketingCampaign');
-            const currentDateStr = gameTime.toISOString().split('T')[0];
-            const activeCampaigns = await MarketingCampaign.findAll({
-              where: { worldMembershipId: membership.id, isActive: true }
-            });
-            let marketingCost = 0;
-            for (const campaign of activeCampaigns) {
-              if (campaign.gameEndDate && campaign.gameEndDate <= currentDateStr) {
-                await campaign.update({ isActive: false });
-              } else {
-                marketingCost += parseFloat(campaign.weeklyBudget) || 0;
-              }
-            }
-            if (marketingCost > 0) {
-              await record.increment({ marketingCosts: Math.round(marketingCost) });
-              await membership.decrement('balance', { by: Math.round(marketingCost) });
-            }
-          } catch (_) { /* non-critical — skip on error */ }
         } catch (mErr) {
           // Skip individual membership errors
         }
