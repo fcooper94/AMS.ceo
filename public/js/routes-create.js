@@ -620,7 +620,8 @@ async function fetchUserFleet() {
   try {
     const response = await fetch('/api/fleet');
     if (response.ok) {
-      userFleet = await response.json();
+      const data = await response.json();
+      userFleet = data.fleet || data;
       populateFleetDropdown();
     }
   } catch (error) {

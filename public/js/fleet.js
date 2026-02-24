@@ -83,14 +83,26 @@ async function loadFleet() {
     fleetData = fleet;
     window._fleetData = fleet;
     filteredFleet = fleet;
-    populateTypeFilter();
-    updateAircraftCount();
-    displayFleet();
+
+    // Only update fleet page UI if we're on the fleet page
+    if (document.getElementById('fleetGrid')) {
+      populateTypeFilter();
+      updateAircraftCount();
+      displayFleet();
+    }
+
+    // If on scheduling page, refresh scheduling data
+    if (typeof loadSchedulingData === 'function') {
+      loadSchedulingData();
+    }
   } catch (error) {
     console.error('Error loading fleet:', error);
-    document.getElementById('fleetGrid').innerHTML = `
-      <div class="empty-message" style="color: var(--warning-color);">Error loading fleet data</div>
-    `;
+    const fleetGrid = document.getElementById('fleetGrid');
+    if (fleetGrid) {
+      fleetGrid.innerHTML = `
+        <div class="empty-message" style="color: var(--warning-color);">Error loading fleet data</div>
+      `;
+    }
   }
 }
 

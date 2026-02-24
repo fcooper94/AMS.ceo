@@ -365,11 +365,18 @@ router.get('/data', async (req, res) => {
       return true;
     });
 
+    // Include era/fuel multipliers for frontend cost scaling
+    const eraEconomicService = require('../services/eraEconomicService');
+    const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
+    const worldYear = world ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
+
     res.json({
       fleet: fleetWithMaintenance,
       routes,
       flights,
-      maintenance: deduplicatedBlocks
+      maintenance: deduplicatedBlocks,
+      eraMultiplier: eraEconomicService.getEraMultiplier(worldYear),
+      fuelMultiplier: eraEconomicService.getFuelCostMultiplier(worldYear)
     });
   } catch (error) {
     console.error('Error fetching schedule data:', error);

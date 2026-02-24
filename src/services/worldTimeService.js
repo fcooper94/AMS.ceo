@@ -1185,6 +1185,12 @@ class WorldTimeService {
               fleetCommonalityCosts: Math.round(commonalityCost),
               overheadRecorded: true
             });
+
+            // Deduct overhead costs from airline balance
+            const totalOverheads = Math.round(staffCost) + Math.round(leaseCosts) + Math.round(contractorCost) + Math.round(commonalityCost);
+            if (totalOverheads > 0) {
+              await membership.decrement('balance', { by: totalOverheads });
+            }
           }
 
           // Charge active marketing campaign costs and auto-expire finished campaigns
@@ -2020,7 +2026,7 @@ class WorldTimeService {
           if (daysUntilCExpiry <= 1 && daysUntilCExpiry >= 0) {
             await ac.update({ status: 'maintenance' });
 
-            // Deduct C check cost from airline balance (era-scaled)
+            // Deduct C check cost from airline balance (era-scaled) and record to financials
             const cCost = ac.aircraft?.cCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.cCheckCost), worldYear) : 0;
             if (cCost > 0) {
               const membership = await WorldMembership.findByPk(ac.worldMembershipId);
@@ -2028,6 +2034,16 @@ class WorldTimeService {
                 membership.balance = (parseFloat(membership.balance) || 0) - cCost;
                 await membership.save();
               }
+              // Record to weekly financials
+              try {
+                const WeeklyFinancial = require('../models/WeeklyFinancial');
+                const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
+                const [weekRecord] = await WeeklyFinancial.findOrCreate({
+                  where: { worldMembershipId: ac.worldMembershipId, weekStart },
+                  defaults: {}
+                });
+                await weekRecord.increment({ maintenanceCosts: Math.round(cCost) });
+              } catch (_) { /* non-critical */ }
             }
 
             if (process.env.NODE_ENV === 'development') {
@@ -2048,7 +2064,7 @@ class WorldTimeService {
           if (daysUntilDExpiry <= 1 && daysUntilDExpiry >= 0) {
             await ac.update({ status: 'maintenance' });
 
-            // Deduct D check cost from airline balance (era-scaled)
+            // Deduct D check cost from airline balance (era-scaled) and record to financials
             const dCost = ac.aircraft?.dCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.dCheckCost), worldYear) : 0;
             if (dCost > 0) {
               const membership = await WorldMembership.findByPk(ac.worldMembershipId);
@@ -2056,6 +2072,16 @@ class WorldTimeService {
                 membership.balance = (parseFloat(membership.balance) || 0) - dCost;
                 await membership.save();
               }
+              // Record to weekly financials
+              try {
+                const WeeklyFinancial = require('../models/WeeklyFinancial');
+                const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
+                const [weekRecord] = await WeeklyFinancial.findOrCreate({
+                  where: { worldMembershipId: ac.worldMembershipId, weekStart },
+                  defaults: {}
+                });
+                await weekRecord.increment({ maintenanceCosts: Math.round(dCost) });
+              } catch (_) { /* non-critical */ }
             }
 
             if (process.env.NODE_ENV === 'development') {

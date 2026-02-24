@@ -1265,6 +1265,9 @@ async function fetchAllScheduleData() {
       // Templates come from server with dayOfWeek - compute virtual dates for rendering
       scheduledFlights = computeVirtualDatesForTemplates(data.flights || [], worldTime);
       scheduledMaintenance = data.maintenance || [];
+      // Set era/fuel multipliers (fleet.js globals) so cost calculations are era-scaled
+      if (typeof fleetEraMultiplier !== 'undefined') fleetEraMultiplier = data.eraMultiplier || 1.0;
+      if (typeof fleetFuelMultiplier !== 'undefined') fleetFuelMultiplier = data.fuelMultiplier || 1.0;
     }
   } catch (error) {
     console.error('Error fetching schedule data:', error);
@@ -1309,8 +1312,12 @@ async function fetchUserFleet() {
   try {
     const response = await fetch('/api/fleet');
     if (response.ok) {
-      const allFleet = await response.json();
+      const data = await response.json();
+      const allFleet = data.fleet || data;
       userFleet = allFleet.filter(ac => ac.status === 'active' || ac.status === 'maintenance' || ac.status === 'on_order' || ac.status === 'cabin_refit');
+      // Set era/fuel multipliers (fleet.js globals) so cost calculations are era-scaled
+      if (typeof fleetEraMultiplier !== 'undefined') fleetEraMultiplier = data.eraMultiplier || 1.0;
+      if (typeof fleetFuelMultiplier !== 'undefined') fleetFuelMultiplier = data.fuelMultiplier || 1.0;
     }
   } catch (error) {
     console.error('Error fetching fleet:', error);
@@ -10108,10 +10115,12 @@ async function showAircraftDetails(userAircraftId) {
   const isLeased = ua.acquisitionType === 'lease';
   const cond = ua.conditionPercentage || 100;
 
-  // Calculate costs
+  // Calculate costs (era-scaled: fuel uses fuel multiplier, maintenance uses era multiplier)
   const burnRate = parseFloat(ua.fuelBurnPerHour) || 0;
-  const maintHr = parseFloat(ua.maintenanceCostPerHour) || 0;
-  const fuelHr = burnRate * 0.75;
+  const eraM = typeof fleetEraMultiplier !== 'undefined' ? fleetEraMultiplier : 1.0;
+  const fuelM = typeof fleetFuelMultiplier !== 'undefined' ? fleetFuelMultiplier : 1.0;
+  const maintHr = (parseFloat(ua.maintenanceCostPerHour) || 0) * eraM;
+  const fuelHr = burnRate * 0.75 * fuelM;
   const totalHr = fuelHr + maintHr;
   const leaseWk = parseFloat(ua.leaseWeeklyPayment) || 0;
   const weeklyOps = totalHr * 8 * 7 + (isLeased ? leaseWk : 0);

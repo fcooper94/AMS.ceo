@@ -512,3 +512,207 @@ select option {
   padding: 0.3rem 0.6rem;
   min-width: 80px;
 }
+
+/* Fleet action modals (shared across fleet, scheduling, etc.) */
+.fleet-modal-backdrop {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.fleet-modal-backdrop.visible { opacity: 1; }
+
+.fleet-modal {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 500px;
+}
+.fleet-modal.fleet-modal-wide {
+  max-width: 680px;
+  transform: scale(0.95) translateY(10px);
+  transition: transform 0.2s ease;
+  overflow: hidden;
+}
+.fleet-modal-backdrop.visible .fleet-modal {
+  transform: scale(1) translateY(0);
+}
+
+.fleet-modal-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.fleet-modal-header .modal-icon {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.fleet-modal-header .modal-icon.danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.fleet-modal-header .modal-icon.warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.fleet-modal-header .modal-icon.primary { background: rgba(59, 130, 246, 0.15); color: var(--accent-color); }
+.fleet-modal-header .modal-icon.secondary { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.fleet-modal-header .modal-icon.success { background: rgba(5, 150, 105, 0.15); color: var(--success-color); }
+.fleet-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.fleet-modal-header .modal-reg {
+  font-size: 0.8rem;
+  color: var(--accent-color);
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.fleet-modal-body {
+  padding: 1.25rem;
+}
+.fleet-modal-body p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.fleet-modal-body p:last-child { margin-bottom: 0; }
+.fleet-modal-body .modal-warning {
+  color: var(--warning-color);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.fleet-modal-input-group {
+  margin-top: 1rem;
+}
+.fleet-modal-input-group label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+.fleet-modal-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.fleet-modal-input-wrap .input-prefix {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 1rem;
+  pointer-events: none;
+}
+.fleet-modal-input-wrap input {
+  width: 100%;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.65rem 0.75rem 0.65rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: border-color 0.15s;
+}
+.fleet-modal-input-wrap input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+.fleet-modal-input-wrap .input-suffix {
+  position: absolute;
+  right: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.fleet-modal-input-error {
+  color: #ef4444;
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+  min-height: 1rem;
+}
+
+.fleet-modal-footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.fleet-modal-footer .btn {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.fleet-modal-footer .btn-cancel {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+.fleet-modal-footer .btn-cancel:hover {
+  background: var(--border-color);
+  color: var(--text-primary);
+}
+.fleet-modal-footer .btn-confirm-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.fleet-modal-footer .btn-confirm-danger:hover { background: #dc2626; }
+.fleet-modal-footer .btn-confirm-warning {
+  background: #d29922;
+  color: #fff;
+}
+.fleet-modal-footer .btn-confirm-warning:hover { background: #b57d12; }
+.fleet-modal-footer .btn-confirm-primary {
+  background: var(--accent-color);
+  color: #fff;
+}
+.fleet-modal-footer .btn-confirm-primary:hover { background: #2563eb; }
+
+/* Storage airport picker table */
+.storage-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.storage-table thead th {
+  text-align: left; padding: 0.35rem 0.5rem; font-size: 0.68rem; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border-color);
+  white-space: nowrap; font-weight: 600;
+}
+.storage-table thead th:first-child { width: 24px; }
+.storage-table tbody tr { cursor: pointer; border-bottom: 1px solid var(--border-color); }
+.storage-table tbody tr:last-child { border-bottom: none; }
+.storage-table tbody tr:hover { background: var(--surface-elevated); }
+.storage-table tbody tr.selected-row { background: rgba(59, 130, 246, 0.08); }
+.storage-table tbody td { padding: 0.4rem 0.5rem; color: var(--text-primary); white-space: nowrap; }
+.storage-table .loc-name { font-weight: 600; font-size: 0.8rem; }
+.storage-table .loc-detail { font-size: 0.7rem; color: var(--text-muted); }
+.storage-table .tier-badge {
+  display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+  font-size: 0.68rem; font-weight: 600;
+}
+.storage-table .tier-vcheap { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.storage-table .tier-cheap { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.storage-table .tier-middle { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+.storage-table .tier-midexp { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.storage-table .tier-expensive { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.storage-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
