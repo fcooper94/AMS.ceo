@@ -18,8 +18,8 @@ const TYPE_MAPPING = {
   'closed': 'Regional' // We'll mark these as disabled
 };
 
-// Default operational start year for airports without known dates
-const DEFAULT_OPERATIONAL_FROM = 1950;
+// Default operational start date for airports without known dates
+const DEFAULT_OPERATIONAL_FROM = '1950-01-01';
 
 // Historically significant airports that should always be included from OurAirports
 // NOTE: Many famous closed airports (Kai Tak, Berlin Tegel/Tempelhof, Meigs Field, etc.)
@@ -192,7 +192,7 @@ function convertAirport(airport, countries) {
     timezone: getTimezone(airport.latitude_deg, airport.longitude_deg, airport.iso_country),
     isActive: true, // All airports enabled by default - operational dates determine world availability
     operationalFrom: DEFAULT_OPERATIONAL_FROM, // Default - can be updated later
-    operationalUntil: isClosed ? 2020 : null, // Approximate closure date
+    operationalUntil: isClosed ? '2020-01-01' : null, // Approximate closure date
     priority_score: airport.priority_score
   };
 }
@@ -243,13 +243,12 @@ async function importAirports() {
         return true;
       }
 
-      // Otherwise, must be relevant type with IATA code and scheduled service
+      // Otherwise, must be relevant type with IATA code
       return relevantTypes.includes(airport.type) &&
-        airport.iata_code && // Must have IATA code (commercial)
-        airport.scheduled_service === 'yes'; // Must have scheduled service
+        airport.iata_code;
     });
 
-    console.log(`✓ Filtered to ${filteredAirports.length} commercial airports with scheduled service`);
+    console.log(`✓ Filtered to ${filteredAirports.length} airports`);
 
     // Count historical airports included
     const historicalIncluded = filteredAirports.filter(a =>
@@ -268,10 +267,10 @@ async function importAirports() {
     console.log(`\nHistorical airports: ${historicalAirports.length}`);
     console.log(`Active airports for filtering: ${activeAirports.length}`);
 
-    // Get top airports per country from active airports
-    const topAirports = filterTopAirports(activeAirports, 20);
+    // Use ALL active airports (no per-country cap)
+    const topAirports = activeAirports;
 
-    // Combine top airports with all historical airports
+    // Combine all airports with historical airports
     const combinedAirports = [...historicalAirports, ...topAirports];
     console.log(`\nTotal after combining: ${combinedAirports.length} airports`);
 

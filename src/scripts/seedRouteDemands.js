@@ -99,10 +99,97 @@ function getCountryPairMultiplier(fromCountry, toCountry) {
   return 1.0; // Default
 }
 
+// Remote/isolated countries where cargo dominates and only specific gateways connect
+const REMOTE_COUNTRIES = ['Antarctica'];
+
+// Gateway airports that realistically serve Antarctica
+// These are the real-world departure points for Antarctic operations
+const ANTARCTIC_GATEWAYS = [
+  'SCCI', // Punta Arenas, Chile - main gateway
+  'SAWH', // Ushuaia, Argentina - southernmost city
+  'NZCH', // Christchurch, NZ - US Antarctic Program hub
+  'FACT', // Cape Town, SA - SANAE base gateway
+  'YMHB', // Hobart, Australia - Australian Antarctic Division
+  'SCRM', // Marsh Martin, Antarctica - inter-base hub
+  'SCGC', // Union Glacier - tourism/inter-base
+  'SAWB', // Marambio - Argentine inter-base
+];
+
+// ICAO codes for all Antarctic airports (for inter-base route generation)
+const ANTARCTIC_ICAO = [
+  'NZSP', 'NZWD', 'NZFX', 'EGAR', 'YWKS', 'AT28', 'SAWB', 'SCBO',
+  'SCRM', 'SCGC', 'AT98'
+];
+
+/**
+ * Check if an airport is in a remote/isolated region
+ */
+function isRemoteAirport(airport) {
+  return REMOTE_COUNTRIES.includes(airport.country);
+}
+
+/**
+ * Check if this is a valid remote route (connects to a realistic gateway)
+ */
+function isValidRemoteRoute(fromAirport, toAirport) {
+  const fromRemote = isRemoteAirport(fromAirport);
+  const toRemote = isRemoteAirport(toAirport);
+
+  // Neither is remote — not a remote route, handle normally
+  if (!fromRemote && !toRemote) return null;
+
+  // Both are Antarctic — inter-base route (always valid)
+  if (fromRemote && toRemote) return 'inter-base';
+
+  // One is Antarctic — only valid if other end is a gateway
+  const nonRemote = fromRemote ? toAirport : fromAirport;
+  if (ANTARCTIC_GATEWAYS.includes(nonRemote.icaoCode)) return 'gateway';
+
+  // Not a valid gateway — skip this route
+  return false;
+}
+
+/**
+ * Calculate demand for remote/Antarctic routes
+ * Low pax, high cargo — supplies, fuel, scientific equipment
+ */
+function calculateRemoteDemand(fromAirport, toAirport, distance, remoteType) {
+  if (remoteType === 'inter-base') {
+    // Inter-base flights: very small, mostly cargo resupply between stations
+    return {
+      demand: 10,
+      routeType: 'cargo'
+    };
+  }
+
+  // Gateway route: moderate cargo demand for resupply
+  // Real-world Antarctic logistics are substantial — thousands of tonnes per season
+  // Scale by distance (closer gateways = more frequent/viable)
+  let demand = 25; // Base: meaningful cargo demand
+
+  if (distance < 2000) {
+    demand = 35; // Close gateways like Punta Arenas/Ushuaia get more traffic
+  } else if (distance < 4000) {
+    demand = 25; // Medium gateways like Christchurch
+  } else {
+    demand = 15; // Far gateways like Cape Town/Hobart
+  }
+
+  return {
+    demand: demand,
+    routeType: 'cargo'
+  };
+}
+
 /**
  * Determine route type based on airports and distance
  */
 function determineRouteType(fromAirport, toAirport, distance) {
+  // Remote/Antarctic routes are always cargo
+  if (isRemoteAirport(fromAirport) || isRemoteAirport(toAirport)) {
+    return 'cargo';
+  }
+
   // Business routes: Major hubs with short/medium distance
   if ((fromAirport.type === 'International Hub' || fromAirport.type === 'Major') &&
       (toAirport.type === 'International Hub' || toAirport.type === 'Major') &&
@@ -206,7 +293,7 @@ async function seedRouteDemands() {
 
     let routesSeeded = 0;
     let demandRecords = [];
-    const batchSize = 1000;
+    const batchSize = 10000;
 
     console.log('Calculating route demands...\n');
 
@@ -235,25 +322,30 @@ async function seedRouteDemands() {
         // Filter: Skip if distance < 100nm or > 10,000nm (not commercially viable)
         if (distance < 100 || distance > 10000) continue;
 
-        // Calculate demand score
-        const demand = calculateDemandScore(
-          fromAirport,
-          toAirport,
-          distance
-        );
+        // Check if this involves a remote/Antarctic airport
+        const remoteCheck = isValidRemoteRoute(fromAirport, toAirport);
 
-        // Filter: Only seed routes with demand >= 10 to keep database size reasonable
-        if (demand < 10) continue;
+        // If remote route check returned false, skip (not a valid gateway)
+        if (remoteCheck === false) continue;
 
-        // Determine category
-        const category = getDemandCategory(demand);
+        let demand, category, routeType;
 
-        // Determine route type
-        const routeType = determineRouteType(
-          fromAirport,
-          toAirport,
-          distance
-        );
+        if (remoteCheck) {
+          // Remote/Antarctic route — use special demand calculation
+          const remoteDemand = calculateRemoteDemand(fromAirport, toAirport, distance, remoteCheck);
+          demand = remoteDemand.demand;
+          routeType = remoteDemand.routeType;
+          category = getDemandCategory(demand);
+        } else {
+          // Normal route — standard calculation
+          demand = calculateDemandScore(fromAirport, toAirport, distance);
+
+          // Filter: Only seed routes with demand >= 10 to keep database size reasonable
+          if (demand < 10) continue;
+
+          category = getDemandCategory(demand);
+          routeType = determineRouteType(fromAirport, toAirport, distance);
+        }
 
         demandRecords.push({
           fromAirportId: fromAirport.id,

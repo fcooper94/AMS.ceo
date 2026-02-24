@@ -67,16 +67,16 @@ const Airport = sequelize.define('Airport', {
     comment: 'Whether this airport is available for selection'
   },
   operationalFrom: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DATEONLY,
     allowNull: true,
     field: 'operational_from',
-    comment: 'Year the airport opened for operations (e.g., 1930)'
+    comment: 'Date the airport opened for operations (YYYY-MM-DD)'
   },
   operationalUntil: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DATEONLY,
     allowNull: true,
     field: 'operational_until',
-    comment: 'Year the airport closed (null if still operational)'
+    comment: 'Date the airport closed (null if still operational)'
   },
   trafficDemand: {
     type: DataTypes.INTEGER,

@@ -171,10 +171,11 @@ class AirportCacheService {
     }
     if (filterYear) {
       whereClauses.push(`(
-        (a.operational_from IS NULL OR a.operational_from <= :worldYear) AND
-        (a.operational_until IS NULL OR a.operational_until >= :worldYear)
+        (a.operational_from IS NULL OR a.operational_from <= :worldDateEnd) AND
+        (a.operational_until IS NULL OR a.operational_until >= :worldDateStart)
       )`);
-      replacements.worldYear = filterYear;
+      replacements.worldDateStart = `${filterYear}-01-01`;
+      replacements.worldDateEnd = `${filterYear}-12-31`;
     }
 
     const whereSQL = whereClauses.join(' AND ');

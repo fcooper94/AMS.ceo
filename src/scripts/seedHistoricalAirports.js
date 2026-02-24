@@ -22,8 +22,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 28,
     type: 'International Hub',
     timezone: 'Asia/Hong_Kong',
-    operationalFrom: 1925,
-    operationalUntil: 1998,
+    operationalFrom: '1925-01-20',
+    operationalUntil: '1998-07-06',
     isActive: true
   },
   {
@@ -37,8 +37,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 90,
     type: 'International Hub',
     timezone: 'Asia/Kuala_Lumpur',
-    operationalFrom: 1965,
-    operationalUntil: 1998,
+    operationalFrom: '1965-01-01',
+    operationalUntil: '1998-12-31',
     isActive: true
   },
   {
@@ -52,8 +52,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 52,
     type: 'Major',
     timezone: 'Asia/Tokyo',
-    operationalFrom: 1944,
-    operationalUntil: 2005,
+    operationalFrom: '1944-01-01',
+    operationalUntil: '2005-12-31',
     isActive: true
   },
   {
@@ -67,8 +67,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 75,
     type: 'International Hub',
     timezone: 'Asia/Manila',
-    operationalFrom: 1948,
-    operationalUntil: 2014,
+    operationalFrom: '1948-01-01',
+    operationalUntil: '2014-12-31',
     isActive: true
   },
 
@@ -84,8 +84,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 122,
     type: 'International Hub',
     timezone: 'Europe/Berlin',
-    operationalFrom: 1948,
-    operationalUntil: 2020,
+    operationalFrom: '1948-01-01',
+    operationalUntil: '2020-12-31',
     isActive: true
   },
   {
@@ -99,8 +99,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 167,
     type: 'International Hub',
     timezone: 'Europe/Berlin',
-    operationalFrom: 1923,
-    operationalUntil: 2008,
+    operationalFrom: '1923-01-01',
+    operationalUntil: '2008-12-31',
     isActive: true
   },
   {
@@ -114,8 +114,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 1739,
     type: 'International Hub',
     timezone: 'Europe/Berlin',
-    operationalFrom: 1939,
-    operationalUntil: 1992,
+    operationalFrom: '1939-01-01',
+    operationalUntil: '1992-12-31',
     isActive: true
   },
   {
@@ -129,8 +129,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 69,
     type: 'International Hub',
     timezone: 'Europe/Athens',
-    operationalFrom: 1938,
-    operationalUntil: 2001,
+    operationalFrom: '1938-01-01',
+    operationalUntil: '2001-12-31',
     isActive: true
   },
   {
@@ -144,8 +144,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 43,
     type: 'International Hub',
     timezone: 'Europe/Oslo',
-    operationalFrom: 1939,
-    operationalUntil: 1998,
+    operationalFrom: '1939-01-01',
+    operationalUntil: '1998-12-31',
     isActive: true
   },
   {
@@ -159,7 +159,7 @@ const HISTORICAL_AIRPORTS = [
     elevation: 19,
     type: 'Regional',
     timezone: 'Europe/London',
-    operationalFrom: 1987,
+    operationalFrom: '1987-01-01',
     operationalUntil: null,
     isActive: true
   },
@@ -174,8 +174,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 218,
     type: 'Major',
     timezone: 'Europe/Paris',
-    operationalFrom: 1919,
-    operationalUntil: 1977,
+    operationalFrom: '1919-01-01',
+    operationalUntil: '1977-12-31',
     isActive: true
   },
 
@@ -191,8 +191,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 5333,
     type: 'International Hub',
     timezone: 'America/Denver',
-    operationalFrom: 1929,
-    operationalUntil: 1995,
+    operationalFrom: '1929-01-01',
+    operationalUntil: '1995-12-31',
     isActive: true
   },
   {
@@ -206,8 +206,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 593,
     type: 'Regional',
     timezone: 'America/Chicago',
-    operationalFrom: 1948,
-    operationalUntil: 2003,
+    operationalFrom: '1948-01-01',
+    operationalUntil: '2003-12-31',
     isActive: true
   },
   {
@@ -221,8 +221,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 13,
     type: 'International Hub',
     timezone: 'America/New_York',
-    operationalFrom: 1948,
-    operationalUntil: 1963,
+    operationalFrom: '1948-01-01',
+    operationalUntil: '1963-12-31',
     isActive: true
   },
   {
@@ -236,7 +236,7 @@ const HISTORICAL_AIRPORTS = [
     elevation: 252,
     type: 'Regional',
     timezone: 'America/Toronto',
-    operationalFrom: 1939,
+    operationalFrom: '1939-01-01',
     operationalUntil: null,
     isActive: true
   },
@@ -251,7 +251,7 @@ const HISTORICAL_AIRPORTS = [
     elevation: 8466,
     type: 'Major',
     timezone: 'America/Mexico_City',
-    operationalFrom: 1950,
+    operationalFrom: '1950-01-01',
     operationalUntil: null,
     isActive: true
   },
@@ -268,8 +268,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 282,
     type: 'Major',
     timezone: 'Australia/Melbourne',
-    operationalFrom: 1921,
-    operationalUntil: 1970,
+    operationalFrom: '1921-01-01',
+    operationalUntil: '1970-12-31',
     isActive: true
   },
   {
@@ -283,7 +283,7 @@ const HISTORICAL_AIRPORTS = [
     elevation: 41,
     type: 'Major',
     timezone: 'Pacific/Auckland',
-    operationalFrom: 1959,
+    operationalFrom: '1959-01-01',
     operationalUntil: null,
     isActive: true
   },
@@ -300,8 +300,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 62,
     type: 'International Hub',
     timezone: 'Asia/Dubai',
-    operationalFrom: 1960,
-    operationalUntil: 2010,
+    operationalFrom: '1960-01-01',
+    operationalUntil: '2010-12-31',
     isActive: true
   },
   {
@@ -315,7 +315,7 @@ const HISTORICAL_AIRPORTS = [
     elevation: 135,
     type: 'International Hub',
     timezone: 'Asia/Jerusalem',
-    operationalFrom: 1936,
+    operationalFrom: '1936-01-01',
     operationalUntil: null,
     isActive: true
   },
@@ -332,8 +332,8 @@ const HISTORICAL_AIRPORTS = [
     elevation: 5558,
     type: 'International Hub',
     timezone: 'Africa/Johannesburg',
-    operationalFrom: 1952,
-    operationalUntil: 1994,
+    operationalFrom: '1952-01-01',
+    operationalUntil: '1994-12-31',
     isActive: true
   },
 
@@ -349,7 +349,129 @@ const HISTORICAL_AIRPORTS = [
     elevation: 67,
     type: 'International Hub',
     timezone: 'America/Argentina/Buenos_Aires',
-    operationalFrom: 1949,
+    operationalFrom: '1949-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+
+  // === ANTARCTICA ===
+  {
+    icaoCode: 'NZSP',
+    iataCode: null,
+    name: 'Amundsen-Scott South Pole Station Airport',
+    city: 'South Pole',
+    country: 'Antarctica',
+    latitude: -90.0000,
+    longitude: 0.0000,
+    elevation: 9301,
+    type: 'Small Regional',
+    timezone: 'Antarctica/South_Pole',
+    operationalFrom: '1956-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'NZWD',
+    iataCode: null,
+    name: 'Williams Field Skiway',
+    city: 'McMurdo Station',
+    country: 'Antarctica',
+    latitude: -77.8674,
+    longitude: 167.0572,
+    elevation: 68,
+    type: 'Regional',
+    timezone: 'Antarctica/McMurdo',
+    operationalFrom: '1956-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'NZFX',
+    iataCode: null,
+    name: 'Phoenix Airfield',
+    city: 'McMurdo Station',
+    country: 'Antarctica',
+    latitude: -77.9638,
+    longitude: 166.5250,
+    elevation: 30,
+    type: 'Regional',
+    timezone: 'Antarctica/McMurdo',
+    operationalFrom: '2017-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'EGAR',
+    iataCode: null,
+    name: 'Rothera Research Station',
+    city: 'Rothera Point',
+    country: 'Antarctica',
+    latitude: -67.5667,
+    longitude: -68.1270,
+    elevation: 12,
+    type: 'Regional',
+    timezone: 'Antarctica/Rothera',
+    operationalFrom: '1975-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'YWKS',
+    iataCode: null,
+    name: 'Wilkins Runway',
+    city: 'Casey Station',
+    country: 'Antarctica',
+    latitude: -66.6908,
+    longitude: 111.5236,
+    elevation: 2346,
+    type: 'Regional',
+    timezone: 'Antarctica/Casey',
+    operationalFrom: '2008-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'AT28',
+    iataCode: null,
+    name: 'Vostok Station Skiway',
+    city: 'Vostok Station',
+    country: 'Antarctica',
+    latitude: -78.4647,
+    longitude: 106.8372,
+    elevation: 11444,
+    type: 'Small Regional',
+    timezone: 'Antarctica/Vostok',
+    operationalFrom: '1957-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'SAWB',
+    iataCode: null,
+    name: 'Marambio Airport',
+    city: 'Marambio Base',
+    country: 'Antarctica',
+    latitude: -64.2382,
+    longitude: -56.6308,
+    elevation: 760,
+    type: 'Regional',
+    timezone: 'Antarctica/Palmer',
+    operationalFrom: '1969-01-01',
+    operationalUntil: null,
+    isActive: true
+  },
+  {
+    icaoCode: 'SCBO',
+    iataCode: null,
+    name: "General Bernardo O'Higgins Base Skyway",
+    city: "O'Higgins Base",
+    country: 'Antarctica',
+    latitude: -63.3211,
+    longitude: -57.8985,
+    elevation: 39,
+    type: 'Small Regional',
+    timezone: 'Antarctica/Palmer',
+    operationalFrom: '1948-01-01',
     operationalUntil: null,
     isActive: true
   }

@@ -101,7 +101,10 @@
       "Bash(__NEW_LINE_a82f15341fde1c2c__ echo \"Applying schema to local DB...\")",
       "Bash(\"$PSQL\" \"$LOCAL_URL\" -f /tmp/railway_schema.sql)",
       "Bash(__NEW_LINE_6ddc93bcd505eff5__ \"$PSQL\" \"$LOCAL_URL\" -f /tmp/railway_schema.sql)",
-      "Bash(__NEW_LINE_b890cae335cfcd6a__ \"$PSQL\" \"$LOCAL_URL\" -c \"\\\\dt\")"
+      "Bash(__NEW_LINE_b890cae335cfcd6a__ \"$PSQL\" \"$LOCAL_URL\" -c \"\\\\dt\")",
+      "Bash(__NEW_LINE_16bae948dba76ae7__ \"$PSQL\" \"$LOCAL_URL\" -c \"SELECT ''aircraft'' as tbl, COUNT\\(*\\) FROM aircraft UNION ALL SELECT ''airports'', COUNT\\(*\\) FROM airports UNION ALL SELECT ''users'', COUNT\\(*\\) FROM users UNION ALL SELECT ''worlds'', COUNT\\(*\\) FROM worlds UNION ALL SELECT ''world_memberships'', COUNT\\(*\\) FROM world_memberships UNION ALL SELECT ''routes'', COUNT\\(*\\) FROM routes UNION ALL SELECT ''user_aircraft'', COUNT\\(*\\) FROM user_aircraft UNION ALL SELECT ''flights'', COUNT\\(*\\) FROM flights UNION ALL SELECT ''weekly_financials'', COUNT\\(*\\) FROM weekly_financials;\")",
+      "Bash(npm run:*)",
+      "Bash(PGPASSWORD=jDRZMptMpBRUAxwWIpMKrhJixYnTJbyU psql:*)"
     ]
   }
 }

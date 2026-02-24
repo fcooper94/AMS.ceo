@@ -640,8 +640,8 @@ router.post('/airports', async (req, res) => {
       type,
       timezone,
       isActive: isActive !== undefined ? isActive : true,
-      operationalFrom: operationalFrom ? parseInt(operationalFrom) : null,
-      operationalUntil: operationalUntil ? parseInt(operationalUntil) : null
+      operationalFrom: operationalFrom ? (operationalFrom.length === 4 ? `${operationalFrom}-01-01` : operationalFrom) : null,
+      operationalUntil: operationalUntil ? (operationalUntil.length === 4 ? `${operationalUntil}-12-31` : operationalUntil) : null
     });
 
     // Clear airport cache since data changed

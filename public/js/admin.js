@@ -1009,14 +1009,22 @@ function renderAirportsTable(airports) {
     const statusText = airport.isActive ? 'ENABLED' : 'DISABLED';
     const codes = airport.iataCode ? `${airport.icaoCode} / ${airport.iataCode}` : airport.icaoCode;
 
-    // Format operational dates
+    // Format operational dates (YYYY-MM-DD → display as date or just year)
+    const formatOpDate = (d) => {
+      if (!d) return null;
+      // If it ends in -01-01 or -12-31 just show the year
+      if (d.endsWith('-01-01') || d.endsWith('-12-31')) return d.substring(0, 4);
+      return d;
+    };
     let operationalDates = '';
-    if (airport.operationalFrom && airport.operationalUntil) {
-      operationalDates = `${airport.operationalFrom} - ${airport.operationalUntil}`;
-    } else if (airport.operationalFrom) {
-      operationalDates = `${airport.operationalFrom} - Present`;
-    } else if (airport.operationalUntil) {
-      operationalDates = `Unknown - ${airport.operationalUntil}`;
+    const fromStr = formatOpDate(airport.operationalFrom);
+    const untilStr = formatOpDate(airport.operationalUntil);
+    if (fromStr && untilStr) {
+      operationalDates = `${fromStr} - ${untilStr}`;
+    } else if (fromStr) {
+      operationalDates = `${fromStr} - Present`;
+    } else if (untilStr) {
+      operationalDates = `Unknown - ${untilStr}`;
     } else {
       operationalDates = 'All periods';
     }
@@ -1156,8 +1164,8 @@ async function saveAirport() {
     elevation: parseInt(document.getElementById('airportElevation').value) || null,
     type: document.getElementById('airportType').value,
     timezone: document.getElementById('airportTimezone').value.trim() || null,
-    operationalFrom: parseInt(document.getElementById('airportOperationalFrom').value) || null,
-    operationalUntil: parseInt(document.getElementById('airportOperationalUntil').value) || null,
+    operationalFrom: document.getElementById('airportOperationalFrom').value.trim() || null,
+    operationalUntil: document.getElementById('airportOperationalUntil').value.trim() || null,
     isActive: document.getElementById('airportIsActive').value === 'true'
   };
 
