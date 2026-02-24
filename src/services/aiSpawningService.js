@@ -5,8 +5,7 @@
  */
 
 const { Op } = require('sequelize');
-const sequelize = require('../config/database');
-const { WorldMembership, Airport, Aircraft, UserAircraft, Route, ScheduledFlight } = require('../models');
+const { WorldMembership, Airport, UserAircraft } = require('../models');
 const crypto = require('crypto');
 const { generateAIAirline } = require('../data/aiAirlineNames');
 const { AI_DIFFICULTY, pickPersonality } = require('../data/aiDifficultyConfig');
@@ -77,97 +76,6 @@ function generateRegistration(prefix, existingRegs) {
     if (!existingRegs.has(reg)) return reg;
   }
   return prefix + 'AI' + Math.floor(Math.random() * 10000);
-}
-
-/**
- * Haversine distance in nautical miles
- */
-function calculateDistanceNm(lat1, lon1, lat2, lon2) {
-  const R = 3440.065;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c);
-}
-
-/**
- * Generate a flight number like "AB123" from IATA code
- */
-function generateFlightNumber(iataCode, existingNumbers) {
-  for (let i = 0; i < 200; i++) {
-    const num = 100 + Math.floor(Math.random() * 900);
-    const fn = `${iataCode}${num}`;
-    if (!existingNumbers.has(fn)) return fn;
-  }
-  return `${iataCode}${Math.floor(Math.random() * 9000) + 1000}`;
-}
-
-/**
- * Generate a departure time weighted toward business hours
- */
-function generateDepartureTime() {
-  const hour = Math.random() < 0.8
-    ? 6 + Math.floor(Math.random() * 16)
-    : Math.floor(Math.random() * 24);
-  const minute = Math.floor(Math.random() * 12) * 5;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-}
-
-/**
- * Pick a destination airport from the pool for an AI route (no DB queries)
- */
-function pickDestination(baseAirport, allAirports, usedDestIds, aircraft) {
-  const baseLat = parseFloat(baseAirport.latitude);
-  const baseLon = parseFloat(baseAirport.longitude);
-  const cruiseSpeed = aircraft.cruiseSpeed || 450;
-  const maxRange = cruiseSpeed * 12; // 12 hours max flight
-
-  for (let i = 0; i < 30; i++) {
-    // Weight toward higher-traffic airports (top of the sorted list)
-    const idx = Math.floor(Math.pow(Math.random(), 1.5) * allAirports.length);
-    const dest = allAirports[idx];
-
-    if (dest.id === baseAirport.id) continue;
-    if (usedDestIds.has(dest.id)) continue;
-
-    const distance = calculateDistanceNm(
-      baseLat, baseLon,
-      parseFloat(dest.latitude), parseFloat(dest.longitude)
-    );
-
-    if (distance >= 100 && distance <= maxRange) {
-      return { airport: dest, distance };
-    }
-  }
-
-  return null;
-}
-
-/**
- * Calculate arrival date/time for an AI flight (simplified, no wind)
- */
-function calculateArrivalDateTime(departureDate, departureTime, distanceNm, cruiseSpeed, turnaroundMinutes) {
-  const depDateTime = new Date(`${departureDate}T${departureTime}`);
-  const speed = cruiseSpeed || 450;
-  const outboundMinutes = (distanceNm / speed) * 60;
-  const returnMinutes = outboundMinutes;
-  const totalMinutes = outboundMinutes + (turnaroundMinutes || 45) + returnMinutes;
-
-  const arrDateTime = new Date(depDateTime.getTime() + totalMinutes * 60 * 1000);
-  const year = arrDateTime.getFullYear();
-  const month = String(arrDateTime.getMonth() + 1).padStart(2, '0');
-  const day = String(arrDateTime.getDate()).padStart(2, '0');
-  const hours = String(arrDateTime.getHours()).padStart(2, '0');
-  const mins = String(arrDateTime.getMinutes()).padStart(2, '0');
-
-  return {
-    arrivalDate: `${year}-${month}-${day}`,
-    arrivalTime: `${hours}:${mins}:00`
-  };
 }
 
 /**
@@ -256,40 +164,14 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
     return;
   }
 
-  // Get era-appropriate aircraft
-  const availableAircraft = await Aircraft.findAll({
-    where: { availableFrom: { [Op.lte]: worldYear } },
-    order: [['passengerCapacity', 'ASC']]
-  });
-  const eraAircraft = availableAircraft.filter(ac => {
-    if (!ac.availableUntil) return true;
-    return ac.availableUntil >= worldYear;
-  });
-
-  if (eraAircraft.length === 0) {
-    console.warn('[AI-SPAWN] No era-appropriate aircraft found, creating airlines without fleet');
-  }
-
-  // Categorize aircraft by size (done once)
-  const smallAircraft = eraAircraft.filter(ac => ac.passengerCapacity <= 100);
-  const mediumAircraft = eraAircraft.filter(ac => ac.passengerCapacity > 100 && ac.passengerCapacity <= 250);
-  const largeAircraft = eraAircraft.filter(ac => ac.passengerCapacity > 250);
-
-  const existingRegs = new Set();
   const startingBalance = eraEconomicService.getStartingCapital(worldYear) * config.startingBalanceMultiplier;
 
   // Build the spawn plan: assign airports to tiers
   let airportIdx = 0;
   let totalCreated = 0;
-  let totalRoutes = 0;
   const BATCH_SIZE = 50;
 
-  // Collect membership + fleet + route + flight data for bulk insert
   let membershipBatch = [];
-  let fleetBatch = [];
-  let routeBatch = [];
-  let flightBatch = [];
-  // Templates are created once per day-of-week (7 templates per route)
 
   // --- Guaranteed competition at the player's base airport (created FIRST for code priority) ---
   if (humanBaseAirport && config.baseAirportCompetitors) {
@@ -300,7 +182,6 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
     console.log(`[AI-SPAWN] Base airport ${humanBaseAirport.icaoCode} (${baseType}): spawning ${targetCompetitors} guaranteed competitors first`);
 
     const baseRegion = getRegionFromCountry(humanBaseAirport.country);
-    const baseTier = tiers[1] || tiers[0];
 
     for (let b = 0; b < targetCompetitors; b++) {
       const personality = pickPersonality(difficulty);
@@ -315,36 +196,6 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
       existingNames.add(airline.name);
 
       const membershipId = crypto.randomUUID();
-      const fleetSize = baseTier.fleetSize.min +
-        Math.floor(Math.random() * (baseTier.fleetSize.max - baseTier.fleetSize.min + 1));
-
-      // Filter aircraft by airport-appropriate size
-      const maxPaxBase = getMaxCapacityForAirport(humanBaseAirport.type);
-      const sizePoolBase = eraAircraft.filter(ac => ac.passengerCapacity <= maxPaxBase);
-      const pool = sizePoolBase.length > 0 ? sizePoolBase : eraAircraft;
-
-      let balance = startingBalance;
-      const airlineFleet = [];
-
-      if (pool.length > 0 && eraAircraft.length > 0) {
-        const regPrefix = getRegistrationPrefix(humanBaseAirport.country);
-        let preferredFamily = null;
-        for (let f = 0; f < fleetSize; f++) {
-          const ac = pickAircraftWithCommonality(pool, preferredFamily);
-          if (f === 0) preferredFamily = `${ac.manufacturer} ${ac.model}`;
-          const reg = generateRegistration(regPrefix, existingRegs);
-          existingRegs.add(reg);
-          const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
-          // AI starting fleet is pre-existing — don't deduct full price (just 10% deposit)
-          balance -= Math.round(purchasePrice * 0.10);
-          const fleetId = crypto.randomUUID();
-          airlineFleet.push({ id: fleetId, aircraftId: ac.id, registration: reg, purchasePrice, aircraft: ac });
-        }
-      }
-
-      const staggerDays = Math.floor(Math.random() * config.decisionIntervalGameDays);
-      const staggeredTime = new Date(world.startDate);
-      staggeredTime.setDate(staggeredTime.getDate() - staggerDays);
 
       membershipBatch.push({
         id: membershipId,
@@ -355,132 +206,23 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
         iataCode: airline.iataCode,
         region: humanBaseAirport.country,
         baseAirportId: humanBaseAirport.id,
-        balance,
+        balance: startingBalance,
         reputation: 45 + Math.floor(Math.random() * 15),
         isAI: true,
         aiPersonality: personality,
-        aiLastDecisionTime: staggeredTime,
+        aiLastDecisionTime: null,
         cleaningContractor: pickAIContractorTier(),
         groundContractor: pickAIContractorTier(),
         engineeringContractor: pickAIContractorTier()
       });
-
-      for (const fi of airlineFleet) {
-        fleetBatch.push({
-          id: fi.id,
-          worldMembershipId: membershipId,
-          aircraftId: fi.aircraftId,
-          registration: fi.registration,
-          acquisitionType: 'purchase',
-          purchasePrice: fi.purchasePrice,
-          totalFlightHours: Math.floor(Math.random() * 500),
-          autoScheduleDaily: true,
-          autoScheduleWeekly: true,
-          lastDailyCheckDate: world.startDate,
-          lastWeeklyCheckDate: world.startDate,
-          lastACheckDate: world.startDate,
-          lastACheckHours: 0,
-          lastCCheckDate: world.startDate,
-          lastDCheckDate: world.startDate
-        });
-      }
-
-      // Create routes for base competitors
-      const usedDestIds = new Set();
-      const existingFlightNums = new Set();
-
-      for (const fi of airlineFleet) {
-        const dest = pickDestination(humanBaseAirport, airports, usedDestIds, fi.aircraft);
-        if (!dest) continue;
-        usedDestIds.add(dest.airport.id);
-
-        const outboundNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-        existingFlightNums.add(outboundNum);
-        const returnNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-        existingFlightNums.add(returnNum);
-
-        const economyPrice = Math.round(
-          eraEconomicService.calculateTicketPrice(dest.distance, worldYear, 'economy') * config.pricingModifier
-        );
-
-        const paxCapacity = fi.aircraft.passengerCapacity || 150;
-        let turnaroundTime = 45;
-        if (paxCapacity > 250) turnaroundTime = 75;
-        else if (paxCapacity > 150) turnaroundTime = 60;
-        else if (paxCapacity < 80) turnaroundTime = 30;
-
-        const routeId = crypto.randomUUID();
-        const depTime = generateDepartureTime();
-
-        routeBatch.push({
-          id: routeId,
-          worldMembershipId: membershipId,
-          routeNumber: outboundNum,
-          returnRouteNumber: returnNum,
-          departureAirportId: humanBaseAirport.id,
-          arrivalAirportId: dest.airport.id,
-          assignedAircraftId: fi.id,
-          distance: dest.distance,
-          scheduledDepartureTime: depTime,
-          turnaroundTime,
-          frequency: 'daily',
-          daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-          ticketPrice: economyPrice,
-          economyPrice,
-          economyPlusPrice: Math.round(economyPrice * 1.3),
-          businessPrice: Math.round(economyPrice * 2.5),
-          firstPrice: Math.round(economyPrice * 4),
-          cargoLightRate: Math.round(dest.distance * 0.5),
-          cargoStandardRate: Math.round(dest.distance * 0.8),
-          cargoHeavyRate: Math.round(dest.distance * 1.2),
-          transportType: 'both',
-          demand: 50,
-          isActive: true
-        });
-
-        const cruiseSpeed = fi.aircraft.cruiseSpeed || 450;
-        const daysOfWeek = [0, 1, 2, 3, 4, 5, 6];
-
-        for (const dow of daysOfWeek) {
-          const refDate = new Date('2024-01-07T00:00:00');
-          refDate.setDate(refDate.getDate() + dow);
-          const refDateStr = refDate.toISOString().split('T')[0];
-
-          const { arrivalDate: refArrDate, arrivalTime } = calculateArrivalDateTime(
-            refDateStr, depTime, dest.distance, cruiseSpeed, turnaroundTime
-          );
-          const arrivalDayOffset = Math.round((new Date(refArrDate + 'T00:00:00') - new Date(refDateStr + 'T00:00:00')) / 86400000);
-
-          const [depH, depM] = depTime.split(':').map(Number);
-          const [arrH, arrM] = arrivalTime.split(':').map(Number);
-          const totalDurationMinutes = arrivalDayOffset * 1440 + (arrH * 60 + arrM) - (depH * 60 + depM);
-
-          flightBatch.push({
-            id: crypto.randomUUID(),
-            routeId,
-            aircraftId: fi.id,
-            dayOfWeek: dow,
-            departureTime: depTime,
-            arrivalTime,
-            arrivalDayOffset,
-            totalDurationMinutes,
-            isActive: true
-          });
-        }
-
-        totalRoutes++;
-      }
 
       totalCreated++;
     }
 
     // Flush base airport batch immediately
     if (membershipBatch.length > 0) {
-      await flushBatch(membershipBatch, fleetBatch, routeBatch, flightBatch);
+      await flushBatch(membershipBatch);
       membershipBatch = [];
-      fleetBatch = [];
-      routeBatch = [];
-      flightBatch = [];
     }
 
     console.log(`[AI-SPAWN] Base airport competitors created: ${totalCreated}`);
@@ -504,39 +246,6 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
 
         const membershipId = crypto.randomUUID();
 
-        // Calculate fleet and deduct from balance
-        const fleetSize = tier.fleetSize.min +
-          Math.floor(Math.random() * (tier.fleetSize.max - tier.fleetSize.min + 1));
-
-        // Filter aircraft by airport-appropriate size
-        const maxPax = getMaxCapacityForAirport(airport.type);
-        const sizePool = eraAircraft.filter(ac => ac.passengerCapacity <= maxPax);
-        const pool = sizePool.length > 0 ? sizePool : eraAircraft;
-
-        let balance = startingBalance;
-        const airlineFleet = []; // track for route creation
-
-        if (pool.length > 0 && eraAircraft.length > 0) {
-          const regPrefix = getRegistrationPrefix(airport.country);
-          let preferredFamily = null;
-          for (let f = 0; f < fleetSize; f++) {
-            const ac = pickAircraftWithCommonality(pool, preferredFamily);
-            if (f === 0) preferredFamily = `${ac.manufacturer} ${ac.model}`;
-            const reg = generateRegistration(regPrefix, existingRegs);
-            existingRegs.add(reg);
-            const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
-            // AI starting fleet is pre-existing — don't deduct full price (just 10% deposit)
-            balance -= Math.round(purchasePrice * 0.10);
-            const fleetId = crypto.randomUUID();
-            airlineFleet.push({ id: fleetId, aircraftId: ac.id, registration: reg, purchasePrice, aircraft: ac });
-          }
-        }
-
-        // Stagger decision times across the interval so airlines don't all trigger at once
-        const staggerDays = Math.floor(Math.random() * config.decisionIntervalGameDays);
-        const staggeredTime = new Date(world.startDate);
-        staggeredTime.setDate(staggeredTime.getDate() - staggerDays);
-
         membershipBatch.push({
           id: membershipId,
           userId: null,
@@ -546,136 +255,24 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
           iataCode: airline.iataCode,
           region: airport.country,
           baseAirportId: airport.id,
-          balance,
+          balance: startingBalance,
           reputation: 45 + Math.floor(Math.random() * 15),
           isAI: true,
           aiPersonality: personality,
-          aiLastDecisionTime: staggeredTime,
+          aiLastDecisionTime: null,
           cleaningContractor: pickAIContractorTier(),
           groundContractor: pickAIContractorTier(),
           engineeringContractor: pickAIContractorTier()
         });
 
-        for (const fi of airlineFleet) {
-          fleetBatch.push({
-            id: fi.id,
-            worldMembershipId: membershipId,
-            aircraftId: fi.aircraftId,
-            registration: fi.registration,
-            acquisitionType: 'purchase',
-            purchasePrice: fi.purchasePrice,
-            totalFlightHours: Math.floor(Math.random() * 500),
-            autoScheduleDaily: true,
-            autoScheduleWeekly: true,
-            lastDailyCheckDate: world.startDate,
-            lastWeeklyCheckDate: world.startDate,
-            lastACheckDate: world.startDate,
-            lastACheckHours: 0,
-            lastCCheckDate: world.startDate,
-            lastDCheckDate: world.startDate
-          });
-        }
-
-        // Create initial routes: 1 route per aircraft
-        const usedDestIds = new Set();
-        const existingFlightNums = new Set();
-
-        for (const fi of airlineFleet) {
-          const dest = pickDestination(airport, airports, usedDestIds, fi.aircraft);
-          if (!dest) continue;
-          usedDestIds.add(dest.airport.id);
-
-          const outboundNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-          existingFlightNums.add(outboundNum);
-          const returnNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-          existingFlightNums.add(returnNum);
-
-          const economyPrice = Math.round(
-            eraEconomicService.calculateTicketPrice(dest.distance, worldYear, 'economy') * config.pricingModifier
-          );
-
-          const paxCapacity = fi.aircraft.passengerCapacity || 150;
-          let turnaroundTime = 45;
-          if (paxCapacity > 250) turnaroundTime = 75;
-          else if (paxCapacity > 150) turnaroundTime = 60;
-          else if (paxCapacity < 80) turnaroundTime = 30;
-
-          const routeId = crypto.randomUUID();
-          const depTime = generateDepartureTime();
-
-          routeBatch.push({
-            id: routeId,
-            worldMembershipId: membershipId,
-            routeNumber: outboundNum,
-            returnRouteNumber: returnNum,
-            departureAirportId: airport.id,
-            arrivalAirportId: dest.airport.id,
-            assignedAircraftId: fi.id,
-            distance: dest.distance,
-            scheduledDepartureTime: depTime,
-            turnaroundTime,
-            frequency: 'daily',
-            daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-            ticketPrice: economyPrice,
-            economyPrice,
-            economyPlusPrice: Math.round(economyPrice * 1.3),
-            businessPrice: Math.round(economyPrice * 2.5),
-            firstPrice: Math.round(economyPrice * 4),
-            cargoLightRate: Math.round(dest.distance * 0.5),
-            cargoStandardRate: Math.round(dest.distance * 0.8),
-            cargoHeavyRate: Math.round(dest.distance * 1.2),
-            transportType: 'both',
-            demand: 50,
-            isActive: true
-          });
-
-          // Create weekly flight templates (one per day-of-week)
-          const cruiseSpeed = fi.aircraft.cruiseSpeed || 450;
-          const daysOfWeek = [0, 1, 2, 3, 4, 5, 6]; // All days
-          // Use a reference Sunday to calculate arrival times
-          const refSunday = '2024-01-07'; // A known Sunday
-
-          for (const dow of daysOfWeek) {
-            const refDate = new Date('2024-01-07T00:00:00');
-            refDate.setDate(refDate.getDate() + dow);
-            const refDateStr = refDate.toISOString().split('T')[0];
-
-            const { arrivalDate: refArrDate, arrivalTime } = calculateArrivalDateTime(
-              refDateStr, depTime, dest.distance, cruiseSpeed, turnaroundTime
-            );
-            const arrivalDayOffset = Math.round((new Date(refArrDate + 'T00:00:00') - new Date(refDateStr + 'T00:00:00')) / 86400000);
-
-            const [depH, depM] = depTime.split(':').map(Number);
-            const [arrH, arrM] = arrivalTime.split(':').map(Number);
-            const totalDurationMinutes = arrivalDayOffset * 1440 + (arrH * 60 + arrM) - (depH * 60 + depM);
-
-            flightBatch.push({
-              id: crypto.randomUUID(),
-              routeId,
-              aircraftId: fi.id,
-              dayOfWeek: dow,
-              departureTime: depTime,
-              arrivalTime,
-              arrivalDayOffset,
-              totalDurationMinutes,
-              isActive: true
-            });
-          }
-
-          totalRoutes++;
-        }
-
         totalCreated++;
 
         // Flush batches periodically to avoid excessive memory usage
         if (membershipBatch.length >= BATCH_SIZE) {
-          await flushBatch(membershipBatch, fleetBatch, routeBatch, flightBatch);
+          await flushBatch(membershipBatch);
           membershipBatch = [];
-          fleetBatch = [];
-          routeBatch = [];
-          flightBatch = [];
           if (totalCreated % 100 === 0) {
-            console.log(`[AI-SPAWN] Progress: ${totalCreated} airlines, ${totalRoutes} routes created...`);
+            console.log(`[AI-SPAWN] Progress: ${totalCreated} airlines created...`);
           }
         }
       }
@@ -684,30 +281,18 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
 
   // Flush remaining from main tier loop
   if (membershipBatch.length > 0) {
-    await flushBatch(membershipBatch, fleetBatch, routeBatch, flightBatch);
+    await flushBatch(membershipBatch);
     membershipBatch = [];
-    fleetBatch = [];
-    routeBatch = [];
-    flightBatch = [];
   }
 
-  console.log(`[AI-SPAWN] Finished spawning ${totalCreated} AI airlines with ${totalRoutes} routes (${totalRoutes * 7} flight templates) across ${airportIdx} airports`);
+  console.log(`[AI-SPAWN] Finished spawning ${totalCreated} AI airlines (shell companies, no fleet/routes) across ${airportIdx} airports`);
 }
 
 /**
- * Bulk insert a batch of memberships, fleet, routes, and flights
+ * Bulk insert a batch of memberships
  */
-async function flushBatch(memberships, fleet, routes, flights) {
+async function flushBatch(memberships) {
   await WorldMembership.bulkCreate(memberships, { validate: false });
-  if (fleet.length > 0) {
-    await UserAircraft.bulkCreate(fleet, { validate: false });
-  }
-  if (routes && routes.length > 0) {
-    await Route.bulkCreate(routes, { validate: false });
-  }
-  if (flights && flights.length > 0) {
-    await ScheduledFlight.bulkCreate(flights, { validate: false });
-  }
 }
 
 /**

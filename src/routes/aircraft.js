@@ -142,12 +142,12 @@ router.get('/', async (req, res) => {
             cCheckRemaining: listing.cCheckRemainingDays ? formatDaysRemaining(listing.cCheckRemainingDays) : 'Unknown',
             dCheckRemaining: listing.dCheckRemainingDays ? formatDaysRemaining(listing.dCheckRemainingDays) : 'Unknown',
 
-            // Maintenance check costs (from aircraft type)
-            dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
-            weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
-            aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
-            cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
-            dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+            // Maintenance check costs (from aircraft type, era-scaled)
+            dailyCheckCost: variant.dailyCheckCost ? Math.round(parseFloat(variant.dailyCheckCost) * eraMultiplier) : null,
+            weeklyCheckCost: variant.weeklyCheckCost ? Math.round(parseFloat(variant.weeklyCheckCost) * eraMultiplier) : null,
+            aCheckCost: variant.aCheckCost ? Math.round(parseFloat(variant.aCheckCost) * eraMultiplier) : null,
+            cCheckCost: variant.cCheckCost ? Math.round(parseFloat(variant.cCheckCost) * eraMultiplier) : null,
+            dCheckCost: variant.dCheckCost ? Math.round(parseFloat(variant.dCheckCost) * eraMultiplier) : null,
             isCombi: variant.isCombi || false,
 
             // Same entity offers both purchase and lease
@@ -255,12 +255,12 @@ router.get('/', async (req, res) => {
             cCheckRemaining: cRemaining !== null ? formatDaysRemaining(cRemaining) : 'Unknown',
             dCheckRemaining: dRemaining !== null ? formatDaysRemaining(dRemaining) : 'Unknown',
 
-            // Maintenance check costs (from aircraft type)
-            dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
-            weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
-            aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
-            cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
-            dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+            // Maintenance check costs (from aircraft type, era-scaled)
+            dailyCheckCost: variant.dailyCheckCost ? Math.round(parseFloat(variant.dailyCheckCost) * eraMultiplier) : null,
+            weeklyCheckCost: variant.weeklyCheckCost ? Math.round(parseFloat(variant.weeklyCheckCost) * eraMultiplier) : null,
+            aCheckCost: variant.aCheckCost ? Math.round(parseFloat(variant.aCheckCost) * eraMultiplier) : null,
+            cCheckCost: variant.cCheckCost ? Math.round(parseFloat(variant.cCheckCost) * eraMultiplier) : null,
+            dCheckCost: variant.dCheckCost ? Math.round(parseFloat(variant.dCheckCost) * eraMultiplier) : null,
             isCombi: variant.isCombi || false,
 
             // Seller/lessor is the player airline
@@ -310,6 +310,12 @@ router.get('/', async (req, res) => {
         acData.purchasePrice = Math.round(parseFloat(ac.purchasePrice) * eraMultiplier);
         // Compute weekly lease rate: 0.2% of era-adjusted list price per week
         acData.leasePrice = Math.round(acData.purchasePrice * 0.002);
+        // Era-scale maintenance check costs
+        if (acData.dailyCheckCost) acData.dailyCheckCost = Math.round(parseFloat(acData.dailyCheckCost) * eraMultiplier);
+        if (acData.weeklyCheckCost) acData.weeklyCheckCost = Math.round(parseFloat(acData.weeklyCheckCost) * eraMultiplier);
+        if (acData.aCheckCost) acData.aCheckCost = Math.round(parseFloat(acData.aCheckCost) * eraMultiplier);
+        if (acData.cCheckCost) acData.cCheckCost = Math.round(parseFloat(acData.cCheckCost) * eraMultiplier);
+        if (acData.dCheckCost) acData.dCheckCost = Math.round(parseFloat(acData.dCheckCost) * eraMultiplier);
         return acData;
       });
 
@@ -483,12 +489,12 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         cCheckRemaining: formatDaysRemaining(cCheckRemainingDays),
         dCheckRemaining: formatDaysRemaining(dCheckRemainingDays),
 
-        // Maintenance check costs (from aircraft type)
-        dailyCheckCost: variant.dailyCheckCost ? parseFloat(variant.dailyCheckCost) : null,
-        weeklyCheckCost: variant.weeklyCheckCost ? parseFloat(variant.weeklyCheckCost) : null,
-        aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
-        cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
-        dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+        // Maintenance check costs (from aircraft type, era-scaled)
+        dailyCheckCost: variant.dailyCheckCost ? Math.round(parseFloat(variant.dailyCheckCost) * eraMultiplier) : null,
+        weeklyCheckCost: variant.weeklyCheckCost ? Math.round(parseFloat(variant.weeklyCheckCost) * eraMultiplier) : null,
+        aCheckCost: variant.aCheckCost ? Math.round(parseFloat(variant.aCheckCost) * eraMultiplier) : null,
+        cCheckCost: variant.cCheckCost ? Math.round(parseFloat(variant.cCheckCost) * eraMultiplier) : null,
+        dCheckCost: variant.dCheckCost ? Math.round(parseFloat(variant.dCheckCost) * eraMultiplier) : null,
         isCombi: variant.isCombi || false,
       };
 

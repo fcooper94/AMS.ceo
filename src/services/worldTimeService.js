@@ -1993,12 +1993,16 @@ class WorldTimeService {
    */
   async processAutomaticHeavyMaintenance(membershipIds, currentGameTime) {
     try {
-      // Get all active aircraft for these memberships
+      const eraEconomicService = require('./eraEconomicService');
+      const worldYear = currentGameTime.getFullYear();
+
+      // Get aircraft that need check processing (active for scheduling, maintenance/cabin_refit for return-to-service)
       const aircraft = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
-          status: 'active' // Only check active aircraft
-        }
+          status: { [Op.in]: ['active', 'maintenance', 'cabin_refit'] }
+        },
+        include: [{ model: Aircraft, as: 'aircraft', attributes: ['cCheckCost', 'dCheckCost'] }]
       });
 
       const gameDate = currentGameTime.toISOString().split('T')[0];
@@ -2012,11 +2016,22 @@ class WorldTimeService {
           // Calculate days until expiry
           const daysUntilCExpiry = Math.floor((cCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
 
-          // If check expires tomorrow or sooner, take aircraft out of service
+          // If check expires tomorrow or sooner, take aircraft out of service and charge cost
           if (daysUntilCExpiry <= 1 && daysUntilCExpiry >= 0) {
             await ac.update({ status: 'maintenance' });
+
+            // Deduct C check cost from airline balance (era-scaled)
+            const cCost = ac.aircraft?.cCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.cCheckCost), worldYear) : 0;
+            if (cCost > 0) {
+              const membership = await WorldMembership.findByPk(ac.worldMembershipId);
+              if (membership) {
+                membership.balance = (parseFloat(membership.balance) || 0) - cCost;
+                await membership.save();
+              }
+            }
+
             if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${ac.registration} entering C Check maintenance (14 days) - expires in ${daysUntilCExpiry} day(s)`);
+              console.log(`🔧 ${ac.registration} entering C Check maintenance (14 days) - cost: $${cCost.toLocaleString()}`);
             }
           }
         }
@@ -2029,11 +2044,22 @@ class WorldTimeService {
           // Calculate days until expiry
           const daysUntilDExpiry = Math.floor((dCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
 
-          // If check expires tomorrow or sooner, take aircraft out of service
+          // If check expires tomorrow or sooner, take aircraft out of service and charge cost
           if (daysUntilDExpiry <= 1 && daysUntilDExpiry >= 0) {
             await ac.update({ status: 'maintenance' });
+
+            // Deduct D check cost from airline balance (era-scaled)
+            const dCost = ac.aircraft?.dCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.dCheckCost), worldYear) : 0;
+            if (dCost > 0) {
+              const membership = await WorldMembership.findByPk(ac.worldMembershipId);
+              if (membership) {
+                membership.balance = (parseFloat(membership.balance) || 0) - dCost;
+                await membership.save();
+              }
+            }
+
             if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${ac.registration} entering D Check maintenance (60 days) - expires in ${daysUntilDExpiry} day(s)`);
+              console.log(`🔧 ${ac.registration} entering D Check maintenance (60 days) - cost: $${dCost.toLocaleString()}`);
             }
           }
         }

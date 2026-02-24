@@ -9,6 +9,7 @@ const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, h
 const { migrateOldConfig } = require('../config/cargoTypes');
 const { STORAGE_AIRPORTS, calculateStorageDistanceNm, calculateRecallDays } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
 const { getBank, calculateOfferRate, calculateFixedPayment, TERM_RANGES } = require('../data/bankConfig');
+const eraEconomicService = require('../services/eraEconomicService');
 
 /**
  * Transaction discount: 30% (qty 1) scaling to 55% (qty 10+)
@@ -1739,7 +1740,13 @@ router.get('/', async (req, res) => {
       }
     }
 
-    res.json(fleetWithMaintenance);
+    // Get world year for era scaling on the frontend
+    const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
+    const worldYear = world ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
+    const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
+    const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
+
+    res.json({ fleet: fleetWithMaintenance, worldYear, eraMultiplier, fuelMultiplier });
   } catch (error) {
     console.error('Error fetching fleet:', error);
     res.status(500).json({ error: 'Failed to fetch fleet', details: error.message });
@@ -1931,6 +1938,10 @@ router.get('/:aircraftId/details', async (req, res) => {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
 
+    // Get world year for era scaling
+    const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
+    const worldYear = world ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
+
     // Get aircraft with its routes
     const aircraft = await UserAircraft.findOne({
       where: { id: aircraftId, worldMembershipId: membership.id },
@@ -2015,8 +2026,8 @@ router.get('/:aircraftId/details', async (req, res) => {
         nextDCheck: nextDCheck ? nextDCheck.toISOString() : null,
         cCheckIntervalDays: cCheckInterval,
         dCheckIntervalDays: dCheckInterval,
-        cCheckCost: aircraft.aircraft?.cCheckCost ? parseFloat(aircraft.aircraft.cCheckCost) : null,
-        dCheckCost: aircraft.aircraft?.dCheckCost ? parseFloat(aircraft.aircraft.dCheckCost) : null
+        cCheckCost: aircraft.aircraft?.cCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(aircraft.aircraft.cCheckCost), worldYear) : null,
+        dCheckCost: aircraft.aircraft?.dCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(aircraft.aircraft.dCheckCost), worldYear) : null
       }
     });
   } catch (error) {

@@ -208,10 +208,11 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
   // Decision: Expand if profitable and have budget
   const startingCapital = eraEconomicService.getStartingCapital(worldYear);
   const expansionThreshold = startingCapital * 0.3; // Need 30% of starting capital to expand
+  const isFreshStart = fleet.length === 0 && routes.length === 0;
 
   if (isProfitable && balance > expansionThreshold && fleet.length < config.maxFleetSize) {
-    // Consider buying a new aircraft
-    if (Math.random() < 0.3) { // 30% chance per cycle to buy
+    // Fresh airlines always buy on first cycle; established ones have 30% chance
+    if (isFreshStart || Math.random() < 0.3) {
       await tryBuyAircraft(airline, world, config, fleet, worldYear, gameTime);
     }
   }
