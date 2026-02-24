@@ -10171,11 +10171,11 @@ async function showAircraftDetails(userAircraftId) {
       </div>
 
       <!-- Top Section: Image Left + Details Right -->
-      <div style="display:flex;gap:1rem;padding:0.75rem 1rem;">
+      <div style="display:flex;gap:0.75rem;padding:0.5rem 1rem;">
 
         <!-- Left: Image + Ownership -->
         <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
-          <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:180px;">
+          <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:130px;">
             ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"
               data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
               onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</div>';}">` : `<span style="color:var(--text-muted);font-size:0.75rem;">No image</span>`}
@@ -10184,7 +10184,7 @@ async function showAircraftDetails(userAircraftId) {
         </div>
 
         <!-- Right: Badges + Specs + Condition + Quick Info -->
-        <div style="flex:1;display:flex;flex-direction:column;gap:0.4rem;">
+        <div style="flex:1;display:flex;flex-direction:column;gap:0.25rem;">
 
           <!-- Type Badges -->
           <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
@@ -10194,67 +10194,67 @@ async function showAircraftDetails(userAircraftId) {
           </div>
 
           <!-- Specifications Grid (3x2) -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.4rem;">
-            <h4 style="margin:0 0 0.3rem 0;color:var(--text-muted);font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;">Specifications</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.25rem;">
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.3rem 0.4rem;">
+            <h4 style="margin:0 0 0.2rem 0;color:var(--text-muted);font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;">Specifications</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.15rem;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Pax</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.passengerCapacity || 'N/A'}</div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${ac.passengerCapacity || 'N/A'}</div>
               </div>
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Range</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${formatCurrencyValue(ac.rangeNm)}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrencyValue(ac.rangeNm)}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
               </div>
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Speed</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.cruiseSpeed || 'N/A'}<span style="font-size:0.5rem;font-weight:400;">kts</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${ac.cruiseSpeed || 'N/A'}<span style="font-size:0.5rem;font-weight:400;">kts</span></div>
               </div>
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Fuel</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${formatCurrencyValue(burnRate)}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrencyValue(burnRate)}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
               </div>
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cargo</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ac.cargoCapacityKg ? (ac.cargoCapacityKg / 1000).toFixed(1) : '0'}<span style="font-size:0.5rem;font-weight:400;">t</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${ac.cargoCapacityKg ? (ac.cargoCapacityKg / 1000).toFixed(1) : '0'}<span style="font-size:0.5rem;font-weight:400;">t</span></div>
               </div>
-              <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Maint</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">$${formatCurrencyValue(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">$${formatCurrencyValue(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
               </div>
             </div>
           </div>
 
           <!-- Condition Row (4 columns) -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.4rem;">
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.25rem;">
-              <div style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.3rem 0.4rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.15rem;">
+              <div style="text-align:center;padding:0.15rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Age</div>
                 <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">${ua.ageYears || 0}<span style="font-size:0.55rem;font-weight:400;">y</span></div>
               </div>
-              <div style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div style="text-align:center;padding:0.15rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cond</div>
-                <div style="color:${condClr};font-weight:700;font-size:0.85rem;">${cond}%</div>
+                <div style="color:${condClr};font-weight:700;font-size:0.8rem;">${cond}%</div>
               </div>
-              <div id="cCheckCell" style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div id="cCheckCell" style="text-align:center;padding:0.15rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">C Check</div>
-                <div id="cCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.75rem;">...</div>
+                <div id="cCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.7rem;">...</div>
               </div>
-              <div id="dCheckCell" style="text-align:center;padding:0.25rem;background:var(--surface);border-radius:3px;">
+              <div id="dCheckCell" style="text-align:center;padding:0.15rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">D Check</div>
-                <div id="dCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.75rem;">...</div>
+                <div id="dCheckValue" style="color:var(--text-muted);font-weight:600;font-size:0.7rem;">...</div>
               </div>
             </div>
           </div>
 
           <!-- Quick Info: Location, Flight Hours, Routes -->
-          <div style="display:flex;gap:0.4rem;font-size:0.7rem;">
-            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+          <div style="display:flex;gap:0.3rem;font-size:0.65rem;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
             </div>
-            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrencyValue(parseFloat(ua.totalFlightHours) || 0)}</strong>
             </div>
-            <div style="flex:1;padding:0.3rem 0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
             </div>
           </div>
@@ -10262,13 +10262,13 @@ async function showAircraftDetails(userAircraftId) {
       </div>
 
       <!-- Configuration Section -->
-      <div style="padding:0 1rem 0.6rem;">
-        <div style="font-size:0.6rem;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:0.3rem;text-transform:uppercase;">Configuration</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
+      <div style="padding:0 1rem 0.4rem;">
+        <div style="font-size:0.6rem;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:0.2rem;text-transform:uppercase;">Configuration</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
 
           <!-- Cabin Column -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;display:flex;flex-direction:column;">
-            <div style="color:#a78bfa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Cabin</div>
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;display:flex;flex-direction:column;">
+            <div style="color:#a78bfa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Cabin</div>
             ${hasSeats ? `
             <div style="flex:1;">
               ${[
@@ -10292,8 +10292,8 @@ async function showAircraftDetails(userAircraftId) {
           </div>
 
           <!-- Cargo Column -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;display:flex;flex-direction:column;">
-            <div style="color:#60a5fa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Cargo</div>
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;display:flex;flex-direction:column;">
+            <div style="color:#60a5fa;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Cargo</div>
             ${hasCargo ? (() => {
               const _cfg = ua.cargoConfig || (ua.cargoLightKg || ua.cargoStandardKg || ua.cargoHeavyKg ? {
                 general: ua.cargoLightKg || 0, express: ua.cargoStandardKg || 0, heavy: ua.cargoHeavyKg || 0,
@@ -10345,12 +10345,12 @@ async function showAircraftDetails(userAircraftId) {
       </div>
 
       <!-- Costs + Performance Section -->
-      <div style="padding:0 1rem 0.6rem;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
+      <div style="padding:0 1rem 0.4rem;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
 
           <!-- Operating Costs -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Operating Costs</div>
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
+            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Operating Costs</div>
             <div style="font-size:0.8rem;">
               <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">$${formatCurrencyValue(fuelHr)}</span></div>
               <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">$${formatCurrencyValue(maintHr)}</span></div>
@@ -10361,14 +10361,14 @@ async function showAircraftDetails(userAircraftId) {
           </div>
 
           <!-- Route Performance + Heavy Checks -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
-            <div style="margin-bottom:0.5rem;">
-              <div style="color:var(--success-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.3rem;">Route Performance</div>
-              <div id="routeInfo" style="color:var(--text-muted);font-size:0.8rem;">Loading...</div>
+          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
+            <div style="margin-bottom:0.3rem;">
+              <div style="color:var(--success-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Route Performance</div>
+              <div id="routeInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
             </div>
-            <div style="border-top:1px solid var(--border-color);padding-top:0.4rem;">
-              <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.3rem;">Heavy Checks</div>
-              <div id="maintInfo" style="color:var(--text-muted);font-size:0.8rem;">Loading...</div>
+            <div style="border-top:1px solid var(--border-color);padding-top:0.25rem;">
+              <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Heavy Checks</div>
+              <div id="maintInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
             </div>
           </div>
         </div>
