@@ -1419,6 +1419,16 @@
       "name": "MTCU",
       "minFL": 0,
       "maxFL": 134
+    },
+    "EDYY-D": {
+      "name": "Maastricht Delta",
+      "minFL": 245,
+      "maxFL": 999
+    },
+    "EDYY-B": {
+      "name": "Maastricht Brussels",
+      "minFL": 245,
+      "maxFL": 999
     }
   },
   "perPrefix": {

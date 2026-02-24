@@ -129,7 +129,8 @@ async function fetchUserFleet() {
     }
 
     if (response.ok) {
-      userFleet = await response.json();
+      const data = await response.json();
+      userFleet = data.fleet || data;
       console.log('[PRICING] Fleet loaded:', userFleet.length, 'aircraft');
     } else {
       console.error('[PRICING] Error response from fleet API:', response.status);

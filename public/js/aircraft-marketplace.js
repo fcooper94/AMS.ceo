@@ -3793,19 +3793,13 @@ function updateActiveTab() {
   const usedTab = document.getElementById('usedTab');
   const newTab = document.getElementById('newTab');
 
-  // Reset styles
-  usedTab.style.borderBottom = '3px solid transparent';
-  usedTab.style.color = 'var(--text-muted)';
-  newTab.style.borderBottom = '3px solid transparent';
-  newTab.style.color = 'var(--text-muted)';
+  usedTab.classList.remove('active-tab');
+  newTab.classList.remove('active-tab');
 
-  // Apply active styles based on current category
   if (currentCategory === 'new') {
-    newTab.style.borderBottom = '3px solid var(--primary-color)';
-    newTab.style.color = 'var(--primary-color)';
+    newTab.classList.add('active-tab');
   } else {
-    usedTab.style.borderBottom = '3px solid var(--primary-color)';
-    usedTab.style.color = 'var(--primary-color)';
+    usedTab.classList.add('active-tab');
   }
 }
 
