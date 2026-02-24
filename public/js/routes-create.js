@@ -720,79 +720,49 @@ function onAircraftSelectionChange() {
   calculateFlightTiming();
 }
 
-// Update passenger class field availability based on aircraft capabilities
+// Update passenger class field availability based on aircraft capabilities and game era.
+// Business class was introduced in 1978; Premium Economy in 1992.
 function updatePassengerClassAvailability(aircraftData) {
-  const economyField = document.getElementById('economyPrice');
+  const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 9999;
+  const eraAllowsBusiness = gameYear >= 1978;
+  const eraAllowsPremEco  = gameYear >= 1992;
+
+  const economyField     = document.getElementById('economyPrice');
   const economyPlusField = document.getElementById('economyPlusPrice');
-  const businessField = document.getElementById('businessPrice');
-  const firstField = document.getElementById('firstPrice');
-  // Collect cargo rate fields dynamically from CARGO_TYPE_KEYS
-  const cargoFields = [];
-  if (typeof CARGO_TYPE_KEYS !== 'undefined') {
-    CARGO_TYPE_KEYS.forEach(k => {
-      const f = document.getElementById(`cargoRate_${k}`);
-      if (f) cargoFields.push(f);
-    });
-  }
+  const businessField    = document.getElementById('businessPrice');
+  const firstField       = document.getElementById('firstPrice');
 
-  if (!aircraftData) {
-    // No aircraft selected - enable all fields
-    [economyField, economyPlusField, businessField, firstField, ...cargoFields].forEach(field => {
-      if (field) {
-        field.disabled = false;
-        field.style.opacity = '1';
-        field.style.cursor = 'text';
-        // Update label to remove "(not available)" text
-        const label = field.closest('div').querySelector('label');
-        if (label) {
-          label.innerHTML = label.innerHTML.replace(' <span style="color: var(--text-muted); font-weight: normal;">(not available on this aircraft)</span>', '');
-        }
-      }
-    });
-    return;
-  }
-
-  // Economy class
+  // ── Economy (always available, not era-gated) ──────────────────────────
   if (economyField) {
-    const hasEconomy = aircraftData?.hasEconomy !== false;
-    economyField.disabled = !hasEconomy;
-    economyField.style.opacity = hasEconomy ? '1' : '0.5';
-    economyField.style.cursor = hasEconomy ? 'text' : 'not-allowed';
-    if (!hasEconomy) economyField.value = '';
-    updateFieldLabel(economyField, hasEconomy);
+    const ok = aircraftData ? aircraftData.hasEconomy !== false : true;
+    _setFieldAvail(economyField, ok, ok ? null : '(not available on this aircraft)');
   }
 
-  // Economy Plus class
+  // ── Premium Economy (era-gated: 1992+) ────────────────────────────────
   if (economyPlusField) {
-    const hasEconomyPlus = aircraftData?.hasEconomyPlus === true;
-    economyPlusField.disabled = !hasEconomyPlus;
-    economyPlusField.style.opacity = hasEconomyPlus ? '1' : '0.5';
-    economyPlusField.style.cursor = hasEconomyPlus ? 'text' : 'not-allowed';
-    if (!hasEconomyPlus) economyPlusField.value = '';
-    updateFieldLabel(economyPlusField, hasEconomyPlus);
+    const hasIt = aircraftData ? aircraftData.hasEconomyPlus === true : true;
+    const ok    = hasIt && eraAllowsPremEco;
+    const note  = !eraAllowsPremEco ? `(available from 1992)`
+                : !hasIt            ? '(not available on this aircraft)' : null;
+    _setFieldAvail(economyPlusField, ok, note);
   }
 
-  // Business class
+  // ── Business class (era-gated: 1978+) ─────────────────────────────────
   if (businessField) {
-    const hasBusiness = aircraftData?.hasBusiness === true;
-    businessField.disabled = !hasBusiness;
-    businessField.style.opacity = hasBusiness ? '1' : '0.5';
-    businessField.style.cursor = hasBusiness ? 'text' : 'not-allowed';
-    if (!hasBusiness) businessField.value = '';
-    updateFieldLabel(businessField, hasBusiness);
+    const hasIt = aircraftData ? aircraftData.hasBusiness === true : true;
+    const ok    = hasIt && eraAllowsBusiness;
+    const note  = !eraAllowsBusiness ? `(available from 1978)`
+                : !hasIt             ? '(not available on this aircraft)' : null;
+    _setFieldAvail(businessField, ok, note);
   }
 
-  // First class
+  // ── First class (not era-gated — existed since early commercial aviation) ──
   if (firstField) {
-    const hasFirst = aircraftData?.hasFirst === true;
-    firstField.disabled = !hasFirst;
-    firstField.style.opacity = hasFirst ? '1' : '0.5';
-    firstField.style.cursor = hasFirst ? 'text' : 'not-allowed';
-    if (!hasFirst) firstField.value = '';
-    updateFieldLabel(firstField, hasFirst);
+    const ok = aircraftData ? aircraftData.hasFirst === true : true;
+    _setFieldAvail(firstField, ok, ok ? null : '(not available on this aircraft)');
   }
 
-  // Enable/disable cargo rate inputs based on aircraft type
+  // ── Cargo rate inputs (gated by aircraft type, not era) ───────────────
   if (typeof CARGO_TYPE_KEYS !== 'undefined') {
     const aircraftType = aircraftData?.type || '';
     for (const typeKey of CARGO_TYPE_KEYS) {
@@ -804,36 +774,38 @@ function updatePassengerClassAvailability(aircraftData) {
       field.style.opacity = available ? '1' : '0.5';
       field.style.cursor = available ? 'text' : 'not-allowed';
       if (!available) field.value = '';
-      // Update label styling
       const label = field.closest('div')?.querySelector('label');
       if (label) label.style.opacity = available ? '1' : '0.5';
       updateFieldLabel(field, available);
     }
   }
-
-  console.log('Updated class/cargo availability:', {
-    economy: aircraftData?.hasEconomy !== false,
-    economyPlus: aircraftData?.hasEconomyPlus === true,
-    business: aircraftData?.hasBusiness === true,
-    first: aircraftData?.hasFirst === true,
-    cargoTypes: typeof CARGO_TYPE_KEYS !== 'undefined' ? CARGO_TYPE_KEYS.reduce((acc, k) => {
-      acc[k] = !CARGO_TYPES[k].cargoOnly || (aircraftData?.type || '') === 'Cargo';
-      return acc;
-    }, {}) : 'CARGO_TYPE_KEYS not loaded'
-  });
 }
 
-// Helper function to update field label with availability indicator
-function updateFieldLabel(field, isAvailable) {
-  const label = field.closest('div').querySelector('label');
+// Apply enabled/disabled state + note to a pricing field.
+function _setFieldAvail(field, available, note) {
+  field.disabled = !available;
+  field.style.opacity  = available ? '1' : '0.5';
+  field.style.cursor   = available ? 'text' : 'not-allowed';
+  if (!available) field.value = '';
+  updateFieldLabel(field, available, note);
+}
+
+// Update the label next to a field with an availability note.
+// Uses a dedicated <span class="class-avail-note"> so removal is reliable.
+function updateFieldLabel(field, isAvailable, note) {
+  const label = field.closest('div')?.querySelector('label');
   if (!label) return;
 
-  // Remove existing "(not available)" text
-  label.innerHTML = label.innerHTML.replace(' <span style="color: var(--text-muted); font-weight: normal;">(not available on this aircraft)</span>', '');
+  // Remove any existing note span
+  const existing = label.querySelector('.class-avail-note');
+  if (existing) existing.remove();
 
-  // Add "(not available)" text if field is not available
-  if (!isAvailable) {
-    label.innerHTML += ' <span style="color: var(--text-muted); font-weight: normal;">(not available on this aircraft)</span>';
+  if (!isAvailable && note) {
+    const span = document.createElement('span');
+    span.className = 'class-avail-note';
+    span.style.cssText = 'color: var(--text-muted); font-weight: normal; font-size: 0.8em;';
+    span.textContent = ' ' + note;
+    label.appendChild(span);
   }
 }
 
@@ -962,7 +934,8 @@ async function loadAvailableAirports() {
                 demand: dest.demand,
                 demandCategory: dest.demandCategory,
                 routeType: dest.routeType,
-                indicators: dest.indicators || null
+                indicators: dest.indicators || null,
+                cargoProfile: dest.cargoProfile || null
               };
             }
           });
@@ -1012,7 +985,8 @@ async function loadDemandForAirports(airports) {
               demand: dest.demand,
               demandCategory: dest.demandCategory,
               routeType: dest.routeType,
-              indicators: dest.indicators || null
+              indicators: dest.indicators || null,
+              cargoProfile: dest.cargoProfile || null
             };
           }
         });
@@ -1744,6 +1718,42 @@ function populateRouteStats(airport) {
   } else {
     breakdownContainer.style.display = 'none';
   }
+
+  // Cargo demand
+  renderCargoDemand(demandData?.cargoProfile);
+}
+
+const CARGO_TYPE_META = [
+  { key: 'general',   code: 'GEN', label: 'General',    color: '#3B82F6' },
+  { key: 'express',   code: 'EXP', label: 'Express',    color: '#10B981' },
+  { key: 'heavy',     code: 'HVY', label: 'Heavy',      color: '#8B5CF6' },
+  { key: 'oversized', code: 'OVR', label: 'Oversized',  color: '#F59E0B' },
+  { key: 'perishable',code: 'PER', label: 'Perishable', color: '#EF4444' },
+  { key: 'dangerous', code: 'DGR', label: 'Dangerous',  color: '#F97316' },
+  { key: 'liveAnimal',code: 'AVI', label: 'Live Animal',color: '#84CC16' },
+  { key: 'highValue', code: 'VAL', label: 'High-Value', color: '#EC4899' },
+];
+
+function renderCargoDemand(cargoProfile) {
+  const section = document.getElementById('selectedDestCargoSection');
+  const grid    = document.getElementById('cargoDemandGrid');
+  if (!cargoProfile) { section.style.display = 'none'; return; }
+
+  grid.innerHTML = CARGO_TYPE_META.map(({ key, code, label, color }) => {
+    const val = cargoProfile[key] ?? 0;
+    return `
+      <div class="cargo-demand-item" title="${label}: ${val}/100">
+        <div class="cargo-demand-header">
+          <span class="cargo-demand-code" style="color:${color};">${code}</span>
+          <span class="cargo-demand-value">${val}</span>
+        </div>
+        <div class="cargo-demand-bar-track">
+          <div class="cargo-demand-bar-fill" style="width:${val}%; background:${color};"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  section.style.display = 'block';
 }
 
 // Render 24-hour airport movements chart (departures + arrivals)

@@ -36,6 +36,10 @@ function getAircraftImageCodes(aircraft) {
     '328': 'D328', 'SC.7': 'SC7', '330': 'SH33', '360': 'SH36',
     '1900': 'B190', 'Beech 1900D': 'B190', '99': 'BE99',
     'Jetstream': 'JS31', 'ATP': 'ATP',
+    // 1940s–1950s Golden Age additions
+    'L-749': 'L749', '377': 'B377', 'C-46': 'C46', '2-0-2': 'M202',
+    'Il-12': 'IL12', 'Hermes': 'HPH4', 'Sandringham': 'SDRM',
+    'York': 'AVYO', 'DC-6B': 'DC6',
   };
 
   const baseCode = BASE_CODES[aircraft.model];
@@ -375,7 +379,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Maint</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">$${formatCurrency(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.85rem;">$${formatCurrencyShort(Math.round(maintHr * 56))}<span style="font-size:0.5rem;font-weight:400;">/wk</span></div>
               </div>
             </div>
           </div>
@@ -504,11 +508,10 @@ async function showAircraftDetails(userAircraftId) {
           <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
             <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.4rem;">Operating Costs</div>
             <div style="font-size:0.8rem;">
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">$${formatCurrency(fuelHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">$${formatCurrency(maintHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Total / hr</span><span style="font-weight:600;color:var(--warning-color);">$${formatCurrency(totalHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${isLeased ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Weekly Estimate</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrency(weeklyOps)}</span></div>
-              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">$${formatCurrency(leaseWk)}/wk</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / wk</span><span style="font-weight:600;">$${formatCurrency(Math.round(fuelHr * 56))}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / wk</span><span style="font-weight:600;">$${formatCurrency(Math.round(maintHr * 56))}</span></div>
+              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lease / wk</span><span style="font-weight:600;">$${formatCurrency(leaseWk)}</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Total / wk</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrency(weeklyOps)}</span></div>
             </div>
           </div>
 
@@ -1354,5 +1357,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Only auto-load fleet on the fleet page (has fleetGrid element)
   if (document.getElementById('fleetGrid')) {
     loadFleet();
+    // Pass game year to cabin configurator so era-locked classes are shown correctly
+    fetch('/api/world/info').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.currentTime && typeof setCabinEraYear === 'function') {
+        setCabinEraYear(new Date(d.currentTime).getFullYear());
+      }
+    }).catch(() => {});
   }
 });

@@ -148,6 +148,7 @@ router.get('/', async (req, res) => {
             aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
             cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
             dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+            isCombi: variant.isCombi || false,
 
             // Same entity offers both purchase and lease
             seller: {
@@ -260,6 +261,7 @@ router.get('/', async (req, res) => {
             aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
             cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
             dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+            isCombi: variant.isCombi || false,
 
             // Seller/lessor is the player airline
             seller: {
@@ -487,6 +489,7 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         aCheckCost: variant.aCheckCost ? parseFloat(variant.aCheckCost) : null,
         cCheckCost: variant.cCheckCost ? parseFloat(variant.cCheckCost) : null,
         dCheckCost: variant.dCheckCost ? parseFloat(variant.dCheckCost) : null,
+        isCombi: variant.isCombi || false,
       };
 
       // Same entity offers both purchase and lease

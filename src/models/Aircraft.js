@@ -224,6 +224,13 @@ const Aircraft = sequelize.define('Aircraft', {
     type: DataTypes.DECIMAL(12, 2),
     field: 'd_check_cost',
     comment: 'Cost of a D check in USD'
+  },
+  isCombi: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    field: 'is_combi',
+    comment: 'Combi aircraft: simultaneous main-deck cargo + passenger sections'
   }
 }, {
   tableName: 'aircraft',

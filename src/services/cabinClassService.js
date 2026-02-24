@@ -22,15 +22,18 @@ class CabinClassService {
    * (long-haul, high-GDP, hub-to-hub). Actual routes scale from here.
    */
   _getEraBase(year) {
+    // These are "reference" proportions for a typical long-haul route.
+    // First class has historically been a small minority even on premium routes.
+    // Pre-1978: First + Economy only (no business class existed).
     const bases = {
-      1950: { first: 0.35, business: 0.00, premEco: 0.00, economy: 0.65 },
-      1960: { first: 0.22, business: 0.00, premEco: 0.00, economy: 0.78 },
-      1970: { first: 0.14, business: 0.00, premEco: 0.00, economy: 0.86 },
-      1980: { first: 0.08, business: 0.14, premEco: 0.00, economy: 0.78 },
-      1990: { first: 0.05, business: 0.18, premEco: 0.00, economy: 0.77 },
-      2000: { first: 0.03, business: 0.16, premEco: 0.05, economy: 0.76 },
-      2010: { first: 0.02, business: 0.14, premEco: 0.10, economy: 0.74 },
-      2020: { first: 0.02, business: 0.12, premEco: 0.12, economy: 0.74 }
+      1950: { first: 0.12, business: 0.00, premEco: 0.00, economy: 0.88 },
+      1960: { first: 0.08, business: 0.00, premEco: 0.00, economy: 0.92 },
+      1970: { first: 0.06, business: 0.00, premEco: 0.00, economy: 0.94 },
+      1980: { first: 0.04, business: 0.12, premEco: 0.00, economy: 0.84 },
+      1990: { first: 0.03, business: 0.14, premEco: 0.00, economy: 0.83 },
+      2000: { first: 0.02, business: 0.13, premEco: 0.05, economy: 0.80 },
+      2010: { first: 0.02, business: 0.11, premEco: 0.09, economy: 0.78 },
+      2020: { first: 0.01, business: 0.09, premEco: 0.11, economy: 0.79 }
     };
 
     const interp = (field) => gravityModelService.interpolateDecadeValue(
@@ -86,8 +89,8 @@ class CabinClassService {
     }
 
     const totalPremium = first + business + premEco;
-    if (totalPremium > 0.60) {
-      const scale = 0.60 / totalPremium;
+    if (totalPremium > 0.40) {
+      const scale = 0.40 / totalPremium;
       first *= scale;
       business *= scale;
       premEco *= scale;
@@ -121,7 +124,7 @@ class CabinClassService {
   _gdpFactor(originGdp, destGdp, year) {
     const eraRef = this._getEraReferenceGdp(year);
     const geoMean = Math.sqrt(originGdp * destGdp);
-    return Math.max(0.3, Math.min(2.0, geoMean / eraRef));
+    return Math.max(0.3, Math.min(1.5, geoMean / eraRef));
   }
 
   /**

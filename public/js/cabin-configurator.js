@@ -47,6 +47,14 @@ const CLASS_COLORS = {
 // Fuselage visual widths per aircraft type
 const FUSELAGE_WIDTHS = { Regional: 220, Narrowbody: 280, Widebody: 400 };
 
+// Era year — set from the host page via setCabinEraYear().
+// Classes not yet invented are rendered as locked/greyed cards.
+//   Business class:    introduced 1978 (El Al, then widespread)
+//   Economy Plus:      introduced 1992 (EVA Air / Virgin Atlantic)
+let _cabinEraYear = 9999;
+window.setCabinEraYear = (year) => { _cabinEraYear = year; };
+const CLASS_ERA = { business: 1978, economyPlus: 1992 }; // first & economy have no era gate
+
 // Per-aircraft layout overrides for single-deck widebodies
 // (Double-deck aircraft like A380/747 have their own configs in DOUBLE_DECK)
 const WIDEBODY_OVERRIDES = [
@@ -76,14 +84,24 @@ const WIDEBODY_OVERRIDES = [
 const ROW_HEIGHTS = { economy: 10, economyPlus: 12, business: 16, first: 24 };
 const ROW_GAP = 2;
 
-/** Calculate default / min / max toilet counts for an aircraft (always even — pairs) */
+/** Calculate default / min / max toilet counts for an aircraft (always even — pairs).
+ *  Scales realistically with aircraft size:
+ *    ≤12 seats  → 0  (tiny regional, no lav needed)
+ *    13–100     → 2  (1 pair: small turboprop / regional jet)
+ *    101–200    → 4  (2 pairs: narrowbody)
+ *    201–350    → 6  (3 pairs: small widebody, e.g. 767/A330)
+ *    351–500    → 8  (4 pairs: large widebody, e.g. 747/777)
+ *    500+       → 10 (5 pairs: very large, e.g. A380)
+ */
 function _toiletDefaults(passengerCapacity) {
-  const min = passengerCapacity > 12 ? 4 : 0;
-  let def = passengerCapacity < 12 ? 0 : Math.max(min, Math.ceil(passengerCapacity / 50));
-  if (def % 2 !== 0) def++;
-  let mx = Math.min(12, Math.max(def + 2, Math.ceil(passengerCapacity / 30)));
-  if (mx % 2 !== 0) mx++;
-  mx = Math.min(12, mx);
+  let def, min;
+  if      (passengerCapacity <= 12)  { def = 0;  min = 0; }
+  else if (passengerCapacity <= 100) { def = 2;  min = 0; }
+  else if (passengerCapacity <= 200) { def = 4;  min = 2; }
+  else if (passengerCapacity <= 350) { def = 6;  min = 4; }
+  else if (passengerCapacity <= 500) { def = 8;  min = 4; }
+  else                               { def = 10; min = 4; }
+  const mx = Math.min(16, def + 4);
   return { min, default: def, max: mx };
 }
 
@@ -181,7 +199,7 @@ function seatsPerRow(aircraftType, cabinClass) {
 }
 
 // --- Shared fuselage SVG renderer ---
-function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0) {
+function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0) {
   if (!deckLayout) return '';
 
   const aisleWidth = 16;
@@ -218,15 +236,22 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     sections.push({ cls, groups, perRow, numRows, rowH, lastRowSeats });
   }
 
-  // Calculate total visual height
-  let totalH = 0;
-  if (frontPair) totalH += TOILET_BLOCK_H + TOILET_GAP;
+  // Calculate passenger section height
+  let seatContentH = 0;
+  if (frontPair) seatContentH += TOILET_BLOCK_H + TOILET_GAP;
   for (const s of sections) {
-    totalH += s.numRows * (s.rowH + ROW_GAP) + 18;
+    seatContentH += s.numRows * (s.rowH + ROW_GAP) + 18;
   }
-  totalH += midPairs * (TOILET_BLOCK_H + TOILET_GAP);
-  if (backPair) totalH += TOILET_BLOCK_H + TOILET_GAP;
-  if (totalH === 0) totalH = 40;
+  seatContentH += midPairs * (TOILET_BLOCK_H + TOILET_GAP);
+  if (backPair) seatContentH += TOILET_BLOCK_H + TOILET_GAP;
+  if (seatContentH === 0) seatContentH = 40;
+
+  // Combi: cargo deck block at front + bulkhead divider
+  const BULKHEAD_H = cargoDeckPct > 0 ? 9 : 0;
+  const cargoBlockH = cargoDeckPct > 0
+    ? Math.max(60, Math.round(seatContentH * cargoDeckPct / Math.max(0.05, 1 - cargoDeckPct)))
+    : 0;
+  const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
   const noseH = 50;
   const tailH = 35;
@@ -353,6 +378,21 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   if (backPair) {
     html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
     curY += TOILET_BLOCK_H + TOILET_GAP;
+  }
+
+  // Combi: cargo deck block at the tail of the cabin, after passenger seats
+  if (cargoDeckPct > 0 && cargoBlockH > 0) {
+    // Bulkhead divider bar first
+    html += `<rect x="${seatLeft - 2}" y="${curY}" width="${seatWidth + 4}" height="${BULKHEAD_H}" rx="1"
+               fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.55)" stroke-width="0.5"/>`;
+    html += `<text x="${fW/2}" y="${curY + BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+    curY += BULKHEAD_H;
+    // Cargo deck block
+    html += `<rect x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${cargoBlockH}" rx="3"
+               fill="rgba(251,146,60,0.12)" stroke="rgba(251,146,60,0.5)" stroke-width="0.8" stroke-dasharray="4,2"/>`;
+    const clabelY = curY + cargoBlockH / 2;
+    html += `<text x="${fW/2}" y="${clabelY - 4}" text-anchor="middle" fill="rgba(251,146,60,0.9)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">CARGO DECK</text>`;
+    html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Freight</text>`;
   }
 
   html += `</g>`;
@@ -592,9 +632,28 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   `;
 
   function buildClassCtrl(cls) {
-    const cc = CLASS_COLORS[cls];
-    const perRow = classPerRow(cls);
-    const groups = layouts[cls];
+    const cc       = CLASS_COLORS[cls];
+    const perRow   = classPerRow(cls);
+    const groups   = layouts[cls];
+    const eraFrom  = CLASS_ERA[cls];
+    const eraLocked = eraFrom != null && _cabinEraYear < eraFrom;
+
+    if (eraLocked) {
+      // Force seats to 0 so locked classes take no cabin space
+      config[cls] = 0;
+      return `
+        <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px;
+                    border-left: 3px solid ${cc.bg}; opacity: 0.38; cursor: not-allowed;"
+             title="${cc.label} class was introduced in ${eraFrom}. Not available in this era.">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: ${cc.bg};">${cc.label.toUpperCase()}</span>
+            <span style="font-size: 0.6rem; color: var(--text-muted); font-style: italic;">Available ${eraFrom}</span>
+          </div>
+          <div style="font-size: 0.55rem; color: var(--text-muted);">${groups.join('-')} layout · ${perRow} per row</div>
+        </div>
+      `;
+    }
+
     return `
       <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg};">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
@@ -650,7 +709,10 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   function renderDiagram() {
     const container = document.getElementById('cabinDiagramContainer');
     if (!container) return;
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets) + renderLegend();
+    const cdp = aircraft.isCombi && aircraft.cargoCapacityKg > 0
+      ? Math.min(0.75, aircraft.cargoCapacityKg / (aircraft.cargoCapacityKg + (aircraft.passengerCapacity || 1) * 100))
+      : 0;
+    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets, cdp) + renderLegend();
   }
 
   function updateUI() {
@@ -686,10 +748,14 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     if (tcEl) tcEl.textContent = toilets;
     const noteEl = document.getElementById('toiletNote');
     if (noteEl) {
-      const midPrs = Math.max(0, Math.floor(toilets / 2) - 2);
-      noteEl.textContent = midPrs > 0
-        ? `${midPrs} mid-cabin pair${midPrs > 1 ? 's' : ''} replacing ${midPrs * 3 * econPerRow} seats`
-        : 'Added in pairs · first 4 at nose/tail';
+      if (toilets === 0) {
+        noteEl.textContent = 'No lavatories · tap + to add';
+      } else {
+        const midPrs = Math.max(0, Math.floor(toilets / 2) - 2);
+        noteEl.textContent = midPrs > 0
+          ? `${midPrs} mid-cabin pair${midPrs > 1 ? 's' : ''} replacing ${midPrs * 3 * econPerRow} seats`
+          : 'Added in pairs · first 4 at nose/tail';
+      }
     }
     // Toilet button states
     const tMin = overlay.querySelector('.toilet-adj-btn[data-delta="-2"]');

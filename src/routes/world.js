@@ -7,6 +7,7 @@ const airportCacheService = require('../services/airportCacheService');
 const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
 const routeIndicatorService = require('../services/routeIndicatorService');
+const airportCargoService = require('../services/airportCargoService');
 const { Op } = require('sequelize');
 const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification, WeeklyFinancial, Loan } = require('../models');
 
@@ -484,6 +485,19 @@ router.get('/airports/:id/demand', async (req, res) => {
       }
     } catch (indicatorErr) {
       console.error('Route indicators error:', indicatorErr);
+    }
+
+    // Compute cargo demand for each destination airport
+    try {
+      const destAirports = destinations.map(d => d.airport).filter(Boolean);
+      const cargoProfiles = airportCargoService.computeBatchCargoDemand(destAirports, currentYear);
+      for (const dest of destinations) {
+        if (dest.airport) {
+          dest.cargoProfile = cargoProfiles[dest.airport.id] || null;
+        }
+      }
+    } catch (cargoErr) {
+      console.error('Cargo demand error:', cargoErr);
     }
 
     res.json({

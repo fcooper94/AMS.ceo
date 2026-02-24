@@ -574,6 +574,16 @@ server.listen(PORT, () => {
           ADD COLUMN IF NOT EXISTS audience_levels JSONB DEFAULT '{}'::jsonb
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
+    try {
+      await sequelize.query(`
+        ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS is_combi BOOLEAN NOT NULL DEFAULT FALSE
+      `);
+      // Ensure known combi aircraft have the flag set correctly
+      await sequelize.query(`
+        UPDATE aircraft SET is_combi = TRUE
+        WHERE manufacturer = 'Bristol' AND model = '170' AND variant IN ('Car Ferry', 'Combi')
+      `);
+    } catch (_) { /* aircraft table may not exist yet */ }
 
     await sequelize.sync({ alter: true });
     console.log('✓ Database schema synced');

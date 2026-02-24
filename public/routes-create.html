@@ -178,6 +178,45 @@
     font-family: 'Courier New', monospace;
     letter-spacing: 0.5px;
   }
+
+  /* ── Cargo Demand Grid ─────────────────────────────────────────────────── */
+  .cargo-demand-item {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 0.3rem 0.45rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+  .cargo-demand-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cargo-demand-code {
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .cargo-demand-value {
+    font-size: 0.58rem;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .cargo-demand-bar-track {
+    height: 3px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .cargo-demand-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
 </style>
 
 <div class="dashboard-container">
@@ -250,7 +289,13 @@
             <div id="yieldFactorsList" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
           </div>
 
-          <!-- Row 4: Airport movements chart -->
+          <!-- Row 4: Cargo demand -->
+          <div id="selectedDestCargoSection" style="display: none; margin-bottom: 0.75rem;">
+            <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; font-weight: 600; margin-bottom: 0.4rem; letter-spacing: 0.5px;">Cargo Demand</div>
+            <div id="cargoDemandGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem;"></div>
+          </div>
+
+          <!-- Row 5: Airport movements chart -->
           <div id="selectedDestTimeChart" style="display: none; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; margin-bottom: 0.75rem;">
             <div style="background: var(--surface-elevated); padding: 0.4rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
               <span>Airport traffic by hour</span>

@@ -2565,7 +2565,167 @@ const COMPREHENSIVE_AIRCRAFT = [
     firstIntroduced: 1971, availableFrom: 1971, availableUntil: 1989,
     requiredPilots: 3, requiredCabinCrew: 8, isActive: true,
     description: 'Domestic DC-10 - US transcontinental trijet'
+  },
+
+  // ========================================
+  // 1940s–1950s GOLDEN AGE ADDITIONS
+  // Fills out the 1950 starting fleet from 10 → 22 aircraft
+  // ========================================
+
+  {
+    manufacturer: 'Lockheed', model: 'L-749', variant: 'Constellation', icaoCode: 'L749', type: 'Narrowbody',
+    rangeCategory: 'Long Haul', rangeNm: 2900, cruiseSpeed: 290,
+    passengerCapacity: 81, cargoCapacityKg: 6000, fuelCapacityLiters: 23800,
+    purchasePrice: 15000000, usedPrice: 7500000, maintenanceCostPerHour: 1100,
+    maintenanceCostPerMonth: 88000, fuelBurnPerHour: 1800,
+    firstIntroduced: 1947, availableFrom: 1947, availableUntil: 1972,
+    requiredPilots: 3, requiredCabinCrew: 3, isActive: true,
+    description: 'Triple-tail Constellation - Pan Am flagship, first true intercontinental airliner'
+  },
+
+  {
+    manufacturer: 'Boeing', model: '377', variant: 'Stratocruiser', icaoCode: 'B377', type: 'Narrowbody',
+    rangeCategory: 'Long Haul', rangeNm: 3640, cruiseSpeed: 295,
+    passengerCapacity: 100, cargoCapacityKg: 8000, fuelCapacityLiters: 31200,
+    purchasePrice: 20000000, usedPrice: 9000000, maintenanceCostPerHour: 1300,
+    maintenanceCostPerMonth: 104000, fuelBurnPerHour: 2100,
+    firstIntroduced: 1949, availableFrom: 1949, availableUntil: 1968,
+    requiredPilots: 3, requiredCabinCrew: 4, isActive: true,
+    description: 'Double-deck luxury prop - Pan Am & BOAC prestige long-haul, lower deck lounge'
+  },
+
+  {
+    manufacturer: 'Curtiss', model: 'C-46', variant: 'Commando', icaoCode: 'C46', type: 'Regional',
+    rangeCategory: 'Medium Haul', rangeNm: 1700, cruiseSpeed: 235,
+    passengerCapacity: 52, cargoCapacityKg: 6000, fuelCapacityLiters: 7500,
+    purchasePrice: 9000000, usedPrice: 4000000, maintenanceCostPerHour: 850,
+    maintenanceCostPerMonth: 68000, fuelBurnPerHour: 900,
+    firstIntroduced: 1940, availableFrom: 1946, availableUntil: 1978,
+    requiredPilots: 2, requiredCabinCrew: 2, isActive: true,
+    description: 'Wartime transport turned airliner - massive cargo hold, hump-fuselage twin'
+  },
+
+  {
+    manufacturer: 'Martin', model: '2-0-2', variant: null, icaoCode: 'M202', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 1100, cruiseSpeed: 243,
+    passengerCapacity: 36, cargoCapacityKg: 2500, fuelCapacityLiters: 4600,
+    purchasePrice: 6500000, usedPrice: 2800000, maintenanceCostPerHour: 680,
+    maintenanceCostPerMonth: 54400, fuelBurnPerHour: 680,
+    firstIntroduced: 1947, availableFrom: 1947, availableUntil: 1966,
+    requiredPilots: 2, requiredCabinCrew: 1, isActive: true,
+    description: 'Pressurised DC-3 replacement - short-lived but modern for its era'
+  },
+
+  {
+    manufacturer: 'Ilyushin', model: 'Il-12', variant: null, icaoCode: 'IL12', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 1240, cruiseSpeed: 184,
+    passengerCapacity: 27, cargoCapacityKg: 3400, fuelCapacityLiters: 8000,
+    purchasePrice: 5000000, usedPrice: 2200000, maintenanceCostPerHour: 640,
+    maintenanceCostPerMonth: 51200, fuelBurnPerHour: 680,
+    firstIntroduced: 1946, availableFrom: 1946, availableUntil: 1966,
+    requiredPilots: 2, requiredCabinCrew: 1, isActive: true,
+    description: 'Soviet DC-3 successor - Aeroflot workhorse on domestic trunk routes'
+  },
+
+  {
+    manufacturer: 'de Havilland Canada', model: 'DHC-2', variant: 'Beaver', icaoCode: 'DHC2', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 405, cruiseSpeed: 122,
+    passengerCapacity: 6, cargoCapacityKg: 680, fuelCapacityLiters: 360,
+    purchasePrice: 2000000, usedPrice: 900000, maintenanceCostPerHour: 300,
+    maintenanceCostPerMonth: 24000, fuelBurnPerHour: 70,
+    firstIntroduced: 1947, availableFrom: 1948, availableUntil: null,
+    requiredPilots: 1, requiredCabinCrew: 0, isActive: true,
+    description: 'Iconic bush plane - floatplane/ski/wheeled, Canada\'s most famous utility aircraft'
+  },
+
+  {
+    manufacturer: 'Handley Page', model: 'Hermes', variant: '4', icaoCode: 'HPH4', type: 'Narrowbody',
+    rangeCategory: 'Long Haul', rangeNm: 3000, cruiseSpeed: 239,
+    passengerCapacity: 82, cargoCapacityKg: 5000, fuelCapacityLiters: 22700,
+    purchasePrice: 14000000, usedPrice: 6500000, maintenanceCostPerHour: 1050,
+    maintenanceCostPerMonth: 84000, fuelBurnPerHour: 1600,
+    firstIntroduced: 1950, availableFrom: 1950, availableUntil: 1964,
+    requiredPilots: 3, requiredCabinCrew: 3, isActive: true,
+    description: 'BOAC mainliner - London to South Africa via Africa route, four-engine piston'
+  },
+
+  {
+    manufacturer: 'Short', model: 'Sandringham', variant: null, icaoCode: 'SDRM', type: 'Regional',
+    rangeCategory: 'Medium Haul', rangeNm: 1300, cruiseSpeed: 151,
+    passengerCapacity: 30, cargoCapacityKg: 2000, fuelCapacityLiters: 13600,
+    purchasePrice: 7500000, usedPrice: 3500000, maintenanceCostPerHour: 750,
+    maintenanceCostPerMonth: 60000, fuelBurnPerHour: 900,
+    firstIntroduced: 1945, availableFrom: 1946, availableUntil: 1962,
+    requiredPilots: 3, requiredCabinCrew: 2, isActive: true,
+    description: 'Sunderland flying boat converted to airliner - BOAC Empire routes, luxury waterborne travel'
+  },
+
+  {
+    manufacturer: 'SAAB', model: '90', variant: 'Scandia', icaoCode: 'SC90', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 1460, cruiseSpeed: 234,
+    passengerCapacity: 32, cargoCapacityKg: 2200, fuelCapacityLiters: 7000,
+    purchasePrice: 6000000, usedPrice: 2600000, maintenanceCostPerHour: 660,
+    maintenanceCostPerMonth: 52800, fuelBurnPerHour: 630,
+    firstIntroduced: 1946, availableFrom: 1950, availableUntil: 1969,
+    requiredPilots: 2, requiredCabinCrew: 1, isActive: true,
+    description: 'Swedish-Brazilian feederliner - SAS and VASP, only 18 built but an important type'
+  },
+
+  {
+    manufacturer: 'Bristol', model: '170', variant: 'Freighter', icaoCode: 'B170', type: 'Cargo',
+    rangeCategory: 'Short Haul', rangeNm: 870, cruiseSpeed: 152,
+    passengerCapacity: 0, cargoCapacityKg: 8200, fuelCapacityLiters: 6800,
+    purchasePrice: 6500000, usedPrice: 3000000, maintenanceCostPerHour: 700,
+    maintenanceCostPerMonth: 56000, fuelBurnPerHour: 780,
+    firstIntroduced: 1946, availableFrom: 1946, availableUntil: 1975,
+    requiredPilots: 2, requiredCabinCrew: 0, isActive: true,
+    description: 'Pure nose-loading freighter - clamshell doors, exceptional cargo volume for a twin-engine aircraft'
+  },
+
+  {
+    manufacturer: 'Bristol', model: '170', variant: 'Combi', icaoCode: 'B17C', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 800, cruiseSpeed: 152,
+    passengerCapacity: 20, cargoCapacityKg: 5500, fuelCapacityLiters: 6800,
+    purchasePrice: 6800000, usedPrice: 3100000, maintenanceCostPerHour: 720,
+    maintenanceCostPerMonth: 57600, fuelBurnPerHour: 800,
+    firstIntroduced: 1948, availableFrom: 1948, availableUntil: 1970,
+    requiredPilots: 2, requiredCabinCrew: 1, isActive: true, isCombi: true,
+    description: 'Combi variant of the Bristol 170 — mixed passenger and freight on the main deck, ideal for thin short-haul routes'
+  },
+
+  {
+    manufacturer: 'Bristol', model: '170', variant: 'Wayfarer', icaoCode: 'B17W', type: 'Regional',
+    rangeCategory: 'Short Haul', rangeNm: 920, cruiseSpeed: 155,
+    passengerCapacity: 32, cargoCapacityKg: 1500, fuelCapacityLiters: 6800,
+    purchasePrice: 6200000, usedPrice: 2800000, maintenanceCostPerHour: 680,
+    maintenanceCostPerMonth: 54400, fuelBurnPerHour: 760,
+    firstIntroduced: 1946, availableFrom: 1946, availableUntil: 1968,
+    requiredPilots: 2, requiredCabinCrew: 1, isActive: true,
+    description: 'Passenger variant - no clamshell nose, 32 seats, used on thin regional routes'
+  },
+
+  {
+    manufacturer: 'Avro', model: 'York', variant: null, icaoCode: 'AVYO', type: 'Narrowbody',
+    rangeCategory: 'Medium Haul', rangeNm: 2345, cruiseSpeed: 213,
+    passengerCapacity: 65, cargoCapacityKg: 4500, fuelCapacityLiters: 18000,
+    purchasePrice: 10000000, usedPrice: 4500000, maintenanceCostPerHour: 950,
+    maintenanceCostPerMonth: 76000, fuelBurnPerHour: 1200,
+    firstIntroduced: 1943, availableFrom: 1945, availableUntil: 1965,
+    requiredPilots: 3, requiredCabinCrew: 2, isActive: true,
+    description: 'Lancaster-derived transport - BOAC & British independent airlines on Empire routes'
+  },
+
+  {
+    manufacturer: 'Douglas', model: 'DC-6B', variant: null, icaoCode: 'DC6B', type: 'Narrowbody',
+    rangeCategory: 'Long Haul', rangeNm: 2700, cruiseSpeed: 274,
+    passengerCapacity: 102, cargoCapacityKg: 9000, fuelCapacityLiters: 24000,
+    purchasePrice: 13000000, usedPrice: 6000000, maintenanceCostPerHour: 1000,
+    maintenanceCostPerMonth: 80000, fuelBurnPerHour: 1100,
+    firstIntroduced: 1951, availableFrom: 1951, availableUntil: 1982,
+    requiredPilots: 2, requiredCabinCrew: 4, isActive: true,
+    description: 'Definitive DC-6 - improved range and payload, workhorse of early intercontinental routes'
   }
+
 ];
 
 async function seedHistoricalAircraft() {

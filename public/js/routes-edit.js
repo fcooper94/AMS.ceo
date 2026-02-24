@@ -98,6 +98,7 @@ async function fetchRouteData() {
       }
 
       populateFormFields();
+      applyEraClassGating();
     }
   } catch (error) {
     console.error('Error fetching route:', error);
@@ -249,6 +250,38 @@ function populateFormFields() {
   // Show the form
   document.getElementById('loadingState').style.display = 'none';
   document.getElementById('editForm').style.display = 'block';
+}
+
+// Disable class pricing fields that don't exist in the current game era.
+// Business class: introduced 1978. Premium Economy: introduced 1992.
+function applyEraClassGating() {
+  const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 9999;
+
+  const gates = [
+    { id: 'economyPlusPrice', from: 1992, label: 'available from 1992' },
+    { id: 'businessPrice',    from: 1978, label: 'available from 1978' },
+  ];
+
+  for (const { id, from, label } of gates) {
+    const field = document.getElementById(id);
+    if (!field) continue;
+    if (gameYear < from) {
+      field.disabled = true;
+      field.value    = '';
+      field.style.opacity = '0.5';
+      field.style.cursor  = 'not-allowed';
+      const lbl = field.closest('div')?.querySelector('label');
+      if (lbl) {
+        const existing = lbl.querySelector('.class-avail-note');
+        if (existing) existing.remove();
+        const span = document.createElement('span');
+        span.className = 'class-avail-note';
+        span.style.cssText = 'color: var(--text-muted); font-weight: normal; font-size: 0.8em;';
+        span.textContent = ` (${label})`;
+        lbl.appendChild(span);
+      }
+    }
+  }
 }
 
 // Calculate distance between two coordinates (Haversine formula)

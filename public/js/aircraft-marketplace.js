@@ -37,6 +37,10 @@ function getAircraftImageCodes(aircraft) {
     '328': 'D328', 'SC.7': 'SC7', '330': 'SH33', '360': 'SH36',
     '1900': 'B190', 'Beech 1900D': 'B190', '99': 'BE99',
     'Jetstream': 'JS31', 'ATP': 'ATP',
+    // 1940s–1950s Golden Age additions
+    'L-749': 'L749', '377': 'B377', 'C-46': 'C46', '2-0-2': 'M202',
+    'Il-12': 'IL12', 'Hermes': 'HPH4', 'Sandringham': 'SDRM',
+    'York': 'AVYO', 'DC-6B': 'DC6',
   };
 
   const baseCode = BASE_CODES[aircraft.model];
@@ -323,6 +327,11 @@ async function fetchWorldInfo() {
 
     // World type — SP worlds can cache inventory
     isSinglePlayer = data.worldType === 'singleplayer';
+
+    // Pass game year to cabin configurator so era-locked classes are shown correctly
+    if (data.currentTime && typeof setCabinEraYear === 'function') {
+      setCabinEraYear(new Date(data.currentTime).getFullYear());
+    }
 
     // Balance display
     const balanceEl = document.getElementById('marketplaceBalance');
@@ -688,13 +697,11 @@ function showAircraftDetails(aircraftId) {
     <!-- Main content: Image left, details right -->
     <div style="display: flex; gap: 1rem; margin-bottom: 0.6rem;">
       <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.4rem;">
-        ${acImgCodes.length > 0 ? `
-        <div id="acImageContainer" style="width: 300px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
-          <img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"
+        <div id="acImageContainer" style="width: 300px; min-height: 180px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
+          ${acImgCodes.length > 0 ? `<img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"
             data-fallbacks='${JSON.stringify(acImgCodes.slice(1))}' data-base-url="${acImgBase}"
-            onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color: var(--text-muted); font-size: 0.75rem;\\'>Image not available</div>';}">
+            onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<span style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</span>';}">` : `<span style="color: var(--text-muted); font-size: 0.75rem;">No image</span>`}
         </div>
-        ` : ''}
         ${aircraft.description ? `<div style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.3;">${aircraft.description}</div>` : ''}
       </div>
       <div style="flex: 1; display: flex; flex-direction: column; gap: 0.4rem;">
@@ -714,7 +721,10 @@ function showAircraftDetails(aircraftId) {
               <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">${aircraft.passengerCapacity || 'N/A'}</div>
             </div>
             <div style="padding: 0.25rem; background: var(--surface); border-radius: 3px;">
-              <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Range</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Range</div>
+                <button onclick="showRangeMap(${aircraft.rangeNm || 0})" title="Show range map" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:3px;padding:0.1rem 0.35rem;cursor:pointer;color:#10b981;font-size:0.55rem;font-weight:600;font-family:system-ui,sans-serif;letter-spacing:0.3px;line-height:1.4;" onmouseover="this.style.background='rgba(16,185,129,0.22)'" onmouseout="this.style.background='rgba(16,185,129,0.12)'">MAP</button>
+              </div>
               <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">${aircraft.rangeNm || 'N/A'}<span style="font-size: 0.5rem; font-weight: 400;">nm</span></div>
             </div>
             <div style="padding: 0.25rem; background: var(--surface); border-radius: 3px;">
@@ -731,7 +741,7 @@ function showAircraftDetails(aircraftId) {
             </div>
             <div style="padding: 0.25rem; background: var(--surface); border-radius: 3px;">
               <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Maint</div>
-              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">$${Math.round(aircraft.maintenanceCostPerHour || 0)}<span style="font-size: 0.5rem; font-weight: 400;">/h</span></div>
+              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">$${formatCurrencyShort(Math.round((aircraft.maintenanceCostPerMonth || (aircraft.maintenanceCostPerHour || 0) * 56) / 4.33))}<span style="font-size: 0.5rem; font-weight: 400;">/wk</span></div>
             </div>
           </div>
         </div>
@@ -3802,6 +3812,117 @@ function updateActiveTab() {
 // Kept for backwards compat — now handled by fetchWorldInfo()
 async function loadMarketplaceInfo() {
   // No-op: world info (balance, airline name) is now loaded in fetchWorldInfo()
+}
+
+// ── Range Map Modal ────────────────────────────────────────────────────────────
+function showRangeMap(rangeNm) {
+  if (!rangeNm) return;
+
+  // Overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9000;display:flex;justify-content:center;align-items:center;padding:1rem;';
+
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;width:100%;max-width:800px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border-bottom:1px solid var(--border-color);">
+        <div>
+          <span style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">Range Map</span>
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-left:0.6rem;">${rangeNm.toLocaleString()} nm from home base</span>
+        </div>
+        <button id="rangeMapClose" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;padding:0.2rem 0.4rem;">&times;</button>
+      </div>
+      <div id="rangeMapContainer" style="flex:1;min-height:480px;position:relative;"></div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('#rangeMapClose').addEventListener('click', () => document.body.removeChild(overlay));
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+
+  // Load Leaflet then render
+  function _initRangeMap(lat, lng, airportName) {
+    const container = document.getElementById('rangeMapContainer');
+    if (!container) return;
+
+    const map = L.map(container, {
+      center: [lat, lng],
+      zoom: 3,
+      minZoom: 2,
+      maxZoom: 8,
+      zoomControl: true,
+      attributionControl: true,
+      worldCopyJump: false
+    });
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Range circle (great circle) — 1 nm = 1852 m
+    const circle = L.circle([lat, lng], {
+      radius: rangeNm * 1852,
+      color: '#10b981',
+      weight: 1.5,
+      opacity: 0.9,
+      fillColor: '#10b981',
+      fillOpacity: 0.07,
+      dashArray: '6,4'
+    }).addTo(map);
+
+    // Home base marker
+    const icon = L.divIcon({
+      html: '<div style="width:10px;height:10px;background:#10b981;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(16,185,129,0.8);"></div>',
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+      className: ''
+    });
+    L.marker([lat, lng], { icon }).addTo(map)
+      .bindTooltip(airportName || 'Home Base', { permanent: true, direction: 'top', offset: [0, -8], className: 'leaflet-tooltip' });
+
+    // Fit map to the range circle bounds
+    map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+
+    // Invalidate size after modal is visible
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+
+  function _loadLeafletAndRender(lat, lng, name) {
+    if (window.L) {
+      _initRangeMap(lat, lng, name);
+      return;
+    }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => _initRangeMap(lat, lng, name);
+    script.onerror = () => {
+      const c = document.getElementById('rangeMapContainer');
+      if (c) c.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;">Could not load map library</div>';
+    };
+    document.head.appendChild(script);
+  }
+
+  // Get home base from cached worldInfo or fetch it
+  const wi = window._worldInfo || window.worldInfo;
+  if (wi && wi.baseAirport && wi.baseAirport.latitude != null) {
+    _loadLeafletAndRender(wi.baseAirport.latitude, wi.baseAirport.longitude, `${wi.baseAirport.icaoCode} – ${wi.baseAirport.name}`);
+  } else {
+    fetch('/api/world/info').then(r => r.json()).then(info => {
+      const ap = info.baseAirport;
+      if (ap && ap.latitude != null) {
+        _loadLeafletAndRender(ap.latitude, ap.longitude, `${ap.icaoCode} – ${ap.name}`);
+      } else {
+        const c = document.getElementById('rangeMapContainer');
+        if (c) c.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;">Home base location not available</div>';
+      }
+    }).catch(() => {
+      const c = document.getElementById('rangeMapContainer');
+      if (c) c.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;">Could not load world info</div>';
+    });
+  }
 }
 
 // Initialize when page loads

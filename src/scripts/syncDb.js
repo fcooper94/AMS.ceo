@@ -274,6 +274,16 @@ async function syncDatabase() {
       console.log(`Note: TEXT→enum restore scan skipped: ${e.message}`);
     }
 
+    // Add isCombi column to aircraft if missing
+    try {
+      await sequelize.query(`
+        ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS is_combi BOOLEAN DEFAULT FALSE
+      `);
+      console.log('✓ Ensured is_combi column exists on aircraft');
+    } catch (e) {
+      console.log('Note: is_combi column may already exist on aircraft');
+    }
+
     // Add revenue breakdown JSONB columns to weekly_financials if missing
     try {
       await sequelize.query(`

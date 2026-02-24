@@ -93,7 +93,15 @@
       "Bash(export PATH=\"$PATH:/c/Program Files/PostgreSQL/18/bin\")",
       "Bash(export PGPASSWORD:*)",
       "Bash(pg_restore:*)",
-      "Bash(PGPASSWORD='postgres' psql:*)"
+      "Bash(PGPASSWORD='postgres' psql:*)",
+      "Bash(perl:*)",
+      "Bash(npx pm2:*)",
+      "Bash(PSQL=\"/c/Program Files/PostgreSQL/18/bin/psql.exe\")",
+      "Bash(LOCAL_URL=\"postgresql://postgres:!_Q1w2e3r4t5y6_!@localhost:5432/airline_control\")",
+      "Bash(__NEW_LINE_a82f15341fde1c2c__ echo \"Applying schema to local DB...\")",
+      "Bash(\"$PSQL\" \"$LOCAL_URL\" -f /tmp/railway_schema.sql)",
+      "Bash(__NEW_LINE_6ddc93bcd505eff5__ \"$PSQL\" \"$LOCAL_URL\" -f /tmp/railway_schema.sql)",
+      "Bash(__NEW_LINE_b890cae335cfcd6a__ \"$PSQL\" \"$LOCAL_URL\" -c \"\\\\dt\")"
     ]
   }
 }

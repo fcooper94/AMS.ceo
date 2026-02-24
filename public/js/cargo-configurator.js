@@ -125,7 +125,7 @@ function _attachTooltips(container) {
  * Each cargo type's allocation maps to a proportional number of coloured pallets
  * arranged in a 2-column grid inside the fuselage, clipped to its outline.
  */
-function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix) {
+function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0) {
   const sfx = idSuffix || '';
   const activeTypes = types.filter(t => config[t] > 0);
   const W = 200;
@@ -175,6 +175,22 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix)
           stroke="rgba(100,116,139,0.22)" stroke-width="2.5" stroke-linecap="round"/>`;
 
   if (activeTypes.length === 0) {
+    // Combi: still show pax cabin block even when cargo hold is empty
+    if (paxBlockPct > 0) {
+      const holdUsableTop = bodyTop + 8;
+      const pEndY = bodyBot - 6;
+      const PAX_BULKHEAD_H = 6;
+      const paxHoldH = Math.max(36, Math.round((pEndY - holdUsableTop) * paxBlockPct));
+      const paxY = holdUsableTop;
+      const plY = paxY + paxHoldH / 2;
+      svg += `<g clip-path="url(#fc${sfx})">`;
+      svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
+      svg += `<text x="${cx}" y="${plY - 3}" text-anchor="middle" fill="rgba(59,130,246,0.85)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">PAX CABIN</text>`;
+      svg += `<text x="${cx}" y="${plY + 7}" text-anchor="middle" fill="rgba(59,130,246,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Passengers</text>`;
+      svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
+      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+      svg += `</g>`;
+    }
     svg += `<text x="${cx}" y="${H / 2}" text-anchor="middle" dominant-baseline="central"
               fill="rgba(100,116,139,0.35)" font-size="10" font-family="system-ui, sans-serif">Empty</text>`;
   } else {
@@ -189,8 +205,12 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix)
     const gridX = (W - gridW) / 2;
 
     // Usable area inside fuselage body
-    const pStartY = bodyTop + 8;
+    const holdUsableTop = bodyTop + 8;
     const pEndY = bodyBot - 6;
+    // Combi: reserve top of hold for pax cabin block
+    const PAX_BULKHEAD_H = paxBlockPct > 0 ? 6 : 0;
+    const paxHoldH = paxBlockPct > 0 ? Math.max(36, Math.round((pEndY - holdUsableTop) * paxBlockPct)) : 0;
+    const pStartY = holdUsableTop + paxHoldH + PAX_BULKHEAD_H;
     const numRows = Math.floor((pEndY - pStartY) / rowH);
     const totalSlots = numRows * cols;
 
@@ -213,6 +233,18 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix)
 
     // Render clipped pallet group
     svg += `<g clip-path="url(#fc${sfx})">`;
+
+    // Combi: passenger cabin block at the nose of the hold
+    if (paxBlockPct > 0 && paxHoldH > 0) {
+      const paxY = holdUsableTop;
+      const plY = paxY + paxHoldH / 2;
+      svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
+      svg += `<text x="${cx}" y="${plY - 3}" text-anchor="middle" fill="rgba(59,130,246,0.85)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">PAX CABIN</text>`;
+      svg += `<text x="${cx}" y="${plY + 7}" text-anchor="middle" fill="rgba(59,130,246,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Passengers</text>`;
+      // Bulkhead bar
+      svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
+      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+    }
 
     // Background zones — light tint behind each type group
     let zoneStart = 0;
@@ -371,22 +403,19 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
     const ct = CARGO_TYPES[type];
     const isAuto = (type === autoFillType);
     return `
-      <div data-cargo-tip="${type}" style="padding:0.5rem 0.6rem;background:var(--surface-elevated);border-radius:5px;border-left:3px solid ${ct.color};cursor:default;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.15rem;">
-          <span style="font-size:0.75rem;font-weight:600;color:${ct.color};">${ct.label.toUpperCase()}</span>
-          ${isAuto ? `
-            <span id="cargoCount_${type}" style="font-weight:700;font-size:0.95rem;color:var(--text-primary);">${_formatKg(config[type])}</span>
-          ` : `
-            <div style="display:flex;align-items:center;gap:0.35rem;">
-              <button class="cargo-adj-btn" data-type="${type}" data-delta="-1"
-                style="width:26px;height:26px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;padding:0;">\u2212</button>
-              <span id="cargoCount_${type}" style="font-weight:700;font-size:0.95rem;color:var(--text-primary);min-width:3.2rem;text-align:center;">${_formatKg(config[type])}</span>
-              <button class="cargo-adj-btn" data-type="${type}" data-delta="1"
-                style="width:26px;height:26px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;padding:0;">+</button>
-            </div>
-          `}
-        </div>
-        <div style="font-size:0.55rem;color:var(--text-muted);">${isAuto ? 'Fills remaining capacity' : _formatKg(stepFor(type)) + ' steps'}</div>
+      <div data-cargo-tip="${type}" style="padding:0.28rem 0.5rem;background:var(--surface-elevated);border-radius:5px;border-left:3px solid ${ct.color};cursor:default;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:0.7rem;font-weight:600;color:${ct.color};">${ct.label.toUpperCase()}</span>
+        ${isAuto ? `
+          <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);">${_formatKg(config[type])}</span>
+        ` : `
+          <div style="display:flex;align-items:center;gap:0.3rem;">
+            <button class="cargo-adj-btn" data-type="${type}" data-delta="-1"
+              style="width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;padding:0;">\u2212</button>
+            <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);min-width:2.8rem;text-align:center;">${_formatKg(config[type])}</span>
+            <button class="cargo-adj-btn" data-type="${type}" data-delta="1"
+              style="width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;padding:0;">+</button>
+          </div>
+        `}
       </div>`;
   }
 
@@ -394,7 +423,7 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
     const available = typeKeys.filter(k => types.includes(k));
     if (available.length === 0) return '';
     return `
-      <div style="font-size:0.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.25rem;margin-top:0.4rem;">${label}</div>
+      <div style="font-size:0.6rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.15rem;margin-top:0.3rem;">${label}</div>
       ${available.map(t => buildTypeCtrl(t)).join('')}`;
   }
 
@@ -410,27 +439,27 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
 
   overlay.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;display:flex;max-width:860px;width:100%;max-height:96vh;overflow:hidden;">
-      <div style="width:340px;min-width:340px;padding:1.5rem;display:flex;flex-direction:column;border-right:1px solid var(--border-color);overflow-y:auto;">
-        <h2 style="margin:0 0 0.4rem 0;color:var(--text-primary);font-size:1.2rem;">CARGO CONFIGURATION</h2>
-        <div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:1rem;">
+      <div style="width:320px;min-width:320px;padding:1rem;display:flex;flex-direction:column;border-right:1px solid var(--border-color);overflow-y:auto;">
+        <h2 style="margin:0 0 0.2rem 0;color:var(--text-primary);font-size:1rem;">CARGO CONFIGURATION</h2>
+        <div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:0.6rem;">
           ${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} \u00B7 ${_formatKg(totalCapacity)} capacity
         </div>
-        <div style="margin-bottom:1rem;padding:0.6rem;background:var(--surface-elevated);border-radius:6px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
-            <span style="font-size:0.75rem;color:var(--text-secondary);">Allocated</span>
-            <span id="cargoTotalLabel" style="font-size:0.9rem;font-weight:700;color:var(--text-primary);">${_formatKg(totalAllocated())} / ${_formatKg(totalCapacity)}</span>
+        <div style="margin-bottom:0.6rem;padding:0.4rem 0.6rem;background:var(--surface-elevated);border-radius:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem;">
+            <span style="font-size:0.7rem;color:var(--text-secondary);">Allocated</span>
+            <span id="cargoTotalLabel" style="font-size:0.85rem;font-weight:700;color:var(--text-primary);">${_formatKg(totalAllocated())} / ${_formatKg(totalCapacity)}</span>
           </div>
-          <div style="height:7px;background:var(--surface);border-radius:4px;overflow:hidden;display:flex;">
+          <div style="height:5px;background:var(--surface);border-radius:4px;overflow:hidden;display:flex;">
             <div id="cargoBarSegments" style="display:flex;width:100%;height:100%;border-radius:4px;overflow:hidden;">${buildBarSegments()}</div>
           </div>
         </div>
-        <div id="cargoTypeControls" style="display:flex;flex-direction:column;gap:0.4rem;flex:1;">
+        <div id="cargoTypeControls" style="display:flex;flex-direction:column;gap:0.25rem;flex:1;">
           ${buildCategoryGroup('Core', CORE_TYPE_KEYS)}
           ${buildCategoryGroup('Special', SPECIAL_TYPE_KEYS)}
         </div>
-        <div style="display:flex;gap:0.5rem;margin-top:1.2rem;">
-          <button id="cargoApplyBtn" class="btn btn-primary" style="flex:1;padding:0.7rem;font-size:0.95rem;">Apply</button>
-          <button id="cargoCancelBtn" class="btn btn-secondary" style="flex:1;padding:0.7rem;font-size:0.95rem;">Cancel</button>
+        <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+          <button id="cargoApplyBtn" class="btn btn-primary" style="flex:1;padding:0.5rem;font-size:0.85rem;">Apply</button>
+          <button id="cargoCancelBtn" class="btn btn-secondary" style="flex:1;padding:0.5rem;font-size:0.85rem;">Cancel</button>
         </div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;justify-content:stretch;align-items:stretch;padding:1rem;background:rgba(0,0,0,0.2);">
@@ -441,9 +470,13 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
   document.body.appendChild(overlay);
   _attachTooltips(overlay);
 
+  const paxBlockPct = aircraft.isCombi && aircraft.passengerCapacity > 0
+    ? Math.min(0.5, (aircraft.passengerCapacity * 100) / (aircraft.cargoCapacityKg + aircraft.passengerCapacity * 100))
+    : 0;
+
   function renderDiagram() {
     const c = document.getElementById('cargoDiagramContainer');
-    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, 480, '_single');
+    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, 480, '_single', paxBlockPct);
   }
 
   function updateUI() {

@@ -10078,6 +10078,10 @@ function getAircraftImageCodes(aircraft) {
     '328': 'D328', 'SC.7': 'SC7', '330': 'SH33', '360': 'SH36',
     '1900': 'B190', 'Beech 1900D': 'B190', '99': 'BE99',
     'Jetstream': 'JS31', 'ATP': 'ATP',
+    // 1940s–1950s Golden Age additions
+    'L-749': 'L749', '377': 'B377', 'C-46': 'C46', '2-0-2': 'M202',
+    'Il-12': 'IL12', 'Hermes': 'HPH4', 'Sandringham': 'SDRM',
+    'York': 'AVYO', 'DC-6B': 'DC6',
   };
   const baseCode = BASE_CODES[aircraft.model];
   if (baseCode && !codes.includes(baseCode)) codes.push(baseCode);
