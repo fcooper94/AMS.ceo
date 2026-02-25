@@ -706,6 +706,11 @@ function onAircraftSelectionChange() {
             }, 100);
           });
         }
+
+        // Check for previous custom route now that aircraft is selected
+        if (selectedDestinationAirport && baseAirport) {
+          checkPreviousCustomRoute(baseAirport.id, selectedDestinationAirport.id);
+        }
       }
     } catch (e) {
       console.error('Error in aircraft selection change:', e);
@@ -1564,6 +1569,11 @@ function selectDestinationAirport(airportId) {
   // Clear auto ATC waypoints and fetch new preview for new destination
   autoAtcWaypoints = null;
   autoAtcAvoidedFirs = [];
+  // Clear any previous custom route state when destination changes
+  customAtcWaypoints = null;
+  customAtcRouteString = '';
+  const customIndicator = document.getElementById('customAtcIndicator');
+  if (customIndicator) customIndicator.style.display = 'none';
   if (selectedDestinationAirport) {
     fetchAtcRoutePreview();
   }
@@ -2752,6 +2762,14 @@ function updateAutoAtcInfoPanel() {
   const avoidEl = document.getElementById('autoAtcAvoidInfo');
   if (!infoEl) return;
 
+  // If a custom route is active, show the custom route string instead
+  if (customAtcWaypoints && customAtcRouteString) {
+    textEl.textContent = `ATC Route: ${customAtcRouteString}`;
+    infoEl.style.display = 'block';
+    avoidEl.style.display = 'none';
+    return;
+  }
+
   if (autoAtcWaypoints && autoAtcWaypoints.length > 2) {
     const innerWps = autoAtcWaypoints.filter(wp => wp.name !== 'DEP' && wp.name !== 'ARR');
 
@@ -2922,6 +2940,9 @@ function applyCustomAtcRoute() {
   // Update route preview with custom waypoints
   updateRoutePreviewWithCustomWaypoints();
 
+  // Update ATC info panel to show custom route string
+  updateAutoAtcInfoPanel();
+
   closeCustomAtcModal();
 }
 
@@ -2931,6 +2952,87 @@ function clearCustomAtcRoute() {
   document.getElementById('customAtcIndicator').style.display = 'none';
   // Reset to standard route preview
   updateRoutePreview();
+  // Restore ATC info panel to auto-generated route
+  updateAutoAtcInfoPanel();
+}
+
+// ── Previous Custom Route Check ───────────────────────────────────────────────
+
+let _previousCustomRouteData = null; // Stored data from the check
+
+async function checkPreviousCustomRoute(departureAirportId, arrivalAirportId) {
+  try {
+    const response = await fetch(`/api/routes/previous-custom-route?departureAirportId=${departureAirportId}&arrivalAirportId=${arrivalAirportId}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.found && data.routeString) {
+      _previousCustomRouteData = data;
+      document.getElementById('previousRouteStringDisplay').textContent = data.routeString;
+      document.getElementById('previousCustomRouteModal').style.display = 'flex';
+    }
+  } catch (err) {
+    console.error('[CustomRoute] Failed to check previous custom route:', err);
+  }
+}
+
+function closePreviousCustomRouteModal() {
+  document.getElementById('previousCustomRouteModal').style.display = 'none';
+  _previousCustomRouteData = null;
+}
+
+async function usePreviousCustomRoute() {
+  if (!_previousCustomRouteData) return;
+
+  const routeString = _previousCustomRouteData.routeString;
+  const btn = document.getElementById('usePreviousRouteBtn');
+  btn.disabled = true;
+  btn.textContent = 'RESOLVING...';
+
+  try {
+    // Re-resolve the stored route string to get fresh waypoint coordinates
+    const response = await fetch('/api/routes/resolve-atc-route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        atcRouteString: routeString,
+        departureAirportId: baseAirport?.id || null,
+        arrivalAirportId: selectedDestinationAirport?.id || null
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to resolve route');
+    }
+
+    const data = await response.json();
+
+    if (data.resolved && data.resolved.length > 0) {
+      // Apply the resolved waypoints as a custom route
+      customAtcWaypoints = data.resolved;
+      customAtcRouteString = routeString;
+
+      // Show custom route indicator
+      const indicator = document.getElementById('customAtcIndicator');
+      indicator.style.display = 'flex';
+      document.getElementById('customAtcIndicatorText').textContent =
+        `Custom ATC route set — ${customAtcWaypoints.length} waypoints`;
+
+      // Update map preview and ATC info panel
+      updateRoutePreviewWithCustomWaypoints();
+      updateAutoAtcInfoPanel();
+    } else {
+      showWarningModal('Could not resolve previous custom route. The route fixes may no longer be valid.');
+    }
+  } catch (err) {
+    console.error('[CustomRoute] Failed to resolve previous route:', err);
+    showWarningModal('Failed to resolve previous custom route: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'USE PREVIOUS ROUTE';
+    document.getElementById('previousCustomRouteModal').style.display = 'none';
+    _previousCustomRouteData = null;
+  }
 }
 
 async function updateRoutePreviewWithCustomWaypoints() {
@@ -3122,7 +3224,8 @@ async function submitNewRoute() {
             cargoHeavyRate: parseFloat(document.getElementById('cargoRate_heavy')?.value) || 0,
             transportType: transportType,
             demand: 0,
-            customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined
+            customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined,
+            customRouteString: customAtcWaypoints ? customAtcRouteString : undefined
           })
         });
 
@@ -3183,7 +3286,8 @@ async function submitNewRoute() {
           cargoHeavyRate: parseFloat(document.getElementById('cargoRate_heavy')?.value) || 0,
           transportType: transportType,
           demand: 0,
-          customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined
+          customWaypoints: customAtcWaypoints || autoAtcWaypoints || undefined,
+          customRouteString: customAtcWaypoints ? customAtcRouteString : undefined
         })
       });
 

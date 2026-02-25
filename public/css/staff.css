@@ -293,15 +293,187 @@
   text-overflow: ellipsis;
 }
 
-.outsourced-banner-right {
-  text-align: right;
-}
-
 .outsourced-cost {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+}
+
+.outsourced-banner-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.outsourced-change-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 0.15rem 0.6rem;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.outsourced-change-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+/* ─── Contractor Change Modal ─────────────────────────────────── */
+.contractor-modal {
+  width: 520px;
+}
+
+.contractor-modal .staff-modal-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.contractor-modal .staff-modal-body {
+  padding: 1rem 1.25rem;
+}
+
+.contractor-penalty-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 5px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.contractor-penalty-notice svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.contractor-penalty-notice strong {
+  color: #f59e0b;
+}
+
+.contractor-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.contractor-modal-option {
+  display: block;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--border-color);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.contractor-modal-option:hover:not(.contractor-current) {
+  border-color: var(--accent-color);
+  border-left-color: var(--accent-color);
+}
+
+.contractor-modal-option.contractor-selected {
+  border-color: var(--accent-color);
+  border-left-color: var(--accent-color);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.contractor-modal-option.contractor-current {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.contractor-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.15rem;
+}
+
+.contractor-option-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.contractor-option-cost {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: 'Courier New', monospace;
+}
+
+.contractor-option-desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.contractor-option-current-tag {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.1rem 0.4rem;
+  border-radius: 2px;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.contractor-modal-error {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
+.contractor-modal .staff-modal-footer {
+  font-family: inherit;
+}
+
+.contractor-modal .staff-modal-footer .btn {
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.contractor-modal .staff-modal-footer .btn-secondary {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.contractor-modal .staff-modal-footer .btn-primary {
+  background: transparent;
+  border: 1px solid var(--accent-color);
+  color: var(--accent-color);
+}
+
+.contractor-modal .staff-modal-footer .btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ─── Staff Names Modal ───────────────────────────────────────── */
@@ -507,7 +679,7 @@
   }
 
   .outsourced-banner-right {
-    text-align: left;
+    align-items: flex-start;
   }
 
   .outsourced-contractor-note {

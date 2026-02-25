@@ -8,9 +8,7 @@ function toggleArticle(btn) {
 function scrollToSection(id) {
   const el = document.getElementById(id);
   if (!el) return;
-  const offset = 20;
-  const y = el.getBoundingClientRect().top + window.pageYOffset - offset;
-  window.scrollTo({ top: y, behavior: 'smooth' });
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // --- Search / filter ---
@@ -33,7 +31,6 @@ function filterArticles(query) {
         article.style.display = '';
         catVisible++;
         totalVisible++;
-        // Auto-expand matching articles when searching
         if (q) {
           article.classList.add('open');
         }
@@ -43,7 +40,6 @@ function filterArticles(query) {
       }
     });
 
-    // Hide category header if no articles match
     const title = cat.querySelector('.wiki-category-title');
     if (title) {
       title.style.display = catVisible > 0 ? '' : 'none';
@@ -56,7 +52,6 @@ function filterArticles(query) {
     info.style.display = 'block';
   } else {
     info.style.display = 'none';
-    // Collapse all when search cleared
     document.querySelectorAll('.wiki-article.open').forEach(a => a.classList.remove('open'));
   }
 }
@@ -84,16 +79,6 @@ function updateTocActive() {
   });
 }
 
-// Throttled scroll handler
-let scrollTimeout;
-window.addEventListener('scroll', () => {
-  if (scrollTimeout) return;
-  scrollTimeout = setTimeout(() => {
-    updateTocActive();
-    scrollTimeout = null;
-  }, 80);
-});
-
 // --- Keyboard shortcut: focus search with / ---
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
@@ -102,9 +87,19 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// --- Init ---
+// --- Init: attach scroll listener to .main-content (the actual scroll container) ---
+let scrollTimeout;
 document.addEventListener('DOMContentLoaded', () => {
-  // Check for hash in URL to auto-scroll
+  const mc = document.querySelector('.main-content');
+  const scrollTarget = mc || window;
+  scrollTarget.addEventListener('scroll', () => {
+    if (scrollTimeout) return;
+    scrollTimeout = setTimeout(() => {
+      updateTocActive();
+      scrollTimeout = null;
+    }, 80);
+  });
+
   if (window.location.hash) {
     const id = window.location.hash.slice(1);
     setTimeout(() => scrollToSection(id), 200);

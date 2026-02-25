@@ -163,11 +163,143 @@ function buildOutsourcedBanner(dept, contractorInfo) {
     </div>
     <div class="outsourced-banner-right">
       <span class="outsourced-cost">${formatSalary(contractorInfo.weeklyCost)}/wk</span>
+      <button class="outsourced-change-btn" onclick="openContractorModal('${dept.key}')">Change</button>
     </div>
   `;
 
   return banner;
 }
+
+// ─── Change Contractor Modal ─────────────────────────────────────────────────
+function openContractorModal(category) {
+  const contractorInfo = staffData?.contractors?.[category];
+  if (!contractorInfo || !contractorInfo.options) return;
+
+  const categoryLabels = { ground: 'Ground Handling', engineering: 'Engineering & MRO' };
+  const tierColors = { budget: '#22c55e', standard: '#f59e0b', premium: '#3b82f6' };
+  const penaltyCost = contractorInfo.weeklyCost * 2;
+
+  let optionsHtml = contractorInfo.options.map(opt => {
+    const isCurrent = opt.current;
+    return `
+      <label class="contractor-modal-option${isCurrent ? ' contractor-current' : ''}" data-tier="${opt.tier}">
+        <div class="contractor-option-header">
+          <span class="contractor-option-name" style="color: ${tierColors[opt.tier] || 'var(--text-primary)'}">${opt.name}${isCurrent ? ' <span class="contractor-option-current-tag">CURRENT</span>' : ''}</span>
+          <span class="contractor-option-cost">${formatSalary(opt.weeklyCost)}/wk</span>
+        </div>
+        <div class="contractor-option-desc">${opt.description}</div>
+      </label>
+    `;
+  }).join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'staff-modal-backdrop';
+  backdrop.id = 'contractorModalBackdrop';
+  backdrop.onclick = (e) => { if (e.target === backdrop) closeContractorModal(); };
+
+  backdrop.innerHTML = `
+    <div class="staff-modal contractor-modal">
+      <div class="staff-modal-header">
+        <h3>Change ${categoryLabels[category] || category} Contractor</h3>
+        <button class="staff-modal-close" onclick="closeContractorModal()">&times;</button>
+      </div>
+      <div class="staff-modal-body">
+        <div class="contractor-penalty-notice">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>2-week early termination fee: <strong>${formatSalary(penaltyCost)}</strong> (2× current weekly rate)</span>
+        </div>
+        <div class="contractor-modal-options">
+          ${optionsHtml}
+        </div>
+        <div id="contractorModalError" class="contractor-modal-error" style="display: none;"></div>
+      </div>
+      <div class="staff-modal-footer">
+        <button class="btn btn-secondary" onclick="closeContractorModal()">Cancel</button>
+        <button class="btn btn-primary" id="contractorConfirmBtn" disabled onclick="confirmContractorChange('${category}')">Select a contractor</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  // Add click handlers for options
+  backdrop.querySelectorAll('.contractor-modal-option:not(.contractor-current)').forEach(opt => {
+    opt.addEventListener('click', () => {
+      backdrop.querySelectorAll('.contractor-modal-option').forEach(o => o.classList.remove('contractor-selected'));
+      opt.classList.add('contractor-selected');
+      const btn = document.getElementById('contractorConfirmBtn');
+      btn.disabled = false;
+      btn.textContent = 'Switch Contractor';
+      delete btn.dataset.confirmed;
+      btn.style.borderColor = '';
+      btn.style.color = '';
+    });
+  });
+}
+
+async function confirmContractorChange(category) {
+  const backdrop = document.getElementById('contractorModalBackdrop');
+  if (!backdrop) return;
+
+  const selected = backdrop.querySelector('.contractor-modal-option.contractor-selected');
+  if (!selected) return;
+
+  const btn = document.getElementById('contractorConfirmBtn');
+  const errorEl = document.getElementById('contractorModalError');
+
+  // First click: ask for confirmation
+  if (!btn.dataset.confirmed) {
+    btn.dataset.confirmed = 'true';
+    btn.textContent = 'Confirm Switch';
+    btn.style.borderColor = '#f59e0b';
+    btn.style.color = '#f59e0b';
+    return;
+  }
+
+  const tier = selected.dataset.tier;
+  btn.disabled = true;
+  btn.textContent = 'Switching...';
+  errorEl.style.display = 'none';
+
+  try {
+    const response = await fetch('/api/staff/contractor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, tier })
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      errorEl.textContent = data.error || 'Failed to change contractor';
+      if (data.penaltyCost) {
+        errorEl.textContent += ` (need ${formatSalary(data.penaltyCost)}, have ${formatSalary(data.balance)})`;
+      }
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+      return;
+    }
+
+    closeContractorModal();
+    await loadStaffData();
+  } catch (error) {
+    console.error('Error changing contractor:', error);
+    errorEl.textContent = 'Network error — please try again';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
+}
+
+function closeContractorModal() {
+  const existing = document.getElementById('contractorModalBackdrop');
+  if (existing) existing.remove();
+}
+
+window.openContractorModal = openContractorModal;
+window.closeContractorModal = closeContractorModal;
+window.confirmContractorChange = confirmContractorChange;
 
 // ─── Regular Department Section ──────────────────────────────────────────────
 function buildDepartmentSection(dept) {

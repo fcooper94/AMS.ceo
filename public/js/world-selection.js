@@ -1722,11 +1722,13 @@ function updateSPPreview() {
   const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value || 'medium';
   const airportType = document.getElementById('spBaseAirportType').value;
 
-  // Update starting capital preview
+  // Update starting capital preview (difficulty affects funds)
+  const DIFFICULTY_CAPITAL_MULT = { easy: 1.5, medium: 1.0, hard: 0.7 };
   const decade = Math.floor(era / 10) * 10;
   const mult = ERA_MULTIPLIERS[decade] || 1.0;
+  const diffMult = DIFFICULTY_CAPITAL_MULT[difficulty] || 1.0;
   const baseCapital = 37500000;
-  const capital = Math.round(baseCapital * mult);
+  const capital = Math.round(baseCapital * mult * diffMult);
   const capitalFormatted = capital >= 1000000
     ? `$${(capital / 1000000).toFixed(1)}M`
     : `$${(capital / 1000).toFixed(0)}K`;

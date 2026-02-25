@@ -1156,21 +1156,43 @@ function createRouteLine(flight) {
     // Draw route through airway waypoints in current sector direction
     const wpToUse = isReturn ? [...waypoints].reverse() : waypoints;
 
-    for (let i = 0; i < wpToUse.length - 1; i++) {
+    // Ensure route line connects from airport to first waypoint and last waypoint to airport
+    // (custom routes may not include DEP/ARR markers)
+    const firstWp = wpToUse[0];
+    const lastWp = wpToUse[wpToUse.length - 1];
+    const [startLat, startLng, endLat, endLng] = isReturn
+      ? [arrLat, arrLng, depLat, depLng]
+      : [depLat, depLng, arrLat, arrLng];
+
+    const fullPath = [];
+    // Prepend departure airport if first waypoint isn't already at the airport
+    if (firstWp.name !== 'DEP' && firstWp.name !== 'ARR') {
+      const distToFirst = Math.abs(firstWp.lat - startLat) + Math.abs(firstWp.lng - startLng);
+      if (distToFirst > 0.01) fullPath.push({ lat: startLat, lng: startLng });
+    }
+    fullPath.push(...wpToUse);
+    // Append arrival airport if last waypoint isn't already at the airport
+    if (lastWp.name !== 'DEP' && lastWp.name !== 'ARR') {
+      const distToLast = Math.abs(lastWp.lat - endLat) + Math.abs(lastWp.lng - endLng);
+      if (distToLast > 0.01) fullPath.push({ lat: endLat, lng: endLng });
+    }
+
+    for (let i = 0; i < fullPath.length - 1; i++) {
       const segments = generateGreatCirclePath(
-        wpToUse[i].lat, wpToUse[i].lng,
-        wpToUse[i + 1].lat, wpToUse[i + 1].lng, 10
+        fullPath[i].lat, fullPath[i].lng,
+        fullPath[i + 1].lat, fullPath[i + 1].lng, 10
       );
       segments.forEach(segment => {
         allPolylines.push(L.polyline(segment, lineStyle).addTo(map));
       });
     }
 
-    // Show waypoint fix markers with name tooltips (skip first/last which are airports)
+    // Show waypoint fix markers with name tooltips (skip DEP/ARR which are airports)
     if (wpToUse.length > 2) {
-      wpToUse.slice(1, -1).forEach(wp => {
+      wpToUse.forEach(wp => {
         const fixName = wp.name || '';
-        const showLabel = fixName && fixName !== 'DEP' && fixName !== 'ARR';
+        if (fixName === 'DEP' || fixName === 'ARR' || !fixName) return;
+        const showLabel = true;
         const wpMarker = L.circleMarker([wp.lat, wp.lng], {
           radius: 3,
           color: '#58a6ff',

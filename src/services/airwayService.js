@@ -23,7 +23,7 @@ const FIX_FILE = path.join(__dirname, '../data/navdata/earth_fix.dat');
 const PROC_FILE = path.join(__dirname, '../data/navdata/procedures.json');
 
 // Constants
-const MIN_ROUTE_DISTANCE_NM = 150;
+const MIN_ROUTE_DISTANCE_NM = 50;
 const SNAP_RADIUS_NM = 60;
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -481,13 +481,43 @@ class AirwayService {
       }
     }
 
-    // Fallback: basic great circle with coordinate waypoints
-    // NEVER fall back to great circle when avoidance is active — it would ignore restrictions
-    if (!result && (!avoidFirs || avoidFirs.size === 0)) {
+    // Fallback when avoidance routing fails: the airway network often naturally
+    // avoids restricted FIRs (e.g. EIDW→EGLL routes via EGTM north of EGTT-W).
+    // Try normal routing and check if the result happens to be clear.
+    if (!result && avoidFirs && avoidFirs.size > 0) {
+      console.warn(`[Airway] ${routeLabel}: avoidance routing failed for [${[...avoidFirs].join(', ')}] — trying normal routing`);
+      try {
+        const normalResult = this._computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, null);
+        if (normalResult) {
+          // Check if the normal route actually avoids the restricted FIRs
+          let normalClear = true;
+          const skipLegs = directDistance < 300 ? 2 : 1;
+          for (let idx = skipLegs; idx < normalResult.length - 1 - skipLegs && normalClear; idx++) {
+            const a = normalResult[idx], b = normalResult[idx + 1];
+            for (let s = 0; s <= 1; s += 0.2) {
+              const pt = this._interpolateGreatCircle(a.lat, a.lng, b.lat, b.lng, s);
+              try {
+                const firs = getAllFirsForPoint(pt.lat, pt.lng);
+                if (firs.some(f => avoidFirs.has(f))) { normalClear = false; break; }
+              } catch (e) { /* ignore */ }
+            }
+          }
+          if (normalClear) {
+            console.log(`[Airway] ${routeLabel}: normal routing naturally avoids [${[...avoidFirs].join(', ')}] — using it`);
+          } else {
+            console.warn(`[Airway] ${routeLabel}: normal routing crosses avoided FIRs — using as best-effort fallback`);
+          }
+          result = normalResult;
+        }
+      } catch (err) {
+        console.error(`[Airway] ${routeLabel}: fallback FIR routing also failed:`, err.message);
+      }
+    }
+
+    // Final fallback: basic great circle with coordinate waypoints
+    if (!result) {
       console.warn(`[Airway] ${routeLabel}: falling back to basic great circle waypoints`);
       result = this._computeBasicGreatCircleRoute(depLat, depLng, arrLat, arrLng);
-    } else if (!result && avoidFirs && avoidFirs.size > 0) {
-      console.warn(`[Airway] ${routeLabel}: no valid route found that avoids [${[...avoidFirs].join(', ')}]`);
     }
 
     // Only cache successful results
@@ -507,6 +537,7 @@ class AirwayService {
    * 4. Stitch together with deduplication
    */
   _computeFirSegmentRoute(depLat, depLng, arrLat, arrLng, depIcao, arrIcao, avoidFirs = null) {
+    const directDistance = this._haversine(depLat, depLng, arrLat, arrLng);
     const gcMid = this._interpolateGreatCircle(depLat, depLng, arrLat, arrLng, 0.5);
     // NAT tracks are for full transatlantic crossings. Both airports should be on
     // opposite continental margins — not mid-ocean (Greenland, Iceland, Azores, etc.).
@@ -619,7 +650,8 @@ class AirwayService {
           // en-route portion is handled entirely by the bypass waypoints.
 
           // Skip bypass WPs that are too close to DEP/ARR (they're redundant with SID/STAR)
-          const BYPASS_TRIM_NM = 100;
+          // Scale trim distance with route length so short routes keep their waypoints
+          const BYPASS_TRIM_NM = Math.min(100, directDistance * 0.15);
           const trimmedBypass = bypassWps.filter(wp =>
             this._haversine(wp.lat, wp.lng, depLat, depLng) > BYPASS_TRIM_NM &&
             this._haversine(wp.lat, wp.lng, arrLat, arrLng) > BYPASS_TRIM_NM
@@ -685,12 +717,17 @@ class AirwayService {
     // Post-route avoidance validation: sample every leg and reject if it crosses avoided FIRs
     if (avoidFirs && avoidFirs.size > 0) {
       const violations = new Set();
+      // For short routes, skip more legs near departure/arrival since airports
+      // may be in or adjacent to the avoided FIR. But never skip so many that
+      // no legs are checked (cap at (totalLegs - 1) / 2).
+      const totalLegs = smoothed.length - 1;
+      const skipLegs = Math.min(directDistance < 300 ? 2 : 1, Math.floor((totalLegs - 1) / 2));
       for (let idx = 0; idx < smoothed.length - 1; idx++) {
         const a = smoothed[idx];
         const b = smoothed[idx + 1];
         // Skip dep/arr segments — can't avoid FIR your airport is in
-        if (a.name === 'DEP' && idx === 0) continue;
-        if (b.name === 'ARR' && idx === smoothed.length - 2) continue;
+        if (idx < skipLegs) continue;
+        if (idx >= smoothed.length - 1 - skipLegs) continue;
         // Sample along each leg — check ALL stacked FIRs at each point
         for (let s = 0; s <= 1; s += 0.2) {
           const pt = this._interpolateGreatCircle(a.lat, a.lng, b.lat, b.lng, s);
@@ -709,7 +746,6 @@ class AirwayService {
     }
 
     // Validate total route distance
-    const directDistance = this._haversine(depLat, depLng, arrLat, arrLng);
     let totalDist = 0;
     for (let i = 0; i < smoothed.length - 1; i++) {
       totalDist += this._haversine(smoothed[i].lat, smoothed[i].lng, smoothed[i + 1].lat, smoothed[i + 1].lng);
@@ -1087,8 +1123,10 @@ class AirwayService {
     const bearing = this._bearing(entryLat, entryLng, exitLat, exitLng);
 
     // Scale intermediate points and max deflection with route size
-    const numPoints = Math.max(4, Math.min(10, Math.ceil(directDist / 180)));
-    const maxDeflect = Math.max(800, Math.min(2500, directDist * 1.4));
+    const numPoints = Math.max(3, Math.min(10, Math.ceil(directDist / 180)));
+    const maxDeflect = directDist < 400
+      ? Math.max(directDist * 0.6, Math.min(directDist * 2, 400))
+      : Math.max(800, Math.min(2500, directDist * 1.4));
     const fractions = [];
     // Buffer points: far enough from edges that deflection can push them clear
     // of wide restricted zones (0.10 = 10% from edge, not right at the boundary)
@@ -1128,7 +1166,10 @@ class AirwayService {
 
       // Start at a proportional minimum: for large zones (1500nm), start at ~225nm
       // so the bypass goes well clear of the restricted zone instead of hugging the border
-      const minDeflect = Math.max(80, Math.round(directDist * 0.15));
+      // For short routes (<400nm), use smaller minimum deflection
+      const minDeflect = directDist < 400
+        ? Math.max(30, Math.round(directDist * 0.10))
+        : Math.max(80, Math.round(directDist * 0.15));
       for (let deflectNm = minDeflect; deflectNm <= maxDeflect; deflectNm += 40) {
         const candidatePoints = [];
         let allClear = true;
@@ -1155,9 +1196,11 @@ class AirwayService {
           { lat: exitLat, lng: exitLng }
         ];
 
-        // Check ALL legs including entry→first and last→exit
-        // (bypass now covers DEP→ARR, so all legs must clear restricted FIRs)
-        for (let i = 0; i < allPts.length - 1 && allClear; i++) {
+        // Check legs between deflection points for avoidance.
+        // For short routes (<400nm), skip the first and last legs (entry→first, last→exit)
+        // since both airports may border the avoided FIR and can't avoid it on departure/arrival.
+        const legSkip = directDist < 400 ? 1 : 0;
+        for (let i = legSkip; i < allPts.length - 1 - legSkip && allClear; i++) {
           if (!_legClear(allPts[i].lat, allPts[i].lng, allPts[i + 1].lat, allPts[i + 1].lng)) {
             allClear = false;
           }
@@ -1199,7 +1242,7 @@ class AirwayService {
       waypoints.push({ lat: entryFix.lat, lng: entryFix.lng, name: entryFix.id, avoidBypass: true });
     }
 
-    const BYPASS_MIN_SPACING_NM = 80; // prevent clustering of bypass waypoints
+    const BYPASS_MIN_SPACING_NM = Math.min(80, directDist * 0.15); // prevent clustering, scale for short routes
     for (const pt of bestPath) {
       const fix = this._findBestBoundaryFix(pt.lat, pt.lng);
       // Only use the snapped fix if it's NOT in a restricted FIR
@@ -1226,8 +1269,35 @@ class AirwayService {
       }
     }
 
-    console.log(`[Airway] Bypass: ${waypoints.length} waypoints`);
-    return waypoints;
+    // Verify legs between snapped waypoints don't cross avoided FIRs
+    // (individual fixes may be clear, but the leg between them can dip into restricted airspace)
+    const verified = [];
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
+      if (verified.length === 0) {
+        verified.push(wp);
+        continue;
+      }
+      const prev = verified[verified.length - 1];
+      if (_legClear(prev.lat, prev.lng, wp.lat, wp.lng)) {
+        verified.push(wp);
+      } else {
+        // Leg crosses restricted FIR — try using the raw deflection point instead
+        // which should be further from the restricted zone
+        const rawPt = i - 1 < bestPath.length ? bestPath[i - 1] : null;
+        if (rawPt && _legClear(prev.lat, prev.lng, rawPt.lat, rawPt.lng)) {
+          verified.push({ lat: rawPt.lat, lng: rawPt.lng, name: this._coordLabel(rawPt.lat, rawPt.lng), avoidBypass: true });
+        }
+        // Either way, still try to add the current waypoint if the leg from wherever we are is clear
+        const newPrev = verified[verified.length - 1];
+        if (_legClear(newPrev.lat, newPrev.lng, wp.lat, wp.lng)) {
+          verified.push(wp);
+        }
+      }
+    }
+
+    console.log(`[Airway] Bypass: ${verified.length} waypoints (${waypoints.length} before leg verification)`);
+    return verified;
   }
 
   /**

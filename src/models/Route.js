@@ -88,6 +88,12 @@ const Route = sequelize.define('Route', {
     field: 'waypoints',
     comment: 'Airway route waypoints [{lat, lng, name}]'
   },
+  customRouteString: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'custom_route_string',
+    comment: 'Original ATC route string entered by user (null = auto-generated)'
+  },
   scheduledDepartureTime: {
     type: DataTypes.TIME,
     allowNull: false,

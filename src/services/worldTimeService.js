@@ -871,47 +871,106 @@ class WorldTimeService {
           }
         }
 
-        // 6. Competition factor: other airlines on this route + price-based passenger steal
+        // 6. Competition factor: score-based market share model
+        //    Each airline on the route gets a competitive score based on reputation,
+        //    pricing, service quality, aircraft quality, and marketing.
+        //    Passenger share is proportional to score vs total scores.
+        let competitionFactor = 1.0;
+        let isAIAirline = false;
+        const { getContractor } = require('../data/contractorConfig');
+
+        // Find all competing routes (both directions) on this airport pair
         const competingRoutesList = await Route.findAll({
           where: {
-            departureAirportId: route.departureAirportId,
-            arrivalAirportId: route.arrivalAirportId,
+            [Op.or]: [
+              { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
+              { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
+            ],
             isActive: true,
             worldMembershipId: { [Op.ne]: route.worldMembershipId }
           },
-          attributes: ['economyPrice']
-        });
-        const reverseCompetingCount = await Route.count({
-          where: {
-            departureAirportId: route.arrivalAirportId,
-            arrivalAirportId: route.departureAirportId,
-            isActive: true,
-            worldMembershipId: { [Op.ne]: route.worldMembershipId }
-          }
+          attributes: ['economyPrice', 'worldMembershipId', 'assignedAircraftId']
         });
 
-        // Base competition: each competitor takes market share
-        const competitorCount = competingRoutesList.length;
-        const basePenalty = Math.min(0.35, competitorCount * 0.07 + reverseCompetingCount * 0.02);
+        // Load our own membership data
+        const myMembership = await WorldMembership.findByPk(route.worldMembershipId, {
+          attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
+        });
+        const myRep = parseInt(myMembership?.reputation) || 50;
+        isAIAirline = !!myMembership?.isAI;
+        const myCleaningTier = myMembership?.cleaningContractor || 'standard';
+        const myGroundTier = myMembership?.groundContractor || 'standard';
+        const myAcAge = parseFloat(aircraft?.ageYears) || 10;
+        const myAcCondition = parseFloat(aircraft?.conditionPercentage) || 80;
+        const myHasMarketing = (this.marketingBoostCache?.get(route.worldMembershipId) || 0) > 0;
 
-        // Price-based steal: if competitors are cheaper, they steal extra passengers
-        let priceSteal = 0;
-        if (competitorCount > 0 && myEconomyPrice > 0) {
-          const avgCompPrice = competingRoutesList.reduce((sum, r) =>
-            sum + (parseFloat(r.economyPrice) || 0), 0) / competitorCount;
+        // Score helper: combines reputation, pricing, service, aircraft, marketing
+        const _compScore = (rep, ecoPrice, fPrice, cleanTier, groundTier, acAge, acCond, hasMkt) => {
+          // Reputation: 0-100 → 0.70-1.30
+          const repS = 0.70 + (rep / 100) * 0.60;
+          // Pricing: cheaper than fair = higher score
+          const ratio = fPrice > 0 ? Math.max(0.3, Math.min(3.0, ecoPrice / fPrice)) : 1.0;
+          const priceS = Math.max(0.6, Math.min(1.4, 1.5 - ratio * 0.5));
+          // Service: avg of cleaning + ground quality (25-95 from contractorConfig)
+          const cleanQ = getContractor('cleaning', cleanTier)?.qualityScore || 60;
+          const groundQ = getContractor('ground', groundTier)?.qualityScore || 60;
+          const serviceS = 0.85 + ((cleanQ + groundQ) / 2 / 100) * 0.30;
+          // Aircraft: newer + better condition = higher
+          const ageF = Math.max(0, Math.min(1, 1 - acAge / 40));
+          const condF = acCond / 100;
+          const acS = 0.90 + (ageF * 0.6 + condF * 0.4) * 0.20;
+          // Marketing: bonus if active campaign
+          const mktS = hasMkt ? 1.15 : 1.0;
+          return repS * priceS * serviceS * acS * mktS;
+        };
 
-          if (avgCompPrice > 0 && myEconomyPrice > avgCompPrice) {
-            // We're more expensive than competitors — lose extra passengers
-            const priceDiff = (myEconomyPrice - avgCompPrice) / avgCompPrice;
-            priceSteal = Math.min(0.20, priceDiff * 0.30); // Up to 20% extra loss
-          } else if (avgCompPrice > 0 && myEconomyPrice < avgCompPrice) {
-            // We're cheaper — steal passengers from them (reduce the penalty)
-            const priceDiff = (avgCompPrice - myEconomyPrice) / avgCompPrice;
-            priceSteal = -Math.min(0.15, priceDiff * 0.25); // Recover up to 15%
+        const myScore = _compScore(myRep, myEconomyPrice, fairPrice, myCleaningTier, myGroundTier, myAcAge, myAcCondition, myHasMarketing);
+
+        if (competingRoutesList.length > 0) {
+          // Batch load competitor memberships
+          const compMembershipIds = [...new Set(competingRoutesList.map(r => r.worldMembershipId))];
+          const compMemberships = await WorldMembership.findAll({
+            where: { id: { [Op.in]: compMembershipIds } },
+            attributes: ['id', 'reputation', 'cleaningContractor', 'groundContractor']
+          });
+          const mbrMap = Object.fromEntries(compMemberships.map(m => [m.id, m]));
+
+          // Batch load competitor aircraft
+          const compAcIds = competingRoutesList.map(r => r.assignedAircraftId).filter(Boolean);
+          let acMap = {};
+          if (compAcIds.length > 0) {
+            const compAircraft = await UserAircraft.findAll({
+              where: { id: { [Op.in]: compAcIds } },
+              attributes: ['id', 'ageYears', 'conditionPercentage']
+            });
+            acMap = Object.fromEntries(compAircraft.map(a => [a.id, a]));
           }
+
+          // Calculate each competitor's score
+          let totalCompScore = 0;
+          for (const cr of competingRoutesList) {
+            const cm = mbrMap[cr.worldMembershipId];
+            const ca = cr.assignedAircraftId ? acMap[cr.assignedAircraftId] : null;
+            const cScore = _compScore(
+              parseInt(cm?.reputation) || 50,
+              parseFloat(cr.economyPrice) || fairPrice,
+              fairPrice,
+              cm?.cleaningContractor || 'standard',
+              cm?.groundContractor || 'standard',
+              parseFloat(ca?.ageYears) || 10,
+              parseFloat(ca?.conditionPercentage) || 80,
+              (this.marketingBoostCache?.get(cr.worldMembershipId) || 0) > 0
+            );
+            totalCompScore += cScore;
+          }
+
+          // Market share: my score / total scores, normalized to fair share
+          const totalAirlines = 1 + competingRoutesList.length;
+          const fairShare = 1 / totalAirlines;
+          const myShare = myScore / (myScore + totalCompScore);
+          competitionFactor = Math.max(0.30, Math.min(1.60, myShare / fairShare));
         }
-
-        const competitionFactor = Math.max(0.40, 1 - basePenalty - priceSteal);
+        // No competitors → competitionFactor stays 1.0 (monopoly)
 
         // 7. Time-of-day factor: antisocial departure times reduce load factor
         //    Estimate local hour from departure airport longitude (15° per hour)
@@ -940,22 +999,10 @@ class WorldTimeService {
         // 8. Random daily variance ±10%
         const variance = 0.9 + Math.random() * 0.2;
 
-        // 9. Airline reputation factor: rep 0→0.90, rep 50→1.00, rep 100→1.10
-        let reputationFactor = 1.0;
-        let isAIAirline = false;
-        try {
-          const membership = await WorldMembership.findByPk(route.worldMembershipId, {
-            attributes: ['reputation', 'isAI']
-          });
-          const rep = parseInt(membership?.reputation) || 50;
-          reputationFactor = 0.90 + (rep / 100) * 0.20;
-          isAIAirline = !!membership?.isAI;
-        } catch (repErr) {
-          // Reputation lookup failed, use neutral factor
-        }
+        // 9. Reputation is now baked into the competitive score (factor 6), no separate multiplier
 
         // Combine all factors
-        loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * reputationFactor * variance;
+        loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * variance;
         // AI airlines get a higher floor (0.30) to ensure financial survival — represents
         // established customer base, codeshare traffic, and corporate contracts
         const minLoadFactor = isAIAirline ? 0.30 : 0.15;

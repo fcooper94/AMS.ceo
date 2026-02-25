@@ -431,6 +431,54 @@ router.post('/preview-atc', async (req, res) => {
 });
 
 /**
+ * Check if a previous custom ATC route exists for an airport pair
+ */
+router.get('/previous-custom-route', async (req, res) => {
+  try {
+    const { departureAirportId, arrivalAirportId } = req.query;
+    if (!departureAirportId || !arrivalAirportId) {
+      return res.json({ found: false });
+    }
+
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId || !req.user) return res.json({ found: false });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.json({ found: false });
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+    if (!membership) return res.json({ found: false });
+
+    // Find the most recent route for this airport pair (either direction) with a custom route string
+    const route = await Route.findOne({
+      where: {
+        worldMembershipId: membership.id,
+        [Op.or]: [
+          { departureAirportId, arrivalAirportId },
+          { departureAirportId: arrivalAirportId, arrivalAirportId: departureAirportId }
+        ],
+        customRouteString: { [Op.ne]: null }
+      },
+      order: [['createdAt', 'DESC']],
+      attributes: ['customRouteString', 'waypoints']
+    });
+
+    if (!route) return res.json({ found: false });
+
+    res.json({
+      found: true,
+      routeString: route.customRouteString,
+      waypoints: route.waypoints
+    });
+  } catch (err) {
+    console.error('Error checking previous custom route:', err);
+    res.json({ found: false });
+  }
+});
+
+/**
  * Create a new route
  */
 router.post('/', async (req, res) => {
@@ -458,7 +506,8 @@ router.post('/', async (req, res) => {
       cargoHeavyRate,
       cargoRates,
       transportType,
-      customWaypoints
+      customWaypoints,
+      customRouteString
     } = req.body;
 
     // Get active world from session
@@ -641,8 +690,24 @@ router.post('/', async (req, res) => {
     // Apply custom waypoints or compute automatically
     try {
       if (customWaypoints && Array.isArray(customWaypoints) && customWaypoints.length > 0) {
-        // Use user-provided custom ATC route waypoints
-        await route.update({ waypoints: customWaypoints });
+        // Ensure waypoints include DEP/ARR so the map line connects to airports
+        let finalWaypoints = customWaypoints;
+        const hasDepArr = customWaypoints[0]?.name === 'DEP' && customWaypoints[customWaypoints.length - 1]?.name === 'ARR';
+        if (!hasDepArr) {
+          const [depApt, arrApt] = await Promise.all([
+            Airport.findByPk(departureAirportId, { attributes: ['latitude', 'longitude'] }),
+            Airport.findByPk(arrivalAirportId, { attributes: ['latitude', 'longitude'] })
+          ]);
+          finalWaypoints = [
+            ...(depApt ? [{ lat: parseFloat(depApt.latitude), lng: parseFloat(depApt.longitude), name: 'DEP' }] : []),
+            ...customWaypoints,
+            ...(arrApt ? [{ lat: parseFloat(arrApt.latitude), lng: parseFloat(arrApt.longitude), name: 'ARR' }] : [])
+          ];
+        }
+        await route.update({
+          waypoints: finalWaypoints,
+          customRouteString: customRouteString || null
+        });
       } else {
         // Compute airway waypoints automatically (non-blocking, best-effort)
         const airwayService = require('../services/airwayService');

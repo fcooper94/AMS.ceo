@@ -5,7 +5,7 @@ const { World, WorldMembership, User, UserAircraft, Route, Aircraft, ScheduledFl
 const worldTimeService = require('../services/worldTimeService');
 const eraEconomicService = require('../services/eraEconomicService');
 const { computeStaffRoster, DEPARTMENTS } = require('../data/staffConfig');
-const { getContractor } = require('../data/contractorConfig');
+const { getContractor, getContractorsByCategory } = require('../data/contractorConfig');
 
 /**
  * GET / — Compute and return staff roster for the current airline
@@ -113,11 +113,21 @@ router.get('/', async (req, res) => {
     for (const [dept, { key, tier }] of Object.entries(contractorMap)) {
       const c = getContractor(key, tier);
       if (c) {
+        const allTiers = getContractorsByCategory(key);
         contractors[dept] = {
           tier,
           name: c.name,
           shortName: c.shortName,
-          weeklyCost: Math.round(c.weeklyCost2024 * eraMultiplier)
+          weeklyCost: Math.round(c.weeklyCost2024 * eraMultiplier),
+          options: Object.entries(allTiers).map(([t, data]) => ({
+            tier: t,
+            name: data.name,
+            shortName: data.shortName,
+            tagline: data.tagline,
+            description: data.description,
+            weeklyCost: Math.round(data.weeklyCost2024 * eraMultiplier),
+            current: t === tier
+          }))
         };
       }
     }
@@ -176,6 +186,78 @@ router.post('/salary', async (req, res) => {
   } catch (error) {
     console.error('Error updating salary modifier:', error);
     res.status(500).json({ error: 'Failed to update salary' });
+  }
+});
+
+/**
+ * POST /contractor — Change an outsourced contractor (2-week penalty fee)
+ * Body: { category: 'ground' | 'engineering', tier: 'budget' | 'standard' | 'premium' }
+ */
+router.post('/contractor', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) return res.status(404).json({ error: 'No active world' });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const membership = await WorldMembership.findOne({
+      where: { userId: user.id, worldId: activeWorldId }
+    });
+    if (!membership) return res.status(404).json({ error: 'No membership found' });
+
+    const { category, tier } = req.body;
+    const validCategories = ['ground', 'engineering'];
+    const validTiers = ['budget', 'standard', 'premium'];
+
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    if (!validTiers.includes(tier)) {
+      return res.status(400).json({ error: 'Invalid tier' });
+    }
+
+    // Check if already on this tier
+    const fieldMap = { ground: 'groundContractor', engineering: 'engineeringContractor' };
+    const currentTier = membership[fieldMap[category]] || 'standard';
+    if (currentTier === tier) {
+      return res.status(400).json({ error: 'Already using this contractor' });
+    }
+
+    // Calculate 2-week early termination penalty (2× old contractor weekly cost)
+    const world = await World.findByPk(activeWorldId);
+    const gameYear = (worldTimeService.getCurrentTime(activeWorldId) || world.currentTime).getFullYear();
+    const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+    const oldContractor = getContractor(category, currentTier);
+    const penaltyCost = Math.round((oldContractor?.weeklyCost2024 || 0) * eraMultiplier * 2);
+
+    if (membership.balance < penaltyCost) {
+      return res.status(400).json({
+        error: 'Insufficient funds for early termination penalty',
+        penaltyCost,
+        balance: membership.balance
+      });
+    }
+
+    // Apply penalty and switch contractor
+    await membership.update({
+      [fieldMap[category]]: tier,
+      balance: membership.balance - penaltyCost
+    });
+
+    const newContractor = getContractor(category, tier);
+
+    res.json({
+      success: true,
+      category,
+      newTier: tier,
+      newContractorName: newContractor?.name,
+      penaltyCharged: penaltyCost,
+      newBalance: membership.balance
+    });
+  } catch (error) {
+    console.error('Error changing contractor:', error);
+    res.status(500).json({ error: 'Failed to change contractor' });
   }
 });
 

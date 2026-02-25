@@ -601,8 +601,10 @@ router.post('/create-singleplayer', async (req, res) => {
       ownerUserId: user.id
     });
 
-    // Calculate starting capital
-    const startingBalance = eraEconomicService.getStartingCapital(startYear);
+    // Calculate starting capital (difficulty affects funds)
+    const difficultyCapitalMult = { easy: 1.5, medium: 1.0, hard: 0.7 };
+    const baseBalance = eraEconomicService.getStartingCapital(startYear);
+    const startingBalance = Math.round(baseBalance * (difficultyCapitalMult[difficulty] || 1.0));
 
     // Create human player's membership
     const membership = await WorldMembership.create({
@@ -819,9 +821,11 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(404).json({ error: 'Selected airport not found' });
     }
 
-    // Calculate starting capital using current world time (consistent with /join)
+    // Calculate starting capital using current world time (difficulty affects funds)
     const worldYear = new Date(world.currentTime).getFullYear();
-    const startingBalance = eraEconomicService.getStartingCapital(worldYear);
+    const difficultyCapitalMult = { easy: 1.5, medium: 1.0, hard: 0.7 };
+    const baseBalance = eraEconomicService.getStartingCapital(worldYear);
+    const startingBalance = Math.round(baseBalance * (difficultyCapitalMult[world.difficulty] || 1.0));
 
     // Credit deduction start (offset by free weeks)
     const freeWeeks = world.freeWeeks || 0;

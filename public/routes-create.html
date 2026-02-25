@@ -1124,6 +1124,31 @@
     </div>
   </div>
 
+  <!-- Previous Custom Route Modal -->
+  <div id="previousCustomRouteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9001; align-items: center; justify-content: center;">
+    <div style="background: var(--surface, #0d1117); border: 1px solid var(--border-color, #30363d); border-radius: 8px; width: 90%; max-width: 460px; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #30363d);">
+        <div>
+          <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-primary);">Previous Custom Route</h2>
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; display: block;">You previously used a custom ATC route for this airport pair</span>
+        </div>
+        <button onclick="closePreviousCustomRouteModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 0.25rem; line-height: 1;">&times;</button>
+      </div>
+      <!-- Content -->
+      <div style="padding: 1.25rem 1.5rem;">
+        <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Route String</label>
+        <div id="previousRouteStringDisplay" style="padding: 0.6rem 0.75rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); border-radius: 6px; color: #e3b341; font-family: 'Courier New', monospace; font-size: 0.85rem; line-height: 1.5; word-break: break-word;"></div>
+        <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.5rem 0 0 0;">Would you like to use this route again or use the AMS.ceo generated route?</p>
+      </div>
+      <!-- Footer -->
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #30363d); display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button onclick="closePreviousCustomRouteModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">Use Generated</button>
+        <button id="usePreviousRouteBtn" onclick="usePreviousCustomRoute()" style="padding: 0.5rem 1rem; background: #e3b341; border: 1px solid #e3b341; color: #000; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">Use Previous Route</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Expanded Route Map Modal -->
   <div id="expandedMapModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; align-items:center; justify-content:center;">
     <div style="width:92%; height:88%; background:var(--surface, #0d1117); border:1px solid var(--border-color, #30363d); border-radius:8px; display:flex; flex-direction:column; overflow:hidden;">

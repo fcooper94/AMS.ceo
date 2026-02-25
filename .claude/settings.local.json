@@ -107,7 +107,8 @@
       "Bash(PGPASSWORD=jDRZMptMpBRUAxwWIpMKrhJixYnTJbyU psql:*)",
       "Bash(xargs:*)",
       "WebFetch(domain:knowledgebase.vatsim-germany.org)",
-      "WebFetch(domain:wiki.ivao.aero)"
+      "WebFetch(domain:wiki.ivao.aero)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -d airline_control -c \"ALTER TABLE routes ADD COLUMN IF NOT EXISTS custom_route_string TEXT;\")"
     ]
   }
 }

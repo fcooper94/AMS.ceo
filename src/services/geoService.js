@@ -156,8 +156,8 @@ function getFirFeature(firCode) {
  */
 function getFirForPoint(lat, lng) {
   loadFirData();
-  // Memoize by rounding to ~0.5 degree grid (~30nm) — same FIR within each cell
-  const cacheKey = `${(lat * 2 | 0)},${(lng * 2 | 0)}`;
+  // Memoize by rounding to ~0.1 degree grid (~6nm) — finer resolution near FIR boundaries
+  const cacheKey = `${(lat * 10 | 0)},${(lng * 10 | 0)}`;
   if (firPointCache.has(cacheKey)) return firPointCache.get(cacheKey);
 
   const cx = Math.floor(lat / FIR_GRID_SIZE);
@@ -188,7 +188,7 @@ function getFirForPoint(lat, lng) {
 const firAllPointCache = new Map();
 function getAllFirsForPoint(lat, lng) {
   loadFirData();
-  const cacheKey = `${(lat * 2 | 0)},${(lng * 2 | 0)}`;
+  const cacheKey = `${(lat * 10 | 0)},${(lng * 10 | 0)}`;
   if (firAllPointCache.has(cacheKey)) return firAllPointCache.get(cacheKey);
 
   const cx = Math.floor(lat / FIR_GRID_SIZE);
