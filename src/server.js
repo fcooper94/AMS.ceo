@@ -635,6 +635,91 @@ server.listen(PORT, () => {
       }
     }).catch(() => {});
   }
+
+  // Auto-delete completed worlds after 48 hours
+  async function cleanupCompletedWorlds() {
+    try {
+      const { World } = require('./models');
+      const { Op } = require('sequelize');
+
+      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      const expiredWorlds = await World.findAll({
+        where: {
+          status: 'completed',
+          updatedAt: { [Op.lt]: cutoff }
+        },
+        attributes: ['id', 'name']
+      });
+
+      if (expiredWorlds.length === 0) return;
+
+      for (const world of expiredWorlds) {
+        try {
+          // Stop the world time service if running
+          worldTimeService.stopWorld(world.id);
+
+          const worldId = world.id;
+
+          await sequelize.transaction(async (t) => {
+            await sequelize.query(`SET session_replication_role = 'replica'`, { transaction: t });
+
+            const [mRows] = await sequelize.query(
+              `SELECT id FROM world_memberships WHERE world_id = :worldId`,
+              { replacements: { worldId }, transaction: t }
+            );
+
+            if (mRows.length > 0) {
+              const mIds = mRows.map(r => r.id);
+
+              const [rRows] = await sequelize.query(
+                `SELECT id FROM routes WHERE world_membership_id IN (:mIds)`,
+                { replacements: { mIds }, transaction: t }
+              );
+              const rIds = rRows.map(r => r.id);
+
+              const [aRows] = await sequelize.query(
+                `SELECT id FROM user_aircraft WHERE world_membership_id IN (:mIds)`,
+                { replacements: { mIds }, transaction: t }
+              );
+              const aIds = aRows.map(r => r.id);
+
+              if (rIds.length > 0) {
+                await sequelize.query(`DELETE FROM scheduled_flights WHERE route_id IN (:rIds)`, { replacements: { rIds }, transaction: t });
+              }
+              if (aIds.length > 0) {
+                await sequelize.query(`DELETE FROM scheduled_flights WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+                await sequelize.query(`DELETE FROM recurring_maintenance WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+              }
+              await sequelize.query(`DELETE FROM routes WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM user_aircraft WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM pricing_defaults WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM weekly_financials WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM loans WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM notifications WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM airspace_restrictions WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM marketing_campaigns WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+              await sequelize.query(`DELETE FROM world_memberships WHERE world_id = :worldId`, { replacements: { worldId }, transaction: t });
+            }
+
+            await sequelize.query(`DELETE FROM used_aircraft_for_sale WHERE world_id = :worldId`, { replacements: { worldId }, transaction: t });
+            await sequelize.query(`DELETE FROM worlds WHERE id = :worldId`, { replacements: { worldId }, transaction: t });
+
+            await sequelize.query(`SET session_replication_role = 'origin'`, { transaction: t });
+          });
+
+          console.log(`[Cleanup] Deleted completed world "${world.name}" (${world.id}) — expired 48h after completion`);
+        } catch (err) {
+          console.error(`[Cleanup] Failed to delete world ${world.id}:`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Cleanup] Error checking for expired worlds:', err.message);
+    }
+  }
+
+  // Run cleanup once on startup, then every hour
+  cleanupCompletedWorlds();
+  setInterval(cleanupCompletedWorlds, 60 * 60 * 1000);
 })();
 
 // Graceful shutdown
