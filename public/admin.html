@@ -305,8 +305,8 @@
           <label style="display: flex; align-items: center; cursor: pointer; flex: 1;">
             <input type="checkbox" id="devBypassToggle" onchange="toggleDevBypass()" style="margin-right: 0.75rem; width: 18px; height: 18px; cursor: pointer;">
             <div>
-              <div style="font-weight: 600; color: var(--text-primary);">Enable Dev Bypass Login</div>
-              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">Shows an 'Admin Bypass' button on the login page for quick access (10000010 WebTen)</div>
+              <div style="font-weight: 600; color: var(--text-primary);">Enable Dev Access Button</div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">Shows a 'DEV ACCESS' button in the login page footer for quick developer access</div>
             </div>
           </label>
           <div id="devBypassStatus" style="padding: 0.4rem 0.8rem; background: var(--text-muted); color: white; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
@@ -429,6 +429,76 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closePermissionModal()">Cancel</button>
       <button class="btn btn-primary" onclick="confirmPermissionUpdate()">Update Permissions</button>
+    </div>
+  </div>
+</div>
+
+<!-- Set CID Modal -->
+<div id="setCidModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>SET VATSIM CID</h2>
+      <button class="modal-close" onclick="closeSetCidModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>USER</label>
+        <div id="setCidUserName" class="form-value"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="setCidInput">VATSIM CID</label>
+        <input type="text" id="setCidInput" placeholder="Enter numeric VATSIM CID" onkeypress="if(event.key==='Enter')confirmSetCid()">
+      </div>
+
+      <div class="form-info">
+        <p>This will link the local account to a VATSIM CID.</p>
+        <p>The user's auth method will be changed to VATSIM and their password will be cleared.</p>
+        <p>They will need to use VATSIM SSO to sign in after this change.</p>
+      </div>
+
+      <div id="setCidError" class="error-message" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSetCidModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmSetCid()">Set CID</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete User Modal -->
+<div id="deleteUserModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>DELETE USER</h2>
+      <button class="modal-close" onclick="closeDeleteUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>USER</label>
+        <div id="deleteUserDisplayName" class="form-value" style="font-size: 1.1rem; font-weight: 600;"></div>
+      </div>
+
+      <div style="padding: 0.75rem; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 4px; margin-bottom: 1rem;">
+        <p style="color: #fca5a5; font-size: 0.85rem; margin: 0 0 0.5rem 0; font-weight: 600;">This action cannot be undone.</p>
+        <p style="color: #fca5a5; font-size: 0.8rem; margin: 0;">This will permanently delete the user and ALL their data: airlines, aircraft, routes, flights, financials, loans, and marketing campaigns.</p>
+      </div>
+
+      <div class="form-group">
+        <label>ACTIVE WORLDS</label>
+        <div id="deleteUserWorlds" class="form-value"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="deleteUserConfirmInput">TYPE THE USER'S FULL NAME TO CONFIRM</label>
+        <input type="text" id="deleteUserConfirmInput" placeholder="First Last" oninput="checkDeleteConfirmation()">
+      </div>
+
+      <div id="deleteUserError" class="error-message" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDeleteUserModal()">Cancel</button>
+      <button class="btn" id="confirmDeleteBtn" onclick="confirmDeleteUser()" disabled style="background: #dc2626; border-color: #dc2626; color: white; opacity: 0.5;">Delete User</button>
     </div>
   </div>
 </div>

@@ -12,7 +12,22 @@
   <link rel="stylesheet" href="/css/world-selection.css">
   <link rel="stylesheet" href="/css/responsive.css">
 </head>
-<body class="dashboard-body">
+<body class="dashboard-body no-transition">
+  <script>
+    // Disable transitions on initial load to prevent slide-in effects
+    setTimeout(function() { document.body.classList.remove('no-transition'); }, 50);
+
+    // Hide navbar/sidebar immediately on public pages to prevent flash
+    // Public header/footer are hidden by default, shown after auth check confirms unauthenticated
+    (function() {
+      var p = window.location.pathname;
+      var pub = ['/contact', '/wiki'];
+      if (pub.indexOf(p) !== -1 && document.cookie.indexOf('connect.sid') === -1) {
+        document.write('<style id="public-page-styles">.navbar,.sidebar{display:none!important}.main-content{margin-left:0!important;overflow-y:visible!important}.dashboard-container{height:auto!important;flex:1}.dashboard-body{height:auto!important;overflow:auto!important}#pageContent{display:flex;flex-direction:column;min-height:100vh}.public-page-header,.public-page-footer{display:none!important}</style>');
+        document.documentElement.style.setProperty('--navbar-height', '0px');
+      }
+    })();
+  </script>
   <nav class="navbar">
     <div class="nav-container">
       <div class="nav-left">

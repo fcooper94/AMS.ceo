@@ -4,6 +4,10 @@ let selectedPermissionUserId = null;
 let selectedPermissionUserData = null;
 let allUsers = [];
 
+function displayVatsimId(vatsimId) {
+  return vatsimId && vatsimId.startsWith('LOCAL-') ? 'Non-VATSIM' : (vatsimId || '');
+}
+
 
 // Load all users
 async function loadUsers() {
@@ -44,17 +48,14 @@ async function loadUsers() {
 
       return `
         <tr style="border-bottom: 1px solid var(--border-color);">
-          <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
+          <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
           <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
           <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
           <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
           <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${creditDisplay}</td>
           <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
           <td style="padding: 0.5rem; text-align: center;">
-            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-              <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Edit Credits</button>
-              <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Detailed Permissions</button>
-            </div>
+            ${renderUserActions(user)}
           </td>
         </tr>
       `;
@@ -117,17 +118,14 @@ function searchUsers() {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${user.vatsimId}</td>
+        <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
         <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
         <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${creditDisplay}</td>
         <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
         <td style="padding: 0.5rem; text-align: center;">
-          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openEditModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Edit Credits</button>
-            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick='openPermissionModal(${JSON.stringify(user).replace(/'/g, "&#39;")})'>Detailed Permissions</button>
-          </div>
+          ${renderUserActions(user)}
         </td>
       </tr>
     `;
@@ -139,7 +137,7 @@ function searchUsers() {
 function openEditModal(user) {
   selectedUserId = user.id;
   selectedUserData = user;
-  document.getElementById('editUserName').textContent = `${user.firstName} ${user.lastName} (${user.vatsimId})`;
+  document.getElementById('editUserName').textContent = `${user.firstName} ${user.lastName} (${displayVatsimId(user.vatsimId)})`;
   document.getElementById('editCurrentCredits').textContent = user.unlimitedCredits ? '∞ (Unlimited)' : user.credits;
   document.getElementById('newCredits').value = user.credits;
   document.getElementById('unlimitedCredits').checked = !!user.unlimitedCredits;
@@ -158,7 +156,7 @@ function closeEditModal() {
 function openPermissionModal(user) {
   selectedPermissionUserId = user.id;
   selectedPermissionUserData = user;
-  document.getElementById('permissionUserName').textContent = `${user.firstName} ${user.lastName} (${user.vatsimId})`;
+  document.getElementById('permissionUserName').textContent = `${user.firstName} ${user.lastName} (${displayVatsimId(user.vatsimId)})`;
   document.getElementById('isAdminSelect').value = user.isAdmin.toString();
   document.getElementById('isContributorSelect').value = user.isContributor.toString();
   document.getElementById('permissionError').style.display = 'none';
@@ -238,6 +236,182 @@ async function confirmPermissionUpdate() {
     }
   } catch (error) {
     console.error('Error updating permissions:', error);
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
+  }
+}
+
+// ==================== USER ACTION BUTTONS ====================
+
+function renderUserActions(user) {
+  const uj = JSON.stringify(user).replace(/'/g, "&#39;");
+  const uid = user.id.replace(/[^a-zA-Z0-9-]/g, '');
+  const itemStyle = `display: block; width: 100%; padding: 0.45rem 0.75rem; background: none; border: none; color: var(--text-primary); font-size: 0.8rem; text-align: left; cursor: pointer; white-space: nowrap;`;
+
+  let items = '';
+  items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openEditModal(${uj})'>Edit Credits</button>`;
+  items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openPermissionModal(${uj})'>Permissions</button>`;
+
+  if (user.vatsimId && user.vatsimId.startsWith('LOCAL-')) {
+    items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openSetCidModal(${uj})'>Set CID</button>`;
+  }
+  if (user.authMethod === 'local') {
+    items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); sendPasswordReset(${uj})'>Send Reset Email</button>`;
+  }
+
+  items += `<div style="border-top: 1px solid var(--border-color); margin: 0.25rem 0;"></div>`;
+  items += `<button style="${itemStyle} color: #fca5a5;" onmouseenter="this.style.background='rgba(220,38,38,0.15)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openDeleteUserModal(${uj})'>Delete User</button>`;
+
+  return `
+    <div style="position: relative; display: inline-block;">
+      <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick="toggleActionMenu('actionMenu-${uid}', event)">Actions &#9662;</button>
+      <div id="actionMenu-${uid}" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 100; min-width: 150px; padding: 0.25rem 0;">
+        ${items}
+      </div>
+    </div>`;
+}
+
+function toggleActionMenu(menuId, event) {
+  event.stopPropagation();
+  // Close any other open menus first
+  document.querySelectorAll('[id^="actionMenu-"]').forEach(m => {
+    if (m.id !== menuId) m.style.display = 'none';
+  });
+  const menu = document.getElementById(menuId);
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+function closeActionMenu() {
+  document.querySelectorAll('[id^="actionMenu-"]').forEach(m => m.style.display = 'none');
+}
+
+// Close menus on outside click
+document.addEventListener('click', () => closeActionMenu());
+
+// ==================== SET CID ====================
+
+let setCidUserId = null;
+
+function openSetCidModal(user) {
+  setCidUserId = user.id;
+  document.getElementById('setCidUserName').textContent = `${user.firstName} ${user.lastName}`;
+  document.getElementById('setCidInput').value = '';
+  document.getElementById('setCidError').style.display = 'none';
+  document.getElementById('setCidModal').style.display = 'flex';
+  document.getElementById('setCidInput').focus();
+}
+
+function closeSetCidModal() {
+  document.getElementById('setCidModal').style.display = 'none';
+  setCidUserId = null;
+}
+
+async function confirmSetCid() {
+  const vatsimId = document.getElementById('setCidInput').value.trim();
+  const errorDiv = document.getElementById('setCidError');
+  errorDiv.style.display = 'none';
+
+  if (!vatsimId || !/^\d+$/.test(vatsimId)) {
+    errorDiv.textContent = 'Please enter a valid numeric CID';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/users/${setCidUserId}/set-cid`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vatsimId })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      closeSetCidModal();
+      loadUsers();
+    } else {
+      errorDiv.textContent = data.error || 'Failed to set CID';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    errorDiv.textContent = 'Network error. Please try again.';
+    errorDiv.style.display = 'block';
+  }
+}
+
+// ==================== SEND PASSWORD RESET ====================
+
+async function sendPasswordReset(user) {
+  if (!confirm(`Send a password reset email to ${user.firstName} ${user.lastName} (${user.email})?`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/users/${user.id}/send-password-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    if (response.ok) {
+      alert(data.message);
+    } else {
+      alert('Error: ' + (data.error || 'Failed to send reset email'));
+    }
+  } catch (error) {
+    alert('Network error. Please try again.');
+  }
+}
+
+// ==================== DELETE USER ====================
+
+let deleteUserId = null;
+let deleteUserName = '';
+
+function openDeleteUserModal(user) {
+  deleteUserId = user.id;
+  deleteUserName = `${user.firstName} ${user.lastName}`;
+  document.getElementById('deleteUserDisplayName').textContent = deleteUserName;
+  document.getElementById('deleteUserWorlds').textContent = user.membershipCount || 0;
+  document.getElementById('deleteUserConfirmInput').value = '';
+  document.getElementById('deleteUserError').style.display = 'none';
+  document.getElementById('confirmDeleteBtn').disabled = true;
+  document.getElementById('confirmDeleteBtn').style.opacity = '0.5';
+  document.getElementById('deleteUserModal').style.display = 'flex';
+}
+
+function closeDeleteUserModal() {
+  document.getElementById('deleteUserModal').style.display = 'none';
+  deleteUserId = null;
+  deleteUserName = '';
+}
+
+function checkDeleteConfirmation() {
+  const input = document.getElementById('deleteUserConfirmInput').value.trim();
+  const btn = document.getElementById('confirmDeleteBtn');
+  if (input === deleteUserName) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  }
+}
+
+async function confirmDeleteUser() {
+  const errorDiv = document.getElementById('deleteUserError');
+  errorDiv.style.display = 'none';
+
+  try {
+    const response = await fetch(`/api/admin/users/${deleteUserId}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    if (response.ok) {
+      closeDeleteUserModal();
+      loadUsers();
+    } else {
+      errorDiv.textContent = data.error || 'Failed to delete user';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
     errorDiv.textContent = 'Network error. Please try again.';
     errorDiv.style.display = 'block';
   }
@@ -763,7 +937,7 @@ async function loadWorldOwnerDropdown() {
     users.forEach(user => {
       const option = document.createElement('option');
       option.value = user.id;
-      option.textContent = `${user.firstName} ${user.lastName} (${user.vatsimId})`;
+      option.textContent = `${user.firstName} ${user.lastName} (${displayVatsimId(user.vatsimId)})`;
       select.appendChild(option);
     });
   } catch (error) {
@@ -1359,7 +1533,7 @@ async function toggleDevBypass() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         value: isEnabled,
-        description: 'Enable dev bypass login on the login page'
+        description: 'Enable Dev Access button in the login page footer'
       })
     });
 
@@ -1379,9 +1553,9 @@ async function toggleDevBypass() {
     }
 
     showSettingNotification(
-      `Dev Bypass ${isEnabled ? 'Enabled' : 'Disabled'}`,
-      isEnabled ? 'Admin Bypass button will now appear on the login page' : 'Admin Bypass button hidden from login page',
-      !isEnabled // Green when disabled (safer), orange when enabled (warning)
+      `Dev Access ${isEnabled ? 'Enabled' : 'Disabled'}`,
+      isEnabled ? 'DEV ACCESS button will now appear in the login page footer' : 'DEV ACCESS button hidden from login page',
+      !isEnabled
     );
   } catch (error) {
     console.error('Error updating dev bypass setting:', error);

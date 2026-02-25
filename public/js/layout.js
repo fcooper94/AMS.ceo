@@ -186,7 +186,7 @@ if (socket) {
 async function loadUserInfo() {
   try {
     // Fire both requests in parallel — world info will 404 if no session, which is fine
-    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/faqs', '/credits'];
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
     const needsWorldInfo = !noWorldInfoPages.includes(window.location.pathname);
 
     const [authResponse, worldResponse] = await Promise.all([
@@ -197,6 +197,13 @@ async function loadUserInfo() {
     const data = await authResponse.json();
 
     if (data.authenticated) {
+      // Remove the anti-flash stylesheet so normal dashboard layout is restored
+      const publicStyles = document.getElementById('public-page-styles');
+      if (publicStyles) publicStyles.remove();
+
+      // Hide public header/footer when authenticated (base navbar/sidebar is shown instead)
+      document.querySelectorAll('.public-page-header, .public-page-footer').forEach(el => el.style.display = 'none');
+
       // Update user info in navigation
       const userNameElement = document.getElementById('userName');
       if (userNameElement) {
@@ -232,7 +239,7 @@ async function loadUserInfo() {
       // Prepare low credits warning banner (deferred - shown with other banners in loadWorldInfo)
       const lowCreditsBanner = document.getElementById('lowCreditsBanner');
       const lowCreditsMessage = document.getElementById('lowCreditsMessage');
-      const nonWorldPages = ['/world-selection', '/admin', '/contact', '/faqs', '/credits'];
+      const nonWorldPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
       if (lowCreditsBanner && lowCreditsMessage) {
         if (!nonWorldPages.includes(window.location.pathname) && !data.user.unlimitedCredits && data.user.credits <= 4) {
           const weeksLeft = data.user.credits + 4; // administration triggers at -4
@@ -255,9 +262,37 @@ async function loadUserInfo() {
     } else {
       // Redirect to login if not authenticated (only on protected pages)
       // Public pages that don't require authentication
-      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/faqs'];
+      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/wiki'];
       if (!publicPages.includes(window.location.pathname)) {
         window.location.href = '/';
+      } else {
+        // Hide navbar, sidebar, and banners on public pages for unauthenticated users
+        const navbar = document.querySelector('.navbar');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content');
+        const dashContainer = document.querySelector('.dashboard-container');
+        if (navbar) navbar.style.display = 'none';
+        if (sidebar) sidebar.style.display = 'none';
+        if (mainContent) {
+          mainContent.style.marginLeft = '0';
+          mainContent.style.setProperty('overflow-y', 'visible', 'important');
+        }
+        if (dashContainer) {
+          dashContainer.style.setProperty('height', 'auto', 'important');
+          dashContainer.style.flex = '1';
+        }
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+          pageContent.style.display = 'flex';
+          pageContent.style.flexDirection = 'column';
+          pageContent.style.minHeight = '100vh';
+        }
+        document.body.style.setProperty('height', 'auto', 'important');
+        document.body.style.setProperty('overflow', 'auto', 'important');
+        document.documentElement.style.setProperty('--navbar-height', '0px');
+
+        // Show public header/footer for unauthenticated users
+        document.querySelectorAll('.public-page-header, .public-page-footer').forEach(el => el.style.setProperty('display', 'flex', 'important'));
       }
     }
   } catch (error) {
@@ -458,7 +493,7 @@ async function loadWorldInfo() {
   try {
     // Don't show world info on world selection or admin pages
     // Pages that don't need world info displayed
-    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/faqs', '/credits'];
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
     if (noWorldInfoPages.includes(window.location.pathname)) {
       const worldInfoContainer = document.getElementById('worldInfoContainer');
       if (worldInfoContainer) {
@@ -1286,7 +1321,7 @@ function initSidebarToggle() {
   const sidebarEnabled = localStorage.getItem('sidebarEnabled') !== 'false';
 
   // Pages that use simplified sidebar (no nav-menu)
-  const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/faqs', '/credits'];
+  const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki'];
   const isSimplifiedPage = simplifiedSidebarPages.includes(window.location.pathname);
 
   // On admin page, always hide sidebar. On other simplified pages, hide on mobile only.

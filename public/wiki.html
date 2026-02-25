@@ -1,0 +1,1425 @@
+<!-- TITLE: Wiki - AMS.ceo -->
+<!-- SUBTITLE: Comprehensive Guide -->
+<!-- SCRIPTS: /js/wiki.js -->
+
+<!-- Public header (shown when not logged in) -->
+<div class="public-page-header login-header" style="justify-content: space-between; align-items: center;">
+  <a href="/" style="text-decoration: none; display: flex; align-items: center; gap: 1.5rem;">
+    <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
+      <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
+      <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
+        <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
+        <div class="brand-subtitle" style="margin: 0;">Expand &#9670; Explore &#9670; Evolve</div>
+      </div>
+    </div>
+  </a>
+  <nav style="display: flex; align-items: center; gap: 1.5rem;">
+    <a href="/wiki" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Wiki</a>
+    <a href="/contact" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Contact</a>
+  </nav>
+</div>
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>WIKI</h1>
+      <p class="subtitle">COMPREHENSIVE GUIDE TO AIRLINE MANAGER</p>
+    </div>
+
+    <div class="worlds-section" style="max-width: none;">
+
+      <!-- Search -->
+      <div style="margin-bottom: 1.5rem;">
+        <input type="text" id="wikiSearch" placeholder="Search wiki articles..." oninput="filterArticles(this.value)" style="width: 100%; padding: 0.7rem 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.9rem; box-sizing: border-box;">
+        <div id="wikiSearchInfo" style="display: none; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);"></div>
+      </div>
+
+      <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+
+        <!-- TOC Sidebar -->
+        <nav id="wikiToc" style="width: 220px; flex-shrink: 0; position: sticky; top: 1rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 1rem; max-height: calc(100vh - 6rem); overflow-y: auto;">
+          <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem; font-weight: 700;">Contents</div>
+          <ul style="list-style: none; padding: 0; margin: 0;" id="wikiTocList">
+            <li><a href="#getting-started" class="wiki-toc-link active" onclick="scrollToSection('getting-started'); return false;">Getting Started</a></li>
+            <li><a href="#fleet-management" class="wiki-toc-link" onclick="scrollToSection('fleet-management'); return false;">Fleet Management</a></li>
+            <li><a href="#route-operations" class="wiki-toc-link" onclick="scrollToSection('route-operations'); return false;">Route Operations</a></li>
+            <li><a href="#scheduling" class="wiki-toc-link" onclick="scrollToSection('scheduling'); return false;">Scheduling</a></li>
+            <li><a href="#pricing" class="wiki-toc-link" onclick="scrollToSection('pricing'); return false;">Pricing</a></li>
+            <li><a href="#maintenance" class="wiki-toc-link" onclick="scrollToSection('maintenance'); return false;">Maintenance</a></li>
+            <li><a href="#financial-management" class="wiki-toc-link" onclick="scrollToSection('financial-management'); return false;">Financial Management</a></li>
+            <li><a href="#marketing" class="wiki-toc-link" onclick="scrollToSection('marketing'); return false;">Marketing</a></li>
+            <li><a href="#staff-management" class="wiki-toc-link" onclick="scrollToSection('staff-management'); return false;">Staff Management</a></li>
+            <li><a href="#banking-loans" class="wiki-toc-link" onclick="scrollToSection('banking-loans'); return false;">Banking & Loans</a></li>
+            <li><a href="#competition" class="wiki-toc-link" onclick="scrollToSection('competition'); return false;">Competition</a></li>
+            <li><a href="#world-map" class="wiki-toc-link" onclick="scrollToSection('world-map'); return false;">World Map</a></li>
+            <li><a href="#game-mechanics" class="wiki-toc-link" onclick="scrollToSection('game-mechanics'); return false;">Game Mechanics</a></li>
+          </ul>
+        </nav>
+
+        <!-- Articles -->
+        <div id="wikiContent" style="flex: 1; min-width: 0;">
+
+          <!-- ==================== GETTING STARTED ==================== -->
+          <div class="wiki-category" id="getting-started">
+            <h2 class="wiki-category-title">Getting Started</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Creating Your Account</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>AMS.ceo supports two ways to create an account:</p>
+                <h4>Option 1: VATSIM SSO (Recommended)</h4>
+                <ol>
+                  <li>Click <strong>"Sign In with VATSIM SSO"</strong> on the login page</li>
+                  <li>You'll be redirected to the VATSIM authentication page</li>
+                  <li>Log in with your VATSIM credentials</li>
+                  <li>Authorise AMS.ceo to access your VATSIM profile</li>
+                  <li>You'll be automatically redirected back and logged in</li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> VATSIM SSO links your account with your VATSIM CID, enabling live flight tracking integration.
+                </div>
+                <h4>Option 2: Local Registration</h4>
+                <ol>
+                  <li>Click the <strong>"Register"</strong> tab on the login page</li>
+                  <li>Enter your first name, last name, email, and a password (minimum 6 characters)</li>
+                  <li>Solve the math captcha to verify you're human</li>
+                  <li>Click <strong>"Create Account"</strong></li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Local accounts don't have VATSIM integration. An admin can later link a VATSIM CID to your account if needed.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Login page showing Sign In and Register tabs</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Joining a World</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>After logging in, you'll be taken to the <strong>World Selection</strong> screen. Worlds are separate game instances with their own economies, timelines, and players.</p>
+                <h4>World Types</h4>
+                <ul>
+                  <li><strong>Multiplayer:</strong> Compete with other real players and AI airlines. Public worlds anyone can join.</li>
+                  <li><strong>Singleplayer:</strong> Your own private world with AI competitors at adjustable difficulty levels.</li>
+                </ul>
+                <h4>How to Join</h4>
+                <ol>
+                  <li>Browse available worlds on the World Selection screen</li>
+                  <li>Check the world details: era start year, time acceleration, number of players</li>
+                  <li>Click <strong>"Join World"</strong> on the world you want to play</li>
+                  <li>Set up your airline (see next article)</li>
+                </ol>
+                <h4>Era System</h4>
+                <p>Each world starts in a specific year (from 1950 onwards). The starting year determines which aircraft are available, airport accessibility, and economic conditions. Time accelerates (typically 60x) so 1 real minute = 1 game hour.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Starting in an earlier era (e.g. 1960s) means fewer aircraft choices but the opportunity to grow as new aircraft become available over time.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: World Selection screen showing available worlds</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Setting Up Your Airline</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>When you join a world for the first time, you'll need to set up your airline:</p>
+                <ol>
+                  <li><strong>Airline Name:</strong> Choose a unique name for your airline</li>
+                  <li><strong>ICAO Code:</strong> A 3-letter code (e.g. "BAW" for British Airways)</li>
+                  <li><strong>IATA Code:</strong> A 2-letter code (e.g. "BA")</li>
+                  <li><strong>Region:</strong> Select your operating region</li>
+                  <li><strong>Hub Airport:</strong> Choose your main base of operations — this is where your airline HQ is located</li>
+                </ol>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Choose a hub at a large international airport with good connectivity. This gives you access to more potential routes and higher passenger demand.
+                </div>
+                <p>Your airline starts with <strong>$1,000,000</strong> in starting capital to purchase or lease your first aircraft.</p>
+                <div class="wiki-img-placeholder">Screenshot: Airline setup form with name, codes, and hub selection</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Your First Aircraft</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>With your starting capital, head to the <strong>Aircraft Marketplace</strong> to acquire your first aircraft.</p>
+                <h4>Buying vs Leasing</h4>
+                <ul>
+                  <li><strong>Buying:</strong> Full ownership. Higher upfront cost but no recurring payments. You can sell the aircraft later.</li>
+                  <li><strong>Leasing:</strong> Lower upfront cost with weekly lease payments. Good for expanding quickly, but you don't own the aircraft.</li>
+                </ul>
+                <h4>What to Look For</h4>
+                <ul>
+                  <li><strong>Range:</strong> Ensure the aircraft can cover your planned routes</li>
+                  <li><strong>Capacity:</strong> Match passenger capacity to route demand</li>
+                  <li><strong>Operating Costs:</strong> Fuel burn and maintenance costs affect profitability</li>
+                  <li><strong>Price:</strong> Stay within your budget — you'll need money for operations too</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> For your first aircraft, consider a medium-range, medium-capacity type. It gives you flexibility to serve different route lengths while staying affordable.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Aircraft Marketplace with aircraft details</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Creating Your First Route</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Once you have an aircraft, create a route to start generating revenue:</p>
+                <ol>
+                  <li>Go to <strong>Flight Operations &rarr; Create New Route</strong></li>
+                  <li>Your hub is automatically set as the origin</li>
+                  <li>Search for and select a destination airport</li>
+                  <li>Review the route details: distance, estimated flight time, demand analysis</li>
+                  <li>Check the demand data to ensure there are passengers for this route</li>
+                  <li>Click <strong>"Create Route"</strong> to confirm</li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Routes are one-way. To operate a return service, you'll schedule flights in both directions.
+                </div>
+                <p>After creating the route, head to <strong>Scheduling</strong> to assign aircraft and create flight times.</p>
+                <div class="wiki-img-placeholder">Screenshot: Route creation page with origin, destination, and demand data</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Understanding the Dashboard</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The <strong>Dashboard</strong> is your airline's operations centre, providing an overview of key metrics at a glance:</p>
+                <ul>
+                  <li><strong>Financial Summary:</strong> Current cash balance, weekly revenue, costs, and profit/loss</li>
+                  <li><strong>Fleet Status:</strong> Total aircraft, active vs grounded, aircraft in maintenance</li>
+                  <li><strong>Route Network:</strong> Number of active routes and total flights scheduled</li>
+                  <li><strong>Staff Overview:</strong> Department headcounts and staffing levels</li>
+                  <li><strong>Notifications:</strong> Important alerts about maintenance, finances, and operations</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Check your dashboard regularly. Notifications will alert you to important events like upcoming maintenance, low cash warnings, or expiring leases.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Dashboard overview showing key metrics</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== FLEET MANAGEMENT ==================== -->
+          <div class="wiki-category" id="fleet-management">
+            <h2 class="wiki-category-title">Fleet Management</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Browsing the Aircraft Marketplace</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The Aircraft Marketplace contains over 250 real aircraft types spanning from the 1950s to the modern era.</p>
+                <h4>Browsing & Filtering</h4>
+                <ol>
+                  <li>Go to <strong>Fleet Management &rarr; Aircraft Marketplace</strong></li>
+                  <li>Use filters to narrow down by manufacturer, type, range, capacity, or era</li>
+                  <li>Click on any aircraft to view detailed specifications</li>
+                </ol>
+                <h4>Aircraft Details</h4>
+                <p>Each aircraft listing shows:</p>
+                <ul>
+                  <li>Manufacturer and model name</li>
+                  <li>Introduction year (determines when it becomes available in era-based worlds)</li>
+                  <li>Passenger capacity by class configuration</li>
+                  <li>Range, cruise speed, and fuel consumption</li>
+                  <li>Purchase price and lease rates</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: Aircraft Marketplace with filters and aircraft list</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Buying & Selling Aircraft</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <h4>Buying</h4>
+                <ol>
+                  <li>Find an aircraft in the Marketplace</li>
+                  <li>Click <strong>"Purchase"</strong></li>
+                  <li>Choose a cabin configuration (if applicable)</li>
+                  <li>Assign a registration code</li>
+                  <li>Confirm the purchase — the cost is deducted from your cash balance</li>
+                </ol>
+                <h4>Selling</h4>
+                <ol>
+                  <li>Go to <strong>Fleet Management &rarr; My Fleet</strong></li>
+                  <li>Select the aircraft you want to sell</li>
+                  <li>Click <strong>"Sell Aircraft"</strong></li>
+                  <li>The sale price is based on the aircraft's age, condition, and market value</li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> You cannot sell aircraft that have active scheduled flights. Remove all flights from the schedule first.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Aircraft purchase confirmation dialog</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Leasing Aircraft</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Leasing allows you to operate aircraft without the full purchase price:</p>
+                <ol>
+                  <li>Find an aircraft in the Marketplace</li>
+                  <li>Click <strong>"Lease"</strong> instead of Purchase</li>
+                  <li>Review the lease terms: weekly payment, lease duration</li>
+                  <li>Confirm the lease</li>
+                </ol>
+                <h4>Lease Costs</h4>
+                <ul>
+                  <li>Weekly lease payments are deducted automatically</li>
+                  <li>Lease costs appear in your financial reports under operating expenses</li>
+                  <li>Leased aircraft cannot be sold — only returned at lease end</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Leasing is ideal for testing new routes or rapidly expanding your fleet. If a route isn't profitable, you can return the aircraft at the end of the lease period.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Lease terms and confirmation</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Aircraft Details & Specifications</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Click on any aircraft (in the marketplace or your fleet) to see its full specifications:</p>
+                <ul>
+                  <li><strong>Performance:</strong> Maximum range, cruise speed, ceiling, fuel burn rate</li>
+                  <li><strong>Capacity:</strong> Passengers by class (economy, business, first) and cargo capacity</li>
+                  <li><strong>Dimensions:</strong> Wingspan, length, and ICAO wake turbulence category</li>
+                  <li><strong>Economics:</strong> Purchase price, lease rate, operating cost per hour</li>
+                  <li><strong>Maintenance:</strong> Check intervals and estimated maintenance costs</li>
+                  <li><strong>Range Map:</strong> Visual overlay showing which airports this aircraft can reach from its current base</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: Aircraft detail modal with specifications and range map</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Managing Your Fleet</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The <strong>My Fleet</strong> page shows all your owned and leased aircraft:</p>
+                <ul>
+                  <li><strong>Status indicators:</strong> Active (green), In Maintenance (amber), Grounded (red)</li>
+                  <li><strong>Utilisation:</strong> How many hours per week each aircraft is flying</li>
+                  <li><strong>Assigned routes:</strong> Which routes each aircraft is scheduled on</li>
+                  <li><strong>Maintenance due:</strong> Upcoming checks and their deadlines</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Aim for high fleet utilisation. An aircraft sitting on the ground costs you money without generating revenue. Target 70-90% utilisation for maximum profitability.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Fleet overview showing aircraft status and utilisation</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== ROUTE OPERATIONS ==================== -->
+          <div class="wiki-category" id="route-operations">
+            <h2 class="wiki-category-title">Route Operations</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Creating Routes</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Routes connect two airports and define the path your flights will take:</p>
+                <ol>
+                  <li>Go to <strong>Flight Operations &rarr; Create New Route</strong></li>
+                  <li>Select the <strong>origin airport</strong> (defaults to your hub)</li>
+                  <li>Search for and select a <strong>destination airport</strong></li>
+                  <li>The system calculates: great-circle distance, estimated flight time, and generates waypoint routing</li>
+                  <li>Review the <strong>demand analysis</strong> showing expected passenger numbers</li>
+                  <li>Click <strong>"Create Route"</strong></li>
+                </ol>
+                <h4>Waypoint Routing</h4>
+                <p>Routes use realistic ATC waypoints including:</p>
+                <ul>
+                  <li><strong>SIDs</strong> (Standard Instrument Departures) from the origin</li>
+                  <li><strong>Airways</strong> and waypoints en route</li>
+                  <li><strong>STARs</strong> (Standard Terminal Arrival Routes) to the destination</li>
+                  <li><strong>NAT Tracks</strong> for North Atlantic crossings (when applicable)</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: Route creation with map showing waypoints and airway routing</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Route Analysis & Demand</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Before creating a route, review the demand analysis carefully:</p>
+                <ul>
+                  <li><strong>Total Demand:</strong> Estimated weekly passengers for this city pair</li>
+                  <li><strong>Competition:</strong> Other airlines operating this route and their frequency</li>
+                  <li><strong>Demand by Class:</strong> Breakdown of economy, business, and first class demand</li>
+                  <li><strong>Seasonal Factors:</strong> Some routes have fluctuating demand</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> High demand with low competition is the ideal route. But don't ignore medium-demand routes — they can be very profitable with the right pricing and frequency.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Route demand analysis showing passenger estimates and competition</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Managing Existing Routes</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Go to <strong>Flight Operations &rarr; Manage Routes</strong> to see all your routes:</p>
+                <ul>
+                  <li>View route performance: load factors, revenue, profitability</li>
+                  <li>Edit route details or delete unprofitable routes</li>
+                  <li>See which aircraft and flights are assigned to each route</li>
+                </ul>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Deleting a route also removes all scheduled flights on that route. Make sure to reassign aircraft to other routes first.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Route management list with performance metrics</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Airspace Configuration</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The Airspace Configuration page lets you manage Flight Information Region (FIR) restrictions and overfly permissions:</p>
+                <ul>
+                  <li>View FIR boundaries on the world map</li>
+                  <li>Check which FIRs your routes pass through</li>
+                  <li>Manage overflight fees and restrictions</li>
+                </ul>
+                <p>Some FIRs may have higher fees or restrictions that affect route profitability. Consider routing around expensive airspace when planning long-haul routes.</p>
+                <div class="wiki-img-placeholder">Screenshot: Airspace configuration showing FIR boundaries</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== SCHEDULING ==================== -->
+          <div class="wiki-category" id="scheduling">
+            <h2 class="wiki-category-title">Scheduling</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Creating Flight Schedules</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Once you have routes and aircraft, schedule flights to start earning revenue:</p>
+                <ol>
+                  <li>Go to <strong>Flight Operations &rarr; Scheduling</strong></li>
+                  <li>Select an <strong>aircraft</strong> from your fleet</li>
+                  <li>Select a <strong>route</strong> to fly</li>
+                  <li>Choose the <strong>departure time</strong></li>
+                  <li>Optionally set it as a <strong>recurring</strong> flight (daily, specific days, etc.)</li>
+                  <li>Click <strong>"Schedule Flight"</strong></li>
+                </ol>
+                <p>The system automatically calculates arrival time based on the route distance and aircraft speed, including turnaround time at the destination.</p>
+                <div class="wiki-img-placeholder">Screenshot: Flight scheduling form with aircraft, route, and time selection</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Recurring vs One-Time Flights</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ul>
+                  <li><strong>One-Time Flight:</strong> A single flight that operates once. Useful for charter or test flights.</li>
+                  <li><strong>Recurring Flight:</strong> Repeats automatically on selected days. This is how you build a regular schedule.</li>
+                </ul>
+                <h4>Setting Up Recurring Flights</h4>
+                <ol>
+                  <li>When scheduling a flight, enable the <strong>"Recurring"</strong> option</li>
+                  <li>Select which days of the week the flight should operate</li>
+                  <li>The system creates flights automatically each game week</li>
+                </ol>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Set up recurring flights for your main routes. This ensures consistent service and steady revenue without manual scheduling every week.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Schedule Conflicts & Resolution</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The scheduling system prevents conflicts by checking:</p>
+                <ul>
+                  <li><strong>Aircraft availability:</strong> An aircraft can only fly one route at a time</li>
+                  <li><strong>Turnaround time:</strong> Minimum time needed between landing and next departure</li>
+                  <li><strong>Maintenance windows:</strong> Flights cannot be scheduled during planned maintenance</li>
+                  <li><strong>Airport positioning:</strong> The aircraft must be at the departure airport</li>
+                </ul>
+                <p>If a conflict is detected, the system will warn you and suggest alternative times.</p>
+                <div class="wiki-note">
+                  <strong>Note:</strong> When an aircraft needs unplanned maintenance, affected flights may be automatically cancelled. Keep backup aircraft available for critical routes.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Aircraft Turnaround Times</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>After each flight, aircraft need turnaround time for:</p>
+                <ul>
+                  <li>Passenger deboarding and boarding</li>
+                  <li>Cabin cleaning and catering</li>
+                  <li>Refuelling</li>
+                  <li>Baggage handling</li>
+                  <li>Pre-flight checks</li>
+                </ul>
+                <p>Turnaround time varies by aircraft size — larger aircraft need longer. The scheduling system accounts for this automatically when validating flight times.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Don't schedule flights too tightly. Leave buffer time for minor delays to prevent cascading schedule disruptions.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== PRICING ==================== -->
+          <div class="wiki-category" id="pricing">
+            <h2 class="wiki-category-title">Pricing</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Setting Ticket Prices</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Go to <strong>Flight Operations &rarr; Price Management</strong> to set ticket prices for your routes:</p>
+                <ol>
+                  <li>Select a route from the list</li>
+                  <li>Set prices for each class: Economy, Business, First</li>
+                  <li>The system shows recommended price ranges based on route distance and demand</li>
+                  <li>Save your pricing</li>
+                </ol>
+                <p>You can also set <strong>default pricing</strong> that applies to all new routes automatically.</p>
+                <div class="wiki-img-placeholder">Screenshot: Pricing management interface with class-based pricing</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Class Configuration</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Aircraft can be configured with different cabin class layouts:</p>
+                <ul>
+                  <li><strong>Economy:</strong> Highest capacity, lowest revenue per seat</li>
+                  <li><strong>Business:</strong> Medium capacity, higher revenue per seat</li>
+                  <li><strong>First Class:</strong> Lowest capacity, highest revenue per seat</li>
+                </ul>
+                <p>The optimal configuration depends on your routes. Short-haul domestic routes may benefit from all-economy layouts, while long-haul international routes benefit from mixed-class configurations.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Match your class configuration to the demand profile. If a route has high business travel demand, allocating more seats to business class will increase revenue.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Demand & Price Sensitivity</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Passenger demand is affected by your pricing:</p>
+                <ul>
+                  <li><strong>Lower prices</strong> attract more passengers but reduce per-ticket revenue</li>
+                  <li><strong>Higher prices</strong> reduce passenger numbers but increase per-ticket revenue</li>
+                  <li><strong>Competition</strong> matters — if competitors price lower, you may lose passengers</li>
+                </ul>
+                <p>The optimal price maximises total revenue (price &times; passengers). This is usually somewhere in the middle of the recommended range.</p>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Demand also depends on factors outside your control: airport size, route popularity, and economic conditions in the game world.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Pricing Strategies</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <h4>Low-Cost Strategy</h4>
+                <p>Price at the lower end to maximise load factors. Works well with high-capacity aircraft on high-demand routes. Volume makes up for lower margins.</p>
+                <h4>Premium Strategy</h4>
+                <p>Price higher and focus on business/first class. Works on routes with high business travel demand. Fewer passengers but higher revenue per seat.</p>
+                <h4>Competitive Pricing</h4>
+                <p>Price slightly below competitors to capture market share. Monitor competitor pricing regularly and adjust accordingly.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Start with prices in the middle of the recommended range, then adjust based on your load factors. If flights are consistently full, raise prices. If seats are empty, lower them.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== MAINTENANCE ==================== -->
+          <div class="wiki-category" id="maintenance">
+            <h2 class="wiki-category-title">Maintenance</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Maintenance Check Types</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Aircraft require regular maintenance to remain airworthy. There are five check levels:</p>
+                <table class="wiki-table">
+                  <thead>
+                    <tr><th>Check</th><th>Interval</th><th>Duration</th><th>Description</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><strong>Daily</strong></td><td>Every 1-2 days</td><td>~1 hour</td><td>Visual inspection and basic systems check</td></tr>
+                    <tr><td><strong>Weekly</strong></td><td>Every 7-8 days</td><td>~2-3 hours</td><td>More thorough inspection of key systems</td></tr>
+                    <tr><td><strong>A Check</strong></td><td>Every 800-1000 flight hours</td><td>~6-12 hours</td><td>Detailed inspection of accessible components</td></tr>
+                    <tr><td><strong>C Check</strong></td><td>Every ~2 years</td><td>2-4 weeks</td><td>Major structural inspection. Aircraft out of service.</td></tr>
+                    <tr><td><strong>D Check</strong></td><td>Every 5-7 years</td><td>2-3 months</td><td>Complete overhaul. Aircraft stripped and rebuilt.</td></tr>
+                  </tbody>
+                </table>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Missing a required check will ground the aircraft until the maintenance is completed.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Maintenance page showing check status for fleet</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Scheduling Maintenance</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ol>
+                  <li>Go to <strong>Fleet Management &rarr; Maintenance</strong></li>
+                  <li>View upcoming maintenance deadlines for each aircraft</li>
+                  <li>Click <strong>"Schedule Check"</strong> to pick a maintenance window</li>
+                  <li>The system will block off the aircraft's schedule during the check</li>
+                </ol>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Schedule major checks (C and D) during periods of lower demand to minimise revenue impact. Plan ahead — C checks take weeks and D checks take months.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Auto-Maintenance</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>For convenience, you can enable <strong>auto-scheduling</strong> for maintenance checks:</p>
+                <ul>
+                  <li>The system automatically schedules checks before they become overdue</li>
+                  <li>Tries to find gaps in the aircraft's flight schedule</li>
+                  <li>Prevents aircraft from being grounded due to missed checks</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Auto-maintenance is great for daily and weekly checks. For major checks (C/D), consider scheduling manually so you can plan around your busiest routes.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Maintenance Costs</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Maintenance is a significant operating expense:</p>
+                <ul>
+                  <li><strong>Daily/Weekly checks:</strong> Relatively inexpensive</li>
+                  <li><strong>A Checks:</strong> Moderate cost, proportional to aircraft size</li>
+                  <li><strong>C Checks:</strong> Expensive — can cost hundreds of thousands</li>
+                  <li><strong>D Checks:</strong> Very expensive — can cost millions for large aircraft</li>
+                </ul>
+                <p>Costs are affected by aircraft type, age, and your engineering staff level. Well-staffed maintenance departments can reduce costs.</p>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Older aircraft generally have higher maintenance costs. Factor this in when deciding whether to keep aging fleet members or replace them.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== FINANCIAL MANAGEMENT ==================== -->
+          <div class="wiki-category" id="financial-management">
+            <h2 class="wiki-category-title">Financial Management</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Reading Financial Reports</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Go to <strong>Office &rarr; Financial Reports</strong> for a complete breakdown of your airline's finances:</p>
+                <ul>
+                  <li><strong>Income Statement:</strong> Revenue vs expenses for the current and past weeks</li>
+                  <li><strong>Cash Flow:</strong> How money moves in and out of your airline</li>
+                  <li><strong>Balance Sheet:</strong> Assets (aircraft, cash) vs liabilities (loans)</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: Financial reports page showing income statement</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Revenue & Cost Breakdown</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <h4>Revenue Sources</h4>
+                <ul>
+                  <li>Passenger ticket sales (economy, business, first class)</li>
+                  <li>Cargo revenue</li>
+                  <li>Aircraft sales</li>
+                </ul>
+                <h4>Cost Categories</h4>
+                <ul>
+                  <li><strong>Fuel:</strong> Varies by aircraft type, route distance, and fuel prices</li>
+                  <li><strong>Crew:</strong> Pilot and cabin crew salaries</li>
+                  <li><strong>Maintenance:</strong> Check costs and ongoing maintenance</li>
+                  <li><strong>Airport Fees:</strong> Landing, parking, and handling charges</li>
+                  <li><strong>Staff Salaries:</strong> Ground staff across departments</li>
+                  <li><strong>Lease Payments:</strong> Weekly payments for leased aircraft</li>
+                  <li><strong>Loan Repayments:</strong> Principal and interest on outstanding loans</li>
+                  <li><strong>Marketing:</strong> Campaign costs</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Weekly Financial Statements</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>At the end of each game week, a financial statement is generated summarising:</p>
+                <ul>
+                  <li>Total revenue earned</li>
+                  <li>Total expenses incurred</li>
+                  <li>Net profit or loss</li>
+                  <li>Cash balance change</li>
+                </ul>
+                <p>Historical statements are available so you can track your airline's performance over time and identify trends.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Compare weekly statements to spot improving or declining performance. If costs are rising faster than revenue, investigate which categories are growing.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Profitability Analysis</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Key metrics to monitor:</p>
+                <ul>
+                  <li><strong>Operating Margin:</strong> (Revenue - Operating Costs) / Revenue. Aim for 15%+ to be healthy.</li>
+                  <li><strong>Load Factor:</strong> Percentage of seats filled. Higher is better — aim for 70%+.</li>
+                  <li><strong>Revenue per ASK:</strong> Revenue per available seat kilometre. Measures efficiency.</li>
+                  <li><strong>Cost per ASK:</strong> Cost per available seat kilometre. Lower is better.</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Focus on routes with the highest profit margin, not just the highest revenue. A short-haul route with 30% margin is better than a long-haul route with 5% margin.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== MARKETING ==================== -->
+          <div class="wiki-category" id="marketing">
+            <h2 class="wiki-category-title">Marketing</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Campaign Types</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Marketing campaigns boost passenger demand for your airline:</p>
+                <ul>
+                  <li><strong>Brand Awareness:</strong> General airline visibility — boosts demand across all routes</li>
+                  <li><strong>Route Promotion:</strong> Target specific routes to increase demand on them</li>
+                  <li><strong>Regional Campaign:</strong> Focus on a geographic region to boost demand from/to airports in that area</li>
+                </ul>
+                <p>Go to <strong>Office &rarr; Marketing</strong> to create and manage campaigns.</p>
+                <div class="wiki-img-placeholder">Screenshot: Marketing page showing campaign creation and active campaigns</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Regional vs Route Marketing</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ul>
+                  <li><strong>Route Marketing:</strong> Targeted and efficient. Best for boosting specific underperforming routes or new routes that need passenger awareness.</li>
+                  <li><strong>Regional Marketing:</strong> Broader reach. Good when you have multiple routes in a region and want to boost demand across all of them simultaneously.</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Use route marketing for new routes to build initial demand, then switch to regional marketing once you have a network of routes in an area.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Campaign Effectiveness & ROI</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Monitor your campaign performance:</p>
+                <ul>
+                  <li><strong>Demand Increase:</strong> How much additional passenger demand the campaign generated</li>
+                  <li><strong>Cost:</strong> Weekly campaign expenditure</li>
+                  <li><strong>ROI:</strong> Additional revenue generated vs campaign cost</li>
+                </ul>
+                <p>Campaigns have diminishing returns — the first campaign on a route gives the biggest boost. Multiple overlapping campaigns have progressively less impact.</p>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Marketing effects take time to build up and decay slowly after a campaign ends. Don't expect instant results from a new campaign.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== STAFF MANAGEMENT ==================== -->
+          <div class="wiki-category" id="staff-management">
+            <h2 class="wiki-category-title">Staff Management</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Department Overview</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Your airline has several departments, each requiring staff:</p>
+                <ul>
+                  <li><strong>Pilots:</strong> Required for every flight. Need enough pilots for your schedule.</li>
+                  <li><strong>Cabin Crew:</strong> Required for passenger flights. Number depends on aircraft size.</li>
+                  <li><strong>Engineering:</strong> Maintains your fleet. More engineers = faster/cheaper maintenance.</li>
+                  <li><strong>Ground Services:</strong> Handles ground operations at airports.</li>
+                  <li><strong>Management:</strong> Administrative staff for airline operations.</li>
+                </ul>
+                <p>Go to <strong>Office &rarr; Staff</strong> to manage your workforce.</p>
+                <div class="wiki-img-placeholder">Screenshot: Staff management page showing departments and headcounts</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Hiring & Salary Management</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Set staffing levels and salary rates for each department:</p>
+                <ol>
+                  <li>Choose the number of staff per department</li>
+                  <li>Set the salary level (affects staff quality and costs)</li>
+                  <li>Higher salaries attract better staff, improving efficiency</li>
+                </ol>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Don't over-hire early on. Match your staffing levels to your fleet size and schedule. As you grow, gradually increase headcounts.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Outsourcing vs In-House</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Some functions can be outsourced to contractors instead of hiring in-house staff:</p>
+                <ul>
+                  <li><strong>Outsourcing pros:</strong> No fixed salary costs, scales with demand, no commitment</li>
+                  <li><strong>Outsourcing cons:</strong> Higher per-unit cost, less control over quality</li>
+                  <li><strong>In-house pros:</strong> Lower per-unit cost at scale, better quality control</li>
+                  <li><strong>In-house cons:</strong> Fixed weekly salary regardless of activity</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Outsource when you're small and your operations are limited. Switch to in-house staff as you grow and the cost savings from scale become significant.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== BANKING & LOANS ==================== -->
+          <div class="wiki-category" id="banking-loans">
+            <h2 class="wiki-category-title">Banking & Loans</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Available Banks</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Multiple banks offer loans with different terms:</p>
+                <ul>
+                  <li>Each bank has its own interest rates, loan limits, and approval criteria</li>
+                  <li>Some banks specialise in startup loans, others in large expansion financing</li>
+                  <li>Your credit score affects which banks will lend to you and at what rate</li>
+                </ul>
+                <p>Go to <strong>Office &rarr; Bank & Loans</strong> to browse available banks and apply for loans.</p>
+                <div class="wiki-img-placeholder">Screenshot: Banking page showing available banks and their terms</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Applying for Loans</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ol>
+                  <li>Select a bank from the available options</li>
+                  <li>Choose the loan amount (within the bank's limits)</li>
+                  <li>Review the interest rate and repayment terms</li>
+                  <li>Submit your application</li>
+                  <li>If approved, funds are added to your cash balance immediately</li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Banks may reject your application if your credit score is too low, you have too much existing debt, or your airline is losing money.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Interest Rates & Credit Score</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Your credit score is dynamic and affected by:</p>
+                <ul>
+                  <li><strong>Profitability:</strong> Consistent profits improve your score</li>
+                  <li><strong>Debt ratio:</strong> Too much debt lowers your score</li>
+                  <li><strong>Payment history:</strong> Making loan payments on time helps</li>
+                  <li><strong>Airline reputation:</strong> Higher reputation improves creditworthiness</li>
+                </ul>
+                <p>Better credit scores unlock lower interest rates and higher loan limits.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Only borrow what you need. Taking on too much debt can spiral — loan payments reduce cash flow, which can hurt profitability, which lowers your credit score, which increases interest rates on future loans.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Repayment</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Loan repayments are automatic:</p>
+                <ul>
+                  <li>Weekly payments are deducted from your cash balance</li>
+                  <li>Each payment includes principal and interest portions</li>
+                  <li>You can view your repayment schedule in the loans section</li>
+                  <li>Early repayment may be available for some loans</li>
+                </ul>
+                <div class="wiki-note">
+                  <strong>Note:</strong> If you can't make a loan payment (insufficient cash), it may negatively affect your credit score and could eventually lead to bankruptcy.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== COMPETITION ==================== -->
+          <div class="wiki-category" id="competition">
+            <h2 class="wiki-category-title">Competition</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Competitor Analysis</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The <strong>Competition</strong> page lets you monitor other airlines in your world:</p>
+                <ul>
+                  <li>See which routes competitors are operating</li>
+                  <li>Compare fleet sizes and aircraft types</li>
+                  <li>Monitor competitor pricing on shared routes</li>
+                  <li>Track revenue rankings and market share</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: Competition page showing airline rankings and details</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Market Share</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Market share represents your airline's portion of total passenger traffic:</p>
+                <ul>
+                  <li><strong>Route level:</strong> Your share of passengers on a specific route</li>
+                  <li><strong>Airport level:</strong> Your share of traffic at a specific airport</li>
+                  <li><strong>Global:</strong> Your overall share across the entire world</li>
+                </ul>
+                <p>Higher market share generally means more brand recognition and passenger preference.</p>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Leaderboard Rankings</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The leaderboard ranks all airlines in the world by various metrics:</p>
+                <ul>
+                  <li><strong>Revenue:</strong> Total income generated</li>
+                  <li><strong>Profit:</strong> Revenue minus all expenses</li>
+                  <li><strong>Fleet Size:</strong> Number of aircraft</li>
+                  <li><strong>Passengers:</strong> Total passengers carried</li>
+                  <li><strong>Routes:</strong> Number of active routes</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Don't just chase revenue — a larger airline with thin margins can easily be overtaken by a smaller, more profitable competitor.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== WORLD MAP ==================== -->
+          <div class="wiki-category" id="world-map">
+            <h2 class="wiki-category-title">World Map</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Map Controls & Layers</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The World Map provides a visual overview of your airline's operations:</p>
+                <ul>
+                  <li><strong>Route lines:</strong> See your entire route network overlaid on the map</li>
+                  <li><strong>Airport markers:</strong> Airports colour-coded by size and activity</li>
+                  <li><strong>Layer toggles:</strong> Show/hide different data overlays</li>
+                  <li><strong>Zoom & pan:</strong> Navigate to any part of the world</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: World Map showing route network and airport markers</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Live Flight Tracking</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>If you're connected via VATSIM SSO, you can see live flight tracking:</p>
+                <ul>
+                  <li>Aircraft positions updated in real-time from the VATSIM network</li>
+                  <li>See your flights (and others) moving across the map</li>
+                  <li>Click on an aircraft to see flight details: callsign, altitude, speed, route</li>
+                </ul>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Live tracking requires VATSIM SSO authentication. Local account users won't see live flight data.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>FIR Boundaries & NAT Tracks</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ul>
+                  <li><strong>FIR Boundaries:</strong> Toggle to see Flight Information Region boundaries overlaid on the map. Useful for understanding airspace fees and routing.</li>
+                  <li><strong>NAT Tracks:</strong> North Atlantic Tracks are pre-defined routes across the Atlantic. Toggle to see current tracks used for transatlantic routing.</li>
+                </ul>
+                <div class="wiki-img-placeholder">Screenshot: World Map with FIR boundaries and NAT tracks visible</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Demand Heatmaps</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>The demand heatmap layer visualises passenger demand across the globe:</p>
+                <ul>
+                  <li>Brighter areas indicate higher passenger demand</li>
+                  <li>Helps identify promising regions for new routes</li>
+                  <li>Can be combined with competitor data to find underserved markets</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Look for bright spots on the heatmap that don't have many competitor routes. These represent opportunities for profitable expansion.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== GAME MECHANICS ==================== -->
+          <div class="wiki-category" id="game-mechanics">
+            <h2 class="wiki-category-title">Game Mechanics</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Time & Era System</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <h4>Time Acceleration</h4>
+                <p>Game time runs faster than real time. The typical acceleration is 60x, meaning:</p>
+                <ul>
+                  <li>1 real minute = 1 game hour</li>
+                  <li>24 real minutes = 1 game day</li>
+                  <li>~2.8 real hours = 1 game week</li>
+                </ul>
+                <p>The game world continues running even when you're not playing — flights operate, revenue is earned, and costs are incurred.</p>
+                <h4>Era Progression</h4>
+                <p>As game time advances, new aircraft types become available based on their real-world introduction year. A world starting in 1960 will initially only have aircraft from that era (DC-8, Boeing 707), with newer types becoming available as the game year progresses.</p>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Airport availability also changes with era. Some modern airports didn't exist in earlier decades.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Demand Model</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Passenger demand between airports is determined by multiple factors:</p>
+                <ul>
+                  <li><strong>Airport size:</strong> Larger airports generate more demand</li>
+                  <li><strong>Distance:</strong> Affects the type and volume of travel</li>
+                  <li><strong>Economic factors:</strong> GDP, tourism, and business travel patterns</li>
+                  <li><strong>Competition:</strong> Demand is shared among all airlines on a route</li>
+                  <li><strong>Pricing:</strong> Your ticket prices affect how much demand you capture</li>
+                  <li><strong>Marketing:</strong> Campaigns can boost demand</li>
+                  <li><strong>Reputation:</strong> Higher airline reputation attracts more passengers</li>
+                </ul>
+                <p>Demand fluctuates over time and responds to market conditions.</p>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Credit System</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Credits are a meta-currency used to maintain your participation in game worlds:</p>
+                <ul>
+                  <li>1 credit is consumed per game week of active play</li>
+                  <li>New users start with a generous credit allocation</li>
+                  <li>Credits are shared across all your world memberships</li>
+                </ul>
+                <h4>Running Low on Credits</h4>
+                <p>If your credits drop below zero:</p>
+                <ul>
+                  <li>You have a grace period of 1 game month (up to -4 credits)</li>
+                  <li>After the grace period, your world participation is paused</li>
+                  <li>Your airline continues to exist but stops operating</li>
+                </ul>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Contact an administrator if you need additional credits.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>AI Airlines</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>AI airlines provide competition in the game world:</p>
+                <ul>
+                  <li>They operate routes, set prices, and grow their networks</li>
+                  <li>In singleplayer worlds, you can adjust AI difficulty level</li>
+                  <li>AI airlines respond to market conditions and compete for passengers</li>
+                  <li>They help create a realistic competitive environment even with few human players</li>
+                </ul>
+                <p>In multiplayer worlds, AI airlines supplement human players to ensure a healthy competitive market.</p>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Reputation System</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Your airline's reputation affects passenger preference and creditworthiness:</p>
+                <h4>Reputation Increases From</h4>
+                <ul>
+                  <li>Operating flights on time</li>
+                  <li>Maintaining a large, well-maintained fleet</li>
+                  <li>Running marketing campaigns</li>
+                  <li>Consistent profitable operations</li>
+                </ul>
+                <h4>Reputation Decreases From</h4>
+                <ul>
+                  <li>Cancelled flights</li>
+                  <li>Grounded aircraft (missed maintenance)</li>
+                  <li>Financial difficulties</li>
+                  <li>Poor service (understaffing)</li>
+                </ul>
+                <p>Higher reputation means passengers prefer your airline over competitors, and banks offer better loan terms.</p>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Bankruptcy</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>If your airline's finances become unsustainable, you can declare bankruptcy:</p>
+                <ul>
+                  <li>Go to <strong>Office &rarr; Declare Bankruptcy</strong></li>
+                  <li>This resets your airline in the current world</li>
+                  <li>All aircraft, routes, and scheduled flights are removed</li>
+                  <li>Outstanding loans are written off</li>
+                  <li>You restart with the initial starting capital</li>
+                </ul>
+                <div class="wiki-note" style="border-color: rgba(220, 38, 38, 0.4); background: rgba(220, 38, 38, 0.1);">
+                  <strong>Warning:</strong> Bankruptcy is irreversible. All your progress in the current world is lost. Only use this as a last resort when your airline has no viable path to recovery.
+                </div>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Before declaring bankruptcy, try: selling underperforming aircraft, cutting unprofitable routes, reducing staff, or taking a loan to bridge a temporary cash shortfall.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Back to top -->
+          <div style="margin-top: 2rem; padding: 1.5rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; text-align: center;">
+            <h3 style="color: var(--text-primary); margin-bottom: 0.5rem;">Need more help?</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">Can't find what you're looking for? Get in touch and we'll help.</p>
+            <a href="/contact" class="btn btn-primary" style="padding: 0.6rem 2rem;">Contact Us</a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Public footer (shown when not logged in) -->
+<div class="public-page-footer lp-footer">
+  <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
+  <div style="display: flex; align-items: center; gap: 1.25rem;">
+    <a href="/wiki" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Wiki</a>
+    <a href="/contact" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Contact Us</a>
+  </div>
+</div>
+
+<style>
+  .wiki-category {
+    margin-bottom: 2.5rem;
+  }
+
+  .wiki-category-title {
+    color: var(--primary-color);
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .wiki-article {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  .wiki-article-header {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .wiki-article-header:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .wiki-chevron {
+    transition: transform 0.25s;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+  }
+
+  .wiki-article.open .wiki-chevron {
+    transform: rotate(180deg);
+  }
+
+  .wiki-article-body {
+    display: none;
+    padding: 0 1rem 1rem 1rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.7;
+  }
+
+  .wiki-article.open .wiki-article-body {
+    display: block;
+  }
+
+  .wiki-article-body h4 {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    margin: 1rem 0 0.4rem 0;
+  }
+
+  .wiki-article-body p {
+    margin: 0.5rem 0;
+  }
+
+  .wiki-article-body ul, .wiki-article-body ol {
+    margin: 0.4rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .wiki-article-body li {
+    margin-bottom: 0.3rem;
+  }
+
+  .wiki-note {
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+    border-radius: 4px;
+    padding: 0.6rem 0.85rem;
+    margin: 0.75rem 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
+  .wiki-tip {
+    background: rgba(5, 150, 105, 0.08);
+    border: 1px solid rgba(5, 150, 105, 0.2);
+    border-radius: 4px;
+    padding: 0.6rem 0.85rem;
+    margin: 0.75rem 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
+  .wiki-img-placeholder {
+    background: var(--surface);
+    border: 2px dashed var(--border-color);
+    border-radius: 6px;
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+    margin: 0.75rem 0;
+  }
+
+  .wiki-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.8rem;
+  }
+
+  .wiki-table th {
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border: 1px solid var(--border-color);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+  }
+
+  .wiki-table td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+  }
+
+  .wiki-toc-link {
+    display: block;
+    padding: 0.35rem 0.5rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+    border-left: 2px solid transparent;
+  }
+
+  .wiki-toc-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .wiki-toc-link.active {
+    color: var(--accent-color);
+    border-left-color: var(--accent-color);
+    background: rgba(37, 99, 235, 0.08);
+  }
+
+  @media (max-width: 860px) {
+    #wikiToc {
+      display: none;
+    }
+  }
+</style>

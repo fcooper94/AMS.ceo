@@ -22,246 +22,742 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%230066cc'/%3E%3Ctext x='50' y='42' font-family='Arial, sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3EAMS%3C/text%3E%3Ctext x='50' y='70' font-family='Arial, sans-serif' font-size='18' font-weight='600' fill='%2399ccff' text-anchor='middle' dominant-baseline='central'%3E.ceo%3C/text%3E%3C/svg%3E">
   <link rel="canonical" href="https://ams.ceo/">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .lp-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Hero */
+    .lp-hero {
+      padding: 4rem 2rem 3.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .lp-hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .lp-hero-inner {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      gap: 3.5rem;
+      align-items: flex-start;
+    }
+
+    .lp-hero-text {
+      flex: 1;
+      padding-top: 1rem;
+    }
+
+    .lp-badge {
+      display: inline-block;
+      padding: 0.35rem 1rem;
+      background: rgba(5, 150, 105, 0.15);
+      border: 1px solid rgba(5, 150, 105, 0.3);
+      color: #34d399;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-radius: 3px;
+      margin-bottom: 1.5rem;
+    }
+
+    .lp-title {
+      font-size: 2.8rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.75rem;
+      letter-spacing: -1px;
+      line-height: 1.1;
+    }
+
+    .lp-title span {
+      color: var(--accent-color);
+    }
+
+    .lp-subtitle {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 2rem;
+    }
+
+    .lp-stats {
+      display: flex;
+      gap: 2rem;
+    }
+
+    .lp-stat {
+      text-align: center;
+    }
+
+    .lp-stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'Courier New', monospace;
+    }
+
+    .lp-stat-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 0.2rem;
+    }
+
+    /* Login card */
+    .lp-auth-card {
+      width: 380px;
+      flex-shrink: 0;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      padding: 1.75rem;
+      position: relative;
+    }
+
+    .lp-auth-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1.25rem;
+    }
+
+    .lp-auth-tab {
+      flex: 1;
+      padding: 0.6rem;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .lp-auth-tab.active {
+      border-bottom-color: var(--accent-color);
+      color: var(--text-primary);
+    }
+
+    .lp-input {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+
+    .lp-input:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+
+    .lp-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .lp-btn {
+      display: block;
+      width: 100%;
+      padding: 0.7rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+      box-sizing: border-box;
+      letter-spacing: 0.3px;
+    }
+
+    .lp-btn-primary {
+      background: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      color: white;
+    }
+
+    .lp-btn-primary:hover {
+      background: var(--accent-color);
+      border-color: var(--accent-color);
+    }
+
+    .lp-btn-outline {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    .lp-btn-outline:hover {
+      border-color: var(--text-muted);
+      color: var(--text-primary);
+    }
+
+    .lp-btn-vatsim {
+      background: #29B473;
+      border: 1px solid #29B473;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .lp-btn-vatsim:hover {
+      background: #24a066;
+      border-color: #24a066;
+    }
+
+    .lp-error {
+      display: none;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(220, 38, 38, 0.15);
+      border: 1px solid rgba(220, 38, 38, 0.4);
+      border-radius: 4px;
+      color: #fca5a5;
+      font-size: 0.8rem;
+    }
+
+    .lp-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 0.85rem 0;
+    }
+
+    .lp-divider::before, .lp-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    .lp-divider span {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Section styles (matching coming-soon) */
+    .lp-section {
+      padding: 4rem 2rem;
+    }
+
+    .lp-section-alt {
+      background: var(--surface);
+    }
+
+    .lp-section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .lp-section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+
+    .lp-section-desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* Feature grid */
+    .lp-features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .lp-feature {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .lp-feature:hover {
+      border-color: var(--primary-color);
+      transform: translateY(-2px);
+    }
+
+    .lp-feature-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .lp-feature-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
+    }
+
+    .lp-feature-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Highlights (2-col) */
+    .lp-highlights {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .lp-highlight {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      padding: 2rem;
+      display: flex;
+      gap: 1.25rem;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+
+    .lp-highlight:hover {
+      border-color: var(--accent-color);
+    }
+
+    .lp-highlight-icon {
+      font-size: 2rem;
+      flex-shrink: 0;
+      width: 48px;
+      text-align: center;
+    }
+
+    .lp-highlight-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.4rem;
+    }
+
+    .lp-highlight-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .lp-highlight-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+    }
+
+    .lp-tag {
+      font-size: 0.65rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(37, 99, 235, 0.1);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      color: var(--accent-color);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .lp-tag-green {
+      background: rgba(5, 150, 105, 0.1);
+      border-color: rgba(5, 150, 105, 0.2);
+      color: #34d399;
+    }
+
+    .lp-tag-amber {
+      background: rgba(217, 119, 6, 0.1);
+      border-color: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+    }
+
+    /* Footer */
+    .lp-footer {
+      padding: 1.5rem 2rem;
+      border-top: 1px solid var(--border-color);
+      background: var(--surface);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .lp-footer-dev {
+      background: none;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+    }
+
+    @media (max-width: 860px) {
+      .lp-hero-inner {
+        flex-direction: column;
+        align-items: center;
+        gap: 2rem;
+      }
+
+      .lp-hero-text {
+        text-align: center;
+        padding-top: 0;
+      }
+
+      .lp-title {
+        font-size: 2rem;
+      }
+
+      .lp-stats {
+        justify-content: center;
+      }
+
+      .lp-auth-card {
+        width: 100%;
+        max-width: 420px;
+      }
+
+      .lp-features {
+        grid-template-columns: 1fr;
+      }
+
+      .lp-highlights {
+        grid-template-columns: 1fr;
+      }
+
+      .lp-section {
+        padding: 2.5rem 1.5rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .lp-hero {
+        padding: 2.5rem 1.25rem 2rem;
+      }
+
+      .lp-stats {
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+
+      .lp-auth-card {
+        padding: 1.25rem;
+      }
+
+      .lp-footer {
+        flex-direction: column;
+        gap: 0.75rem;
+        text-align: center;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-header">
-      <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
-        <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
-        <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
-          <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
-          <div class="brand-subtitle" style="margin: 0;">Expand ◆ Explore ◆ Evolve</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="login-content">
-      <div class="login-box">
-        <div class="login-title">
-          <h1>Operations Center Access</h1>
-          <p>Authorized personnel only</p>
-        </div>
-
-        <div class="login-form">
-          <a href="/auth/login" class="btn btn-login">
-            Sign In with VATSIM SSO
-          </a>
-          <button id="devBypassBtn" class="btn btn-login" style="display: none; margin-top: 0.5rem; background: var(--warning-color); border-color: var(--warning-color);" onclick="devBypassLogin()">
-            Admin Bypass (Dev)
-          </button>
-          <div class="login-help">
-            <p>Secure authentication via VATSIM network credentials</p>
+  <div class="lp-page">
+    <!-- Header -->
+    <div class="login-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <a href="/" style="text-decoration: none;">
+        <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
+          <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
+          <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
+            <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
+            <div class="brand-subtitle" style="margin: 0;">Expand &#9670; Explore &#9670; Evolve</div>
           </div>
         </div>
-        <script>
-          // Check if dev bypass is enabled
-          fetch('/auth/bypass-enabled')
-            .then(res => res.json())
-            .then(data => {
-              if (data.enabled) {
-                document.getElementById('devBypassBtn').style.display = 'block';
-              }
-            })
-            .catch(() => {});
+      </a>
+      <nav style="display: flex; align-items: center; gap: 1.5rem;">
+        <a href="/wiki" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Wiki</a>
+        <a href="/contact" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Contact</a>
+      </nav>
+    </div>
 
-          let devBypassStoredPassword = '';
+    <!-- Hero with login -->
+    <div class="lp-hero">
+      <div class="lp-hero-inner">
+        <div class="lp-hero-text">
+          <div class="lp-badge">Early Access</div>
+          <h1 class="lp-title">Build Your <span>Airline Empire</span></h1>
+          <p class="lp-subtitle">
+            A deep airline management simulation integrated with the VATSIM network.
+            Manage fleets, plan routes, compete with real players, and track live flights across the globe.
+          </p>
+          <div class="lp-stats">
+            <div class="lp-stat">
+              <div class="lp-stat-value">12,000+</div>
+              <div class="lp-stat-label">Real Airports</div>
+            </div>
+            <div class="lp-stat">
+              <div class="lp-stat-value">250+</div>
+              <div class="lp-stat-label">Aircraft Types</div>
+            </div>
+            <div class="lp-stat">
+              <div class="lp-stat-value">Live</div>
+              <div class="lp-stat-label">VATSIM Tracking</div>
+            </div>
+            <div class="lp-stat">
+              <div class="lp-stat-value">1950+</div>
+              <div class="lp-stat-label">Era Simulation</div>
+            </div>
+          </div>
+        </div>
 
-          function devBypassLogin() {
-            document.getElementById('devBypassModal').style.display = 'flex';
-            document.getElementById('devBypassPassword').value = '';
-            document.getElementById('devBypassError').style.display = 'none';
-            document.getElementById('devBypassPasswordView').style.display = '';
-            document.getElementById('devBypassUserView').style.display = 'none';
-            document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
-            document.getElementById('devBypassPassword').focus();
-          }
+        <!-- Auth card -->
+        <div class="lp-auth-card">
+          <div class="lp-auth-tabs">
+            <button id="tabSignIn" class="lp-auth-tab active" onclick="switchAuthTab('signin')">Sign In</button>
+            <button id="tabRegister" class="lp-auth-tab" onclick="switchAuthTab('register')">Register</button>
+          </div>
 
-          function closeDevBypassModal() {
-            document.getElementById('devBypassModal').style.display = 'none';
-            devBypassStoredPassword = '';
-          }
+          <!-- Sign In -->
+          <div id="signinView">
+            <div id="signinError" class="lp-error"></div>
+            <div style="margin-bottom: 0.6rem;">
+              <input type="email" id="loginEmail" class="lp-input" placeholder="Email address">
+            </div>
+            <div style="margin-bottom: 0.5rem;">
+              <input type="password" id="loginPassword" class="lp-input" placeholder="Password">
+            </div>
+            <div style="text-align: right; margin-bottom: 0.85rem;">
+              <a href="#" onclick="showForgotPassword(); return false;" style="font-size: 0.75rem; color: var(--text-secondary); text-decoration: none; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Forgot password?</a>
+            </div>
+            <button onclick="localLogin()" class="lp-btn lp-btn-primary">Sign In</button>
+            <div class="lp-divider"><span>or</span></div>
+            <a href="/auth/login" class="lp-btn lp-btn-vatsim">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0;">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="white" opacity="0.15"/>
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 1.5c4.69 0 8.5 3.81 8.5 8.5s-3.81 8.5-8.5 8.5S3.5 16.69 3.5 12 7.31 3.5 12 3.5z" fill="white" opacity="0.3"/>
+                <path d="M8.5 8.5L12 15.5l3.5-7h-1.75L12 12.25 10.25 8.5z" fill="white"/>
+              </svg>
+              Sign in with VATSIM
+            </a>
+          </div>
 
-          function devBypassBackToPassword() {
-            document.getElementById('devBypassPasswordView').style.display = '';
-            document.getElementById('devBypassUserView').style.display = 'none';
-            document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
-          }
-
-          function submitDevBypass() {
-            const password = document.getElementById('devBypassPassword').value;
-            const errorDiv = document.getElementById('devBypassError');
-
-            if (!password) {
-              errorDiv.textContent = 'Please enter a password';
-              errorDiv.style.display = 'block';
-              return;
-            }
-
-            errorDiv.style.display = 'none';
-            fetch('/auth/dev-bypass', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ bypassPassword: password })
-            })
-              .then(res => res.json())
-              .then(data => {
-                if (data.authenticated && data.users) {
-                  devBypassStoredPassword = password;
-                  showUserSelection(data.users);
-                } else if (data.error) {
-                  errorDiv.textContent = data.error;
-                  errorDiv.style.display = 'block';
-                }
-              })
-              .catch(err => {
-                errorDiv.textContent = 'Bypass login failed: ' + err.message;
-                errorDiv.style.display = 'block';
-              });
-          }
-
-          function showUserSelection(users) {
-            document.getElementById('devBypassPasswordView').style.display = 'none';
-            document.getElementById('devBypassUserView').style.display = '';
-            document.getElementById('devBypassTitle').textContent = 'Select User';
-
-            const list = document.getElementById('devBypassUserList');
-            const itemStyle = `
-              padding: 0.6rem 0.75rem;
-              background: var(--surface, #0f172a);
-              border: 1px solid var(--border-color, #334155);
-              border-radius: 4px;
-              cursor: pointer;
-              transition: border-color 0.15s;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            `;
-
-            let html = `<div onclick="selectDevUser('new')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--warning-color, #d97706)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
-              <div>
-                <div style="color: var(--warning-color, #d97706); font-weight: 600; font-size: 0.9rem;">+ New Dev User</div>
-                <div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">Creates default admin account</div>
+          <!-- Register -->
+          <div id="registerView" style="display: none;">
+            <div id="registerError" class="lp-error"></div>
+            <div style="display: flex; gap: 0.6rem; margin-bottom: 0.6rem;">
+              <input type="text" id="regFirstName" class="lp-input" placeholder="First name">
+              <input type="text" id="regLastName" class="lp-input" placeholder="Last name">
+            </div>
+            <div style="margin-bottom: 0.6rem;">
+              <input type="email" id="regEmail" class="lp-input" placeholder="Email address">
+            </div>
+            <div style="margin-bottom: 0.6rem;">
+              <input type="password" id="regPassword" class="lp-input" placeholder="Password (min 6 characters)">
+            </div>
+            <div style="margin-bottom: 0.85rem;">
+              <input type="password" id="regConfirmPassword" class="lp-input" placeholder="Confirm password">
+            </div>
+            <div style="margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.6rem;">
+              <div style="flex-shrink: 0; font-size: 0.8rem; color: var(--text-secondary);">
+                <span id="regMathProblem" style="font-weight: 600; color: var(--text-primary);"></span> =
               </div>
-            </div>`;
+              <input type="text" id="regCaptchaAnswer" class="lp-input" placeholder="Answer" inputmode="numeric" style="width: 80px; flex-shrink: 0;">
+              <input type="hidden" id="regCaptchaExpected">
+              <button type="button" onclick="generateRegCaptcha()" style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.75rem; padding: 0.4rem 0.6rem; border-radius: 4px; cursor: pointer; flex-shrink: 0;" title="New problem">&#x21bb;</button>
+            </div>
+            <button onclick="localRegister()" class="lp-btn lp-btn-primary">Create Account</button>
+            <div style="margin-top: 0.75rem; text-align: center; font-size: 0.8rem; color: var(--text-muted);">
+              Already have an account? <a href="#" onclick="switchAuthTab('signin'); return false;" style="color: var(--accent-color);">Sign in</a>
+            </div>
+          </div>
 
-            users.forEach(u => {
-              const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
-              const badge = u.isAdmin ? '<span style="background: var(--warning-color, #d97706); color: white; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; margin-left: 0.5rem;">ADMIN</span>' : '';
-              const email = u.email ? `<div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">${u.email}</div>` : '';
-              html += `<div onclick="selectDevUser('${u.id}')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
-                <div>
-                  <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}</div>
-                  ${email}
-                </div>
-                <div style="color: var(--text-muted, #64748b); font-size: 0.7rem; font-family: monospace;">${u.vatsimId || ''}</div>
-              </div>`;
-            });
-
-            list.innerHTML = html;
-          }
-
-          function selectDevUser(userId) {
-            const body = { bypassPassword: devBypassStoredPassword, userId };
-
-            fetch('/auth/dev-bypass', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body)
-            })
-              .then(res => res.json())
-              .then(data => {
-                if (data.success) {
-                  window.location.href = data.redirect;
-                }
-              })
-              .catch(err => {
-                console.error('User selection failed:', err);
-              });
-          }
-
-          // Handle Enter key in password field
-          document.addEventListener('DOMContentLoaded', () => {
-            const pwdInput = document.getElementById('devBypassPassword');
-            if (pwdInput) {
-              pwdInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                  submitDevBypass();
-                }
-              });
-            }
-          });
-        </script>
+        </div>
       </div>
+    </div>
 
-      <div class="system-info">
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Aircraft Types</div>
-            <div class="info-value">200+ Historical</div>
+    <!-- Core Features -->
+    <div class="lp-section lp-section-alt">
+      <div class="lp-section-header">
+        <h2 class="lp-section-title">Core Systems</h2>
+        <p class="lp-section-desc">Everything you need to run a competitive airline from the ground up</p>
+      </div>
+      <div class="lp-features">
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#9992;</span>
+          <div class="lp-feature-title">Fleet Management</div>
+          <div class="lp-feature-desc">Purchase, lease, and maintain aircraft. Manage A/B/C/D checks, assign registrations, and optimise fleet utilisation across your route network.</div>
+        </div>
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#127760;</span>
+          <div class="lp-feature-title">Route Network</div>
+          <div class="lp-feature-desc">Build routes across real-world airports with realistic ATC waypoint routing via airways, SIDs, STARs, and North Atlantic Tracks.</div>
+        </div>
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#128176;</span>
+          <div class="lp-feature-title">Financial Management</div>
+          <div class="lp-feature-desc">Track weekly revenue, costs, and profit. Detailed breakdowns for fuel, crew, maintenance, airport fees, and staff salaries.</div>
+        </div>
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#128101;</span>
+          <div class="lp-feature-title">Staff &amp; Operations</div>
+          <div class="lp-feature-desc">Manage departments including pilots, cabin crew, engineering, and ground services. Set salary levels and outsource contractors.</div>
+        </div>
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#127970;</span>
+          <div class="lp-feature-title">Banking &amp; Loans</div>
+          <div class="lp-feature-desc">Apply for loans from multiple banks with dynamic interest rates based on your airline's credit score, reputation, and profitability.</div>
+        </div>
+        <div class="lp-feature">
+          <span class="lp-feature-icon">&#128200;</span>
+          <div class="lp-feature-title">Competition</div>
+          <div class="lp-feature-desc">Compete against real players and AI airlines. Track competitor routes, pricing, and performance. Climb the revenue leaderboard.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Highlights -->
+    <div class="lp-section">
+      <div class="lp-section-header">
+        <h2 class="lp-section-title">What Sets AMS Apart</h2>
+      </div>
+      <div class="lp-highlights">
+        <div class="lp-highlight">
+          <div class="lp-highlight-icon">&#128506;</div>
+          <div>
+            <div class="lp-highlight-title">Interactive World Map</div>
+            <div class="lp-highlight-desc">Live visualisation of your airline's operations. See routes, competitor activity, airport demand heatmaps, FIR boundaries, and NAT tracks overlaid on a real-world map.</div>
+            <div class="lp-highlight-tags">
+              <span class="lp-tag">Live Flights</span>
+              <span class="lp-tag">FIR Zones</span>
+              <span class="lp-tag">NAT Tracks</span>
+              <span class="lp-tag">Demand Data</span>
+            </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Airports</div>
-            <div class="info-value">Global Network</div>
+        </div>
+        <div class="lp-highlight">
+          <div class="lp-highlight-icon">&#128337;</div>
+          <div>
+            <div class="lp-highlight-title">Era-Based Worlds</div>
+            <div class="lp-highlight-desc">Start your airline from 1950 or any era. Aircraft availability, economics, airport access, and ticket prices all scale with the time period. Watch aviation history unfold.</div>
+            <div class="lp-highlight-tags">
+              <span class="lp-tag lp-tag-amber">Time Acceleration</span>
+              <span class="lp-tag lp-tag-amber">Dynamic Economy</span>
+              <span class="lp-tag lp-tag-amber">Historical Aircraft</span>
+            </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Time Scale</div>
-            <div class="info-value">60× Accelerated</div>
+        </div>
+        <div class="lp-highlight">
+          <div class="lp-highlight-icon">&#128722;</div>
+          <div>
+            <div class="lp-highlight-title">Aircraft Marketplace</div>
+            <div class="lp-highlight-desc">Browse and purchase from a catalogue of real aircraft types. Sell surplus fleet on the open market or lease aircraft to other airlines for passive income.</div>
+            <div class="lp-highlight-tags">
+              <span class="lp-tag lp-tag-green">Buy &amp; Sell</span>
+              <span class="lp-tag lp-tag-green">Leasing</span>
+              <span class="lp-tag lp-tag-green">Market Pricing</span>
+            </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Network</div>
-            <div class="info-value">VATSIM Integrated</div>
+        </div>
+        <div class="lp-highlight">
+          <div class="lp-highlight-icon">&#127919;</div>
+          <div>
+            <div class="lp-highlight-title">Multiplayer &amp; Singleplayer</div>
+            <div class="lp-highlight-desc">Join public multiplayer worlds and compete head-to-head, or create a private singleplayer world with AI competitors at adjustable difficulty levels.</div>
+            <div class="lp-highlight-tags">
+              <span class="lp-tag">Public Worlds</span>
+              <span class="lp-tag">AI Airlines</span>
+              <span class="lp-tag">Difficulty Levels</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="capabilities">
-      <div class="capability-header">
-        <h2>What You Can Do</h2>
-      </div>
-      <div class="capability-grid">
-        <div class="capability-item">
-          <div class="capability-title">Historical Aircraft Fleet</div>
-          <div class="capability-desc">Operate 200+ aircraft spanning 1920 to present — piston props, jets, widebodies, freighters, and combis. Buy new, acquire used, or lease. Configure cabin classes and cargo allocation before every purchase.</div>
-        </div>
-        <div class="capability-item">
-          <div class="capability-title">Route Network &amp; Scheduling</div>
-          <div class="capability-desc">Build your network across thousands of real-world airports using great-circle routing. Set fares by cabin class, manage demand and load factors, and build flight schedules that maximise aircraft utilisation.</div>
-        </div>
-        <div class="capability-item">
-          <div class="capability-title">Aircraft Marketplace</div>
-          <div class="capability-desc">Browse era-appropriate aircraft with full spec sheets and range maps from your home base. Configure the cabin layout and cargo mix before you commit — no surprises after delivery.</div>
-        </div>
-        <div class="capability-item">
-          <div class="capability-title">Financial Reports</div>
-          <div class="capability-desc">Track weekly profit &amp; loss with revenue breakdowns by cabin class and cargo type. Manage bank loans, monitor overheads, and drill into every line item to keep your airline in the black.</div>
-        </div>
-        <div class="capability-item">
-          <div class="capability-title">Marketing Campaigns</div>
-          <div class="capability-desc">Run advertising across 13 era-gated channels — from 1920s newspaper flyers to social media and influencer campaigns. Combined campaigns boost passenger demand across your entire route network.</div>
-        </div>
-        <div class="capability-item">
-          <div class="capability-title">Maintenance &amp; Compliance</div>
-          <div class="capability-desc">Schedule daily, weekly, A-check, C-check, and D-check maintenance with realistic aircraft downtime and cost tracking. Keep your fleet airworthy or face grounded aircraft and rising unplanned repair bills.</div>
-        </div>
+    <!-- Footer -->
+    <div class="lp-footer">
+      <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
+      <div style="display: flex; align-items: center; gap: 1.25rem;">
+        <a href="/wiki" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Wiki</a>
+        <a href="/contact" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Contact Us</a>
+        <button id="devAccessBtn" onclick="devBypassLogin()" class="lp-footer-dev" style="display: none;">DEV ACCESS</button>
       </div>
     </div>
+  </div>
 
-    <div style="text-align:center;padding:2.5rem 1.5rem 2rem;margin:0 auto;max-width:680px;">
-      <div style="display:inline-block;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.4);border-radius:20px;padding:0.3rem 1rem;font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#10b981;margin-bottom:1.25rem;">Early Access Coming Soon</div>
-      <h2 style="margin:0 0 1rem;font-size:clamp(1.8rem,4vw,2.8rem);font-weight:800;color:var(--text-primary,#f1f5f9);line-height:1.15;">Build Your <span style="color:#3b82f6;">Airline Empire</span></h2>
-      <p style="margin:0;font-size:1rem;color:var(--text-muted,#94a3b8);line-height:1.7;max-width:540px;margin:0 auto;">A deep airline management simulation integrated with the VATSIM flight simulation network. Manage fleets, plan routes, compete with real players, and track live flights across the globe.</p>
-    </div>
-
-    <footer class="login-footer">
-      <div class="footer-content">
-        <span>© 2026 AMS.ceo - Airline Management Sim</span>
-        <span class="footer-divider">|</span>
-        <span>VATSIM Integrated Platform</span>
-        <span class="footer-divider">|</span>
-        <span>v1.0.0</span>
+  <!-- Forgot Password Modal -->
+  <div id="forgotPasswordModal" style="
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+  ">
+    <div style="
+      background: var(--surface-elevated, #1e293b);
+      border: 1px solid var(--border-color, #334155);
+      border-radius: 8px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    ">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <h3 style="margin: 0; color: var(--text-primary, #f1f5f9); font-size: 1.1rem;">Forgot Password</h3>
+        <button onclick="closeForgotModal()" style="
+          background: none;
+          border: none;
+          color: var(--text-secondary, #94a3b8);
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+        ">&times;</button>
       </div>
-    </footer>
+      <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0 0 1.25rem 0; line-height: 1.5;">
+        Enter your email address and we'll send you a link to reset your password.
+      </p>
+      <div id="forgotError" class="lp-error"></div>
+      <div id="forgotSuccess" style="display: none; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(5, 150, 105, 0.15); border: 1px solid rgba(5, 150, 105, 0.4); border-radius: 4px; color: #34d399; font-size: 0.8rem;"></div>
+      <div style="margin-bottom: 1rem;">
+        <input type="email" id="forgotEmail" class="lp-input" placeholder="Email address">
+      </div>
+      <button id="forgotBtn" onclick="requestPasswordReset()" class="lp-btn lp-btn-primary">Send Reset Link</button>
+      <div style="margin-top: 0.75rem; text-align: center;">
+        <a href="#" onclick="closeForgotModal(); return false;" style="font-size: 0.8rem; color: var(--text-secondary); text-decoration: none;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Back to Sign In</a>
+      </div>
+    </div>
   </div>
 
   <!-- Dev Bypass Modal -->
@@ -305,54 +801,12 @@
           <label style="display: block; font-size: 0.85rem; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem;">
             Enter bypass password
           </label>
-          <input
-            type="password"
-            id="devBypassPassword"
-            placeholder="Password"
-            style="
-              width: 100%;
-              padding: 0.75rem;
-              background: var(--surface, #0f172a);
-              border: 1px solid var(--border-color, #334155);
-              border-radius: 4px;
-              color: var(--text-primary, #f1f5f9);
-              font-size: 1rem;
-              box-sizing: border-box;
-            "
-          >
-          <div id="devBypassError" style="
-            display: none;
-            margin-top: 0.5rem;
-            padding: 0.5rem;
-            background: rgba(220, 38, 38, 0.2);
-            border: 1px solid #dc2626;
-            border-radius: 4px;
-            color: #fca5a5;
-            font-size: 0.85rem;
-          "></div>
+          <input type="password" id="devBypassPassword" placeholder="Password" class="lp-input">
+          <div id="devBypassError" class="lp-error" style="margin-top: 0.5rem; margin-bottom: 0;"></div>
         </div>
         <div style="display: flex; gap: 0.75rem;">
-          <button onclick="closeDevBypassModal()" style="
-            flex: 1;
-            padding: 0.75rem;
-            background: var(--surface, #0f172a);
-            border: 1px solid var(--border-color, #334155);
-            border-radius: 4px;
-            color: var(--text-primary, #f1f5f9);
-            font-size: 0.9rem;
-            cursor: pointer;
-          ">Cancel</button>
-          <button onclick="submitDevBypass()" style="
-            flex: 1;
-            padding: 0.75rem;
-            background: var(--warning-color, #d97706);
-            border: 1px solid var(--warning-color, #d97706);
-            border-radius: 4px;
-            color: white;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-          ">Login</button>
+          <button onclick="closeDevBypassModal()" class="lp-btn lp-btn-outline" style="flex: 1;">Cancel</button>
+          <button onclick="submitDevBypass()" class="lp-btn" style="flex: 1; background: var(--warning-color, #d97706); border: 1px solid var(--warning-color, #d97706); color: white;">Login</button>
         </div>
       </div>
 
@@ -366,18 +820,359 @@
           flex-direction: column;
           gap: 0.25rem;
         "></div>
-        <button onclick="devBypassBackToPassword()" style="
-          width: 100%;
-          padding: 0.6rem;
-          background: var(--surface, #0f172a);
-          border: 1px solid var(--border-color, #334155);
-          border-radius: 4px;
-          color: var(--text-secondary, #94a3b8);
-          font-size: 0.85rem;
-          cursor: pointer;
-        ">Back</button>
+        <button onclick="devBypassBackToPassword()" class="lp-btn lp-btn-outline">Back</button>
       </div>
     </div>
   </div>
+
+  <script>
+    // --- Registration captcha ---
+    function generateRegCaptcha() {
+      const num1 = Math.floor(Math.random() * 10) + 1;
+      const num2 = Math.floor(Math.random() * 10) + 1;
+      const operators = ['+', '-', '×'];
+      const opIdx = Math.floor(Math.random() * operators.length);
+      let a = num1, b = num2, answer;
+
+      if (opIdx === 0) { answer = a + b; }
+      else if (opIdx === 1) { if (a < b) { a = num2; b = num1; } answer = a - b; }
+      else { answer = a * b; }
+
+      document.getElementById('regMathProblem').textContent = `${a} ${operators[opIdx]} ${b}`;
+      document.getElementById('regCaptchaExpected').value = answer;
+      document.getElementById('regCaptchaAnswer').value = '';
+    }
+    generateRegCaptcha();
+
+    // --- Auth tab switching ---
+    function switchAuthTab(tab) {
+      const signinView = document.getElementById('signinView');
+      const registerView = document.getElementById('registerView');
+      const tabSignIn = document.getElementById('tabSignIn');
+      const tabRegister = document.getElementById('tabRegister');
+
+      signinView.style.display = 'none';
+      registerView.style.display = 'none';
+      tabSignIn.classList.remove('active');
+      tabRegister.classList.remove('active');
+
+      if (tab === 'signin') {
+        signinView.style.display = '';
+        tabSignIn.classList.add('active');
+      } else if (tab === 'register') {
+        registerView.style.display = '';
+        tabRegister.classList.add('active');
+      }
+    }
+
+    function showForgotPassword() {
+      const modal = document.getElementById('forgotPasswordModal');
+      modal.style.display = 'flex';
+      document.getElementById('forgotError').style.display = 'none';
+      document.getElementById('forgotSuccess').style.display = 'none';
+      const btn = document.getElementById('forgotBtn');
+      btn.disabled = false;
+      btn.textContent = 'Send Reset Link';
+      document.getElementById('forgotEmail').value = '';
+      document.getElementById('forgotEmail').focus();
+    }
+
+    function closeForgotModal() {
+      document.getElementById('forgotPasswordModal').style.display = 'none';
+    }
+
+    async function requestPasswordReset() {
+      const email = document.getElementById('forgotEmail').value.trim();
+      const errorDiv = document.getElementById('forgotError');
+      const successDiv = document.getElementById('forgotSuccess');
+      const btn = document.getElementById('forgotBtn');
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+
+      if (!email) {
+        errorDiv.textContent = 'Please enter your email address';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const resp = await fetch('/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          successDiv.textContent = data.message || 'If an account with that email exists, a reset link has been sent.';
+          successDiv.style.display = 'block';
+          btn.textContent = 'Sent!';
+        } else {
+          errorDiv.textContent = data.error || 'Something went wrong';
+          errorDiv.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Send Reset Link';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send Reset Link';
+      }
+    }
+
+    // --- Local login ---
+    function localLogin() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('signinError');
+      errorDiv.style.display = 'none';
+
+      if (!email || !password) {
+        errorDiv.textContent = 'Email and password are required';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      fetch('/auth/local-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else {
+            errorDiv.textContent = data.error || 'Login failed';
+            errorDiv.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Login failed: ' + err.message;
+          errorDiv.style.display = 'block';
+        });
+    }
+
+    // --- Local registration ---
+    function localRegister() {
+      const firstName = document.getElementById('regFirstName').value.trim();
+      const lastName = document.getElementById('regLastName').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirmPassword = document.getElementById('regConfirmPassword').value;
+      const errorDiv = document.getElementById('registerError');
+      errorDiv.style.display = 'none';
+
+      if (!firstName || !lastName || !email || !password) {
+        errorDiv.textContent = 'All fields are required';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (password.length < 6) {
+        errorDiv.textContent = 'Password must be at least 6 characters';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (password !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      const captchaAnswer = document.getElementById('regCaptchaAnswer').value.trim();
+      const captchaExpected = document.getElementById('regCaptchaExpected').value;
+      if (!captchaAnswer) {
+        errorDiv.textContent = 'Please solve the math problem to verify you\'re human';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (captchaAnswer !== captchaExpected) {
+        errorDiv.textContent = 'Incorrect answer. Please try again.';
+        errorDiv.style.display = 'block';
+        generateRegCaptcha();
+        return;
+      }
+
+      fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, email, password, captcha: captchaAnswer, captchaExpected })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else {
+            errorDiv.textContent = data.error || 'Registration failed';
+            errorDiv.style.display = 'block';
+            generateRegCaptcha();
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Registration failed: ' + err.message;
+          errorDiv.style.display = 'block';
+          generateRegCaptcha();
+        });
+    }
+
+    // --- Dev bypass ---
+    fetch('/auth/bypass-enabled')
+      .then(res => res.json())
+      .then(data => {
+        if (data.enabled) {
+          document.getElementById('devAccessBtn').style.display = '';
+        }
+      })
+      .catch(() => {});
+
+    let devBypassStoredPassword = '';
+
+    function devBypassLogin() {
+      document.getElementById('devBypassModal').style.display = 'flex';
+      document.getElementById('devBypassPassword').value = '';
+      document.getElementById('devBypassError').style.display = 'none';
+      document.getElementById('devBypassPasswordView').style.display = '';
+      document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
+      document.getElementById('devBypassPassword').focus();
+    }
+
+    function closeDevBypassModal() {
+      document.getElementById('devBypassModal').style.display = 'none';
+      devBypassStoredPassword = '';
+    }
+
+    function devBypassBackToPassword() {
+      document.getElementById('devBypassPasswordView').style.display = '';
+      document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
+    }
+
+    function submitDevBypass() {
+      const password = document.getElementById('devBypassPassword').value;
+      const errorDiv = document.getElementById('devBypassError');
+
+      if (!password) {
+        errorDiv.textContent = 'Please enter a password';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      errorDiv.style.display = 'none';
+      fetch('/auth/dev-bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bypassPassword: password })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.authenticated && data.users) {
+            devBypassStoredPassword = password;
+            showUserSelection(data.users);
+          } else if (data.error) {
+            errorDiv.textContent = data.error;
+            errorDiv.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Bypass login failed: ' + err.message;
+          errorDiv.style.display = 'block';
+        });
+    }
+
+    function showUserSelection(users) {
+      document.getElementById('devBypassPasswordView').style.display = 'none';
+      document.getElementById('devBypassUserView').style.display = '';
+      document.getElementById('devBypassTitle').textContent = 'Select User';
+
+      const list = document.getElementById('devBypassUserList');
+      const itemStyle = `
+        padding: 0.6rem 0.75rem;
+        background: var(--surface, #0f172a);
+        border: 1px solid var(--border-color, #334155);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `;
+
+      let html = `<div onclick="selectDevUser('new')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--warning-color, #d97706)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
+        <div>
+          <div style="color: var(--warning-color, #d97706); font-weight: 600; font-size: 0.9rem;">+ New Dev User</div>
+          <div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">Creates default admin account</div>
+        </div>
+      </div>`;
+
+      users.forEach(u => {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
+        const badge = u.isAdmin ? '<span style="background: var(--warning-color, #d97706); color: white; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; margin-left: 0.5rem;">ADMIN</span>' : '';
+        const email = u.email ? `<div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">${u.email}</div>` : '';
+        html += `<div onclick="selectDevUser('${u.id}')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
+          <div>
+            <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}</div>
+            ${email}
+          </div>
+          <div style="color: var(--text-muted, #64748b); font-size: 0.7rem; font-family: monospace;">${u.vatsimId && u.vatsimId.startsWith('LOCAL-') ? 'Non-VATSIM' : (u.vatsimId || '')}</div>
+        </div>`;
+      });
+
+      list.innerHTML = html;
+    }
+
+    function selectDevUser(userId) {
+      fetch('/auth/dev-bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bypassPassword: devBypassStoredPassword, userId })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          }
+        })
+        .catch(err => {
+          console.error('User selection failed:', err);
+        });
+    }
+
+    // --- Enter key handlers ---
+    document.addEventListener('DOMContentLoaded', () => {
+      const pwdInput = document.getElementById('devBypassPassword');
+      if (pwdInput) {
+        pwdInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') submitDevBypass();
+        });
+      }
+      ['loginEmail', 'loginPassword'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keypress', (e) => { if (e.key === 'Enter') localLogin(); });
+      });
+      ['regFirstName', 'regLastName', 'regEmail', 'regPassword', 'regConfirmPassword', 'regCaptchaAnswer'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keypress', (e) => { if (e.key === 'Enter') localRegister(); });
+      });
+      const forgotEl = document.getElementById('forgotEmail');
+      if (forgotEl) forgotEl.addEventListener('keypress', (e) => { if (e.key === 'Enter') requestPasswordReset(); });
+
+      // Close forgot modal on click outside or Escape
+      const forgotModal = document.getElementById('forgotPasswordModal');
+      if (forgotModal) {
+        forgotModal.addEventListener('click', (e) => { if (e.target === forgotModal) closeForgotModal(); });
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          if (forgotModal && forgotModal.style.display === 'flex') closeForgotModal();
+          const devModal = document.getElementById('devBypassModal');
+          if (devModal && devModal.style.display === 'flex') closeDevBypassModal();
+        }
+      });
+    });
+  </script>
 </body>
 </html>

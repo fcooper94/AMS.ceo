@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
-const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, RecurringMaintenance } = require('../models');
+const bcrypt = require('bcryptjs');
+const { sendEmail } = require('../utils/mailer');
+const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, MarketingCampaign, RecurringMaintenance } = require('../models');
 const airportCacheService = require('../services/airportCacheService');
 const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
 
@@ -16,7 +19,7 @@ router.get('/users', async (req, res) => {
     }
 
     const users = await User.findAll({
-      attributes: ['id', 'vatsimId', 'firstName', 'lastName', 'email', 'credits', 'isAdmin', 'isContributor', 'unlimitedCredits', 'lastLogin'],
+      attributes: ['id', 'vatsimId', 'firstName', 'lastName', 'email', 'credits', 'isAdmin', 'isContributor', 'unlimitedCredits', 'lastLogin', 'authMethod'],
       order: [['lastName', 'ASC'], ['firstName', 'ASC']]
     });
 
@@ -180,6 +183,212 @@ router.post('/users/:userId/permissions', async (req, res) => {
       console.error('Error updating permissions:', error);
     }
     res.status(500).json({ error: 'Failed to update permissions' });
+  }
+});
+
+/**
+ * Set VATSIM CID for a local (non-VATSIM) user
+ */
+router.post('/users/:userId/set-cid', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { userId } = req.params;
+    const { vatsimId } = req.body;
+
+    if (!vatsimId || !/^\d+$/.test(vatsimId.toString().trim())) {
+      return res.status(400).json({ error: 'CID must be a numeric value' });
+    }
+
+    const cidStr = vatsimId.toString().trim();
+
+    // Check uniqueness
+    const existing = await User.findOne({ where: { vatsimId: cidStr } });
+    if (existing) {
+      return res.status(409).json({ error: 'This CID is already assigned to another user' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.vatsimId = cidStr;
+    user.authMethod = 'vatsim';
+    user.passwordHash = null;
+    await user.save();
+
+    res.json({ message: 'CID updated successfully', vatsimId: cidStr });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error setting CID:', error);
+    }
+    res.status(500).json({ error: 'Failed to set CID' });
+  }
+});
+
+/**
+ * Send password reset email to a local user
+ */
+router.post('/users/:userId/send-password-reset', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { userId } = req.params;
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.authMethod !== 'local') {
+      return res.status(400).json({ error: 'Password reset is only for local accounts' });
+    }
+
+    if (!user.email) {
+      return res.status(400).json({ error: 'User has no email address' });
+    }
+
+    // Generate token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    user.resetToken = token;
+    user.resetTokenExpiry = expiry;
+    await user.save();
+
+    // Build reset URL
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const resetUrl = `${baseUrl}/reset-password.html?token=${token}`;
+
+    // Send email
+    const sent = await sendEmail({
+      to: user.email,
+      subject: 'AMS.ceo - Password Reset',
+      html: `
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #0d1117; margin: 0; padding: 0;">
+          <tr><td align="center" style="padding: 2rem 1rem;">
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #161b22; color: #c9d1d9; padding: 2rem; border-radius: 8px; border: 1px solid #21262d;">
+              <div style="text-align: center; margin-bottom: 1.5rem;">
+                <span style="font-size: 1.5rem; font-weight: 700; color: #fff;">AMS<span style="color: #93c5fd; font-size: 0.65em;">.ceo</span></span>
+              </div>
+              <h2 style="color: #fff; margin-bottom: 0.5rem;">Password Reset</h2>
+              <p>Hi ${user.firstName},</p>
+              <p>A password reset was requested for your AMS.ceo account. Click the button below to set a new password:</p>
+              <div style="text-align: center; margin: 1.5rem 0;">
+                <a href="${resetUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 0.75rem 2rem; border-radius: 6px; text-decoration: none; font-weight: 600;">Reset Password</a>
+              </div>
+              <p style="font-size: 0.85rem; color: #8b949e;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+              <hr style="border: none; border-top: 1px solid #21262d; margin: 1.5rem 0;">
+              <p style="font-size: 0.75rem; color: #8b949e; text-align: center;">AMS.ceo - Airline Management Sim</p>
+            </div>
+          </td></tr>
+        </table>
+      `,
+      text: `Hi ${user.firstName},\n\nA password reset was requested for your AMS.ceo account.\n\nReset your password: ${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can safely ignore this email.\n\nAMS.ceo - Airline Management Sim`
+    });
+
+    if (!sent) {
+      return res.json({ message: 'Reset link generated (email not configured). Check server console.' });
+    }
+
+    res.json({ message: `Password reset email sent to ${user.email}` });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error sending password reset:', error);
+    }
+    res.status(500).json({ error: 'Failed to send password reset email' });
+  }
+});
+
+/**
+ * Delete user and all associated data
+ */
+router.delete('/users/:userId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { userId } = req.params;
+
+    // Prevent self-deletion
+    if (req.user.id === userId) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await sequelize.transaction(async (t) => {
+      await sequelize.query(`SET session_replication_role = 'replica'`, { transaction: t });
+
+      // Find all memberships for this user
+      const [mRows] = await sequelize.query(
+        `SELECT id FROM world_memberships WHERE user_id = :userId`,
+        { replacements: { userId }, transaction: t }
+      );
+
+      if (mRows.length > 0) {
+        const mIds = mRows.map(r => r.id);
+
+        const [rRows] = await sequelize.query(
+          `SELECT id FROM routes WHERE world_membership_id IN (:mIds)`,
+          { replacements: { mIds }, transaction: t }
+        );
+        const rIds = rRows.map(r => r.id);
+
+        const [aRows] = await sequelize.query(
+          `SELECT id FROM user_aircraft WHERE world_membership_id IN (:mIds)`,
+          { replacements: { mIds }, transaction: t }
+        );
+        const aIds = aRows.map(r => r.id);
+
+        if (rIds.length > 0) {
+          await sequelize.query(`DELETE FROM scheduled_flights WHERE route_id IN (:rIds)`, { replacements: { rIds }, transaction: t });
+        }
+        if (aIds.length > 0) {
+          await sequelize.query(`DELETE FROM scheduled_flights WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+          await sequelize.query(`DELETE FROM recurring_maintenance WHERE aircraft_id IN (:aIds)`, { replacements: { aIds }, transaction: t });
+        }
+        await sequelize.query(`DELETE FROM routes WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM user_aircraft WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM pricing_defaults WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM weekly_financials WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM loans WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM notifications WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM airspace_restrictions WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM marketing_campaigns WHERE world_membership_id IN (:mIds)`, { replacements: { mIds }, transaction: t });
+        await sequelize.query(`DELETE FROM world_memberships WHERE user_id = :userId`, { replacements: { userId }, transaction: t });
+      }
+
+      // Handle single-player worlds owned by this user
+      const [ownedWorlds] = await sequelize.query(
+        `SELECT id FROM worlds WHERE owner_user_id = :userId`,
+        { replacements: { userId }, transaction: t }
+      );
+      for (const w of ownedWorlds) {
+        await sequelize.query(`UPDATE worlds SET owner_user_id = NULL WHERE id = :wId`, { replacements: { wId: w.id }, transaction: t });
+      }
+
+      // Delete user
+      await sequelize.query(`DELETE FROM users WHERE id = :userId`, { replacements: { userId }, transaction: t });
+
+      await sequelize.query(`SET session_replication_role = 'origin'`, { transaction: t });
+    });
+
+    res.json({ message: `User ${user.firstName} ${user.lastName} deleted successfully` });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error deleting user:', error);
+    }
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 

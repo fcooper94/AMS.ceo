@@ -353,14 +353,20 @@
 <body>
   <div class="cs-page">
     <!-- Header -->
-    <div class="login-header">
-      <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
-        <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
-        <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
-          <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
-          <div class="brand-subtitle" style="margin: 0;">Expand &#9670; Explore &#9670; Evolve</div>
+    <div class="login-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <a href="/" style="text-decoration: none;">
+        <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
+          <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
+          <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
+            <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
+            <div class="brand-subtitle" style="margin: 0;">Expand &#9670; Explore &#9670; Evolve</div>
+          </div>
         </div>
-      </div>
+      </a>
+      <nav style="display: flex; align-items: center; gap: 1.5rem;">
+        <a href="/wiki" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Wiki</a>
+        <a href="/contact" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Contact</a>
+      </nav>
     </div>
 
     <!-- Hero -->
@@ -377,7 +383,7 @@
           <div class="cs-stat-label">Real Airports</div>
         </div>
         <div class="cs-stat">
-          <div class="cs-stat-value">50+</div>
+          <div class="cs-stat-value">250+</div>
           <div class="cs-stat-label">Aircraft Types</div>
         </div>
         <div class="cs-stat">
@@ -385,7 +391,7 @@
           <div class="cs-stat-label">VATSIM Tracking</div>
         </div>
         <div class="cs-stat">
-          <div class="cs-stat-value">1961+</div>
+          <div class="cs-stat-value">1950+</div>
           <div class="cs-stat-label">Era Simulation</div>
         </div>
       </div>
@@ -454,7 +460,7 @@
           <div class="cs-highlight-icon">&#128337;</div>
           <div>
             <div class="cs-highlight-title">Era-Based Worlds</div>
-            <div class="cs-highlight-desc">Start your airline from 1961 or any era. Aircraft availability, economics, airport access, and ticket prices all scale with the time period. Watch aviation history unfold.</div>
+            <div class="cs-highlight-desc">Start your airline from 1950 or any era. Aircraft availability, economics, airport access, and ticket prices all scale with the time period. Watch aviation history unfold.</div>
             <div class="cs-highlight-tags">
               <span class="cs-tag-amber cs-tag">Time Acceleration</span>
               <span class="cs-tag-amber cs-tag">Dynamic Economy</span>
@@ -507,16 +513,11 @@
     <!-- Footer -->
     <div class="cs-footer">
       <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
-      <button onclick="devBypassLogin()" style="
-        background: none;
-        border: 1px solid var(--border-color);
-        color: var(--text-muted);
-        font-size: 0.7rem;
-        padding: 0.3rem 0.6rem;
-        border-radius: 3px;
-        cursor: pointer;
-        letter-spacing: 0.5px;
-      ">DEV ACCESS</button>
+      <div style="display: flex; align-items: center; gap: 1.25rem;">
+        <a href="/wiki" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Wiki</a>
+        <a href="/contact" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Contact Us</a>
+        <button onclick="devBypassLogin()" style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.7rem; padding: 0.3rem 0.6rem; border-radius: 3px; cursor: pointer; letter-spacing: 0.5px;">DEV ACCESS</button>
+      </div>
     </div>
   </div>
 

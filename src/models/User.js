@@ -78,6 +78,31 @@ const User = sequelize.define('User', {
     allowNull: false,
     field: 'unlimited_credits',
     comment: 'Whether user has unlimited credits (no deductions)'
+  },
+  passwordHash: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'password_hash',
+    comment: 'Bcrypt hash for local (non-VATSIM) accounts'
+  },
+  authMethod: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'vatsim',
+    field: 'auth_method',
+    comment: 'Authentication method: vatsim or local'
+  },
+  resetToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'reset_token',
+    comment: 'Password reset token'
+  },
+  resetTokenExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'reset_token_expiry',
+    comment: 'Password reset token expiration'
   }
 }, {
   tableName: 'users',

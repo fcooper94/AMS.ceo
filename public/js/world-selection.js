@@ -257,12 +257,14 @@ async function loadWorlds() {
     // Fetch user credits to determine if join buttons should be enabled
     let userCredits = 0;
     let userUnlimited = false;
+    let userName = '';
     try {
       const authResponse = await fetch('/auth/status');
       const authData = await authResponse.json();
       if (authData.authenticated && authData.user) {
         userCredits = authData.user.credits !== undefined ? authData.user.credits : 0;
         userUnlimited = !!authData.user.unlimitedCredits;
+        userName = authData.user.name || '';
       }
     } catch (e) {
       console.error('Error fetching user credits for world cards:', e);
@@ -276,6 +278,17 @@ async function loadWorlds() {
       console.error('Invalid response format:', worlds);
       spList.innerHTML = '<div class="empty-message">Error loading worlds. Please refresh the page.</div>';
       return;
+    }
+
+    // Show welcome banner for first-time users (no world memberships)
+    const hasAnyMembership = worlds.some(w => w.isMember);
+    const welcomeBanner = document.getElementById('welcomeBanner');
+    if (welcomeBanner && !hasAnyMembership && !sessionStorage.getItem('welcomeDismissed')) {
+      welcomeBanner.style.display = 'block';
+      const nameEl = document.getElementById('welcomeName');
+      if (nameEl && userName) {
+        nameEl.textContent = userName.split(' ')[0];
+      }
     }
 
     // Split by world type
@@ -2044,6 +2057,19 @@ async function createSinglePlayerWorld() {
     errorDiv.textContent = 'Network error. Please try again.';
     errorDiv.style.display = 'block';
   }
+}
+
+// Dismiss welcome banner
+function dismissWelcome() {
+  const banner = document.getElementById('welcomeBanner');
+  if (banner) {
+    banner.style.transition = 'opacity 0.3s, margin 0.3s';
+    banner.style.opacity = '0';
+    banner.style.marginBottom = '0';
+    banner.style.overflow = 'hidden';
+    setTimeout(() => { banner.style.display = 'none'; }, 300);
+  }
+  sessionStorage.setItem('welcomeDismissed', '1');
 }
 
 // Initialize

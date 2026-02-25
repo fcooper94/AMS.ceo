@@ -923,18 +923,33 @@ router.get('/global-stats', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Count all aircraft, routes, and airlines across all active worlds
-    const [totalAircraft, totalRoutes, totalAirlines] = await Promise.all([
-      UserAircraft.count({
-        where: { status: { [Op.notIn]: ['sold'] } }
-      }),
-      Route.count({
-        where: { isActive: true }
-      }),
-      WorldMembership.count()
-    ]);
+    // Only count records from active worlds
+    const activeWorldIds = (await World.findAll({
+      attributes: ['id'],
+      where: { isActive: true }
+    })).map(w => w.id);
 
-    res.json({ totalAircraft, totalRoutes, totalAirlines });
+    if (activeWorldIds.length === 0) {
+      return res.json({ totalAircraft: 0, totalRoutes: 0, totalAirlines: 0 });
+    }
+
+    const activeMembershipIds = (await WorldMembership.findAll({
+      attributes: ['id'],
+      where: { worldId: { [Op.in]: activeWorldIds } }
+    })).map(m => m.id);
+
+    const [totalAircraft, totalRoutes] = activeMembershipIds.length > 0
+      ? await Promise.all([
+          UserAircraft.count({
+            where: { worldMembershipId: { [Op.in]: activeMembershipIds }, status: { [Op.notIn]: ['sold'] } }
+          }),
+          Route.count({
+            where: { worldMembershipId: { [Op.in]: activeMembershipIds }, isActive: true }
+          })
+        ])
+      : [0, 0];
+
+    res.json({ totalAircraft, totalRoutes, totalAirlines: activeMembershipIds.length });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Error fetching global stats:', error);

@@ -184,7 +184,7 @@ async function renderPage(pagePath, requestPath) {
   try {
     // Determine which sidebar to use based on the request path
     // Use simplified sidebar for admin, world selection, and public pages
-    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/faqs', '/credits'];
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki'];
     const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
@@ -514,13 +514,17 @@ app.get('/contact', async (req, res) => {
   }
 });
 
-app.get('/faqs', async (req, res) => {
+app.get('/wiki', async (req, res) => {
   try {
-    const html = await renderPage(path.join(__dirname, '../public/faqs.html'), '/faqs');
+    const html = await renderPage(path.join(__dirname, '../public/wiki.html'), '/wiki');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
   }
+});
+
+app.get('/reset-password', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/reset-password.html'));
 });
 
 // Error handling middleware

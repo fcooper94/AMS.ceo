@@ -6,6 +6,23 @@
   overflow: hidden;
 }
 
+.no-transition .main-content,
+.no-transition .world-ending-banner,
+.no-transition .free-period-banner,
+.no-transition .low-credits-banner {
+  transition: none !important;
+}
+
+/* Page fade-in on load */
+@keyframes pageFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+#pageContent {
+  animation: pageFadeIn 0.2s ease-out;
+}
+
 /* Custom Scrollbar Styles */
 ::-webkit-scrollbar {
   width: 8px;

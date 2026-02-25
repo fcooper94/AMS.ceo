@@ -1,36 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
-
-// Create transporter - uses environment variables for configuration
-const createTransporter = () => {
-  // For production, use a real SMTP service (Gmail, SendGrid, etc.)
-  // For now, we'll support multiple configurations
-
-  if (process.env.SMTP_HOST) {
-    // Custom SMTP configuration
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
-  } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    // Gmail configuration (requires App Password, not regular password)
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
-    });
-  }
-
-  return null;
-};
+const { sendEmail, getTransporter, getFrom } = require('../utils/mailer');
 
 /**
  * POST /api/contact
@@ -61,7 +31,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email address' });
     }
 
-    const transporter = createTransporter();
+    const transporter = getTransporter();
 
     if (!transporter) {
       // Log the message if no email configuration (development fallback)
@@ -84,7 +54,7 @@ router.post('/', async (req, res) => {
 
     // Email to site owner
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.GMAIL_USER || 'noreply@airlinemanager.com',
+      from: getFrom(),
       to: 'support@ams.ceo',
       replyTo: email,
       subject: `[Airline Manager Contact] ${subject}`,

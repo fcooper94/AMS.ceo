@@ -9,7 +9,7 @@ const routeDemandService = require('../services/routeDemandService');
 const routeIndicatorService = require('../services/routeIndicatorService');
 const airportCargoService = require('../services/airportCargoService');
 const { Op } = require('sequelize');
-const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification, WeeklyFinancial, Loan } = require('../models');
+const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification, WeeklyFinancial, Loan, AirspaceRestriction, MarketingCampaign } = require('../models');
 
 /**
  * Get current world information (from session)
@@ -893,6 +893,18 @@ router.post('/bankruptcy', async (req, res) => {
 
     // 7c. Delete loans
     await Loan.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 7d. Delete airspace restrictions
+    await AirspaceRestriction.destroy({
+      where: { worldMembershipId: membership.id },
+      transaction
+    });
+
+    // 7e. Delete marketing campaigns
+    await MarketingCampaign.destroy({
       where: { worldMembershipId: membership.id },
       transaction
     });
