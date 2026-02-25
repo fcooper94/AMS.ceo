@@ -926,7 +926,7 @@ router.get('/global-stats', async (req, res) => {
     // Only count records from active worlds
     const activeWorldIds = (await World.findAll({
       attributes: ['id'],
-      where: { isActive: true }
+      where: { status: 'active' }
     })).map(w => w.id);
 
     if (activeWorldIds.length === 0) {
