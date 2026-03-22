@@ -46,7 +46,7 @@ const CLASS_COLORS = {
 };
 
 // Fuselage visual widths per aircraft type
-const FUSELAGE_WIDTHS = { Regional: 220, Narrowbody: 280, Widebody: 400 };
+const FUSELAGE_WIDTHS = { Regional: 160, Narrowbody: 280, Widebody: 400 };
 
 // Era year — set from the host page via setCabinEraYear().
 // Classes not yet invented are rendered as locked/greyed cards.
@@ -85,10 +85,11 @@ const WIDEBODY_OVERRIDES = [
 const ROW_HEIGHTS = { economy: 14, economyPlus: 17, business: 22, first: 32 };
 const ROW_GAP = 3;
 
-/** Calculate default / min / max toilet counts for an aircraft (always even — pairs).
+/** Calculate default / min / max toilet counts for an aircraft.
  *  Scales realistically with aircraft size:
- *    ≤12 seats  → 0  (tiny regional, no lav needed)
- *    13–100     → 2  (1 pair: small turboprop / regional jet)
+ *    ≤19 seats  → 0  (tiny regional, no lav needed)
+ *    20–45      → 1  (single toilet + small galley, compact)
+ *    46–100     → 2  (1 pair: regional jet / small narrowbody)
  *    101–200    → 4  (2 pairs: narrowbody)
  *    201–350    → 6  (3 pairs: small widebody, e.g. 767/A330)
  *    351–500    → 8  (4 pairs: large widebody, e.g. 747/777)
@@ -96,7 +97,8 @@ const ROW_GAP = 3;
  */
 function _toiletDefaults(passengerCapacity) {
   let def, min;
-  if      (passengerCapacity <= 12)  { def = 0;  min = 0; }
+  if      (passengerCapacity <= 19)  { def = 0;  min = 0; }
+  else if (passengerCapacity <= 45)  { def = 1;  min = 0; }
   else if (passengerCapacity <= 100) { def = 2;  min = 0; }
   else if (passengerCapacity <= 200) { def = 4;  min = 2; }
   else if (passengerCapacity <= 350) { def = 6;  min = 4; }
@@ -130,14 +132,18 @@ function _renderSeat(x, y, w, h, fillColor, borderColor, isEmpty) {
   return s;
 }
 
-/** Render a single toilet cubicle with male/female restroom icon */
-function _renderToiletCubicle(x, y, w, h) {
+/** Render a single toilet cubicle with male/female restroom icon
+ * @param {boolean} rotateIcon - if true, rotate icon 90° so figures stand upright in landscape
+ */
+function _renderToiletCubicle(x, y, w, h, rotateIcon) {
   let s = '';
   // Cubicle room with walls
   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2"
           fill="rgba(100,116,139,0.15)" stroke="rgba(100,116,139,0.4)" stroke-width="0.6"/>`;
   const cx = x + w / 2, cy = y + h / 2;
   const sc = Math.min(w, h) / 40;
+  // Wrap icon in rotation group to stand upright in landscape mode
+  if (rotateIcon) s += `<g transform="rotate(90,${cx},${cy})">`;
   // Male/female restroom icon (centered in cubicle)
   const figH = 14 * sc;   // total figure height
   const gap = 2 * sc;     // gap between figures
@@ -181,39 +187,26 @@ function _renderToiletCubicle(x, y, w, h) {
           stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
   s += `<line x1="${fx + 1*sc}" y1="${my + figH * 0.75}" x2="${fx + 1.5*sc}" y2="${my + figH}"
           stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  if (rotateIcon) s += `</g>`;
   return s;
 }
 
-/** Render an exit door marker on the fuselage wall with EXIT label and arrow */
-function _renderExitDoor(x, y, isLeft, fW, fuseLeft, fuseRight, textRotate) {
+/** Render an exit door marker on the fuselage wall with EXIT label inside
+ * @param {function|null} trFn - landscape text rotation function: (x,y) => transform attr string
+ */
+function _renderExitDoor(x, y, isLeft, fW, fuseLeft, fuseRight, trFn) {
   let s = '';
-  const doorW = 8;
-  const doorH = 14;
-  const _tt = textRotate || '';
-  if (isLeft) {
-    const dx = fuseLeft - 2;
-    // Door opening
-    s += `<rect x="${dx}" y="${y}" width="${doorW}" height="${doorH}" rx="1.5"
-            fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.5)" stroke-width="0.7"/>`;
-    // Arrow pointing outward (left)
-    s += `<path d="M${dx + doorW - 2},${y + doorH/2 - 2} L${dx + 2},${y + doorH/2} L${dx + doorW - 2},${y + doorH/2 + 2}"
-            fill="none" stroke="rgba(239,68,68,0.7)" stroke-width="0.6"/>`;
-    // EXIT label
-    const _tx = dx + doorW + 2, _ty = y + doorH/2 + 1.5;
-    s += `<text x="${_tx}" y="${_ty}" fill="rgba(239,68,68,0.6)" font-size="4" font-weight="700"
-            font-family="system-ui,sans-serif" letter-spacing="0.5"${_tt}>EXIT</text>`;
-  } else {
-    const dx = fuseRight - doorW + 2;
-    s += `<rect x="${dx}" y="${y}" width="${doorW}" height="${doorH}" rx="1.5"
-            fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.5)" stroke-width="0.7"/>`;
-    // Arrow pointing outward (right)
-    s += `<path d="M${dx + 2},${y + doorH/2 - 2} L${dx + doorW - 2},${y + doorH/2} L${dx + 2},${y + doorH/2 + 2}"
-            fill="none" stroke="rgba(239,68,68,0.7)" stroke-width="0.6"/>`;
-    // EXIT label
-    const _tx = dx - 3, _ty = y + doorH/2 + 1.5;
-    s += `<text x="${_tx}" y="${_ty}" text-anchor="end" fill="rgba(239,68,68,0.6)" font-size="4" font-weight="700"
-            font-family="system-ui,sans-serif" letter-spacing="0.5"${_tt}>EXIT</text>`;
-  }
+  const doorW = 16;
+  const doorH = 28;
+  const dx = isLeft ? (fuseLeft - 6) : (fuseRight - doorW + 6);
+  // Door rectangle
+  s += `<rect x="${dx}" y="${y}" width="${doorW}" height="${doorH}" rx="2.5"
+          fill="rgba(239,68,68,0.20)" stroke="rgba(239,68,68,0.65)" stroke-width="1.2"/>`;
+  // EXIT label centered inside the door
+  const _tx = dx + doorW / 2, _ty = y + doorH / 2;
+  const _tt = trFn ? trFn(_tx, _ty) : '';
+  s += `<text x="${_tx}" y="${_ty}" text-anchor="middle" dominant-baseline="central" fill="rgba(239,68,68,0.85)" font-size="6" font-weight="800"
+          font-family="system-ui,sans-serif" letter-spacing="0.8"${_tt}>EXIT</text>`;
   return s;
 }
 
@@ -222,7 +215,7 @@ function _renderExitDoor(x, y, isLeft, fW, fuseLeft, fuseRight, textRotate) {
  * Real aircraft have toilets built into the galley/service zones near doors.
  * @param {number} toiletCount - number of toilet cubicles to show (0 = galley only)
  */
-function _renderServiceArea(x, y, width, height, toiletCount, textTransform) {
+function _renderServiceArea(x, y, width, height, toiletCount, textTransform, isLandscape) {
   const _tt = textTransform || '';
   let s = '';
   // Service area background
@@ -254,11 +247,11 @@ function _renderServiceArea(x, y, width, height, toiletCount, textTransform) {
 
     // Left toilet cubicle
     if (toiletCount >= 1) {
-      s += _renderToiletCubicle(x + pad, innerY, cubW, innerH);
+      s += _renderToiletCubicle(x + pad, innerY, cubW, innerH, isLandscape);
     }
     // Right toilet cubicle
     if (toiletCount >= 2) {
-      s += _renderToiletCubicle(x + width - pad - cubW, innerY, cubW, innerH);
+      s += _renderToiletCubicle(x + width - pad - cubW, innerY, cubW, innerH, isLandscape);
     }
 
     // Center galley section between the toilets
@@ -286,6 +279,39 @@ function _renderServiceArea(x, y, width, height, toiletCount, textTransform) {
               letter-spacing="1"${_tt}>GALLEY</text>`;
     }
   }
+  return s;
+}
+
+/** Render a compact service area for small aircraft: 1 toilet on one side, small galley on the other */
+function _renderCompactServiceArea(x, y, width, height, textTransform, isLandscape) {
+  const _tt = textTransform || '';
+  let s = '';
+  // Background
+  s += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="3"
+          fill="rgba(100,116,139,0.10)" stroke="rgba(100,116,139,0.3)" stroke-width="0.6"/>`;
+  const pad = 3;
+  const innerH = height - pad * 2;
+  const innerY = y + pad;
+  const halfW = (width - pad * 2 - 2) / 2;
+  // Left side: small galley (cart bays)
+  const galleyX = x + pad;
+  s += `<rect x="${galleyX}" y="${innerY}" width="${halfW}" height="${innerH}" rx="1.5"
+          fill="rgba(148,163,184,0.07)" stroke="rgba(148,163,184,0.2)" stroke-width="0.3"/>`;
+  // Cart handle lines
+  const cartH = (innerH - 3) / 2;
+  s += `<rect x="${galleyX + 2}" y="${innerY + 1}" width="${halfW - 4}" height="${cartH}" rx="1"
+          fill="rgba(148,163,184,0.06)" stroke="rgba(148,163,184,0.15)" stroke-width="0.3"/>`;
+  s += `<rect x="${galleyX + 2}" y="${innerY + cartH + 2}" width="${halfW - 4}" height="${cartH}" rx="1"
+          fill="rgba(148,163,184,0.06)" stroke="rgba(148,163,184,0.15)" stroke-width="0.3"/>`;
+  const _glx = galleyX + halfW / 2, _gly = y + height / 2 + 1.5;
+  s += `<text x="${_glx}" y="${_gly}" text-anchor="middle" fill="rgba(148,163,184,0.3)" font-size="4" font-weight="700"
+          font-family="system-ui, sans-serif" letter-spacing="0.8"${_tt}>GALLEY</text>`;
+  // Divider
+  const divX = x + pad + halfW + 1;
+  s += `<line x1="${divX}" y1="${y}" x2="${divX}" y2="${y + height}" stroke="rgba(100,116,139,0.15)" stroke-width="0.3"/>`;
+  // Right side: single toilet cubicle
+  const toiletX = x + pad + halfW + 2;
+  s += _renderToiletCubicle(toiletX, innerY, halfW, innerH, isLandscape);
   return s;
 }
 
@@ -354,25 +380,30 @@ function seatsPerRow(aircraftType, cabinClass) {
 function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null) {
   if (!deckLayout) return '';
 
-  const aisleWidth = 20;
-  const seatGap = 2;
   const fW = fWidth;
+  const isSmallAircraft = fW <= 180;
+  const aisleWidth = isSmallAircraft ? 14 : 20;
+  const seatGap = 2;
 
-  // Fuselage wall positions (0.10–0.90)
-  const fuseLeft = fW * 0.10;
-  const fuseRight = fW * 0.90;
-  const bodyPad = 6;
+  // Fuselage wall positions — tighter for small aircraft
+  const wallInset = isSmallAircraft ? 0.06 : 0.10;
+  const fuseLeft = fW * wallInset;
+  const fuseRight = fW * (1 - wallInset);
+  const bodyPad = isSmallAircraft ? 2 : 6;
   const seatLeft = fuseLeft + bodyPad;
   const seatRight = fuseRight - bodyPad;
   const seatWidth = seatRight - seatLeft;
 
-  // Toilet distribution: front pair in front service area, back pair in rear service area,
+  // Toilet distribution: handles odd counts (1 = compact single toilet at rear)
+  // front pair in front service area, back pair in rear service area,
   // extra pairs as mid-cabin service areas (galley+toilets combined, like real aircraft)
+  const isCompactLav = toiletCount === 1; // single toilet + small galley for small aircraft
   const totalPairs = Math.floor(toiletCount / 2);
-  const frontToilets = totalPairs >= 1 ? 2 : 0;   // 2 toilets integrated in front galley
-  const rearToilets = totalPairs >= 2 ? 2 : 0;     // 2 toilets integrated in rear galley
-  const midPairs = Math.max(0, totalPairs - 2);     // remaining pairs as mid-cabin service areas
+  const frontToilets = isCompactLav ? 0 : (totalPairs >= 1 ? 2 : 0);
+  const rearToilets = isCompactLav ? 0 : (totalPairs >= 2 ? 2 : 0);
+  const midPairs = isCompactLav ? 0 : Math.max(0, totalPairs - 2);
   const SERVICE_BLOCK_H = 4.5 * (ROW_HEIGHTS.economy + ROW_GAP); // combined galley+toilet block height
+  const COMPACT_SERVICE_H = 2.5 * (ROW_HEIGHTS.economy + ROW_GAP); // smaller for single-toilet aircraft
   const SERVICE_GAP = 6;
 
   const sections = [];
@@ -391,12 +422,16 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // Calculate passenger section height
   let seatContentH = 0;
-  seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // front service area
-  for (const s of sections) {
-    seatContentH += s.numRows * (s.rowH + ROW_GAP) + 18; // rows + class header
+  if (isCompactLav) {
+    seatContentH += COMPACT_SERVICE_H + SERVICE_GAP; // compact rear service area only
+  } else if (toiletCount > 0) {
+    seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // front service area
+    seatContentH += midPairs * (SERVICE_BLOCK_H + SERVICE_GAP); // mid-cabin service areas
+    if (rearToilets > 0) seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // rear service area
   }
-  seatContentH += midPairs * (SERVICE_BLOCK_H + SERVICE_GAP + 18); // mid-cabin service areas + re-header
-  seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // rear service area
+  for (const s of sections) {
+    seatContentH += s.numRows * (s.rowH + ROW_GAP) + 4; // rows + small class gap
+  }
   if (seatContentH === 0) seatContentH = 40;
 
   // Combi: cargo deck block at front + bulkhead divider
@@ -407,8 +442,11 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
   // Nose and tail proportional to fuselage width for a realistic silhouette
-  const noseH = Math.round(fW * 0.55);  // long streamlined nose cone
-  const tailH = Math.round(fW * 0.65);  // even longer tapered tail cone
+  // Small aircraft get a more elongated, pointed shape
+  const noseRatio = isSmallAircraft ? 1.1 : 0.55;   // much longer nose for small planes
+  const tailRatio = isSmallAircraft ? 1.3 : 0.65;   // much longer tail for small planes
+  const noseH = Math.round(fW * noseRatio);
+  const tailH = Math.round(fW * tailRatio);
   const svgH = noseH + totalH + tailH + 10;
   const gradId = svgId || 'fuselageGrad';
   const clipId = `fClip_${svgId || 'def'}`;
@@ -416,13 +454,18 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   const bodyEnd = svgH - tailH;
 
   // Realistic aircraft fuselage: streamlined nose → straight body → tapered tail
+  // Small aircraft use a more pointed nose and narrower taper
+  const nosePinch = isSmallAircraft ? 0.01 : 0.06;  // how wide the nose tip is (very sharp for small)
+  const noseCurve = isSmallAircraft ? 0.15 : 0.35;   // control point height fraction
+  const tailSpread = isSmallAircraft ? 0.03 : 0.15;  // how wide the tail tip fans out (very narrow)
+  const tailCurve = isSmallAircraft ? 0.35 : 0.6;    // control point depth fraction
   const fuselagePath = `
     M ${fuseLeft} ${noseH}
-    C ${fuseLeft} ${noseH * 0.35}, ${cx - fW * 0.06} ${4}, ${cx} ${4}
-    C ${cx + fW * 0.06} ${4}, ${fuseRight} ${noseH * 0.35}, ${fuseRight} ${noseH}
+    C ${fuseLeft} ${noseH * noseCurve}, ${cx - fW * nosePinch} ${4}, ${cx} ${4}
+    C ${cx + fW * nosePinch} ${4}, ${fuseRight} ${noseH * noseCurve}, ${fuseRight} ${noseH}
     L ${fuseRight} ${bodyEnd}
-    C ${fuseRight} ${bodyEnd + tailH * 0.6}, ${cx + fW * 0.15} ${svgH - 2}, ${cx} ${svgH}
-    C ${cx - fW * 0.15} ${svgH - 2}, ${fuseLeft} ${bodyEnd + tailH * 0.6}, ${fuseLeft} ${bodyEnd}
+    C ${fuseRight} ${bodyEnd + tailH * tailCurve}, ${cx + fW * tailSpread} ${svgH - 2}, ${cx} ${svgH}
+    C ${cx - fW * tailSpread} ${svgH - 2}, ${fuseLeft} ${bodyEnd + tailH * tailCurve}, ${fuseLeft} ${bodyEnd}
     Z`;
 
   // Landscape mode: SVG is built in portrait coords, then rotated -90° so nose points left
@@ -463,53 +506,127 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     const cpBot = noseH + 4; // flight deck wall Y
     const cpHalfW = fW * 0.30;
 
-    // Flight deck bulkhead wall
-    html += `<line x1="${cx - cpHalfW}" y1="${cpBot}" x2="${cx + cpHalfW}" y2="${cpBot}"
-              stroke="rgba(100,116,139,0.45)" stroke-width="1.2"/>`;
-
-    // Darkened cockpit floor — fills the nose shape
+    // Darkened cockpit floor — fills the nose shape (uses same curve as fuselage)
     html += `<path d="M${cx - cpHalfW},${cpBot} L${fuseLeft + 4},${noseH}
-              C${fuseLeft + 2},${noseH * 0.5} ${cx - fW * 0.04},${8} ${cx},${8}
-              C${cx + fW * 0.04},${8} ${fuseRight - 2},${noseH * 0.5} ${fuseRight - 4},${noseH}
+              C${fuseLeft + 2},${noseH * noseCurve} ${cx - fW * nosePinch},${4} ${cx},${4}
+              C${cx + fW * nosePinch},${4} ${fuseRight - 2},${noseH * noseCurve} ${fuseRight - 4},${noseH}
               L${cx + cpHalfW},${cpBot} Z"
-              fill="rgba(15,23,42,0.45)" stroke="none"/>`;
+              fill="rgba(15,23,42,0.55)" stroke="none"/>`;
 
-    // Windshield — 4 panes scaled to fuselage width
-    const wMid = noseH * 0.45;  // windshield vertical center
-    const wHalf = fW * 0.06;    // half-height of each pane
-    const wOuter = fW * 0.18;   // outer edge X offset from center
-    const wInner = fW * 0.02;   // inner edge X offset from center
-    const wMidGap = fW * 0.008; // gap between inner panes
-    const wTaper = noseH * 0.08; // how much top edge is higher than bottom
+    // Flight deck bulkhead wall — small planes have no separate cockpit door
+    const doorGap = isSmallAircraft ? 0 : fW * 0.04;
+    html += `<line x1="${cx - cpHalfW}" y1="${cpBot}" x2="${cx - doorGap}" y2="${cpBot}"
+              stroke="rgba(100,116,139,0.5)" stroke-width="1.5"/>`;
+    html += `<line x1="${cx + doorGap}" y1="${cpBot}" x2="${cx + cpHalfW}" y2="${cpBot}"
+              stroke="rgba(100,116,139,0.5)" stroke-width="1.5"/>`;
+    // Cockpit door
+    html += `<line x1="${cx - doorGap}" y1="${cpBot}" x2="${cx + doorGap}" y2="${cpBot}"
+              stroke="rgba(100,116,139,0.3)" stroke-width="1.5" stroke-dasharray="2,1.5"/>`;
 
-    // Left outer pane
-    html += `<path d="M${cx - wOuter},${wMid + wHalf} L${cx - wOuter + 2},${wMid - wHalf - wTaper}
-              L${cx - wInner - wMidGap - 2},${wMid - wHalf - wTaper * 1.2} L${cx - wInner - wMidGap},${wMid + wHalf} Z"
-              fill="rgba(59,130,246,0.25)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
-    // Left inner pane
-    html += `<path d="M${cx - wInner - wMidGap + 1},${wMid + wHalf} L${cx - wInner - wMidGap},${wMid - wHalf - wTaper * 1.2}
-              L${cx - wMidGap},${wMid - wHalf - wTaper * 1.3} L${cx - wMidGap},${wMid + wHalf} Z"
-              fill="rgba(59,130,246,0.3)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
-    // Right inner pane
-    html += `<path d="M${cx + wInner + wMidGap - 1},${wMid + wHalf} L${cx + wInner + wMidGap},${wMid - wHalf - wTaper * 1.2}
-              L${cx + wMidGap},${wMid - wHalf - wTaper * 1.3} L${cx + wMidGap},${wMid + wHalf} Z"
-              fill="rgba(59,130,246,0.3)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
-    // Right outer pane
-    html += `<path d="M${cx + wOuter},${wMid + wHalf} L${cx + wOuter - 2},${wMid - wHalf - wTaper}
-              L${cx + wInner + wMidGap + 2},${wMid - wHalf - wTaper * 1.2} L${cx + wInner + wMidGap},${wMid + wHalf} Z"
-              fill="rgba(59,130,246,0.25)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
+    // Instrument panel (curved arc across the nose)
+    const ipY = noseH * 0.55;
+    const ipHalfW = fW * 0.22;
+    html += `<path d="M${cx - ipHalfW},${ipY} Q${cx},${ipY - noseH * 0.08} ${cx + ipHalfW},${ipY}"
+              fill="none" stroke="rgba(100,116,139,0.4)" stroke-width="1.2"/>`;
+    // Glareshield (thinner arc above instrument panel)
+    html += `<path d="M${cx - ipHalfW + 2},${ipY - 2} Q${cx},${ipY - noseH * 0.12} ${cx + ipHalfW - 2},${ipY - 2}"
+              fill="none" stroke="rgba(100,116,139,0.25)" stroke-width="0.6"/>`;
 
-    // Pilot seats — scaled to fuselage
-    const psW = fW * 0.04, psH = fW * 0.05;
-    const psY = noseH - psH * 0.3;
-    const psGap = fW * 0.02;
-    html += `<rect x="${cx - psGap - psW}" y="${psY}" width="${psW}" height="${psH}" rx="1.5"
-              fill="rgba(71,85,105,0.45)" stroke="rgba(100,116,139,0.35)" stroke-width="0.4"/>`;
-    html += `<rect x="${cx + psGap}" y="${psY}" width="${psW}" height="${psH}" rx="1.5"
-              fill="rgba(71,85,105,0.45)" stroke="rgba(100,116,139,0.35)" stroke-width="0.4"/>`;
-    // Center console
-    html += `<rect x="${cx - psGap * 0.6}" y="${psY + 1}" width="${psGap * 1.2}" height="${psH - 2}" rx="1"
-              fill="rgba(100,116,139,0.25)" stroke="none"/>`;
+    // Windshield — small aircraft: 2 wraparound panes; larger: 6 panes
+    const wTop = noseH * (isSmallAircraft ? 0.30 : 0.18);
+    const wBot = noseH * (isSmallAircraft ? 0.55 : 0.48);
+    const wH = wBot - wTop;
+
+    if (isSmallAircraft) {
+      // 2 wraparound panes split by center post (like a turboprop)
+      const pGap = fW * 0.008;
+      const pOuter = fW * 0.28;
+      // Left pane
+      html += `<path d="M${cx - pOuter},${wBot} L${cx - pOuter + 2},${wTop + wH * 0.15}
+                L${cx - pGap},${wTop} L${cx - pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.15)" stroke="rgba(96,165,250,0.45)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // Right pane
+      html += `<path d="M${cx + pOuter},${wBot} L${cx + pOuter - 2},${wTop + wH * 0.15}
+                L${cx + pGap},${wTop} L${cx + pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.15)" stroke="rgba(96,165,250,0.45)" stroke-width="0.5" stroke-linejoin="round"/>`;
+    } else {
+      // Outer side windows (small, trapezoidal)
+      const swOuterL = fW * 0.24, swInnerL = fW * 0.16;
+      const swOuterR = fW * 0.24, swInnerR = fW * 0.16;
+      // Left side window
+      html += `<path d="M${cx - swOuterL},${wBot} L${cx - swOuterL + 1},${wTop + wH * 0.3}
+                L${cx - swInnerL},${wTop + wH * 0.15} L${cx - swInnerL},${wBot} Z"
+                fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.4)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // Right side window
+      html += `<path d="M${cx + swOuterR},${wBot} L${cx + swOuterR - 1},${wTop + wH * 0.3}
+                L${cx + swInnerR},${wTop + wH * 0.15} L${cx + swInnerR},${wBot} Z"
+                fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.4)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // 4 front panes (two pairs split by center post)
+      const pGap = fW * 0.005;
+      const pInner = fW * 0.03;
+      const pOuter = fW * 0.14;
+      // Left outer front
+      html += `<path d="M${cx - pOuter},${wBot} L${cx - pOuter + 1.5},${wTop + wH * 0.1}
+                L${cx - pInner - pGap},${wTop} L${cx - pInner - pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.18)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // Left inner front
+      html += `<path d="M${cx - pInner - pGap + 1},${wBot} L${cx - pInner - pGap},${wTop}
+                L${cx - pGap},${wTop - 1} L${cx - pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.22)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // Right inner front
+      html += `<path d="M${cx + pInner + pGap - 1},${wBot} L${cx + pInner + pGap},${wTop}
+                L${cx + pGap},${wTop - 1} L${cx + pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.22)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
+      // Right outer front
+      html += `<path d="M${cx + pOuter},${wBot} L${cx + pOuter - 1.5},${wTop + wH * 0.1}
+                L${cx + pInner + pGap},${wTop} L${cx + pInner + pGap},${wBot} Z"
+                fill="rgba(59,130,246,0.18)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
+    }
+
+    // Pilot seats — single pilot centered for small aircraft, two pilots otherwise
+    const psW = fW * 0.065, psH = fW * 0.08;
+    const psY = noseH * 0.65;
+    const psGap = fW * 0.03;
+    const backH = psH * 0.3;
+    const singlePilot = isSmallAircraft;
+
+    function _drawPilotSeat(sx) {
+      html += `<rect x="${sx}" y="${psY}" width="${psW}" height="${backH}" rx="2"
+                fill="rgba(71,85,105,0.5)" stroke="rgba(100,116,139,0.4)" stroke-width="0.5"/>`;
+      html += `<rect x="${sx + 1}" y="${psY + backH + 0.5}" width="${psW - 2}" height="${psH - backH - 1}" rx="1.5"
+                fill="rgba(71,85,105,0.35)" stroke="rgba(100,116,139,0.3)" stroke-width="0.4"/>`;
+      // Yoke
+      const yokeY = psY - 2;
+      const yokeR = fW * 0.012;
+      html += `<circle cx="${sx + psW / 2}" cy="${yokeY}" r="${yokeR}"
+                fill="none" stroke="rgba(148,163,184,0.35)" stroke-width="0.6"/>`;
+      html += `<line x1="${sx + psW / 2}" y1="${yokeY + yokeR}" x2="${sx + psW / 2}" y2="${psY}"
+                stroke="rgba(148,163,184,0.25)" stroke-width="0.5"/>`;
+    }
+
+    if (singlePilot) {
+      // Single centered pilot seat
+      _drawPilotSeat(cx - psW / 2);
+    } else {
+      // Captain (left) + First officer (right)
+      const capX = cx - psGap - psW;
+      const foX = cx + psGap;
+      _drawPilotSeat(capX);
+      _drawPilotSeat(foX);
+
+      // Center pedestal (throttle quadrant)
+      const pedW = psGap * 1.4, pedH = psH * 1.1;
+      html += `<rect x="${cx - pedW / 2}" y="${psY - 1}" width="${pedW}" height="${pedH}" rx="1.5"
+                fill="rgba(100,116,139,0.2)" stroke="rgba(100,116,139,0.3)" stroke-width="0.4"/>`;
+      // Throttle levers
+      const tY = psY + pedH * 0.3;
+      html += `<line x1="${cx - 1.5}" y1="${tY}" x2="${cx - 1.5}" y2="${tY + pedH * 0.35}"
+                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
+      html += `<line x1="${cx}" y1="${tY}" x2="${cx}" y2="${tY + pedH * 0.35}"
+                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
+      html += `<line x1="${cx + 1.5}" y1="${tY}" x2="${cx + 1.5}" y2="${tY + pedH * 0.35}"
+                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
+    }
   }
 
   // All cabin content clipped to fuselage outline
@@ -549,11 +666,10 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // Track Y positions for exit door placement
   const exitDoorPositions = [];
+  const serviceAreaRanges = []; // Y ranges where service areas are (no windows)
 
   // Helper: render one seat row with realistic seat shapes
-  let _globalRowNum = 0;
   function drawSeatRow(s, cc, y) {
-    _globalRowNum++;
     let rowHtml = '';
     const isLastRow = (s._row === s.numRows - 1);
     const seatsThisRow = isLastRow ? s.lastRowSeats : s.perRow;
@@ -570,21 +686,6 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
         seatIdx++;
       }
       if (gi < s.groups.length - 1) {
-        // Row number — show at fuselage wall (outside seats) for landscape, or in aisle for portrait
-        if (gi === 0 && (landscape || _globalRowNum % 5 === 0)) {
-          if (landscape) {
-            // Show row number near the top fuselage wall
-            const _rnx = fuseLeft + 3, _rny = y + s.rowH / 2 + 1.5;
-            rowHtml += `<text x="${_rnx}" y="${_rny}" text-anchor="middle"
-                        fill="rgba(148,163,184,0.45)" font-size="4" font-weight="600"
-                        font-family="system-ui, sans-serif"${_tr(_rnx, _rny)}>${_globalRowNum}</text>`;
-          } else {
-            const _rnx = x + aisleWidth/2, _rny = y + s.rowH/2 + 2;
-            rowHtml += `<text x="${_rnx}" y="${_rny}" text-anchor="middle"
-                        fill="rgba(148,163,184,0.4)" font-size="4.5" font-weight="500"
-                        font-family="system-ui, sans-serif">${_globalRowNum}</text>`;
-          }
-        }
         x += aisleWidth - seatGap;
       }
     }
@@ -623,16 +724,22 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // --- Render: front service area, then rows with mid-service areas, then rear ---
 
-  // Front service area (galley + front toilets)
-  html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, frontToilets,
-    _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2));
-  exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
-  curY += SERVICE_BLOCK_H + SERVICE_GAP;
+  // Front service area (galley + front toilets) — skip for 0 or 1 toilet aircraft
+  if (!isCompactLav && toiletCount > 0) {
+    html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, frontToilets,
+      _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2), landscape);
+    serviceAreaRanges.push({ y1: curY, y2: curY + SERVICE_BLOCK_H });
+    exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 14);
+    curY += SERVICE_BLOCK_H + SERVICE_GAP;
+  }
 
   const seatAreaStartY = curY;  // first row Y — used for drag bounds
 
-  _globalRowNum = 0;
   let lastCls = null;
+  // Track class section Y ranges for bracket labels
+  const classBrackets = []; // { cls, color, label, startY, endY }
+  let currentBracket = null;
+
   for (let ri = 0; ri < allRows.length; ri++) {
     const r = allRows[ri];
     const s = r.section;
@@ -641,8 +748,12 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     // Insert mid-cabin service area at this position?
     if (midServicePositions.has(ri)) {
       const handleIndices = midServiceAtRow[ri] || [0];
-      exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
-      html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, 2);
+      // Close current bracket before service area
+      if (currentBracket) { currentBracket.endY = curY; classBrackets.push(currentBracket); currentBracket = null; }
+      exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 14);
+      html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, 2,
+        _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2), landscape);
+      serviceAreaRanges.push({ y1: curY, y2: curY + SERVICE_BLOCK_H });
       // Draggable overlay for each mid-cabin service area at this row
       for (const hidx of handleIndices) {
         html += `<rect class="mid-drag-handle" data-mid-idx="${hidx}" x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${SERVICE_BLOCK_H}"
@@ -651,24 +762,17 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
                   onmouseout="this.setAttribute('fill','rgba(148,163,184,0.0)');this.setAttribute('stroke','none')"/>`;
       }
       curY += SERVICE_BLOCK_H + SERVICE_GAP;
-      // Re-draw class header after service area if same class continues
+      // Re-start bracket for same class continuing after service area
       if (r.cls === lastCls) {
-        html += `
-          <line x1="${seatLeft}" y1="${curY + 2}" x2="${seatLeft + seatWidth}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.35"/>
-          <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="6" font-weight="600" font-family="system-ui, sans-serif" opacity="0.5"${_tr(fW/2, curY+12)}>${cc.label.toUpperCase()}</text>
-        `;
-        curY += 18;
+        currentBracket = { cls: r.cls, color: cc.bg, label: cc.label.toUpperCase(), startY: curY };
       }
     }
 
     // Class header when class changes
     if (r.cls !== lastCls) {
-      if (lastCls !== null) exitDoorPositions.push(curY - 2);
-      html += `
-        <line x1="${seatLeft}" y1="${curY + 2}" x2="${seatLeft + seatWidth}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.35"/>
-        <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="6" font-weight="600" font-family="system-ui, sans-serif" opacity="0.7"${_tr(fW/2, curY+12)}>${cc.label.toUpperCase()}</text>
-      `;
-      curY += 18;
+      if (currentBracket) { currentBracket.endY = curY; classBrackets.push(currentBracket); }
+      curY += 4; // small gap between classes
+      currentBracket = { cls: r.cls, color: cc.bg, label: cc.label.toUpperCase(), startY: curY };
       lastCls = r.cls;
     }
 
@@ -676,14 +780,28 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     html += drawSeatRow(s, cc, curY);
     curY += s.rowH + ROW_GAP;
   }
+  // Close final bracket
+  if (currentBracket) { currentBracket.endY = curY; classBrackets.push(currentBracket); }
 
   const seatAreaEndY = curY;  // last row end Y — used for drag bounds
 
-  // Rear service area (galley + rear toilets)
-  html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, rearToilets,
-    _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2));
-  exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
-  curY += SERVICE_BLOCK_H + SERVICE_GAP;
+  // Compact rear service area for small aircraft (1 toilet + small galley)
+  if (isCompactLav) {
+    html += _renderCompactServiceArea(seatLeft, curY, seatWidth, COMPACT_SERVICE_H,
+      _tr(seatLeft + seatWidth/2, curY + COMPACT_SERVICE_H/2 + 2), landscape);
+    serviceAreaRanges.push({ y1: curY, y2: curY + COMPACT_SERVICE_H });
+    exitDoorPositions.push(curY + COMPACT_SERVICE_H/2 - 14);
+    curY += COMPACT_SERVICE_H + SERVICE_GAP;
+  }
+
+  // Rear service area — only if rear toilets exist (i.e., more than 2 total toilets)
+  if (rearToilets > 0) {
+    html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, rearToilets,
+      _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2), landscape);
+    serviceAreaRanges.push({ y1: curY, y2: curY + SERVICE_BLOCK_H });
+    exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 14);
+    curY += SERVICE_BLOCK_H + SERVICE_GAP;
+  }
 
   // Combi: cargo deck block at the tail of the cabin, after passenger seats
   if (cargoDeckPct > 0 && cargoBlockH > 0) {
@@ -700,47 +818,52 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY + 6)}>Main Deck · Freight</text>`;
   }
 
-  // Seat letter labels (A, B, C, ...) at the start of seating — placed inside cabin clip group
-  if (sections.length > 0 && landscape) {
-    const sLetters = 'ABCDEFGHJKLMNPQRS'; // skip I and O (airline convention)
-    const firstSection = sections[0];
-    const groups = firstSection.groups;
-    const perRow = firstSection.perRow;
-    const classAisles = groups.length - 1;
-    const seatW = (seatWidth - classAisles * aisleWidth - (perRow - 1) * seatGap) / perRow;
-    let letterIdx = 0;
-    const labelY = seatStartY - 2; // just above first row
-    let lx = seatLeft;
-    for (let gi = 0; gi < groups.length; gi++) {
-      for (let gs = 0; gs < groups[gi]; gs++) {
-        const cx = lx + seatW / 2;
-        const letter = sLetters[letterIdx % sLetters.length];
-        html += `<text x="${cx}" y="${labelY}" text-anchor="middle"
-                  fill="rgba(148,163,184,0.35)" font-size="4" font-weight="600"
-                  font-family="system-ui, sans-serif"${_tr(cx, labelY)}>${letter}</text>`;
-        lx += seatW + seatGap;
-        letterIdx++;
-      }
-      if (gi < groups.length - 1) lx += aisleWidth - seatGap;
-    }
-  }
+  // Seat letter labels removed — cluttered the diagram near the cockpit
 
   html += `</g>`;
 
-  // Exit doors on fuselage walls with EXIT labels
-  for (const doorY of exitDoorPositions) {
-    html += _renderExitDoor(0, doorY, true, fW, fuseLeft, fuseRight, _tr(fuseLeft + 10, doorY + 8.5));
-    html += _renderExitDoor(0, doorY, false, fW, fuseLeft, fuseRight, _tr(fuseRight - 12, doorY + 8.5));
+  // If widebody with no mid-cabin service areas, add 2 mid-cabin exit doors
+  const isWidebody = fW >= 350;
+  if (isWidebody && midPairs === 0 && seatAreaEndY > seatAreaStartY) {
+    const seatRange = seatAreaEndY - seatAreaStartY;
+    exitDoorPositions.push(seatAreaStartY + seatRange * 0.33);
+    exitDoorPositions.push(seatAreaStartY + seatRange * 0.66);
   }
 
-  // Window dots along fuselage walls
+  // Exit doors on fuselage walls with EXIT labels
+  for (const doorY of exitDoorPositions) {
+    html += _renderExitDoor(0, doorY, true, fW, fuseLeft, fuseRight, landscape ? _tr : null);
+    html += _renderExitDoor(0, doorY, false, fW, fuseLeft, fuseRight, landscape ? _tr : null);
+  }
+
+  // Window dots along fuselage walls (skip near doors and service areas)
   const windowSpacing = 10;
   const windowR = 1.5;
   for (let wy = noseH + 15; wy < svgH - tailH - 10; wy += windowSpacing) {
     const nearDoor = exitDoorPositions.some(dy => Math.abs(wy - dy) < 12);
-    if (!nearDoor) {
+    const inServiceArea = serviceAreaRanges.some(r => wy >= r.y1 - 3 && wy <= r.y2 + 3);
+    if (!nearDoor && !inServiceArea) {
       html += `<circle cx="${fuseLeft + 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
       html += `<circle cx="${fuseRight - 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+    }
+  }
+
+  // Class section bracket labels (rendered outside the fuselage wall)
+  if (landscape && classBrackets.length > 0) {
+    const bracketX = fuseLeft - 2; // just outside left fuselage wall (becomes top in landscape)
+    for (const b of classBrackets) {
+      const by1 = b.startY + 2;
+      const by2 = b.endY - 2;
+      const bMid = (by1 + by2) / 2;
+      const tickLen = 3;
+      // Bracket: horizontal line with ticks at ends
+      html += `<line x1="${bracketX}" y1="${by1}" x2="${bracketX}" y2="${by2}" stroke="${b.color}" stroke-width="0.8" opacity="0.6"/>`;
+      html += `<line x1="${bracketX}" y1="${by1}" x2="${bracketX + tickLen}" y2="${by1}" stroke="${b.color}" stroke-width="0.8" opacity="0.6"/>`;
+      html += `<line x1="${bracketX}" y1="${by2}" x2="${bracketX + tickLen}" y2="${by2}" stroke="${b.color}" stroke-width="0.8" opacity="0.6"/>`;
+      // Label (counter-rotated for landscape readability)
+      const _lx = bracketX - 3, _ly = bMid;
+      html += `<text x="${_lx}" y="${_ly}" text-anchor="middle" dominant-baseline="central" fill="${b.color}" font-size="5" font-weight="700"
+                font-family="system-ui, sans-serif" letter-spacing="0.5" opacity="0.7"${_tr(_lx, _ly)}>${b.label}</text>`;
     }
   }
 
@@ -963,12 +1086,12 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           <div style="padding: 0.5rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); display: flex; flex-direction: column; justify-content: center;">
             <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.2rem;">
               <span style="font-size: 0.65rem; font-weight: 600; color: rgba(148,163,184,0.8);">WC</span>
-              <button class="toilet-adj-btn" data-delta="-2"
+              <button class="toilet-adj-btn" data-delta="-1"
                 style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
                        background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
               <span id="toiletCount" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); min-width: 1.5rem; text-align: center;">${toilets}</span>
-              <button class="toilet-adj-btn" data-delta="2"
+              <button class="toilet-adj-btn" data-delta="1"
                 style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
                        background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
@@ -1192,6 +1315,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     if (noteEl) {
       if (toilets === 0) {
         noteEl.textContent = 'No lavatories · tap + to add';
+      } else if (toilets === 1) {
+        noteEl.textContent = 'Single rear lav + galley';
       } else {
         const midPrs = Math.max(0, Math.floor(toilets / 2) - 2);
         noteEl.textContent = midPrs > 0
@@ -1200,8 +1325,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       }
     }
     // Toilet button states
-    const tMin = overlay.querySelector('.toilet-adj-btn[data-delta="-2"]');
-    const tPlus = overlay.querySelector('.toilet-adj-btn[data-delta="2"]');
+    const tMin = overlay.querySelector('.toilet-adj-btn[data-delta="-1"]');
+    const tPlus = overlay.querySelector('.toilet-adj-btn[data-delta="1"]');
     if (tMin) { tMin.style.opacity = toilets > toiletInfo.min ? '1' : '0.3'; tMin.style.cursor = toilets > toiletInfo.min ? 'pointer' : 'default'; }
     if (tPlus) { tPlus.style.opacity = toilets < toiletInfo.max ? '1' : '0.3'; tPlus.style.cursor = toilets < toiletInfo.max ? 'pointer' : 'default'; }
     ensureMidPositions();
