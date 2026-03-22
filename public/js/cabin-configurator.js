@@ -8,31 +8,32 @@
 // Each array = groups of seats separated by aisles
 const SEAT_LAYOUTS = {
   Regional: {
-    economy:     [2, 2],
-    economyPlus: [2, 2],
-    business:    [2, 1],
-    first:       [1, 1]
+    economy:     [2, 2],       // 4 abreast
+    economyPlus: [2, 2],       // 4 abreast
+    business:    [1, 1],       // 2 abreast
+    first:       [1, 1]        // 2 abreast
   },
   Narrowbody: {
-    economy:     [3, 3],
-    economyPlus: [3, 3],
-    business:    [2, 2],
-    first:       [1, 1]
+    economy:     [3, 3],       // 6 abreast
+    economyPlus: [3, 3],       // 6 abreast
+    business:    [2, 2],       // 4 abreast (recliner style)
+    first:       [1, 1]        // 2 abreast
   },
   Widebody: {
-    economy:     [3, 3, 3],
-    economyPlus: [2, 4, 2],
-    business:    [2, 2, 2],
-    first:       [1, 2, 1]
+    economy:     [3, 3, 3],    // 9 abreast (A330/A340 default)
+    economyPlus: [2, 3, 2],    // 7 abreast (premium economy)
+    business:    [1, 2, 1],    // 4 abreast (reverse herringbone / lie-flat)
+    first:       [1, 2, 1]     // 4 abreast (suites)
   },
   Cargo: null
 };
 
 // Pitch multiplier per class (row height relative to economy)
+// 1-2-1 lie-flat business takes ~2x economy pitch; first class suites ~3x
 const PITCH = {
   economy: 1.0,
   economyPlus: 1.15,
-  business: 1.6,
+  business: 1.7,
   first: 2.5
 };
 
@@ -62,10 +63,10 @@ const WIDEBODY_OVERRIDES = [
     match: /777/i,
     fuselageWidth: 420,
     layout: {
-      economy:     [3, 4, 3],  // 10 abreast
-      economyPlus: [3, 3, 3],  // 9 abreast
-      business:    [2, 2, 2],  // 6 abreast
-      first:       [1, 2, 1]   // 4 abreast
+      economy:     [3, 4, 3],  // 10 abreast (standard 777)
+      economyPlus: [2, 4, 2],  // 8 abreast (premium economy)
+      business:    [1, 2, 1],  // 4 abreast (reverse herringbone)
+      first:       [1, 2, 1]   // 4 abreast (suites)
     }
   },
   {
@@ -74,15 +75,15 @@ const WIDEBODY_OVERRIDES = [
     layout: {
       economy:     [2, 3, 2],  // 7 abreast
       economyPlus: [2, 3, 2],  // 7 abreast
-      business:    [2, 2],     // 4 abreast
+      business:    [1, 2, 1],  // 4 abreast (staggered)
       first:       [1, 1]      // 2 abreast
     }
   }
 ];
 
-// Row pixel heights per class
-const ROW_HEIGHTS = { economy: 10, economyPlus: 12, business: 16, first: 24 };
-const ROW_GAP = 2;
+// Row pixel heights per class (SVG units — larger = more visible seats)
+const ROW_HEIGHTS = { economy: 14, economyPlus: 17, business: 22, first: 32 };
+const ROW_GAP = 3;
 
 /** Calculate default / min / max toilet counts for an aircraft (always even — pairs).
  *  Scales realistically with aircraft size:
@@ -105,36 +106,186 @@ function _toiletDefaults(passengerCapacity) {
   return { min, default: def, max: mx };
 }
 
-/** Render a single toilet cubicle square with toilet icon */
-function _renderToiletCubicle(x, y, size) {
+/** Render a single realistic seat (top-down view with backrest and cushion) */
+function _renderSeat(x, y, w, h, fillColor, borderColor, isEmpty) {
+  if (isEmpty) {
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5"
+              fill="rgba(100,116,139,0.06)" stroke="rgba(100,116,139,0.12)" stroke-width="0.3"/>`;
+  }
   let s = '';
-  // Cubicle background
-  s += `<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="2"
-          fill="rgba(100,116,139,0.18)" stroke="rgba(100,116,139,0.35)" stroke-width="0.5"/>`;
-  // Toilet icon (side view) — scaled to cubicle size
-  const cx = x + size / 2, cy = y + size / 2;
-  const sc = size / 28;
-  // Tank/cistern
-  s += `<rect x="${cx - 4*sc}" y="${cy - 7*sc}" width="${8*sc}" height="${4*sc}" rx="${1.2*sc}"
-          fill="rgba(148,163,184,0.3)" stroke="rgba(148,163,184,0.55)" stroke-width="0.4"/>`;
-  // Bowl
-  s += `<path d="M${cx - 4*sc},${cy - 2*sc} L${cx - 5*sc},${cy + 1*sc} Q${cx - 5*sc},${cy + 7*sc} ${cx},${cy + 7*sc} Q${cx + 5*sc},${cy + 7*sc} ${cx + 5*sc},${cy + 1*sc} L${cx + 4*sc},${cy - 2*sc} Z"
-          fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.55)" stroke-width="0.4"/>`;
+  const backH = Math.max(2, h * 0.28);
+  const cushionH = h - backH - 0.5;
+  const armW = Math.max(0.6, w * 0.08);
+  // Seat back (darker, top)
+  s += `<rect x="${x}" y="${y}" width="${w}" height="${backH}" rx="1.5"
+          fill="${borderColor}" stroke="${borderColor}" stroke-width="0.3" opacity="0.95"/>`;
+  // Seat cushion (lighter, below back)
+  s += `<rect x="${x + armW}" y="${y + backH + 0.5}" width="${w - armW * 2}" height="${cushionH}" rx="1.2"
+          fill="${fillColor}" stroke="${borderColor}" stroke-width="0.4" opacity="0.85"/>`;
+  // Armrests (thin strips on sides)
+  s += `<rect x="${x}" y="${y + backH}" width="${armW}" height="${cushionH + 0.5}" rx="0.5"
+          fill="${borderColor}" opacity="0.4"/>`;
+  s += `<rect x="${x + w - armW}" y="${y + backH}" width="${armW}" height="${cushionH + 0.5}" rx="0.5"
+          fill="${borderColor}" opacity="0.4"/>`;
   return s;
 }
 
-/** Render an inline lavatory block with toilet cubicle squares inside */
-function _renderLavatoryBlock(x, y, width, height, toiletCount) {
+/** Render a single toilet cubicle with male/female restroom icon */
+function _renderToiletCubicle(x, y, w, h) {
   let s = '';
-  // Block background (dashed outline)
+  // Cubicle room with walls
+  s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2"
+          fill="rgba(100,116,139,0.15)" stroke="rgba(100,116,139,0.4)" stroke-width="0.6"/>`;
+  const cx = x + w / 2, cy = y + h / 2;
+  const sc = Math.min(w, h) / 40;
+  // Male/female restroom icon (centered in cubicle)
+  const figH = 14 * sc;   // total figure height
+  const gap = 2 * sc;     // gap between figures
+  const headR = 1.5 * sc; // head radius
+  // Male figure (left)
+  const mx = cx - gap / 2 - 2 * sc;
+  const my = cy - figH / 2;
+  // Head
+  s += `<circle cx="${mx}" cy="${my + headR}" r="${headR}"
+          fill="rgba(148,163,184,0.5)"/>`;
+  // Body
+  s += `<line x1="${mx}" y1="${my + headR * 2 + 0.5*sc}" x2="${mx}" y2="${my + figH * 0.6}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1.2*sc}" stroke-linecap="round"/>`;
+  // Arms
+  s += `<line x1="${mx - 2.5*sc}" y1="${my + figH * 0.35}" x2="${mx + 2.5*sc}" y2="${my + figH * 0.35}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  // Legs
+  s += `<line x1="${mx}" y1="${my + figH * 0.6}" x2="${mx - 2*sc}" y2="${my + figH}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  s += `<line x1="${mx}" y1="${my + figH * 0.6}" x2="${mx + 2*sc}" y2="${my + figH}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  // Divider line
+  s += `<line x1="${cx}" y1="${my + headR * 0.5}" x2="${cx}" y2="${my + figH}"
+          stroke="rgba(148,163,184,0.3)" stroke-width="${0.5*sc}"/>`;
+  // Female figure (right)
+  const fx = cx + gap / 2 + 2 * sc;
+  // Head
+  s += `<circle cx="${fx}" cy="${my + headR}" r="${headR}"
+          fill="rgba(148,163,184,0.5)"/>`;
+  // Body (shorter, to skirt)
+  s += `<line x1="${fx}" y1="${my + headR * 2 + 0.5*sc}" x2="${fx}" y2="${my + figH * 0.45}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1.2*sc}" stroke-linecap="round"/>`;
+  // Arms
+  s += `<line x1="${fx - 2.5*sc}" y1="${my + figH * 0.35}" x2="${fx + 2.5*sc}" y2="${my + figH * 0.35}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  // Skirt (triangle)
+  s += `<path d="M${fx},${my + figH * 0.45} L${fx - 2.8*sc},${my + figH * 0.75} L${fx + 2.8*sc},${my + figH * 0.75} Z"
+          fill="rgba(148,163,184,0.4)"/>`;
+  // Legs (from under skirt)
+  s += `<line x1="${fx - 1*sc}" y1="${my + figH * 0.75}" x2="${fx - 1.5*sc}" y2="${my + figH}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  s += `<line x1="${fx + 1*sc}" y1="${my + figH * 0.75}" x2="${fx + 1.5*sc}" y2="${my + figH}"
+          stroke="rgba(148,163,184,0.5)" stroke-width="${1*sc}" stroke-linecap="round"/>`;
+  return s;
+}
+
+/** Render an exit door marker on the fuselage wall with EXIT label and arrow */
+function _renderExitDoor(x, y, isLeft, fW, fuseLeft, fuseRight, textRotate) {
+  let s = '';
+  const doorW = 8;
+  const doorH = 14;
+  const _tt = textRotate || '';
+  if (isLeft) {
+    const dx = fuseLeft - 2;
+    // Door opening
+    s += `<rect x="${dx}" y="${y}" width="${doorW}" height="${doorH}" rx="1.5"
+            fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.5)" stroke-width="0.7"/>`;
+    // Arrow pointing outward (left)
+    s += `<path d="M${dx + doorW - 2},${y + doorH/2 - 2} L${dx + 2},${y + doorH/2} L${dx + doorW - 2},${y + doorH/2 + 2}"
+            fill="none" stroke="rgba(239,68,68,0.7)" stroke-width="0.6"/>`;
+    // EXIT label
+    const _tx = dx + doorW + 2, _ty = y + doorH/2 + 1.5;
+    s += `<text x="${_tx}" y="${_ty}" fill="rgba(239,68,68,0.6)" font-size="4" font-weight="700"
+            font-family="system-ui,sans-serif" letter-spacing="0.5"${_tt}>EXIT</text>`;
+  } else {
+    const dx = fuseRight - doorW + 2;
+    s += `<rect x="${dx}" y="${y}" width="${doorW}" height="${doorH}" rx="1.5"
+            fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.5)" stroke-width="0.7"/>`;
+    // Arrow pointing outward (right)
+    s += `<path d="M${dx + 2},${y + doorH/2 - 2} L${dx + doorW - 2},${y + doorH/2} L${dx + 2},${y + doorH/2 + 2}"
+            fill="none" stroke="rgba(239,68,68,0.7)" stroke-width="0.6"/>`;
+    // EXIT label
+    const _tx = dx - 3, _ty = y + doorH/2 + 1.5;
+    s += `<text x="${_tx}" y="${_ty}" text-anchor="end" fill="rgba(239,68,68,0.6)" font-size="4" font-weight="700"
+            font-family="system-ui,sans-serif" letter-spacing="0.5"${_tt}>EXIT</text>`;
+  }
+  return s;
+}
+
+/**
+ * Render a combined service area (galley + lavatories integrated).
+ * Real aircraft have toilets built into the galley/service zones near doors.
+ * @param {number} toiletCount - number of toilet cubicles to show (0 = galley only)
+ */
+function _renderServiceArea(x, y, width, height, toiletCount, textTransform) {
+  const _tt = textTransform || '';
+  let s = '';
+  // Service area background
   s += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="3"
-          fill="rgba(100,116,139,0.06)" stroke="rgba(100,116,139,0.18)" stroke-width="0.5" stroke-dasharray="3,2"/>`;
-  // Cubicle squares inside — one on each side
-  const cubSize = Math.min(height - 4, 28);
-  const cubY = y + (height - cubSize) / 2;
+          fill="rgba(100,116,139,0.10)" stroke="rgba(100,116,139,0.3)" stroke-width="0.6"/>`;
+
   const pad = 4;
-  if (toiletCount >= 1) s += _renderToiletCubicle(x + pad, cubY, cubSize);
-  if (toiletCount >= 2) s += _renderToiletCubicle(x + width - pad - cubSize, cubY, cubSize);
+  const innerH = height - pad * 2;
+  const innerY = y + pad;
+
+  if (toiletCount <= 0) {
+    // Pure galley — fill with cart bays
+    const bayW = (width - pad * 2 - 4) / 4;
+    for (let i = 0; i < 4; i++) {
+      const bx = x + pad + 1 + i * (bayW + 1);
+      s += `<rect x="${bx}" y="${innerY}" width="${bayW}" height="${innerH}" rx="1.5"
+              fill="rgba(148,163,184,0.08)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+      // Cart handle line
+      s += `<line x1="${bx + bayW * 0.3}" y1="${innerY + 2}" x2="${bx + bayW * 0.7}" y2="${innerY + 2}"
+              stroke="rgba(148,163,184,0.2)" stroke-width="0.3"/>`;
+    }
+    const _lx = x + width / 2, _ly = y + height / 2 + 2;
+    s += `<text x="${_lx}" y="${_ly}" text-anchor="middle"
+            fill="rgba(148,163,184,0.35)" font-size="6" font-weight="700" font-family="system-ui, sans-serif"
+            letter-spacing="1.5"${_tt}>GALLEY</text>`;
+  } else {
+    // Combined: toilet cubicles on the sides, galley carts in the center
+    const cubW = Math.min(width * 0.28, innerH * 1.1);
+
+    // Left toilet cubicle
+    if (toiletCount >= 1) {
+      s += _renderToiletCubicle(x + pad, innerY, cubW, innerH);
+    }
+    // Right toilet cubicle
+    if (toiletCount >= 2) {
+      s += _renderToiletCubicle(x + width - pad - cubW, innerY, cubW, innerH);
+    }
+
+    // Center galley section between the toilets
+    const galleyX = x + pad + (toiletCount >= 1 ? cubW + 3 : 0);
+    const galleyEndX = x + width - pad - (toiletCount >= 2 ? cubW + 3 : 0);
+    const galleyW = galleyEndX - galleyX;
+    if (galleyW > 10) {
+      // Divider lines
+      s += `<line x1="${galleyX}" y1="${y}" x2="${galleyX}" y2="${y + height}"
+              stroke="rgba(100,116,139,0.15)" stroke-width="0.3"/>`;
+      s += `<line x1="${galleyEndX}" y1="${y}" x2="${galleyEndX}" y2="${y + height}"
+              stroke="rgba(100,116,139,0.15)" stroke-width="0.3"/>`;
+      // Cart bays in center
+      const numCarts = Math.max(1, Math.floor(galleyW / ((innerH * 0.6) + 2)));
+      const cartW = (galleyW - 4) / numCarts - 1;
+      for (let i = 0; i < numCarts; i++) {
+        const bx = galleyX + 2 + i * (cartW + 1);
+        s += `<rect x="${bx}" y="${innerY}" width="${cartW}" height="${innerH}" rx="1.5"
+                fill="rgba(148,163,184,0.07)" stroke="rgba(148,163,184,0.2)" stroke-width="0.3"/>`;
+      }
+      // GALLEY label over center section
+      const _glx = galleyX + galleyW / 2, _gly = y + height / 2 + 2;
+      s += `<text x="${_glx}" y="${_gly}" text-anchor="middle"
+              fill="rgba(148,163,184,0.35)" font-size="5" font-weight="700" font-family="system-ui, sans-serif"
+              letter-spacing="1"${_tt}>GALLEY</text>`;
+    }
+  }
   return s;
 }
 
@@ -151,8 +302,8 @@ const DOUBLE_DECK = [
     mainLayout: {
       economy:     [3, 4, 3],  // 10 abreast
       economyPlus: [2, 4, 2],  // 8 abreast
-      business:    [2, 2, 2],  // 6 abreast
-      first:       [1, 2, 1]   // 4 abreast
+      business:    [1, 2, 1],  // 4 abreast (reverse herringbone)
+      first:       [1, 2, 1]   // 4 abreast (suites)
     },
     upperLayout: {
       economy:     [2, 4, 2],  // 8 abreast
@@ -172,8 +323,8 @@ const DOUBLE_DECK = [
     mainLayout: {
       economy:     [3, 4, 3],  // 10 abreast
       economyPlus: [2, 4, 2],  // 8 abreast
-      business:    [2, 2, 2],  // 6 abreast
-      first:       [1, 2, 1]   // 4 abreast
+      business:    [1, 2, 1],  // 4 abreast (reverse herringbone)
+      first:       [1, 2, 1]   // 4 abreast (suites)
     },
     upperLayout: {
       economy:     [3, 3],     // 6 abreast
@@ -199,10 +350,11 @@ function seatsPerRow(aircraftType, cabinClass) {
 }
 
 // --- Shared fuselage SVG renderer ---
-function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0) {
+// landscape: if true, renders nose-left horizontal orientation
+function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null) {
   if (!deckLayout) return '';
 
-  const aisleWidth = 16;
+  const aisleWidth = 20;
   const seatGap = 2;
   const fW = fWidth;
 
@@ -214,13 +366,14 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   const seatRight = fuseRight - bodyPad;
   const seatWidth = seatRight - seatLeft;
 
-  // Toilet distribution as pairs: 1st pair → front, 2nd pair → back, rest → mid-cabin
+  // Toilet distribution: front pair in front service area, back pair in rear service area,
+  // extra pairs as mid-cabin service areas (galley+toilets combined, like real aircraft)
   const totalPairs = Math.floor(toiletCount / 2);
-  const frontPair = totalPairs >= 1 ? 1 : 0;     // 1 pair (2 toilets) at nose
-  const backPair = totalPairs >= 2 ? 1 : 0;       // 1 pair (2 toilets) at tail
-  const midPairs = Math.max(0, totalPairs - 2);    // remaining pairs inline in economy
-  const TOILET_BLOCK_H = 3 * (ROW_HEIGHTS.economy + ROW_GAP);
-  const TOILET_GAP = 4;
+  const frontToilets = totalPairs >= 1 ? 2 : 0;   // 2 toilets integrated in front galley
+  const rearToilets = totalPairs >= 2 ? 2 : 0;     // 2 toilets integrated in rear galley
+  const midPairs = Math.max(0, totalPairs - 2);     // remaining pairs as mid-cabin service areas
+  const SERVICE_BLOCK_H = 4.5 * (ROW_HEIGHTS.economy + ROW_GAP); // combined galley+toilet block height
+  const SERVICE_GAP = 6;
 
   const sections = [];
   const classOrder = ['first', 'business', 'economyPlus', 'economy'];
@@ -238,12 +391,12 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // Calculate passenger section height
   let seatContentH = 0;
-  if (frontPair) seatContentH += TOILET_BLOCK_H + TOILET_GAP;
+  seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // front service area
   for (const s of sections) {
-    seatContentH += s.numRows * (s.rowH + ROW_GAP) + 18;
+    seatContentH += s.numRows * (s.rowH + ROW_GAP) + 18; // rows + class header
   }
-  seatContentH += midPairs * (TOILET_BLOCK_H + TOILET_GAP);
-  if (backPair) seatContentH += TOILET_BLOCK_H + TOILET_GAP;
+  seatContentH += midPairs * (SERVICE_BLOCK_H + SERVICE_GAP + 18); // mid-cabin service areas + re-header
+  seatContentH += SERVICE_BLOCK_H + SERVICE_GAP; // rear service area
   if (seatContentH === 0) seatContentH = 40;
 
   // Combi: cargo deck block at front + bulkhead divider
@@ -253,24 +406,38 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     : 0;
   const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
-  const noseH = 50;
-  const tailH = 35;
+  // Nose and tail proportional to fuselage width for a realistic silhouette
+  const noseH = Math.round(fW * 0.55);  // long streamlined nose cone
+  const tailH = Math.round(fW * 0.65);  // even longer tapered tail cone
   const svgH = noseH + totalH + tailH + 10;
   const gradId = svgId || 'fuselageGrad';
   const clipId = `fClip_${svgId || 'def'}`;
-  const noseR = fW / 2.5;
+  const cx = fW / 2;
+  const bodyEnd = svgH - tailH;
 
+  // Realistic aircraft fuselage: streamlined nose → straight body → tapered tail
   const fuselagePath = `
     M ${fuseLeft} ${noseH}
-    Q ${fuseLeft} ${noseH - noseR}, ${fW / 2} ${5}
-    Q ${fuseRight} ${noseH - noseR}, ${fuseRight} ${noseH}
-    L ${fuseRight} ${svgH - tailH}
-    Q ${fuseRight} ${svgH - 5}, ${fW / 2} ${svgH}
-    Q ${fuseLeft} ${svgH - 5}, ${fuseLeft} ${svgH - tailH}
+    C ${fuseLeft} ${noseH * 0.35}, ${cx - fW * 0.06} ${4}, ${cx} ${4}
+    C ${cx + fW * 0.06} ${4}, ${fuseRight} ${noseH * 0.35}, ${fuseRight} ${noseH}
+    L ${fuseRight} ${bodyEnd}
+    C ${fuseRight} ${bodyEnd + tailH * 0.6}, ${cx + fW * 0.15} ${svgH - 2}, ${cx} ${svgH}
+    C ${cx - fW * 0.15} ${svgH - 2}, ${fuseLeft} ${bodyEnd + tailH * 0.6}, ${fuseLeft} ${bodyEnd}
     Z`;
 
+  // Landscape mode: SVG is built in portrait coords, then rotated -90° so nose points left
+  const lsViewW = landscape ? svgH : fW;
+  const lsViewH = landscape ? fW : svgH;
+  // In landscape: large rendering so individual seats are clearly visible.
+  // Height = fuselage cross-section scaled up; width from aspect ratio + stretch.
+  const lsH = 500;
+  const lsStretch = 2.0;
+  const lsStyle = landscape
+    ? `height:${lsH}px;width:${Math.round(lsH * (lsViewW / lsViewH) * lsStretch)}px;flex-shrink:0;`
+    : `width:100%;height:100%;`;
+
   let html = `
-    <svg viewBox="0 0 ${fW} ${svgH}" preserveAspectRatio="xMidYMin meet" style="width:100%;height:100%;" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 ${lsViewW} ${lsViewH}" preserveAspectRatio="xMidYMid meet" style="${lsStyle}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
           <stop offset="0%" stop-color="rgba(100,116,139,0.15)"/>
@@ -279,26 +446,114 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
         </linearGradient>
         <clipPath id="${clipId}"><path d="${fuselagePath}"/></clipPath>
       </defs>
-      <path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.3)" stroke-width="1.5"/>
   `;
 
-  // Cockpit windows
+  // Landscape: open rotation group — rotates entire portrait drawing -90° so nose points LEFT
+  if (landscape) html += `<g transform="translate(0,${fW}) rotate(-90)">`;
+
+  html += `<path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.3)" stroke-width="1.5"/>`;
+
+  // Helper: makes text readable in landscape mode by counter-rotating +90° around its anchor
+  const _tr = landscape
+    ? (x, y) => ` transform="rotate(90,${x},${y})"`
+    : () => '';
+
+  // Cockpit area — all dimensions relative to fW for proper scaling
   if (showCockpit) {
-    const cwY = noseH - 12;
-    html += `
-      <rect x="${fW/2 - 12}" y="${cwY}" width="8" height="4" rx="1.5" fill="rgba(59,130,246,0.5)"/>
-      <rect x="${fW/2 + 4}" y="${cwY}" width="8" height="4" rx="1.5" fill="rgba(59,130,246,0.5)"/>
-    `;
+    const cpBot = noseH + 4; // flight deck wall Y
+    const cpHalfW = fW * 0.30;
+
+    // Flight deck bulkhead wall
+    html += `<line x1="${cx - cpHalfW}" y1="${cpBot}" x2="${cx + cpHalfW}" y2="${cpBot}"
+              stroke="rgba(100,116,139,0.45)" stroke-width="1.2"/>`;
+
+    // Darkened cockpit floor — fills the nose shape
+    html += `<path d="M${cx - cpHalfW},${cpBot} L${fuseLeft + 4},${noseH}
+              C${fuseLeft + 2},${noseH * 0.5} ${cx - fW * 0.04},${8} ${cx},${8}
+              C${cx + fW * 0.04},${8} ${fuseRight - 2},${noseH * 0.5} ${fuseRight - 4},${noseH}
+              L${cx + cpHalfW},${cpBot} Z"
+              fill="rgba(15,23,42,0.45)" stroke="none"/>`;
+
+    // Windshield — 4 panes scaled to fuselage width
+    const wMid = noseH * 0.45;  // windshield vertical center
+    const wHalf = fW * 0.06;    // half-height of each pane
+    const wOuter = fW * 0.18;   // outer edge X offset from center
+    const wInner = fW * 0.02;   // inner edge X offset from center
+    const wMidGap = fW * 0.008; // gap between inner panes
+    const wTaper = noseH * 0.08; // how much top edge is higher than bottom
+
+    // Left outer pane
+    html += `<path d="M${cx - wOuter},${wMid + wHalf} L${cx - wOuter + 2},${wMid - wHalf - wTaper}
+              L${cx - wInner - wMidGap - 2},${wMid - wHalf - wTaper * 1.2} L${cx - wInner - wMidGap},${wMid + wHalf} Z"
+              fill="rgba(59,130,246,0.25)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
+    // Left inner pane
+    html += `<path d="M${cx - wInner - wMidGap + 1},${wMid + wHalf} L${cx - wInner - wMidGap},${wMid - wHalf - wTaper * 1.2}
+              L${cx - wMidGap},${wMid - wHalf - wTaper * 1.3} L${cx - wMidGap},${wMid + wHalf} Z"
+              fill="rgba(59,130,246,0.3)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
+    // Right inner pane
+    html += `<path d="M${cx + wInner + wMidGap - 1},${wMid + wHalf} L${cx + wInner + wMidGap},${wMid - wHalf - wTaper * 1.2}
+              L${cx + wMidGap},${wMid - wHalf - wTaper * 1.3} L${cx + wMidGap},${wMid + wHalf} Z"
+              fill="rgba(59,130,246,0.3)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
+    // Right outer pane
+    html += `<path d="M${cx + wOuter},${wMid + wHalf} L${cx + wOuter - 2},${wMid - wHalf - wTaper}
+              L${cx + wInner + wMidGap + 2},${wMid - wHalf - wTaper * 1.2} L${cx + wInner + wMidGap},${wMid + wHalf} Z"
+              fill="rgba(59,130,246,0.25)" stroke="rgba(96,165,250,0.55)" stroke-width="0.6" stroke-linejoin="round"/>`;
+
+    // Pilot seats — scaled to fuselage
+    const psW = fW * 0.04, psH = fW * 0.05;
+    const psY = noseH - psH * 0.3;
+    const psGap = fW * 0.02;
+    html += `<rect x="${cx - psGap - psW}" y="${psY}" width="${psW}" height="${psH}" rx="1.5"
+              fill="rgba(71,85,105,0.45)" stroke="rgba(100,116,139,0.35)" stroke-width="0.4"/>`;
+    html += `<rect x="${cx + psGap}" y="${psY}" width="${psW}" height="${psH}" rx="1.5"
+              fill="rgba(71,85,105,0.45)" stroke="rgba(100,116,139,0.35)" stroke-width="0.4"/>`;
+    // Center console
+    html += `<rect x="${cx - psGap * 0.6}" y="${psY + 1}" width="${psGap * 1.2}" height="${psH - 2}" rx="1"
+              fill="rgba(100,116,139,0.25)" stroke="none"/>`;
   }
 
   // All cabin content clipped to fuselage outline
   html += `<g clip-path="url(#${clipId})">`;
 
-  const seatStartY = showCockpit ? noseH + 6 : noseH - 10;
+  const seatStartY = showCockpit ? noseH + 8 : noseH - 10;
   let curY = seatStartY;
 
-  // Helper: render one seat row
+  // Collect aisle X positions for floor shading & row numbers
+  function getAislePositions(groups) {
+    const classAisles = groups.length - 1;
+    const perRow = groups.reduce((s, g) => s + g, 0);
+    const seatW = (seatWidth - classAisles * aisleWidth - (perRow - 1) * seatGap) / perRow;
+    const positions = [];
+    let x = seatLeft;
+    for (let gi = 0; gi < groups.length; gi++) {
+      x += groups[gi] * (seatW + seatGap) - seatGap;
+      if (gi < groups.length - 1) {
+        positions.push({ x: x, width: aisleWidth });
+        x += aisleWidth;
+      }
+    }
+    return positions;
+  }
+
+  // Draw aisle floor shading for entire cabin height
+  if (sections.length > 0) {
+    const mainAisles = getAislePositions(sections[0].groups);
+    for (const a of mainAisles) {
+      html += `<rect x="${a.x}" y="${seatStartY}" width="${a.width}" height="${seatContentH}"
+                fill="rgba(100,116,139,0.06)" rx="0"/>`;
+      // Aisle center line (dotted)
+      html += `<line x1="${a.x + a.width/2}" y1="${seatStartY}" x2="${a.x + a.width/2}" y2="${seatStartY + seatContentH}"
+                stroke="rgba(100,116,139,0.12)" stroke-width="0.4" stroke-dasharray="3,4"/>`;
+    }
+  }
+
+  // Track Y positions for exit door placement
+  const exitDoorPositions = [];
+
+  // Helper: render one seat row with realistic seat shapes
+  let _globalRowNum = 0;
   function drawSeatRow(s, cc, y) {
+    _globalRowNum++;
     let rowHtml = '';
     const isLastRow = (s._row === s.numRows - 1);
     const seatsThisRow = isLastRow ? s.lastRowSeats : s.perRow;
@@ -309,93 +564,192 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
       for (let gs = 0; gs < groupSize; gs++) {
         const classAisles = s.groups.length - 1;
         const seatW = (seatWidth - classAisles * aisleWidth - (s.perRow - 1) * seatGap) / s.perRow;
-        if (seatIdx < seatsThisRow) {
-          rowHtml += `<rect x="${x}" y="${y}" width="${seatW}" height="${s.rowH}" rx="2"
-                    fill="${cc.bg}" stroke="${cc.border}" stroke-width="0.5" opacity="0.85"/>`;
-        } else {
-          rowHtml += `<rect x="${x}" y="${y}" width="${seatW}" height="${s.rowH}" rx="2"
-                    fill="rgba(100,116,139,0.1)" stroke="rgba(100,116,139,0.2)" stroke-width="0.5"/>`;
-        }
+        const isEmpty = seatIdx >= seatsThisRow;
+        rowHtml += _renderSeat(x, y, seatW, s.rowH, cc.bg, cc.border, isEmpty);
         x += seatW + seatGap;
         seatIdx++;
       }
-      if (gi < s.groups.length - 1) x += aisleWidth - seatGap;
+      if (gi < s.groups.length - 1) {
+        // Row number — show at fuselage wall (outside seats) for landscape, or in aisle for portrait
+        if (gi === 0 && (landscape || _globalRowNum % 5 === 0)) {
+          if (landscape) {
+            // Show row number near the top fuselage wall
+            const _rnx = fuseLeft + 3, _rny = y + s.rowH / 2 + 1.5;
+            rowHtml += `<text x="${_rnx}" y="${_rny}" text-anchor="middle"
+                        fill="rgba(148,163,184,0.45)" font-size="4" font-weight="600"
+                        font-family="system-ui, sans-serif"${_tr(_rnx, _rny)}>${_globalRowNum}</text>`;
+          } else {
+            const _rnx = x + aisleWidth/2, _rny = y + s.rowH/2 + 2;
+            rowHtml += `<text x="${_rnx}" y="${_rny}" text-anchor="middle"
+                        fill="rgba(148,163,184,0.4)" font-size="4.5" font-weight="500"
+                        font-family="system-ui, sans-serif">${_globalRowNum}</text>`;
+          }
+        }
+        x += aisleWidth - seatGap;
+      }
     }
     return rowHtml;
   }
 
-  // Front lavatory pair
-  if (frontPair) {
-    html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
-    curY += TOILET_BLOCK_H + TOILET_GAP;
-  }
-
-  // Render sections — mid-cabin toilets inserted within economy
+  // Build a flat list of all seat rows with their class info, then determine
+  // where mid-cabin service areas go (at evenly spaced positions through the
+  // total row count). This allows service areas to split any class, not just economy.
+  const allRows = [];
   for (const s of sections) {
-    const cc = CLASS_COLORS[s.cls];
-    // Section header
-    html += `
-      <line x1="${fW * 0.2}" y1="${curY + 2}" x2="${fW * 0.8}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.5"/>
-      <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="7" font-weight="600" font-family="system-ui, sans-serif" opacity="0.8">${cc.label.toUpperCase()}</text>
-    `;
-    curY += 18;
-
-    if (s.cls === 'economy' && midPairs > 0) {
-      // Split economy rows into (midPairs+1) chunks with toilet pairs between
-      const chunkSize = Math.max(1, Math.floor(s.numRows / (midPairs + 1)));
-      let rowsInChunk = 0;
-      let pairsInserted = 0;
-
-      for (let row = 0; row < s.numRows; row++) {
-        // Insert toilet pair block when chunk is full
-        if (pairsInserted < midPairs && rowsInChunk >= chunkSize) {
-          html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
-          curY += TOILET_BLOCK_H + TOILET_GAP;
-          pairsInserted++;
-          rowsInChunk = 0;
-        }
-        s._row = row;
-        html += drawSeatRow(s, cc, curY);
-        curY += s.rowH + ROW_GAP;
-        rowsInChunk++;
-      }
-      // Remaining pairs at end of economy
-      while (pairsInserted < midPairs) {
-        html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
-        curY += TOILET_BLOCK_H + TOILET_GAP;
-        pairsInserted++;
-      }
-    } else {
-      for (let row = 0; row < s.numRows; row++) {
-        s._row = row;
-        html += drawSeatRow(s, cc, curY);
-        curY += s.rowH + ROW_GAP;
-      }
+    for (let row = 0; row < s.numRows; row++) {
+      allRows.push({ section: s, row, cls: s.cls });
     }
   }
+  const totalRows = allRows.length;
 
-  // Back lavatory pair
-  if (backPair) {
-    html += _renderLavatoryBlock(seatLeft, curY, seatWidth, TOILET_BLOCK_H, 2);
-    curY += TOILET_BLOCK_H + TOILET_GAP;
+  // Determine which absolute row indices get a service area BEFORE them
+  // Uses custom fractional positions if provided, otherwise evenly distributed
+  // Map: rowIndex → array of midPair indices at that row (handles overlaps)
+  const midServiceAtRow = {};
+  if (midPairs > 0 && totalRows > 0) {
+    for (let i = 0; i < midPairs; i++) {
+      let pos;
+      if (midPosFractions && midPosFractions.length > i) {
+        const frac = Math.max(0, Math.min(1, midPosFractions[i]));
+        pos = Math.max(1, Math.min(totalRows - 1, Math.round(frac * totalRows)));
+      } else {
+        pos = Math.round((i + 1) * totalRows / (midPairs + 1));
+      }
+      if (!midServiceAtRow[pos]) midServiceAtRow[pos] = [];
+      midServiceAtRow[pos].push(i);
+    }
   }
+  const midServicePositions = new Set(Object.keys(midServiceAtRow).map(Number));
+
+  // --- Render: front service area, then rows with mid-service areas, then rear ---
+
+  // Front service area (galley + front toilets)
+  html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, frontToilets,
+    _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2));
+  exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
+  curY += SERVICE_BLOCK_H + SERVICE_GAP;
+
+  const seatAreaStartY = curY;  // first row Y — used for drag bounds
+
+  _globalRowNum = 0;
+  let lastCls = null;
+  for (let ri = 0; ri < allRows.length; ri++) {
+    const r = allRows[ri];
+    const s = r.section;
+    const cc = CLASS_COLORS[r.cls];
+
+    // Insert mid-cabin service area at this position?
+    if (midServicePositions.has(ri)) {
+      const handleIndices = midServiceAtRow[ri] || [0];
+      exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
+      html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, 2);
+      // Draggable overlay for each mid-cabin service area at this row
+      for (const hidx of handleIndices) {
+        html += `<rect class="mid-drag-handle" data-mid-idx="${hidx}" x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${SERVICE_BLOCK_H}"
+                  fill="rgba(148,163,184,0.0)" stroke="none" cursor="grab" pointer-events="all"
+                  onmouseover="this.setAttribute('fill','rgba(148,163,184,0.15)');this.setAttribute('stroke','rgba(148,163,184,0.5)');this.setAttribute('stroke-width','1')"
+                  onmouseout="this.setAttribute('fill','rgba(148,163,184,0.0)');this.setAttribute('stroke','none')"/>`;
+      }
+      curY += SERVICE_BLOCK_H + SERVICE_GAP;
+      // Re-draw class header after service area if same class continues
+      if (r.cls === lastCls) {
+        html += `
+          <line x1="${seatLeft}" y1="${curY + 2}" x2="${seatLeft + seatWidth}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.35"/>
+          <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="6" font-weight="600" font-family="system-ui, sans-serif" opacity="0.5"${_tr(fW/2, curY+12)}>${cc.label.toUpperCase()}</text>
+        `;
+        curY += 18;
+      }
+    }
+
+    // Class header when class changes
+    if (r.cls !== lastCls) {
+      if (lastCls !== null) exitDoorPositions.push(curY - 2);
+      html += `
+        <line x1="${seatLeft}" y1="${curY + 2}" x2="${seatLeft + seatWidth}" y2="${curY + 2}" stroke="${cc.bg}" stroke-width="0.5" opacity="0.35"/>
+        <text x="${fW / 2}" y="${curY + 12}" text-anchor="middle" fill="${cc.bg}" font-size="6" font-weight="600" font-family="system-ui, sans-serif" opacity="0.7"${_tr(fW/2, curY+12)}>${cc.label.toUpperCase()}</text>
+      `;
+      curY += 18;
+      lastCls = r.cls;
+    }
+
+    s._row = r.row;
+    html += drawSeatRow(s, cc, curY);
+    curY += s.rowH + ROW_GAP;
+  }
+
+  const seatAreaEndY = curY;  // last row end Y — used for drag bounds
+
+  // Rear service area (galley + rear toilets)
+  html += _renderServiceArea(seatLeft, curY, seatWidth, SERVICE_BLOCK_H, rearToilets,
+    _tr(seatLeft + seatWidth/2, curY + SERVICE_BLOCK_H/2 + 2));
+  exitDoorPositions.push(curY + SERVICE_BLOCK_H/2 - 7);
+  curY += SERVICE_BLOCK_H + SERVICE_GAP;
 
   // Combi: cargo deck block at the tail of the cabin, after passenger seats
   if (cargoDeckPct > 0 && cargoBlockH > 0) {
     // Bulkhead divider bar first
     html += `<rect x="${seatLeft - 2}" y="${curY}" width="${seatWidth + 4}" height="${BULKHEAD_H}" rx="1"
                fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.55)" stroke-width="0.5"/>`;
-    html += `<text x="${fW/2}" y="${curY + BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+    html += `<text x="${fW/2}" y="${curY + BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(fW/2, curY + BULKHEAD_H/2 + 2)}>BULKHEAD</text>`;
     curY += BULKHEAD_H;
     // Cargo deck block
     html += `<rect x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${cargoBlockH}" rx="3"
                fill="rgba(251,146,60,0.12)" stroke="rgba(251,146,60,0.5)" stroke-width="0.8" stroke-dasharray="4,2"/>`;
     const clabelY = curY + cargoBlockH / 2;
-    html += `<text x="${fW/2}" y="${clabelY - 4}" text-anchor="middle" fill="rgba(251,146,60,0.9)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">CARGO DECK</text>`;
-    html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Freight</text>`;
+    html += `<text x="${fW/2}" y="${clabelY - 4}" text-anchor="middle" fill="rgba(251,146,60,0.9)" font-size="8" font-weight="700" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY - 4)}>CARGO DECK</text>`;
+    html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY + 6)}>Main Deck · Freight</text>`;
+  }
+
+  // Seat letter labels (A, B, C, ...) at the start of seating — placed inside cabin clip group
+  if (sections.length > 0 && landscape) {
+    const sLetters = 'ABCDEFGHJKLMNPQRS'; // skip I and O (airline convention)
+    const firstSection = sections[0];
+    const groups = firstSection.groups;
+    const perRow = firstSection.perRow;
+    const classAisles = groups.length - 1;
+    const seatW = (seatWidth - classAisles * aisleWidth - (perRow - 1) * seatGap) / perRow;
+    let letterIdx = 0;
+    const labelY = seatStartY - 2; // just above first row
+    let lx = seatLeft;
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (let gs = 0; gs < groups[gi]; gs++) {
+        const cx = lx + seatW / 2;
+        const letter = sLetters[letterIdx % sLetters.length];
+        html += `<text x="${cx}" y="${labelY}" text-anchor="middle"
+                  fill="rgba(148,163,184,0.35)" font-size="4" font-weight="600"
+                  font-family="system-ui, sans-serif"${_tr(cx, labelY)}>${letter}</text>`;
+        lx += seatW + seatGap;
+        letterIdx++;
+      }
+      if (gi < groups.length - 1) lx += aisleWidth - seatGap;
+    }
   }
 
   html += `</g>`;
+
+  // Exit doors on fuselage walls with EXIT labels
+  for (const doorY of exitDoorPositions) {
+    html += _renderExitDoor(0, doorY, true, fW, fuseLeft, fuseRight, _tr(fuseLeft + 10, doorY + 8.5));
+    html += _renderExitDoor(0, doorY, false, fW, fuseLeft, fuseRight, _tr(fuseRight - 12, doorY + 8.5));
+  }
+
+  // Window dots along fuselage walls
+  const windowSpacing = 10;
+  const windowR = 1.5;
+  for (let wy = noseH + 15; wy < svgH - tailH - 10; wy += windowSpacing) {
+    const nearDoor = exitDoorPositions.some(dy => Math.abs(wy - dy) < 12);
+    if (!nearDoor) {
+      html += `<circle cx="${fuseLeft + 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+      html += `<circle cx="${fuseRight - 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+    }
+  }
+
+  // Hidden metadata for drag bounds (portrait Y coords of seat area)
+  html += `<rect class="seat-bounds-meta" data-start-y="${seatAreaStartY}" data-end-y="${seatAreaEndY}" data-total-rows="${totalRows}" width="0" height="0" visibility="hidden"/>`;
+
+  // Close landscape rotation group
+  if (landscape) html += `</g>`;
+
   html += `</svg>`;
   return html;
 }
@@ -503,10 +857,24 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   let toilets = existingConfig?.toilets != null ? existingConfig.toilets : toiletInfo.default;
   toilets = Math.max(toiletInfo.min, Math.min(toiletInfo.max, toilets));
 
-  function midToiletRows() {
-    // First 2 pairs (4 toilets) at nose/tail — free. Each mid-cabin pair costs 3 economy rows.
+  // Mid-cabin service area positions (fractional 0–1, front to rear)
+  let midPositions = existingConfig?.midPositions ? [...existingConfig.midPositions] : [];
+
+  function ensureMidPositions() {
     const midPairs = Math.max(0, Math.floor(toilets / 2) - 2);
-    return midPairs * 3;
+    // Grow array with evenly spaced defaults
+    while (midPositions.length < midPairs) {
+      const idx = midPositions.length;
+      midPositions.push((idx + 1) / (midPairs + 1));
+    }
+    // Shrink if needed
+    if (midPositions.length > midPairs) midPositions.length = midPairs;
+  }
+  ensureMidPositions();
+
+  function midToiletRows() {
+    // Mid-cabin service areas (galley + toilets) are visually shown but do not cost seat capacity.
+    return 0;
   }
 
   function recalcEconomy() {
@@ -567,66 +935,64 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
-                display: flex; max-width: 700px; width: 100%; max-height: 90vh; overflow: hidden;">
-      <div style="width: 280px; min-width: 280px; padding: 1.25rem; display: flex; flex-direction: column; border-right: 1px solid var(--border-color); overflow-y: auto;">
-        <h2 style="margin: 0 0 0.4rem 0; color: var(--text-primary); font-size: 1rem;">CABIN CONFIGURATION</h2>
-        <div style="color: var(--text-muted); font-size: 0.65rem; margin-bottom: 1rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} · ${acType}</div>
-
-        <div style="margin-bottom: 1rem; padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <span style="font-size: 0.7rem; color: var(--text-secondary);">Total Passengers</span>
+                display: flex; flex-direction: column; max-width: 1100px; width: 100%; max-height: 90vh; overflow: hidden;">
+      <!-- Top controls bar -->
+      <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); overflow-y: auto; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+          <div style="flex-shrink: 0;">
+            <h2 style="margin: 0 0 0.15rem 0; color: var(--text-primary); font-size: 1rem;">CABIN CONFIGURATION</h2>
+            <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} · ${acType}</div>
+          </div>
+          <div style="padding: 0.4rem 0.75rem; background: var(--surface-elevated); border-radius: 6px; display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0;">
+            <span style="font-size: 0.7rem; color: var(--text-secondary);">Total</span>
             <span id="cabinTotalPax" style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${totalPax()}</span>
-          </div>
-          <div style="height: 6px; background: var(--surface); border-radius: 3px; overflow: hidden;">
-            <div id="cabinSpaceBar" style="height: 100%; border-radius: 3px; transition: width 0.3s ease, background 0.3s ease;
-                 width: ${spaceUsedPercent()}%; background: ${spaceUsedPercent() > 95 ? '#EF4444' : '#10B981'};"></div>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 0.2rem;">
-            <span style="font-size: 0.5rem; color: var(--text-muted);">Cabin space</span>
+            <div style="width: 60px; height: 6px; background: var(--surface); border-radius: 3px; overflow: hidden;">
+              <div id="cabinSpaceBar" style="height: 100%; border-radius: 3px; transition: width 0.3s ease, background 0.3s ease;
+                   width: ${spaceUsedPercent()}%; background: ${spaceUsedPercent() > 95 ? '#EF4444' : '#10B981'};"></div>
+            </div>
             <span id="cabinSpacePercent" style="font-size: 0.5rem; color: var(--text-muted);">${spaceUsedPercent()}%</span>
           </div>
         </div>
 
-        <div id="cabinClassControls" style="display: flex; flex-direction: column; gap: 0.6rem; flex: 1;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: stretch;">
           ${buildClassCtrl('first')}
           ${buildClassCtrl('business')}
           ${buildClassCtrl('economyPlus')}
           ${buildEconDisp()}
-        </div>
 
-        <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); margin-top: 0.4rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;">
-            <span style="font-size: 0.75rem; font-weight: 600; color: rgba(148,163,184,0.8);">LAVATORIES</span>
-            <div style="display: flex; align-items: center; gap: 0.35rem;">
+          <div style="padding: 0.5rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); display: flex; flex-direction: column; justify-content: center;">
+            <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.2rem;">
+              <span style="font-size: 0.65rem; font-weight: 600; color: rgba(148,163,184,0.8);">WC</span>
               <button class="toilet-adj-btn" data-delta="-2"
-                style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
-                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
+                style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
-              <span id="toiletCount" style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${toilets}</span>
+              <span id="toiletCount" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); min-width: 1.5rem; text-align: center;">${toilets}</span>
               <button class="toilet-adj-btn" data-delta="2"
-                style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
-                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
+                style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                       background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
             </div>
+            <div id="toiletNote" style="font-size: 0.5rem; color: var(--text-muted); white-space: nowrap;">Pairs · nose/tail</div>
           </div>
-          <div id="toiletNote" style="font-size: 0.55rem; color: var(--text-muted);">Added in pairs · first 4 at nose/tail · extras replace 3 rows each</div>
-        </div>
 
-        ${options?.refitWarning ? `
-        <div style="margin-top: 0.75rem; padding: 0.5rem 0.65rem; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-left: 3px solid #f59e0b; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem;">
-          <span style="font-size: 0.9rem; flex-shrink: 0;">&#9888;</span>
-          <span style="font-size: 0.65rem; color: var(--warning-color); line-height: 1.3;">${options.refitWarning}</span>
-        </div>
-        ` : ''}
+          ${options?.refitWarning ? `
+          <div style="padding: 0.4rem 0.6rem; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-left: 3px solid #f59e0b; border-radius: 4px; display: flex; align-items: center; gap: 0.4rem;">
+            <span style="font-size: 0.85rem; flex-shrink: 0;">&#9888;</span>
+            <span style="font-size: 0.6rem; color: var(--warning-color); line-height: 1.2;">${options.refitWarning}</span>
+          </div>
+          ` : ''}
 
-        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-          <button id="cabinApplyBtn" class="btn btn-primary" style="flex: 1; padding: 0.6rem; font-size: 0.85rem;">Apply</button>
-          <button id="cabinCancelBtn" class="btn btn-secondary" style="flex: 1; padding: 0.6rem; font-size: 0.85rem;">Cancel</button>
+          <div style="display: flex; gap: 0.4rem; align-items: center; margin-left: auto;">
+            <button id="cabinApplyBtn" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-size: 0.8rem;">Apply</button>
+            <button id="cabinCancelBtn" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.8rem;">Cancel</button>
+          </div>
         </div>
       </div>
 
-      <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; padding: 1rem; min-height: 0; background: rgba(0,0,0,0.2);">
-        <div id="cabinDiagramContainer" style="flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; overflow: hidden;"></div>
+      <!-- Landscape diagram area — scrollable in both directions -->
+      <div id="cabinDiagramScroll" style="flex: 1; min-height: 0; background: rgba(0,0,0,0.2); overflow: auto; padding: 0.5rem 0.75rem;">
+        <div id="cabinDiagramContainer" style="display: flex; flex-direction: column; align-items: flex-start;"></div>
       </div>
     </div>
   `;
@@ -639,38 +1005,32 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const eraLocked = eraFrom != null && _cabinEraYear < eraFrom;
 
     if (eraLocked) {
-      // Force seats to 0 so locked classes take no cabin space
       config[cls] = 0;
       return `
-        <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px;
-                    border-left: 3px solid ${cc.bg}; opacity: 0.38; cursor: not-allowed;"
+        <div style="padding: 0.4rem 0.6rem; background: var(--surface-elevated); border-radius: 6px;
+                    border-left: 3px solid ${cc.bg}; opacity: 0.38; cursor: not-allowed; min-width: 120px;"
              title="${cc.label} class was introduced in ${eraFrom}. Not available in this era.">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
-            <span style="font-size: 0.75rem; font-weight: 600; color: ${cc.bg};">${cc.label.toUpperCase()}</span>
-            <span style="font-size: 0.6rem; color: var(--text-muted); font-style: italic;">Available ${eraFrom}</span>
-          </div>
-          <div style="font-size: 0.55rem; color: var(--text-muted);">${groups.join('-')} layout · ${perRow} per row</div>
+          <div style="font-size: 0.65rem; font-weight: 600; color: ${cc.bg}; margin-bottom: 0.15rem;">${cc.label.toUpperCase()}</div>
+          <div style="font-size: 0.5rem; color: var(--text-muted); font-style: italic;">Available ${eraFrom}</div>
         </div>
       `;
     }
 
     return `
-      <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg};">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
-          <span style="font-size: 0.75rem; font-weight: 600; color: ${cc.bg};">${cc.label.toUpperCase()}</span>
-          <div style="display: flex; align-items: center; gap: 0.35rem;">
-            <button class="cabin-adj-btn" data-class="${cls}" data-delta="-1"
-              style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
-                     background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
-                     display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
-            <span id="cabinCount_${cls}" style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${config[cls]}</span>
-            <button class="cabin-adj-btn" data-class="${cls}" data-delta="1"
-              style="width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 4px;
-                     background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
-                     display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
-          </div>
+      <div style="padding: 0.4rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg}; min-width: 120px;">
+        <div style="font-size: 0.65rem; font-weight: 600; color: ${cc.bg}; margin-bottom: 0.2rem;">${cc.label.toUpperCase()}</div>
+        <div style="display: flex; align-items: center; gap: 0.3rem;">
+          <button class="cabin-adj-btn" data-class="${cls}" data-delta="-1"
+            style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
+          <span id="cabinCount_${cls}" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); min-width: 1.8rem; text-align: center;">${config[cls]}</span>
+          <button class="cabin-adj-btn" data-class="${cls}" data-delta="1"
+            style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
         </div>
-        <div style="font-size: 0.55rem; color: var(--text-muted);">${groups.join('-')} layout · ${perRow} per row</div>
+        <div style="font-size: 0.45rem; color: var(--text-muted); margin-top: 0.15rem;">${groups.join('-')} · ${perRow}/row</div>
       </div>
     `;
   }
@@ -678,12 +1038,10 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   function buildEconDisp() {
     const cc = CLASS_COLORS.economy;
     return `
-      <div style="padding: 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg};">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
-          <span style="font-size: 0.75rem; font-weight: 600; color: ${cc.bg};">ECONOMY</span>
-          <span id="cabinCount_economy" style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary);">${config.economy}</span>
-        </div>
-        <div style="font-size: 0.55rem; color: var(--text-muted);">${layouts.economy.join('-')} layout · ${econPerRow} per row · fills remaining</div>
+      <div style="padding: 0.4rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg}; min-width: 120px;">
+        <div style="font-size: 0.65rem; font-weight: 600; color: ${cc.bg}; margin-bottom: 0.2rem;">ECONOMY</div>
+        <span id="cabinCount_economy" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">${config.economy}</span>
+        <div style="font-size: 0.45rem; color: var(--text-muted); margin-top: 0.15rem;">${layouts.economy.join('-')} · ${econPerRow}/row · auto</div>
       </div>
     `;
   }
@@ -692,16 +1050,21 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   function renderLegend() {
     const classOrder = ['first', 'business', 'economyPlus', 'economy'];
-    let html = `<div style="display: flex; gap: 0.6rem; margin-top: 0.5rem; flex-wrap: wrap; justify-content: center;">`;
+    let html = `<div style="display: flex; gap: 0.75rem; margin-top: 0.4rem; flex-wrap: wrap; justify-content: center; align-items: center;">`;
     for (const cls of classOrder) {
       if (config[cls] > 0) {
         const cc = CLASS_COLORS[cls];
         html += `<div style="display: flex; align-items: center; gap: 0.25rem;">
-          <div style="width: 8px; height: 8px; border-radius: 2px; background: ${cc.bg};"></div>
-          <span style="font-size: 0.55rem; color: var(--text-muted);">${cc.label} (${config[cls]})</span>
+          <div style="width: 10px; height: 10px; border-radius: 2px; background: ${cc.bg}; border: 1px solid ${cc.border};"></div>
+          <span style="font-size: 0.6rem; color: var(--text-secondary);">${cc.label} (${config[cls]})</span>
         </div>`;
       }
     }
+    // Exit door legend
+    html += `<div style="display: flex; align-items: center; gap: 0.25rem;">
+      <div style="width: 10px; height: 6px; border-radius: 1px; background: rgba(239,68,68,0.25); border: 1px solid rgba(239,68,68,0.6);"></div>
+      <span style="font-size: 0.6rem; color: var(--text-secondary);">Exit</span>
+    </div>`;
     html += `</div>`;
     return html;
   }
@@ -712,8 +1075,87 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const cdp = aircraft.isCombi && aircraft.cargoCapacityKg > 0
       ? Math.min(0.75, aircraft.cargoCapacityKg / (aircraft.cargoCapacityKg + (aircraft.passengerCapacity || 1) * 100))
       : 0;
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets, cdp) + renderLegend();
+    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets, cdp, true, midPositions) + renderLegend();
   }
+
+  // Drag handling for mid-cabin service areas
+  let _midDrag = null;   // { idx, startY, endY, totalRows, lastRow }
+
+  function _screenToSvgY(svg, clientX, clientY) {
+    // Use SVG's CTM to accurately convert screen coords → SVG viewBox coords
+    // In landscape mode, viewBox X corresponds to portrait Y (cabin length)
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return 0;
+    const svgPt = pt.matrixTransform(ctm.inverse());
+    return svgPt.x; // viewBox X = portrait Y in landscape
+  }
+
+  function setupMidDragHandles() {
+    const container = document.getElementById('cabinDiagramContainer');
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const meta = svg.querySelector('.seat-bounds-meta');
+    if (!meta) return;
+    const startY = parseFloat(meta.dataset.startY);
+    const endY = parseFloat(meta.dataset.endY);
+    const totalRows = parseInt(meta.dataset.totalRows);
+
+    svg.querySelectorAll('.mid-drag-handle').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(handle.dataset.midIdx);
+        // Calculate what row this currently sits at
+        const currentRow = Math.round(midPositions[idx] * totalRows);
+        _midDrag = { idx, startY, endY, totalRows, lastRow: currentRow };
+        document.body.style.cursor = 'grabbing';
+        const scrollEl = document.getElementById('cabinDiagramScroll');
+        if (scrollEl) scrollEl.style.overflow = 'hidden';
+      });
+    });
+  }
+
+  // Global mouse handlers for drag (attached to overlay)
+  overlay.addEventListener('mousemove', (e) => {
+    if (!_midDrag) return;
+    e.preventDefault();
+    const container = document.getElementById('cabinDiagramContainer');
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const portraitY = _screenToSvgY(svg, e.clientX, e.clientY);
+    const range = _midDrag.endY - _midDrag.startY;
+    if (range <= 0) return;
+
+    // Convert portrait Y to a row index, clamped to valid range
+    const frac = (portraitY - _midDrag.startY) / range;
+    const rowIdx = Math.max(1, Math.min(_midDrag.totalRows - 1, Math.round(frac * _midDrag.totalRows)));
+
+    // Only re-render when the row actually changes (snap to rows)
+    if (rowIdx !== _midDrag.lastRow) {
+      _midDrag.lastRow = rowIdx;
+      midPositions[_midDrag.idx] = rowIdx / _midDrag.totalRows;
+      renderDiagram();
+      setupMidDragHandles();
+    }
+  });
+
+  function _endMidDrag() {
+    if (_midDrag) {
+      document.body.style.cursor = '';
+      _midDrag = null;
+      const scrollEl = document.getElementById('cabinDiagramScroll');
+      if (scrollEl) scrollEl.style.overflow = 'auto';
+    }
+  }
+  overlay.addEventListener('mouseup', _endMidDrag);
+  overlay.addEventListener('mouseleave', _endMidDrag);
 
   function updateUI() {
     recalcEconomy();
@@ -753,7 +1195,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       } else {
         const midPrs = Math.max(0, Math.floor(toilets / 2) - 2);
         noteEl.textContent = midPrs > 0
-          ? `${midPrs} mid-cabin pair${midPrs > 1 ? 's' : ''} replacing ${midPrs * 3 * econPerRow} seats`
+          ? `${midPrs} mid-cabin pair${midPrs > 1 ? 's' : ''} with galley`
           : 'Added in pairs · first 4 at nose/tail';
       }
     }
@@ -762,7 +1204,9 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const tPlus = overlay.querySelector('.toilet-adj-btn[data-delta="2"]');
     if (tMin) { tMin.style.opacity = toilets > toiletInfo.min ? '1' : '0.3'; tMin.style.cursor = toilets > toiletInfo.min ? 'pointer' : 'default'; }
     if (tPlus) { tPlus.style.opacity = toilets < toiletInfo.max ? '1' : '0.3'; tPlus.style.cursor = toilets < toiletInfo.max ? 'pointer' : 'default'; }
+    ensureMidPositions();
     renderDiagram();
+    setupMidDragHandles();
   }
 
   // Toilet buttons
@@ -773,6 +1217,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       const newVal = toilets + delta;
       if (newVal >= toiletInfo.min && newVal <= toiletInfo.max) {
         toilets = newVal;
+        ensureMidPositions();
         updateUI();
       }
     });
@@ -809,7 +1254,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       businessSeats: config.business,
       economyPlusSeats: config.economyPlus,
       economySeats: config.economy,
-      toilets: toilets
+      toilets: toilets,
+      midPositions: midPositions.length > 0 ? [...midPositions] : undefined
     };
     if (options?.refitConfirm) {
       _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result);
@@ -824,6 +1270,12 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   });
 
   updateUI();
+
+  // Auto-scroll diagram container to show nose of aircraft on open
+  requestAnimationFrame(() => {
+    const scrollParent = document.getElementById('cabinDiagramContainer')?.parentElement;
+    if (scrollParent) { scrollParent.scrollLeft = 0; scrollParent.scrollTop = 0; }
+  });
 }
 
 
@@ -895,8 +1347,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
     return { upper: minUpper + upperExtra, main: minMain + (extra - upperExtra) };
   }
   function deckMidPenalty(deckToiletCount) {
-    // Each mid-cabin pair (beyond first 2 pairs) costs 3 economy rows
-    return Math.max(0, Math.floor(deckToiletCount / 2) - 2) * 3;
+    // Mid-cabin service areas are visually shown but do not cost seat capacity
+    return 0;
   }
 
   // Apply initial toilet penalty to economy (recalcDeckEconomy is hoisted)
