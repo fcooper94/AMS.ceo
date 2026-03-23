@@ -108,7 +108,11 @@
       "Bash(xargs:*)",
       "WebFetch(domain:knowledgebase.vatsim-germany.org)",
       "WebFetch(domain:wiki.ivao.aero)",
-      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -d airline_control -c \"ALTER TABLE routes ADD COLUMN IF NOT EXISTS custom_route_string TEXT;\")"
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -d airline_control -c \"ALTER TABLE routes ADD COLUMN IF NOT EXISTS custom_route_string TEXT;\")",
+      "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\(d.get\\(''''total_results'''',0\\),''''results''''\\);print\\(d[''''photos''''][0][''''alt''''] if d.get\\(''''photos''''\\) else ''''NONE''''\\)\")",
+      "Bash(done)",
+      "Bash(for q:*)",
+      "Bash(do echo:*)"
     ]
   }
 }

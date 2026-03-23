@@ -46,7 +46,7 @@ const CLASS_COLORS = {
 };
 
 // Fuselage visual widths per aircraft type
-const FUSELAGE_WIDTHS = { Regional: 160, Narrowbody: 280, Widebody: 400 };
+const FUSELAGE_WIDTHS = { Regional: 130, Narrowbody: 280, Widebody: 400 };
 
 // Era year — set from the host page via setCabinEraYear().
 // Classes not yet invented are rendered as locked/greyed cards.
@@ -82,7 +82,7 @@ const WIDEBODY_OVERRIDES = [
 ];
 
 // Row pixel heights per class (SVG units — larger = more visible seats)
-const ROW_HEIGHTS = { economy: 14, economyPlus: 17, business: 22, first: 32 };
+const ROW_HEIGHTS = { economy: 22, economyPlus: 26, business: 32, first: 42 };
 const ROW_GAP = 3;
 
 /** Calculate default / min / max toilet counts for an aircraft.
@@ -97,8 +97,8 @@ const ROW_GAP = 3;
  */
 function _toiletDefaults(passengerCapacity) {
   let def, min;
-  if      (passengerCapacity <= 19)  { def = 0;  min = 0; }
-  else if (passengerCapacity <= 45)  { def = 1;  min = 0; }
+  if      (passengerCapacity <= 19)  return { min: 0, default: 0, max: 0 };  // too small for toilets
+  else if (passengerCapacity <= 45)  return { min: 1, default: 1, max: 1 };  // fixed compact lav
   else if (passengerCapacity <= 100) { def = 2;  min = 0; }
   else if (passengerCapacity <= 200) { def = 4;  min = 2; }
   else if (passengerCapacity <= 350) { def = 6;  min = 4; }
@@ -381,7 +381,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   if (!deckLayout) return '';
 
   const fW = fWidth;
-  const isSmallAircraft = fW <= 180;
+  const isSmallAircraft = fW <= 150;
   const aisleWidth = isSmallAircraft ? 14 : 20;
   const seatGap = 2;
 
@@ -441,31 +441,26 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     : 0;
   const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
-  // Nose and tail proportional to fuselage width for a realistic silhouette
-  // Small aircraft get a more elongated, pointed shape
-  const noseRatio = isSmallAircraft ? 1.1 : 0.55;   // much longer nose for small planes
-  const tailRatio = isSmallAircraft ? 1.3 : 0.65;   // much longer tail for small planes
-  const noseH = Math.round(fW * noseRatio);
-  const tailH = Math.round(fW * tailRatio);
+  // Fuselage shape — clean streamlined silhouette matching professional airline seatmaps
+  // Nose must be taller than half the body width to look pointed
+  const bodyW = fuseRight - fuseLeft;
+  const noseH = Math.round(bodyW * (isSmallAircraft ? 1.0 : 0.55));
+  const tailH = Math.round(bodyW * (isSmallAircraft ? 0.7 : 0.25));
   const svgH = noseH + totalH + tailH + 10;
   const gradId = svgId || 'fuselageGrad';
   const clipId = `fClip_${svgId || 'def'}`;
   const cx = fW / 2;
   const bodyEnd = svgH - tailH;
 
-  // Realistic aircraft fuselage: streamlined nose → straight body → tapered tail
-  // Small aircraft use a more pointed nose and narrower taper
-  const nosePinch = isSmallAircraft ? 0.01 : 0.06;  // how wide the nose tip is (very sharp for small)
-  const noseCurve = isSmallAircraft ? 0.15 : 0.35;   // control point height fraction
-  const tailSpread = isSmallAircraft ? 0.03 : 0.15;  // how wide the tail tip fans out (very narrow)
-  const tailCurve = isSmallAircraft ? 0.35 : 0.6;    // control point depth fraction
+  // Nose: cubic bezier — hugs body wall then converges sharply to tip
+  // Tail: gentle rounded cone
   const fuselagePath = `
     M ${fuseLeft} ${noseH}
-    C ${fuseLeft} ${noseH * noseCurve}, ${cx - fW * nosePinch} ${4}, ${cx} ${4}
-    C ${cx + fW * nosePinch} ${4}, ${fuseRight} ${noseH * noseCurve}, ${fuseRight} ${noseH}
+    C ${fuseLeft} ${noseH * 0.45}, ${cx - 2} ${noseH * 0.04}, ${cx} ${2}
+    C ${cx + 2} ${noseH * 0.04}, ${fuseRight} ${noseH * 0.45}, ${fuseRight} ${noseH}
     L ${fuseRight} ${bodyEnd}
-    C ${fuseRight} ${bodyEnd + tailH * tailCurve}, ${cx + fW * tailSpread} ${svgH - 2}, ${cx} ${svgH}
-    C ${cx - fW * tailSpread} ${svgH - 2}, ${fuseLeft} ${bodyEnd + tailH * tailCurve}, ${fuseLeft} ${bodyEnd}
+    Q ${fuseRight} ${bodyEnd + tailH * 0.85}, ${cx} ${svgH - 1}
+    Q ${fuseLeft} ${bodyEnd + tailH * 0.85}, ${fuseLeft} ${bodyEnd}
     Z`;
 
   // Landscape mode: SVG is built in portrait coords, then rotated -90° so nose points left
@@ -473,14 +468,14 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   const lsViewH = landscape ? fW : svgH;
   // In landscape: large rendering so individual seats are clearly visible.
   // Height = fuselage cross-section scaled up; width from aspect ratio + stretch.
-  const lsH = 500;
-  const lsStretch = 2.0;
+  const lsH = isSmallAircraft ? 200 : 320;
+  const lsW = Math.round(lsH * (lsViewW / lsViewH));
   const lsStyle = landscape
-    ? `height:${lsH}px;width:${Math.round(lsH * (lsViewW / lsViewH) * lsStretch)}px;flex-shrink:0;`
+    ? `height:${lsH}px;width:${lsW}px;flex-shrink:0;`
     : `width:100%;height:100%;`;
 
   let html = `
-    <svg viewBox="0 0 ${lsViewW} ${lsViewH}" preserveAspectRatio="xMidYMid meet" style="${lsStyle}" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 ${lsViewW} ${lsViewH}" preserveAspectRatio="xMinYMid meet" style="${lsStyle}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
           <stop offset="0%" stop-color="rgba(100,116,139,0.15)"/>
@@ -494,139 +489,27 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   // Landscape: open rotation group — rotates entire portrait drawing -90° so nose points LEFT
   if (landscape) html += `<g transform="translate(0,${fW}) rotate(-90)">`;
 
-  html += `<path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.3)" stroke-width="1.5"/>`;
+  html += `<path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.35)" stroke-width="0.8"/>`;
 
   // Helper: makes text readable in landscape mode by counter-rotating +90° around its anchor
   const _tr = landscape
     ? (x, y) => ` transform="rotate(90,${x},${y})"`
     : () => '';
 
-  // Cockpit area — all dimensions relative to fW for proper scaling
+  // Cockpit area — simple darkened nose with label (like professional seatmaps)
   if (showCockpit) {
-    const cpBot = noseH + 4; // flight deck wall Y
-    const cpHalfW = fW * 0.30;
-
-    // Darkened cockpit floor — fills the nose shape (uses same curve as fuselage)
-    html += `<path d="M${cx - cpHalfW},${cpBot} L${fuseLeft + 4},${noseH}
-              C${fuseLeft + 2},${noseH * noseCurve} ${cx - fW * nosePinch},${4} ${cx},${4}
-              C${cx + fW * nosePinch},${4} ${fuseRight - 2},${noseH * noseCurve} ${fuseRight - 4},${noseH}
-              L${cx + cpHalfW},${cpBot} Z"
-              fill="rgba(15,23,42,0.55)" stroke="none"/>`;
-
-    // Flight deck bulkhead wall — small planes have no separate cockpit door
-    const doorGap = isSmallAircraft ? 0 : fW * 0.04;
-    html += `<line x1="${cx - cpHalfW}" y1="${cpBot}" x2="${cx - doorGap}" y2="${cpBot}"
-              stroke="rgba(100,116,139,0.5)" stroke-width="1.5"/>`;
-    html += `<line x1="${cx + doorGap}" y1="${cpBot}" x2="${cx + cpHalfW}" y2="${cpBot}"
-              stroke="rgba(100,116,139,0.5)" stroke-width="1.5"/>`;
-    // Cockpit door
-    html += `<line x1="${cx - doorGap}" y1="${cpBot}" x2="${cx + doorGap}" y2="${cpBot}"
-              stroke="rgba(100,116,139,0.3)" stroke-width="1.5" stroke-dasharray="2,1.5"/>`;
-
-    // Instrument panel (curved arc across the nose)
-    const ipY = noseH * 0.55;
-    const ipHalfW = fW * 0.22;
-    html += `<path d="M${cx - ipHalfW},${ipY} Q${cx},${ipY - noseH * 0.08} ${cx + ipHalfW},${ipY}"
-              fill="none" stroke="rgba(100,116,139,0.4)" stroke-width="1.2"/>`;
-    // Glareshield (thinner arc above instrument panel)
-    html += `<path d="M${cx - ipHalfW + 2},${ipY - 2} Q${cx},${ipY - noseH * 0.12} ${cx + ipHalfW - 2},${ipY - 2}"
-              fill="none" stroke="rgba(100,116,139,0.25)" stroke-width="0.6"/>`;
-
-    // Windshield — small aircraft: 2 wraparound panes; larger: 6 panes
-    const wTop = noseH * (isSmallAircraft ? 0.30 : 0.18);
-    const wBot = noseH * (isSmallAircraft ? 0.55 : 0.48);
-    const wH = wBot - wTop;
-
-    if (isSmallAircraft) {
-      // 2 wraparound panes split by center post (like a turboprop)
-      const pGap = fW * 0.008;
-      const pOuter = fW * 0.28;
-      // Left pane
-      html += `<path d="M${cx - pOuter},${wBot} L${cx - pOuter + 2},${wTop + wH * 0.15}
-                L${cx - pGap},${wTop} L${cx - pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.15)" stroke="rgba(96,165,250,0.45)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // Right pane
-      html += `<path d="M${cx + pOuter},${wBot} L${cx + pOuter - 2},${wTop + wH * 0.15}
-                L${cx + pGap},${wTop} L${cx + pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.15)" stroke="rgba(96,165,250,0.45)" stroke-width="0.5" stroke-linejoin="round"/>`;
-    } else {
-      // Outer side windows (small, trapezoidal)
-      const swOuterL = fW * 0.24, swInnerL = fW * 0.16;
-      const swOuterR = fW * 0.24, swInnerR = fW * 0.16;
-      // Left side window
-      html += `<path d="M${cx - swOuterL},${wBot} L${cx - swOuterL + 1},${wTop + wH * 0.3}
-                L${cx - swInnerL},${wTop + wH * 0.15} L${cx - swInnerL},${wBot} Z"
-                fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.4)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // Right side window
-      html += `<path d="M${cx + swOuterR},${wBot} L${cx + swOuterR - 1},${wTop + wH * 0.3}
-                L${cx + swInnerR},${wTop + wH * 0.15} L${cx + swInnerR},${wBot} Z"
-                fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.4)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // 4 front panes (two pairs split by center post)
-      const pGap = fW * 0.005;
-      const pInner = fW * 0.03;
-      const pOuter = fW * 0.14;
-      // Left outer front
-      html += `<path d="M${cx - pOuter},${wBot} L${cx - pOuter + 1.5},${wTop + wH * 0.1}
-                L${cx - pInner - pGap},${wTop} L${cx - pInner - pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.18)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // Left inner front
-      html += `<path d="M${cx - pInner - pGap + 1},${wBot} L${cx - pInner - pGap},${wTop}
-                L${cx - pGap},${wTop - 1} L${cx - pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.22)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // Right inner front
-      html += `<path d="M${cx + pInner + pGap - 1},${wBot} L${cx + pInner + pGap},${wTop}
-                L${cx + pGap},${wTop - 1} L${cx + pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.22)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
-      // Right outer front
-      html += `<path d="M${cx + pOuter},${wBot} L${cx + pOuter - 1.5},${wTop + wH * 0.1}
-                L${cx + pInner + pGap},${wTop} L${cx + pInner + pGap},${wBot} Z"
-                fill="rgba(59,130,246,0.18)" stroke="rgba(96,165,250,0.5)" stroke-width="0.5" stroke-linejoin="round"/>`;
-    }
-
-    // Pilot seats — single pilot centered for small aircraft, two pilots otherwise
-    const psW = fW * 0.065, psH = fW * 0.08;
-    const psY = noseH * 0.65;
-    const psGap = fW * 0.03;
-    const backH = psH * 0.3;
-    const singlePilot = isSmallAircraft;
-
-    function _drawPilotSeat(sx) {
-      html += `<rect x="${sx}" y="${psY}" width="${psW}" height="${backH}" rx="2"
-                fill="rgba(71,85,105,0.5)" stroke="rgba(100,116,139,0.4)" stroke-width="0.5"/>`;
-      html += `<rect x="${sx + 1}" y="${psY + backH + 0.5}" width="${psW - 2}" height="${psH - backH - 1}" rx="1.5"
-                fill="rgba(71,85,105,0.35)" stroke="rgba(100,116,139,0.3)" stroke-width="0.4"/>`;
-      // Yoke
-      const yokeY = psY - 2;
-      const yokeR = fW * 0.012;
-      html += `<circle cx="${sx + psW / 2}" cy="${yokeY}" r="${yokeR}"
-                fill="none" stroke="rgba(148,163,184,0.35)" stroke-width="0.6"/>`;
-      html += `<line x1="${sx + psW / 2}" y1="${yokeY + yokeR}" x2="${sx + psW / 2}" y2="${psY}"
-                stroke="rgba(148,163,184,0.25)" stroke-width="0.5"/>`;
-    }
-
-    if (singlePilot) {
-      // Single centered pilot seat
-      _drawPilotSeat(cx - psW / 2);
-    } else {
-      // Captain (left) + First officer (right)
-      const capX = cx - psGap - psW;
-      const foX = cx + psGap;
-      _drawPilotSeat(capX);
-      _drawPilotSeat(foX);
-
-      // Center pedestal (throttle quadrant)
-      const pedW = psGap * 1.4, pedH = psH * 1.1;
-      html += `<rect x="${cx - pedW / 2}" y="${psY - 1}" width="${pedW}" height="${pedH}" rx="1.5"
-                fill="rgba(100,116,139,0.2)" stroke="rgba(100,116,139,0.3)" stroke-width="0.4"/>`;
-      // Throttle levers
-      const tY = psY + pedH * 0.3;
-      html += `<line x1="${cx - 1.5}" y1="${tY}" x2="${cx - 1.5}" y2="${tY + pedH * 0.35}"
-                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
-      html += `<line x1="${cx}" y1="${tY}" x2="${cx}" y2="${tY + pedH * 0.35}"
-                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
-      html += `<line x1="${cx + 1.5}" y1="${tY}" x2="${cx + 1.5}" y2="${tY + pedH * 0.35}"
-                stroke="rgba(148,163,184,0.4)" stroke-width="0.8" stroke-linecap="round"/>`;
-    }
+    // Darkened cockpit floor filling the nose (matches fuselage cubic bezier)
+    html += `<path d="M${fuseLeft + 1},${noseH}
+              C${fuseLeft},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},${2}
+              C${cx + 2},${noseH * 0.04} ${fuseRight},${noseH * 0.45} ${fuseRight - 1},${noseH} Z"
+              fill="rgba(15,23,42,0.45)" stroke="none"/>`;
+    // Bulkhead line separating cockpit from cabin
+    html += `<line x1="${fuseLeft + 2}" y1="${noseH}" x2="${fuseRight - 2}" y2="${noseH}"
+              stroke="rgba(100,116,139,0.4)" stroke-width="0.8"/>`;
+    // COCKPIT label
+    const labelY = noseH * 0.65;
+    html += `<text x="${cx}" y="${labelY}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="${isSmallAircraft ? 5 : 7}" font-weight="700"
+              font-family="system-ui, sans-serif" letter-spacing="1.5"${_tr(cx, labelY)}>COCKPIT</text>`;
   }
 
   // All cabin content clipped to fuselage outline
@@ -818,7 +701,37 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY + 6)}>Main Deck · Freight</text>`;
   }
 
-  // Seat letter labels removed — cluttered the diagram near the cockpit
+  // Seat letter labels at the start of each class section (like airline seatmaps)
+  // Uses airline convention: A, B, C, D, E, F, G, H, J, K (skip I)
+  if (landscape) {
+    const SEAT_LETTERS = ['A','B','C','D','E','F','G','H','J','K'];
+    const labelledClasses = new Set();
+    for (const b of classBrackets) {
+      if (labelledClasses.has(b.cls)) continue;
+      labelledClasses.add(b.cls);
+      // Find the section matching this class to get its groups
+      const sec = sections.find(s => s.cls === b.cls);
+      if (!sec) continue;
+      const perRow = sec.groups.reduce((s, g) => s + g, 0);
+      const classAisles = sec.groups.length - 1;
+      const seatW = (seatWidth - classAisles * aisleWidth - (perRow - 1) * seatGap) / perRow;
+      // Position letters at the class start Y
+      const letterY = b.startY - 1;
+      let seatIdx = 0;
+      let lx = seatLeft;
+      for (let gi = 0; gi < sec.groups.length; gi++) {
+        for (let gs = 0; gs < sec.groups[gi]; gs++) {
+          const letter = seatIdx < SEAT_LETTERS.length ? SEAT_LETTERS[seatIdx] : '';
+          const lcx = lx + seatW / 2;
+          html += `<text x="${lcx}" y="${letterY}" text-anchor="middle" dominant-baseline="auto" fill="rgba(148,163,184,0.45)" font-size="3.5" font-weight="600"
+                    font-family="system-ui, sans-serif"${_tr(lcx, letterY)}>${letter}</text>`;
+          lx += seatW + seatGap;
+          seatIdx++;
+        }
+        if (gi < sec.groups.length - 1) lx += aisleWidth - seatGap;
+      }
+    }
+  }
 
   html += `</g>`;
 
@@ -1086,12 +999,12 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           <div style="padding: 0.5rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); display: flex; flex-direction: column; justify-content: center;">
             <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.2rem;">
               <span style="font-size: 0.65rem; font-weight: 600; color: rgba(148,163,184,0.8);">WC</span>
-              <button class="toilet-adj-btn" data-delta="-1"
+              <button class="toilet-adj-btn" data-delta="-2"
                 style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
                        background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
               <span id="toiletCount" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); min-width: 1.5rem; text-align: center;">${toilets}</span>
-              <button class="toilet-adj-btn" data-delta="1"
+              <button class="toilet-adj-btn" data-delta="2"
                 style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
                        background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
                        display: flex; align-items: center; justify-content: center; padding: 0;">+</button>

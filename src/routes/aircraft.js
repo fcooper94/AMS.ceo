@@ -511,38 +511,18 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
 }
 
 /**
- * Proxy aircraft images from doc8643.com (they block hotlinking)
- * Caches images in memory to avoid repeated requests
+ * Serve aircraft images from local files (downloaded from doc8643.com)
+ * Files stored in public/images/aircraft/{CODE}.jpg
  */
-const imageCache = new Map();
-router.get('/image/:icaoCode', async (req, res) => {
+const path = require('path');
+router.get('/image/:icaoCode', (req, res) => {
   const code = req.params.icaoCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   if (!code || code.length > 6) return res.status(400).send('Invalid code');
-
-  if (imageCache.has(code)) {
-    const cached = imageCache.get(code);
-    if (cached === null) return res.status(404).send('Not found');
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=604800');
-    return res.send(cached);
-  }
-
-  try {
-    const url = `https://doc8643.com/static/img/aircraft/3D/${code}.jpg`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      imageCache.set(code, null);
-      return res.status(404).send('Not found');
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    imageCache.set(code, buffer);
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=604800');
-    res.send(buffer);
-  } catch (err) {
-    imageCache.set(code, null);
-    res.status(404).send('Not found');
-  }
+  const imgPath = path.join(__dirname, '..', '..', 'public', 'images', 'aircraft', `${code}.jpg`);
+  res.set('Cache-Control', 'public, max-age=604800');
+  res.sendFile(imgPath, (err) => {
+    if (err) res.status(404).send('Not found');
+  });
 });
 
 /**

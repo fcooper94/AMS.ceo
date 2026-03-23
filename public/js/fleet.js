@@ -355,8 +355,7 @@ async function showAircraftDetails(userAircraftId) {
         <!-- Left: Image + Ownership -->
         <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
           <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:130px;">
-            ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"
-              data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
+            ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"              data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
               onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</div>';}">` : `<span style="color:var(--text-muted);font-size:0.75rem;">No image</span>`}
           </div>
           <div style="font-size:0.75rem;color:var(--text-secondary);padding:0.1rem 0;">${ownershipHtml}</div>
@@ -427,13 +426,13 @@ async function showAircraftDetails(userAircraftId) {
 
           <!-- Quick Info: Location, Flight Hours, Routes -->
           <div style="display:flex;gap:0.3rem;font-size:0.65rem;">
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
               <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
             </div>
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
               <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrency(parseFloat(ua.totalFlightHours) || 0)}</strong>
             </div>
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
               <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
             </div>
           </div>
@@ -466,7 +465,7 @@ async function showAircraftDetails(userAircraftId) {
             </div>
             ` : `<div style="color:var(--text-muted);font-size:0.75rem;flex:1;display:flex;align-items:center;">Default layout &mdash; ${ac.passengerCapacity} pax</div>`}
             ${ua.status === 'active' && ac.type !== 'Cargo' && ac.passengerCapacity > 0 ? `
-            <button onclick="reconfigureCabin('${ua.id}')" style="width:100%;margin-top:0.25rem;padding:0.2rem 0.5rem;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:4px;color:#a78bfa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#a78bfa';this.style.background='rgba(139,92,246,0.18)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.3)';this.style.background='rgba(139,92,246,0.1)'">Reconfigure Cabin</button>
+            <button onclick="reconfigureCabin('${ua.id}')" style="width:100%;margin-top:0.25rem;padding:0.2rem 0.5rem;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);filter:invert(1);mix-blend-mode:screen;color:#a78bfa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#a78bfa';this.style.background='rgba(139,92,246,0.18)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.3)';this.style.background='rgba(139,92,246,0.1)'">Reconfigure Cabin</button>
             ` : ''}
           </div>
 
@@ -513,7 +512,7 @@ async function showAircraftDetails(userAircraftId) {
               }
             })() : `<div style="color:var(--text-muted);font-size:0.75rem;flex:1;display:flex;align-items:center;">No cargo configured</div>`}
             ${ua.status === 'active' && ac.cargoCapacityKg > 0 ? `
-            <button onclick="reconfigureCargo('${ua.id}')" style="width:100%;margin-top:0.25rem;padding:0.2rem 0.5rem;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:4px;color:#60a5fa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#60a5fa';this.style.background='rgba(59,130,246,0.18)'" onmouseout="this.style.borderColor='rgba(59,130,246,0.3)';this.style.background='rgba(59,130,246,0.1)'">Reconfigure Cargo</button>
+            <button onclick="reconfigureCargo('${ua.id}')" style="width:100%;margin-top:0.25rem;padding:0.2rem 0.5rem;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);filter:invert(1);mix-blend-mode:screen;color:#60a5fa;font-size:0.6rem;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#60a5fa';this.style.background='rgba(59,130,246,0.18)'" onmouseout="this.style.borderColor='rgba(59,130,246,0.3)';this.style.background='rgba(59,130,246,0.1)'">Reconfigure Cargo</button>
             ` : ''}
           </div>
         </div>

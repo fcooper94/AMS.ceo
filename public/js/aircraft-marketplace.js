@@ -117,7 +117,7 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
         width: 500px;
         max-width: 90%;
         padding: 2.5rem;
-        border-radius: 4px;
+        filter: invert(1); mix-blend-mode: screen;
         box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 0 100px rgba(0,0,0,0.05);
         font-family: 'Times New Roman', serif;
         color: #2c2c2c;
@@ -698,8 +698,7 @@ function showAircraftDetails(aircraftId) {
     <div style="display: flex; gap: 1rem; margin-bottom: 0.6rem;">
       <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.4rem;">
         <div id="acImageContainer" style="width: 300px; min-height: 180px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
-          ${acImgCodes.length > 0 ? `<img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"
-            data-fallbacks='${JSON.stringify(acImgCodes.slice(1))}' data-base-url="${acImgBase}"
+          ${acImgCodes.length > 0 ? `<img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"            data-fallbacks='${JSON.stringify(acImgCodes.slice(1))}' data-base-url="${acImgBase}"
             onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<span style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</span>';}">` : `<span style="color: var(--text-muted); font-size: 0.75rem;">No image</span>`}
         </div>
         ${aircraft.description ? `<div style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.3;">${aircraft.description}</div>` : ''}
@@ -816,7 +815,7 @@ function showAircraftDetails(aircraftId) {
 
     ${aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? `
     <div id="cabinConfigBtn" onclick="openCabinConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCabinConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCabinConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
-      <div id="cabinConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
+      <div id="cabinConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); filter: invert(1); mix-blend-mode: screen; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
       <div style="flex: 1;">
         <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cabin</div>
         <div id="cabinConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set seat layout</div>
@@ -827,7 +826,7 @@ function showAircraftDetails(aircraftId) {
 
     ${aircraft.cargoCapacityKg > 0 ? `
     <div id="cargoConfigBtn" onclick="openCargoConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCargoConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCargoConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
-      <div id="cargoConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
+      <div id="cargoConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); filter: invert(1); mix-blend-mode: screen; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
       <div style="flex: 1;">
         <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cargo</div>
         <div id="cargoConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set cargo allocation</div>
@@ -1060,9 +1059,9 @@ function showOrderDialog() {
                   <div id="orderDeliveryNote" style="color: var(--text-muted); font-size: 0.75rem;">${deliveryNote}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.6rem;">
-                  <button id="orderQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <button id="orderQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                   <span id="orderQtyDisplay" style="font-weight: 700; font-size: 1.3rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${orderQty}</span>
-                  <button id="orderQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                  <button id="orderQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
                 </div>
               </div>
             </div>
@@ -1134,7 +1133,7 @@ function showOrderDialog() {
           <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.4rem; font-weight: 600;">Select Bank</label>
 
           <!-- No bank can cover warning -->
-          <div id="orderNoBankWarning" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px;">
+          <div id="orderNoBankWarning" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); filter: invert(1); mix-blend-mode: screen;">
             <div style="display: flex; align-items: center; gap: 0.3rem;">
               <span style="color: #EF4444; font-size: 1rem;">&#9888;</span>
               <span style="color: #EF4444; font-weight: 700; font-size: 0.8rem;">No bank can cover this loan</span>
@@ -1161,7 +1160,7 @@ function showOrderDialog() {
                 <span>5 yr</span>
               </div>
             </div>
-            <div id="orderLoanPreview" style="color: #3b82f6; font-weight: 600; text-align: center; padding: 0.5rem 1rem; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 0.85rem; min-width: 200px;">
+            <div id="orderLoanPreview" style="color: #3b82f6; font-weight: 600; text-align: center; padding: 0.5rem 1rem; background: rgba(59, 130, 246, 0.1); filter: invert(1); mix-blend-mode: screen; font-size: 0.85rem; min-width: 200px;">
               Calculating...
             </div>
           </div>
@@ -1544,7 +1543,7 @@ function showOrderRegistrationDialog() {
   function buildRegInputs() {
     if (qty === 1) {
       return `
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="regContainer0">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="regContainer0">
           <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input type="text" id="regSuffix0"
             placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -1559,7 +1558,7 @@ function showOrderRegistrationDialog() {
         <tr>
           <td style="padding: 0.4rem 0.5rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">${i + 1}</td>
           <td style="padding: 0.4rem 0.5rem;">
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
               <div style="padding: 0.4rem 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="regSuffix${i}"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -1983,7 +1982,7 @@ function showPurchaseConfirmationModal() {
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; width: 90%; max-width: 600px;">
       <h2 style="margin-bottom: 1.5rem; color: var(--text-primary); text-align: center;">CONFIRM ACQUISITION</h2>
 
-      <div style="margin-bottom: 2rem; padding: 1rem; background: var(--surface-elevated); border-radius: 4px;">
+      <div style="margin-bottom: 2rem; padding: 1rem; background: var(--surface-elevated); filter: invert(1); mix-blend-mode: screen;">
         <h3 style="margin: 0 0 1rem 0; color: var(--accent-color);">${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.variant ? (selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant) : ''}</h3>
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; font-size: 0.9rem;">
           <div><span style="color: var(--text-secondary);">Condition:</span> <strong>${conditionPercent}%</strong></div>
@@ -2307,7 +2306,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 2rem; width: 90%; max-width: 650px; margin: auto;">
       <h2 style="margin-bottom: 1.5rem; color: var(--text-primary); text-align: center;">${title}</h2>
 
-      <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface-elevated); border-radius: 4px;">
+      <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface-elevated); filter: invert(1); mix-blend-mode: screen;">
         <h3 style="margin: 0 0 0.75rem 0; color: var(--accent-color); font-size: 1.1rem;">${aircraftName}</h3>
         <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.5rem;">
           <span style="color: var(--text-secondary);">Condition:</span>
@@ -2321,7 +2320,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
 
       <div style="margin-bottom: 1.5rem;">
         <label style="display: block; margin-bottom: 0.5rem; color: var(--text-primary); font-weight: 600;">Aircraft Registration</label>
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);">
           <div id="registrationPrefix" style="padding: 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 1rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input
             type="text"
@@ -2336,7 +2335,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
       </div>
 
       <!-- Maintenance Auto-Scheduling Options -->
-      <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface-elevated); border-radius: 4px;">
+      <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--surface-elevated); filter: invert(1); mix-blend-mode: screen;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <label style="color: var(--text-primary); font-weight: 600;">Maintenance Scheduling</label>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -2351,35 +2350,35 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
           Auto-schedule recurring maintenance checks to keep them valid.
         </div>
         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
             <span style="font-size: 0.75rem; color: #FFA500; white-space: nowrap;">Daily</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
             <span style="font-size: 0.75rem; color: #8B5CF6; white-space: nowrap;">Weekly</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
             <span style="font-size: 0.75rem; color: #3B82F6; white-space: nowrap;">A Chk</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
             <span style="font-size: 0.75rem; color: #10B981; white-space: nowrap;">C Chk</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleC" checked style="opacity: 0; width: 0; height: 0;">
               <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 18px;"></span>
             </label>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; padding: 0.5rem 0.6rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
             <span style="font-size: 0.75rem; color: #EF4444; white-space: nowrap;">D Chk</span>
             <label class="toggle-switch" style="position: relative; display: inline-block; width: 32px; min-width: 32px; height: 18px;">
               <input type="checkbox" id="autoScheduleD" checked style="opacity: 0; width: 0; height: 0;">
@@ -2660,9 +2659,9 @@ function showLeaseOrderDialog() {
                   <div id="leaseDeliveryNote" style="color: var(--text-muted); font-size: 0.75rem;">${orderQty > 1 ? `1st immediate, then 1/week (${orderQty - 1} more)` : 'Available immediately'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.6rem;">
-                  <button id="leaseQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <button id="leaseQtyDown" style="width: 32px; height: 32px; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                   <span id="leaseQtyDisplay" style="font-weight: 700; font-size: 1.3rem; color: var(--text-primary); min-width: 2rem; text-align: center;">${orderQty}</span>
-                  <button id="leaseQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                  <button id="leaseQtyUp" style="width: 32px; height: 32px; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
                 </div>
               </div>
             </div>
@@ -2672,20 +2671,20 @@ function showLeaseOrderDialog() {
               <div style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">Lease Duration</div>
               <div style="display: flex; gap: 0.75rem; align-items: center;">
                 <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                  <button type="button" id="leaseYearsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <button type="button" id="leaseYearsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                   <div style="flex: 1; text-align: center;">
                     <div id="leaseYearsValue" style="font-weight: 700; font-size: 1.3rem; color: #3b82f6;">${leaseYears}</div>
                     <div style="font-size: 0.6rem; color: var(--text-muted); margin-top: -2px;">years</div>
                   </div>
-                  <button type="button" id="leaseYearsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                  <button type="button" id="leaseYearsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
                 </div>
                 <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                  <button type="button" id="leaseMonthsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                  <button type="button" id="leaseMonthsDown" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                   <div style="flex: 1; text-align: center;">
                     <div id="leaseMonthsValue" style="font-weight: 700; font-size: 1.3rem; color: #3b82f6;">${leaseMonths}</div>
                     <div style="font-size: 0.6rem; color: var(--text-muted); margin-top: -2px;">months</div>
                   </div>
-                  <button type="button" id="leaseMonthsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                  <button type="button" id="leaseMonthsUp" style="width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
                 </div>
               </div>
               <div style="margin-top: 0.3rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
@@ -2949,7 +2948,7 @@ function showLeaseRegistrationDialog() {
   function buildRegInputs() {
     if (qty === 1) {
       return `
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer0">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer0">
           <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input type="text" id="leaseRegSuffix0"
             placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -2964,7 +2963,7 @@ function showLeaseRegistrationDialog() {
         <tr>
           <td style="padding: 0.3rem; color: var(--text-muted); font-size: 0.8rem; text-align: center;">${i + 1}</td>
           <td style="padding: 0.3rem;">
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer${i}">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer${i}">
               <div style="padding: 0.35rem 0.4rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="leaseRegSuffix${i}"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -3351,12 +3350,12 @@ function showLeaseConfirmationDialogUsed() {
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
             <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Maintenance Status</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-              <div style="padding: 0.5rem; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 4px;">
+              <div style="padding: 0.5rem; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); filter: invert(1); mix-blend-mode: screen;">
                 <div style="color: #DC2626; font-size: 0.65rem; font-weight: 600;">C CHECK DUE</div>
                 <div style="color: ${(selectedAircraft.cCheckRemainingDays || 0) < 180 ? '#DC2626' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.cCheckRemaining || 'Full'}</div>
                 <div style="color: var(--text-muted); font-size: 0.6rem;">${selectedAircraft.cCheckRemainingDays || 0} days</div>
               </div>
-              <div style="padding: 0.5rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px;">
+              <div style="padding: 0.5rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); filter: invert(1); mix-blend-mode: screen;">
                 <div style="color: #10B981; font-size: 0.65rem; font-weight: 600;">D CHECK DUE</div>
                 <div style="color: ${(selectedAircraft.dCheckRemainingDays || 0) < 365 ? '#FFA500' : 'var(--text-primary)'}; font-weight: 700; font-size: 0.9rem;">${selectedAircraft.dCheckRemaining || 'Full'}</div>
                 <div style="color: var(--text-muted); font-size: 0.6rem;">${selectedAircraft.dCheckRemainingDays || 0} days</div>
@@ -3369,20 +3368,20 @@ function showLeaseConfirmationDialogUsed() {
             <label style="display: block; margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Lease Duration</label>
             <div style="display: flex; gap: 1rem; align-items: center;">
               <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                <button type="button" id="leaseYearsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                <button type="button" id="leaseYearsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                 <div style="flex: 1; text-align: center;">
                   <div id="leaseYearsValue" style="font-weight: 700; font-size: 1.4rem; color: var(--accent-color);">3</div>
                   <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: -2px;">years</div>
                 </div>
-                <button type="button" id="leaseYearsUp" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                <button type="button" id="leaseYearsUp" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
               </div>
               <div style="flex: 1; display: flex; align-items: center; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.25rem;">
-                <button type="button" id="leaseMonthsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
+                <button type="button" id="leaseMonthsDown" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">\u2212</button>
                 <div style="flex: 1; text-align: center;">
                   <div id="leaseMonthsValue" style="font-weight: 700; font-size: 1.4rem; color: var(--accent-color);">0</div>
                   <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: -2px;">months</div>
                 </div>
-                <button type="button" id="leaseMonthsUp" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
+                <button type="button" id="leaseMonthsUp" style="width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; color: var(--text-primary); cursor: pointer; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; justify-content: center;">+</button>
               </div>
             </div>
             <div style="margin-top: 0.4rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
@@ -3409,7 +3408,7 @@ function showLeaseConfirmationDialogUsed() {
         <div>
           <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Aircraft Registration</label>
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--surface-elevated);">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);">
               <div id="leaseRegistrationPrefix" style="padding: 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="leaseRegistrationSuffix"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -3432,35 +3431,35 @@ function showLeaseConfirmationDialogUsed() {
             </div>
             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">Auto-schedule recurring maintenance checks.</div>
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem;">
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
                 <span style="font-size: 0.7rem; color: #FFA500;">Daily</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleDaily" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
                 <span style="font-size: 0.7rem; color: #8B5CF6;">Wkly</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleWeekly" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
                 <span style="font-size: 0.7rem; color: #3B82F6;">A</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleA" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
                 <span style="font-size: 0.7rem; color: #10B981;">C</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleC" checked style="opacity: 0; width: 0; height: 0;">
                   <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: 0.3s; border-radius: 16px;"></span>
                 </label>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; padding: 0.4rem 0.5rem; background: var(--surface); filter: invert(1); mix-blend-mode: screen;">
                 <span style="font-size: 0.7rem; color: #EF4444;">D</span>
                 <label class="toggle-switch" style="position: relative; display: inline-block; width: 28px; min-width: 28px; height: 16px;">
                   <input type="checkbox" id="leaseAutoScheduleD" checked style="opacity: 0; width: 0; height: 0;">
