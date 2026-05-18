@@ -184,7 +184,7 @@ async function renderPage(pagePath, requestPath) {
   try {
     // Determine which sidebar to use based on the request path
     // Use simplified sidebar for admin, world selection, and public pages
-    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki'];
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/privacy', '/data-handling'];
     const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
@@ -523,6 +523,24 @@ app.get('/wiki', async (req, res) => {
   }
 });
 
+app.get('/privacy', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/privacy.html'), '/privacy');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/data-handling', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/data-handling.html'), '/data-handling');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
 app.get('/reset-password', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/reset-password.html'));
 });
@@ -588,6 +606,17 @@ server.listen(PORT, () => {
         WHERE manufacturer = 'Bristol' AND model = '170' AND variant IN ('Car Ferry', 'Combi')
       `);
     } catch (_) { /* aircraft table may not exist yet */ }
+    try {
+      await sequelize.query(`
+        ALTER TABLE routes ADD COLUMN IF NOT EXISTS custom_route_string TEXT
+      `);
+    } catch (_) { /* routes table may not exist yet — sync will create it */ }
+    try {
+      await sequelize.query(`
+        CREATE INDEX IF NOT EXISTS idx_recurring_maintenance_status_sched
+          ON recurring_maintenance (status, scheduled_date)
+      `);
+    } catch (_) { /* table may not exist yet — sync will create it */ }
 
     await sequelize.sync({ alter: true });
     console.log('✓ Database schema synced');

@@ -19,6 +19,20 @@
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+
+  /* Map / overlay panel tokens (used by world-map.css & airspace-config.css).
+     Dark values equal the original hardcoded colors so dark mode is unchanged;
+     theme-light.css overrides these for light mode. */
+  --gh-accent: #58a6ff;
+  --gh-text: #e6edf3;
+  --gh-text-2: #c9d1d9;
+  --gh-muted: #8b949e;
+  --gh-border: #30363d;
+  --gh-surface-0: #0d1117;
+  --gh-surface: #161b22;
+  --gh-surface-2: #21262d;
+  --gh-surface-3: #1a1f2e;
+  --gh-panel: rgba(22, 27, 34, 0.95);
 }
 
 body {

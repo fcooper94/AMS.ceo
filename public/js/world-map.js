@@ -345,15 +345,30 @@ function initMap() {
     worldCopyJump: true  // Enable seamless world wrapping when panning
   });
 
-  // Add dark tile layer (CartoDB Dark Matter) - noWrap: false allows tiles to repeat
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Keep attribution clear of the always-on global footer (bottom-right)
+  map.attributionControl.setPosition('bottomleft');
+
+  // CartoDB basemap — dark or light to match the app theme. noWrap:false
+  // lets tiles repeat for infinite horizontal scrolling.
+  const tileUrl = (theme) =>
+    `https://{s}.basemaps.cartocdn.com/${theme === 'light' ? 'light_all' : 'dark_all'}/{z}/{x}/{y}{r}.png`;
+  let currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const baseTileLayer = L.tileLayer(tileUrl(currentTheme), {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     subdomains: 'abcd',
     maxZoom: 19,
-    noWrap: false  // Allow tiles to wrap for infinite scrolling
+    noWrap: false
   }).addTo(map);
 
-  console.log('[WorldMap] Map initialized with dark theme');
+  // Swap basemap live when the footer theme toggle is used.
+  window.__onThemeChange = function (theme) {
+    const t = theme === 'light' ? 'light' : 'dark';
+    if (t === currentTheme) return;
+    currentTheme = t;
+    baseTileLayer.setUrl(tileUrl(t));
+  };
+
+  console.log('[WorldMap] Map initialized with', currentTheme, 'theme');
 
   // Fetch HQ airport code to label the filter dropdown
   fetch('/api/world/info')
@@ -1960,7 +1975,7 @@ async function loadFirBoundaries() {
   try {
     console.log('[WorldMap] Loading FIR boundaries...');
     const [geoResp, restrictResp] = await Promise.all([
-      fetch('/data/fir-boundaries.geojson'),
+      fetch('/data/fir-boundaries-base.geojson'),
       fetch('/api/airspace').catch(() => null)
     ]);
     if (!geoResp.ok) throw new Error(`HTTP ${geoResp.status}`);

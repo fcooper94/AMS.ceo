@@ -1,0 +1,88 @@
+<!-- TITLE: Data Handling - AMS.ceo -->
+<!-- SUBTITLE: Storage, retention and deletion -->
+
+<!-- Public header (shown when not logged in) -->
+<div class="public-page-header login-header" style="justify-content: space-between; align-items: center;">
+  <a href="/" style="text-decoration: none; display: flex; align-items: center; gap: 1.5rem;">
+    <div class="company-branding" style="display: flex; align-items: center; gap: 1.5rem;">
+      <div class="brand-mark" style="align-items: baseline;">AMS<span style="color: #93c5fd; font-size: 0.65em; font-weight: 400;">.ceo</span></div>
+      <div style="display: flex; flex-direction: column; justify-content: center; gap: 0;">
+        <div class="brand-title">AIRLINE MANAGEMENT SIM</div>
+        <div class="brand-subtitle" style="margin: 0;">Expand &#9670; Explore &#9670; Evolve</div>
+      </div>
+    </div>
+  </a>
+  <nav style="display: flex; align-items: center; gap: 1.5rem;">
+    <a href="/wiki" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Wiki</a>
+    <a href="/contact" style="color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Contact</a>
+  </nav>
+</div>
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>DATA HANDLING</h1>
+      <p class="subtitle">LAST UPDATED: 18 MAY 2026</p>
+    </div>
+
+    <div class="worlds-section" style="max-width: 900px;">
+      <div style="display: flex; flex-direction: column; gap: 1.5rem; color: var(--text-secondary); line-height: 1.7; font-size: 0.92rem;">
+
+        <p style="font-style: italic; color: var(--text-muted);">
+          This page explains where your data lives, how long we keep it, and how it is removed.
+          It complements the <a href="/privacy" style="color: var(--accent-color);">Privacy Policy</a>
+          and should be reviewed by the operator before being relied upon for legal compliance.
+        </p>
+
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">1. Where data is stored</h2>
+          <p>Account and game data is stored in a PostgreSQL database hosted on Railway. Data is
+          processed only to run the Sim and is not copied to other systems except as needed for
+          routine backups by the hosting provider.</p>
+        </div>
+
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">2. Retention</h2>
+          <ul style="margin: 0.5rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
+            <li><strong style="color: var(--text-primary);">Account data</strong> — retained while your account is active.</li>
+            <li><strong style="color: var(--text-primary);">Game worlds</strong> — completed worlds are automatically deleted 48 hours after they finish, along with the airlines, fleets and routes within them.</li>
+            <li><strong style="color: var(--text-primary);">Operational records</strong> — routine simulation history (e.g. maintenance logs) is pruned automatically and not kept indefinitely.</li>
+            <li><strong style="color: var(--text-primary);">Contact messages</strong> — kept only as long as needed to handle your enquiry.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">3. Security</h2>
+          <p>Access to the database is restricted to the Sim's maintainers. Connections to the
+          database use TLS. Authentication is delegated to VATSIM; we never see or store your
+          VATSIM password.</p>
+        </div>
+
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">4. Deletion requests</h2>
+          <p>You can ask us to delete your account and associated data at any time through the
+          <a href="/contact" style="color: var(--accent-color);">Contact</a> page. Once verified,
+          your account record and personal data will be removed; aggregate, non-identifying game
+          statistics may be retained.</p>
+        </div>
+
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">5. Data shared with third parties</h2>
+          <p>We do not sell your data. Limited data is necessarily exposed to the infrastructure
+          and services listed in the <a href="/privacy" style="color: var(--accent-color);">Privacy Policy</a>
+          (VATSIM authentication, Railway hosting, and map-tile providers) purely to operate the Sim.</p>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Public footer (shown when not logged in) -->
+<div class="public-page-footer lp-footer">
+  <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
+  <div style="display: flex; align-items: center; gap: 1.25rem;">
+    <a href="/wiki" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Wiki</a>
+    <a href="/contact" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Contact Us</a>
+  </div>
+</div>

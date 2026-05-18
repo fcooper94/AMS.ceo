@@ -17,10 +17,10 @@
 
 .map-filter-dropdown select {
   padding: 0.5rem 1rem;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -29,12 +29,12 @@
 }
 
 .map-filter-dropdown select:hover {
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .map-filter-dropdown select:focus {
   outline: none;
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
   box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
 }
 
@@ -53,13 +53,13 @@
   bottom: 0;
   width: 100%;
   height: 100%;
-  background: #0d1117;
+  background: var(--gh-surface-0);
   z-index: 1;
 }
 
 /* Override Leaflet styles for dark theme */
 .leaflet-container {
-  background: #0d1117;
+  background: var(--gh-surface-0);
   font-family: inherit;
 }
 
@@ -73,9 +73,9 @@
 }
 
 .leaflet-control-zoom a {
-  background: var(--surface-elevated, #1a1f2e) !important;
-  color: var(--text-primary, #e6edf3) !important;
-  border: 1px solid var(--border-color, #30363d) !important;
+  background: var(--surface-elevated, var(--gh-surface-3)) !important;
+  color: var(--text-primary, var(--gh-text)) !important;
+  border: 1px solid var(--border-color, var(--gh-border)) !important;
   width: 32px !important;
   height: 32px !important;
   line-height: 30px !important;
@@ -83,8 +83,8 @@
 }
 
 .leaflet-control-zoom a:hover {
-  background: var(--surface, #21262d) !important;
-  color: var(--accent-color, #58a6ff) !important;
+  background: var(--surface, var(--gh-surface-2)) !important;
+  color: var(--accent-color, var(--gh-accent)) !important;
 }
 
 .leaflet-control-zoom-in {
@@ -97,13 +97,13 @@
 
 .leaflet-control-attribution {
   background: rgba(13, 17, 23, 0.8) !important;
-  color: var(--text-muted, #8b949e) !important;
+  color: var(--text-muted, var(--gh-muted)) !important;
   font-size: 10px !important;
   padding: 2px 8px !important;
 }
 
 .leaflet-control-attribution a {
-  color: var(--accent-color, #58a6ff) !important;
+  color: var(--accent-color, var(--gh-accent)) !important;
 }
 
 /* Flight Info Panel */
@@ -113,8 +113,8 @@
   right: 1rem;
   width: 320px;
   max-height: calc(100% - 2rem);
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 8px;
   z-index: 1000;
   overflow: hidden;
@@ -129,8 +129,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  background: var(--surface-elevated, #1a1f2e);
-  border-bottom: 1px solid var(--border-color, #30363d);
+  background: var(--surface-elevated, var(--gh-surface-3));
+  border-bottom: 1px solid var(--border-color, var(--gh-border));
 }
 
 .panel-header h3 {
@@ -138,13 +138,13 @@
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 1px;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .panel-close-btn {
   background: none;
   border: none;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -153,11 +153,11 @@
 }
 
 .panel-close-btn:hover {
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
 }
 
 .flight-count {
-  background: var(--accent-color, #58a6ff);
+  background: var(--accent-color, var(--gh-accent));
   color: #fff;
   font-size: 0.7rem;
   font-weight: 700;
@@ -182,21 +182,21 @@
 }
 
 .flight-list::-webkit-scrollbar-thumb {
-  background: var(--border-color, #30363d);
+  background: var(--border-color, var(--gh-border));
   border-radius: 3px;
 }
 
 .no-flights {
   padding: 2rem;
   text-align: center;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
   font-size: 0.85rem;
 }
 
 /* Flight Card */
 .flight-card {
-  background: var(--surface, #21262d);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--surface, var(--gh-surface-2));
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
   padding: 0.75rem;
   margin-bottom: 0.5rem;
@@ -205,12 +205,12 @@
 }
 
 .flight-card:hover {
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
   transform: translateX(2px);
 }
 
 .flight-card.selected {
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
   background: rgba(88, 166, 255, 0.1);
 }
 
@@ -224,7 +224,7 @@
 .flight-number {
   font-weight: 700;
   font-size: 0.95rem;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   font-family: 'Courier New', monospace;
 }
 
@@ -249,7 +249,7 @@
 .airport-code {
   font-weight: 600;
   font-size: 0.85rem;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
 }
 
 .route-arrow {
@@ -264,7 +264,7 @@
   position: absolute;
   right: 0;
   top: -3px;
-  border: solid var(--accent-color, #58a6ff);
+  border: solid var(--accent-color, var(--gh-accent));
   border-width: 0 2px 2px 0;
   padding: 3px;
   transform: rotate(-45deg);
@@ -274,7 +274,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .flight-aircraft {
@@ -293,7 +293,7 @@
 .progress-bar {
   width: 100%;
   height: 4px;
-  background: var(--border-color, #30363d);
+  background: var(--border-color, var(--gh-border));
   border-radius: 2px;
   overflow: hidden;
   margin-top: 0.5rem;
@@ -301,7 +301,7 @@
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-color, #58a6ff), #79c0ff);
+  background: linear-gradient(90deg, var(--accent-color, var(--gh-accent)), #79c0ff);
   border-radius: 2px;
   transition: width 0.5s ease;
 }
@@ -310,7 +310,7 @@
 .flight-extra-info {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border-color, #30363d);
+  border-top: 1px solid var(--border-color, var(--gh-border));
 }
 
 .flight-extra-info .info-row {
@@ -326,11 +326,11 @@
 }
 
 .flight-extra-info .info-label {
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
 }
 
 .flight-extra-info .info-value {
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   font-weight: 500;
 }
 
@@ -342,7 +342,7 @@
 .aircraft-header {
   text-align: center;
   padding: 0.75rem;
-  background: var(--surface, #21262d);
+  background: var(--surface, var(--gh-surface-2));
   border-radius: 6px;
   margin-bottom: 0.75rem;
 }
@@ -350,13 +350,13 @@
 .aircraft-reg {
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   font-family: 'Courier New', monospace;
 }
 
 .aircraft-type {
   font-size: 0.8rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
   margin-top: 0.25rem;
 }
 
@@ -396,13 +396,13 @@
 
 .progress-text {
   font-size: 0.75rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 /* Sector Cards */
 .sector-card {
-  background: var(--surface, #21262d);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--surface, var(--gh-surface-2));
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
   padding: 0.75rem;
   margin-bottom: 0.5rem;
@@ -412,7 +412,7 @@
 
 .sector-card.active {
   opacity: 1;
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
   box-shadow: 0 0 10px rgba(88, 166, 255, 0.2);
 }
 
@@ -431,7 +431,7 @@
 .sector-flight-num {
   font-weight: 700;
   font-size: 0.85rem;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   font-family: 'Consolas', 'SF Mono', 'Roboto Mono', 'Source Code Pro', monospace;
   letter-spacing: 0.12em;
 }
@@ -441,7 +441,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
 }
 
 .sector-route {
@@ -458,12 +458,12 @@
 .sector-airport .airport-code {
   font-weight: 700;
   font-size: 1rem;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
 }
 
 .sector-airport .airport-icao {
   font-size: 0.65rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
   font-family: 'Courier New', monospace;
   letter-spacing: 0.5px;
   margin-top: -1px;
@@ -471,7 +471,7 @@
 
 .sector-airport .airport-time {
   font-size: 0.75rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
   font-family: 'Courier New', monospace;
 }
 
@@ -497,12 +497,12 @@
   top: 50%;
   transform: translate(-50%, -50%);
   font-size: 0.7rem;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
 }
 
 .flight-duration {
   font-size: 0.65rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
 }
 
 /* Turnaround Indicator */
@@ -513,7 +513,7 @@
   gap: 0.5rem;
   padding: 0.5rem;
   margin: 0.25rem 0;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
   font-size: 0.7rem;
   opacity: 0.6;
 }
@@ -574,13 +574,13 @@
 
 .sector-header .sector-total-time {
   font-size: 0.65rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
   margin-left: auto;
 }
 
 /* Flight Stats */
 .flight-stats {
-  background: var(--surface, #21262d);
+  background: var(--surface, var(--gh-surface-2));
   border-radius: 6px;
   padding: 0.75rem;
   margin-top: 0.75rem;
@@ -591,7 +591,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.35rem 0;
-  border-bottom: 1px solid var(--border-color, #30363d);
+  border-bottom: 1px solid var(--border-color, var(--gh-border));
 }
 
 .stat-row:last-child {
@@ -600,13 +600,13 @@
 
 .stat-label {
   font-size: 0.75rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
 }
 
 .stat-value {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
 }
 
 .stat-value.high {
@@ -623,7 +623,7 @@
 
 /* ATC Route Section */
 .atc-route-section {
-  background: var(--surface, #21262d);
+  background: var(--surface, var(--gh-surface-2));
   border-radius: 6px;
   padding: 0.75rem;
   margin-top: 0.75rem;
@@ -631,7 +631,7 @@
 
 .atc-route-label {
   font-size: 0.65rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
@@ -645,14 +645,14 @@
   word-break: break-all;
 }
 
-.atc-fix { color: #58a6ff; }
-.atc-fix-apt { color: #e6edf3; font-weight: 700; }
+.atc-fix { color: var(--gh-accent); }
+.atc-fix-apt { color: var(--gh-text); font-weight: 700; }
 
 /* Waypoint tooltips on map */
 .waypoint-tooltip {
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid #58a6ff;
-  color: #58a6ff;
+  background: var(--gh-panel);
+  border: 1px solid var(--gh-accent);
+  color: var(--gh-accent);
   font-family: 'Courier New', monospace;
   font-size: 0.7rem;
   font-weight: 600;
@@ -666,8 +666,8 @@
   position: absolute;
   bottom: 2rem;
   left: 1rem;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
   padding: 0.75rem 1rem;
   z-index: 1000;
@@ -679,7 +679,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.75rem;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
   margin-bottom: 0.5rem;
 }
 
@@ -699,16 +699,16 @@
   content: '';
   width: 12px;
   height: 12px;
-  background: var(--accent-color, #58a6ff);
+  background: var(--accent-color, var(--gh-accent));
   border-radius: 50%;
-  box-shadow: 0 0 8px var(--accent-color, #58a6ff);
+  box-shadow: 0 0 8px var(--accent-color, var(--gh-accent));
 }
 
 .legend-icon.route-icon::before {
   content: '';
   width: 16px;
   height: 2px;
-  background: linear-gradient(90deg, var(--accent-color, #58a6ff), rgba(88, 166, 255, 0.3));
+  background: linear-gradient(90deg, var(--accent-color, var(--gh-accent)), rgba(88, 166, 255, 0.3));
 }
 
 .legend-icon.airport-icon::before {
@@ -745,7 +745,7 @@
 .aircraft-marker-inner svg {
   width: 18px;
   height: 18px;
-  fill: var(--accent-color, #58a6ff);
+  fill: var(--accent-color, var(--gh-accent));
 }
 
 .aircraft-label {
@@ -771,7 +771,7 @@
 .aircraft-label .flight-number-label {
   font-size: 11px;
   font-weight: 700;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   margin-bottom: 2px;
 }
 
@@ -782,10 +782,10 @@
 
 @keyframes pulse {
   0%, 100% {
-    box-shadow: 0 0 12px var(--accent-color, #58a6ff), 0 0 24px rgba(88, 166, 255, 0.4);
+    box-shadow: 0 0 12px var(--accent-color, var(--gh-accent)), 0 0 24px rgba(88, 166, 255, 0.4);
   }
   50% {
-    box-shadow: 0 0 16px var(--accent-color, #58a6ff), 0 0 32px rgba(88, 166, 255, 0.6);
+    box-shadow: 0 0 16px var(--accent-color, var(--gh-accent)), 0 0 32px rgba(88, 166, 255, 0.6);
   }
 }
 
@@ -822,35 +822,35 @@
 
 /* Custom Popup */
 .leaflet-popup-content-wrapper {
-  background: var(--surface-elevated, #1a1f2e) !important;
-  border: 1px solid var(--border-color, #30363d) !important;
+  background: var(--surface-elevated, var(--gh-surface-3)) !important;
+  border: 1px solid var(--border-color, var(--gh-border)) !important;
   border-radius: 6px !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
 }
 
 .leaflet-popup-content {
   margin: 0.75rem 1rem !important;
-  color: var(--text-primary, #e6edf3) !important;
+  color: var(--text-primary, var(--gh-text)) !important;
   font-size: 0.85rem !important;
 }
 
 .leaflet-popup-tip {
-  background: var(--surface-elevated, #1a1f2e) !important;
-  border: 1px solid var(--border-color, #30363d) !important;
+  background: var(--surface-elevated, var(--gh-surface-3)) !important;
+  border: 1px solid var(--border-color, var(--gh-border)) !important;
 }
 
 .leaflet-popup-close-button {
-  color: var(--text-secondary, #8b949e) !important;
+  color: var(--text-secondary, var(--gh-muted)) !important;
 }
 
 .leaflet-popup-close-button:hover {
-  color: var(--accent-color, #58a6ff) !important;
+  color: var(--accent-color, var(--gh-accent)) !important;
 }
 
 .popup-title {
   font-weight: 700;
   font-size: 1rem;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   margin-bottom: 0.5rem;
 }
 
@@ -861,16 +861,16 @@
 }
 
 .popup-info span {
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .popup-info strong {
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
 }
 
 /* Route polyline glow effect */
 .route-path {
-  stroke: var(--accent-color, #58a6ff);
+  stroke: var(--accent-color, var(--gh-accent));
   stroke-opacity: 0.8;
   stroke-linecap: round;
 }
@@ -895,7 +895,7 @@
 
 /* Grey flight number label for other airlines */
 .aircraft-marker-inner.other-airline + .aircraft-label .flight-number-label {
-  color: #8b949e;
+  color: var(--gh-muted);
 }
 
 .aircraft-label .airline-name-label {
@@ -909,7 +909,7 @@
 
 /* Legend icon for other airlines */
 .legend-icon.aircraft-icon.other::before {
-  background: #1a1f2e;
+  background: var(--gh-surface-3);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
@@ -923,10 +923,10 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -939,16 +939,16 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .flights-list-toggle:hover {
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .flights-list-toggle.active {
   background: rgba(88, 166, 255, 0.15);
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .flights-list-toggle svg {
@@ -956,7 +956,7 @@
 }
 
 #flightsListCount {
-  background: var(--accent-color, #58a6ff);
+  background: var(--accent-color, var(--gh-accent));
   color: #fff;
   font-size: 0.65rem;
   font-weight: 700;
@@ -977,10 +977,10 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -993,16 +993,16 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .fir-toggle:hover {
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .fir-toggle.active {
   background: rgba(88, 166, 255, 0.15);
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .fir-toggle svg {
@@ -1019,10 +1019,10 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 6px;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -1035,7 +1035,7 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .nat-toggle:hover {
@@ -1140,8 +1140,8 @@
   left: 4rem;
   width: 280px;
   max-height: 50vh;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid var(--border-color, #30363d);
+  background: var(--gh-panel);
+  border: 1px solid var(--border-color, var(--gh-border));
   border-radius: 8px;
   z-index: 1000;
   overflow: hidden;
@@ -1156,19 +1156,19 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.6rem 0.75rem;
-  background: var(--surface-elevated, #1a1f2e);
-  border-bottom: 1px solid var(--border-color, #30363d);
+  background: var(--surface-elevated, var(--gh-surface-3));
+  border-bottom: 1px solid var(--border-color, var(--gh-border));
 }
 
 .flights-list-title {
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 1px;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary, var(--gh-muted));
 }
 
 .flights-list-badge {
-  background: var(--accent-color, #58a6ff);
+  background: var(--accent-color, var(--gh-accent));
   color: #fff;
   font-size: 0.6rem;
   font-weight: 700;
@@ -1193,7 +1193,7 @@
 }
 
 .flights-list-body::-webkit-scrollbar-thumb {
-  background: var(--border-color, #30363d);
+  background: var(--border-color, var(--gh-border));
   border-radius: 3px;
 }
 
@@ -1211,12 +1211,12 @@
 
 .fl-entry:hover {
   background: rgba(88, 166, 255, 0.08);
-  border-color: var(--border-color, #30363d);
+  border-color: var(--border-color, var(--gh-border));
 }
 
 .fl-entry.selected {
   background: rgba(88, 166, 255, 0.15);
-  border-color: var(--accent-color, #58a6ff);
+  border-color: var(--accent-color, var(--gh-accent));
 }
 
 .fl-entry.other-airline {
@@ -1256,24 +1256,24 @@
 .fl-route-num {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--accent-color, #58a6ff);
+  color: var(--accent-color, var(--gh-accent));
   font-family: 'Courier New', monospace;
   letter-spacing: 0.05em;
 }
 
 .fl-entry.other-airline .fl-route-num {
-  color: #8b949e;
+  color: var(--gh-muted);
 }
 
 .fl-airports {
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-primary, #e6edf3);
+  color: var(--text-primary, var(--gh-text));
   white-space: nowrap;
 }
 
 .fl-airports .fl-arrow {
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
   font-size: 0.6rem;
   margin: 0 0.15rem;
 }
@@ -1283,7 +1283,7 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.6rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted, var(--gh-muted));
 }
 
 .fl-aircraft {
@@ -1302,7 +1302,7 @@
 }
 
 .fl-separator {
-  color: var(--border-color, #30363d);
+  color: var(--border-color, var(--gh-border));
 }
 
 /* Responsive */

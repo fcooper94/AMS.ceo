@@ -11,6 +11,18 @@
   <link rel="stylesheet" href="/css/dashboard.css">
   <link rel="stylesheet" href="/css/world-selection.css">
   <link rel="stylesheet" href="/css/responsive.css">
+  <link rel="stylesheet" href="/css/theme-light.css">
+  <script>
+    // Apply saved theme before first paint to avoid a flash of the wrong theme.
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body class="dashboard-body no-transition">
   <script>
@@ -21,7 +33,7 @@
     // Public header/footer are hidden by default, shown after auth check confirms unauthenticated
     (function() {
       var p = window.location.pathname;
-      var pub = ['/contact', '/wiki'];
+      var pub = ['/contact', '/wiki', '/privacy', '/data-handling'];
       if (pub.indexOf(p) !== -1 && document.cookie.indexOf('connect.sid') === -1) {
         document.write('<style id="public-page-styles">.navbar,.sidebar{display:none!important}.main-content{margin-left:0!important;overflow-y:visible!important}.dashboard-container{height:auto!important;flex:1}.dashboard-body{height:auto!important;overflow:auto!important}#pageContent{display:flex;flex-direction:column;min-height:100vh}.public-page-header,.public-page-footer{display:none!important}</style>');
         document.documentElement.style.setProperty('--navbar-height', '0px');
@@ -139,5 +151,16 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/loading-quips.js"></script>
   <script src="/js/layout.js"></script>
+
+  <!-- Always-on global footer (theme toggle + policies).
+       Placed AFTER the scripts so renderPage's #pageContent injection regex
+       (which spans up to the first <script>) cannot strip it. -->
+  <div class="app-global-footer" style="position: fixed; right: 14px; bottom: 10px; z-index: 1200; display: flex; align-items: center; gap: 0.55rem; font-size: 0.72rem; padding: 0.3rem 0.7rem; background: var(--surface); border: 1px solid var(--border-color); border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,0.25); color: var(--text-muted);">
+    <a href="#" onclick="toggleTheme();return false;" data-theme-label style="color: var(--text-secondary); text-decoration: none;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Light Mode</a>
+    <span style="opacity: 0.5;">&middot;</span>
+    <a href="/privacy" style="color: var(--text-secondary); text-decoration: none;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Privacy Policy</a>
+    <span style="opacity: 0.5;">&middot;</span>
+    <a href="/data-handling" style="color: var(--text-secondary); text-decoration: none;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">Data Handling</a>
+  </div>
 </body>
 </html>

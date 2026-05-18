@@ -186,7 +186,7 @@ if (socket) {
 async function loadUserInfo() {
   try {
     // Fire both requests in parallel — world info will 404 if no session, which is fine
-    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki', '/privacy', '/data-handling'];
     const needsWorldInfo = !noWorldInfoPages.includes(window.location.pathname);
 
     const [authResponse, worldResponse] = await Promise.all([
@@ -239,7 +239,7 @@ async function loadUserInfo() {
       // Prepare low credits warning banner (deferred - shown with other banners in loadWorldInfo)
       const lowCreditsBanner = document.getElementById('lowCreditsBanner');
       const lowCreditsMessage = document.getElementById('lowCreditsMessage');
-      const nonWorldPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
+      const nonWorldPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki', '/privacy', '/data-handling'];
       if (lowCreditsBanner && lowCreditsMessage) {
         if (!nonWorldPages.includes(window.location.pathname) && !data.user.unlimitedCredits && data.user.credits <= 4) {
           const weeksLeft = data.user.credits + 4; // administration triggers at -4
@@ -262,7 +262,7 @@ async function loadUserInfo() {
     } else {
       // Redirect to login if not authenticated (only on protected pages)
       // Public pages that don't require authentication
-      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/wiki'];
+      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/wiki', '/privacy', '/data-handling'];
       if (!publicPages.includes(window.location.pathname)) {
         window.location.href = '/';
       } else {
@@ -493,7 +493,7 @@ async function loadWorldInfo() {
   try {
     // Don't show world info on world selection or admin pages
     // Pages that don't need world info displayed
-    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki'];
+    const noWorldInfoPages = ['/world-selection', '/admin', '/contact', '/credits', '/wiki', '/privacy', '/data-handling'];
     if (noWorldInfoPages.includes(window.location.pathname)) {
       const worldInfoContainer = document.getElementById('worldInfoContainer');
       if (worldInfoContainer) {
@@ -1425,4 +1425,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update on window resize
     window.addEventListener('resize', setNavbarHeight);
   }
+});
+
+// ---- Theme (light / dark) ----------------------------------------------
+// The no-flash setter in base-layout.html applies the saved theme before
+// paint; this handles toggling, persistence, label sync and notifying the
+// Leaflet map so it can swap basemap tiles live.
+window.applyTheme = function (theme) {
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('theme', t); } catch (e) { /* ignore */ }
+  document.querySelectorAll('[data-theme-label]').forEach(el => {
+    el.textContent = t === 'light' ? 'Dark mode' : 'Light mode';
+  });
+  if (typeof window.__onThemeChange === 'function') {
+    try { window.__onThemeChange(t); } catch (e) { /* ignore */ }
+  }
+};
+
+window.toggleTheme = function () {
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  window.applyTheme(current === 'light' ? 'dark' : 'light');
+};
+
+// Sync any footer labels once the DOM is ready.
+document.addEventListener('DOMContentLoaded', function () {
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  document.querySelectorAll('[data-theme-label]').forEach(el => {
+    el.textContent = current === 'light' ? 'Dark mode' : 'Light mode';
+  });
 });

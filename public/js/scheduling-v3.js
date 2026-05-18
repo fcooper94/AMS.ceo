@@ -10258,13 +10258,13 @@ async function showAircraftDetails(userAircraftId) {
 
           <!-- Quick Info: Location, Flight Hours, Routes -->
           <div style="display:flex;gap:0.3rem;font-size:0.65rem;">
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
             </div>
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrencyValue(parseFloat(ua.totalFlightHours) || 0)}</strong>
             </div>
-            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);filter:invert(1);mix-blend-mode:screen;">
+            <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
             </div>
           </div>

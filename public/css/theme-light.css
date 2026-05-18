@@ -1,0 +1,131 @@
+/* Light mode — activated by <html data-theme="light">.
+   Overrides the design tokens; the app is built on CSS variables so this
+   re-themes the whole UI (incl. dashboard, world-selection, map overlays,
+   airspace config) without touching individual rules.
+
+   Note: deliberately NOT pure white. Surfaces are a soft off-white and the
+   page backdrop is a touch deeper, so panels/cards stay visually separated
+   and the UI doesn't glare. */
+
+html[data-theme="light"] {
+  --primary-color: #1a4d8f;
+  --primary-dark: #16407a;
+  --accent-color: #1d4ed8;
+  --accent-color-dim: rgba(29, 78, 216, 0.12);
+  --success-color: #047857;
+  --warning-color: #b45309;
+
+  --background: #dde3ec;        /* page backdrop — deepest light tone */
+  --surface: #eef1f6;           /* panels/cards — soft off-white */
+  --surface-elevated: #f5f7fa;  /* raised elements — lighter, still not #fff */
+  --surface-hover: #e4e9f1;
+  --border-color: #c5cdda;      /* a touch stronger so edges read on off-white */
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  /* Map / overlay panel tokens (no pure white) */
+  --gh-accent: #1a66c4;
+  --gh-text: #1f2937;
+  --gh-text-2: #374151;
+  --gh-muted: #5b6675;
+  --gh-border: #c5cdda;
+  --gh-surface-0: #e8ecf3;
+  --gh-surface: #eef1f6;
+  --gh-surface-2: #e4e8f0;
+  --gh-surface-3: #dfe4ee;
+  --gh-panel: rgba(238, 241, 246, 0.95);
+
+  color-scheme: light;
+}
+
+/* Body uses var(--background) already; ensure shadows read on light */
+html[data-theme="light"] body { background: var(--background); }
+
+/* Soften the heavy dark drop-shadows that were tuned for a dark canvas */
+html[data-theme="light"] .credits-dropdown,
+html[data-theme="light"] .wi-expand-panel,
+html[data-theme="light"] [style*="box-shadow"] {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12) !important;
+}
+
+/* Leaflet: light controls + attribution to match the light basemap */
+html[data-theme="light"] .leaflet-bar a,
+html[data-theme="light"] .leaflet-control-zoom a {
+  background: #eef1f6;
+  color: #1f2937;
+  border-bottom-color: #c5cdda;
+}
+html[data-theme="light"] .leaflet-bar a:hover { background: #e4e9f1; }
+html[data-theme="light"] .leaflet-control-attribution {
+  background: rgba(238, 241, 246, 0.85);
+  color: #475569;
+}
+html[data-theme="light"] .leaflet-control-attribution a { color: #1d4ed8; }
+
+/* FIR labels / map text overlays sit on a light basemap now */
+html[data-theme="light"] .fir-label-text {
+  color: #1f2937;
+  text-shadow: 0 0 3px rgba(238, 241, 246, 0.9), 0 0 2px rgba(238, 241, 246, 0.9);
+}
+
+/* Aircraft line-drawings are inverted inline (white-on-dark) for the dark
+   theme; on a light surface show them in their original orientation. */
+html[data-theme="light"] img[style*="invert(1)"] {
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+/* World-info bar: built for the dark navbar (black scrim + white text), so it
+   washes out on light. Re-cast it as a crisp instrument panel that pops. */
+html[data-theme="light"] .nav-world-info {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+html[data-theme="light"] .nav-world-info.world-paused { border-color: var(--warning-color); }
+html[data-theme="light"] .wi-sep { background: var(--border-color); }
+html[data-theme="light"] .wi-world { color: #1e293b; }
+html[data-theme="light"] .wi-globe { color: var(--accent-color); opacity: 1; }
+html[data-theme="light"] .wi-date,
+html[data-theme="light"] .wi-day { color: #475569; }
+html[data-theme="light"] .wi-time {
+  color: #ffffff;
+  background: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  box-shadow: 0 1px 4px rgba(29, 78, 216, 0.35);
+}
+html[data-theme="light"] .wi-balance { color: #0f172a; }
+
+/* Generic safety net: raw black overlays used as scrims on the dark theme */
+html[data-theme="light"] .map-loading-overlay,
+html[data-theme="light"] .flights-loading-overlay {
+  background: rgba(238, 241, 246, 0.88);
+  color: #0f172a;
+}
+
+/* Dropdowns / panels / modals / loading overlays built in JS with hardcoded
+   dark colors (no theme vars). Inline styles win over classes, so these
+   attribute-scoped overrides use !important. Only DOM element styling is
+   affected — Leaflet/canvas colors (passed as JS values) are untouched. */
+html[data-theme="light"] [style*="rgba(10, 15, 26"],
+html[data-theme="light"] [style*="rgba(10,15,26"] {
+  background-color: rgba(226, 232, 240, 0.96) !important;
+  color: var(--text-primary);
+}
+html[data-theme="light"] [style*="#0d1117"] { background-color: var(--gh-surface-0) !important; }
+html[data-theme="light"] [style*="#161b22"] { background-color: var(--gh-surface) !important; }
+html[data-theme="light"] [style*="#21262d"] { background-color: var(--gh-surface-2) !important; }
+html[data-theme="light"] [style*="#1a1f2e"] { background-color: var(--gh-surface-3) !important; }
+html[data-theme="light"] [style*="#30363d"] { border-color: var(--gh-border) !important; }
+html[data-theme="light"] [style*="#8b949e"] { color: var(--gh-muted) !important; }
+html[data-theme="light"] [style*="#e6edf3"],
+html[data-theme="light"] [style*="#c9d1d9"] { color: var(--gh-text) !important; }
+
+/* Native select / option popups (incl. filter bars not using .form-group) */
+html[data-theme="light"] select,
+html[data-theme="light"] select option {
+  background-color: var(--surface-elevated);
+  color: var(--text-primary);
+}

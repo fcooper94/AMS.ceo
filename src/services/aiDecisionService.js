@@ -395,6 +395,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         frequency: 'daily',
         daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
         demand: destData.demand || 50,
+        ticketPrice: economyPrice,
         economyPrice,
         economyPlusPrice: Math.round(economyPrice * 1.3),
         businessPrice,

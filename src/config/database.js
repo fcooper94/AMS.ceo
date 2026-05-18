@@ -1,4 +1,12 @@
 const { Sequelize } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
+
+// Route verbose Sequelize SQL logging to a file instead of the main console
+const logsDir = path.join(__dirname, '..', '..', 'logs');
+fs.mkdirSync(logsDir, { recursive: true });
+const sqlLogStream = fs.createWriteStream(path.join(logsDir, 'sql.log'), { flags: 'a' });
+const sqlLogger = (msg) => sqlLogStream.write(`${new Date().toISOString()} ${msg}\n`);
 
 // Support both Railway's DATABASE_URL and individual connection parameters
 let sequelize;
@@ -10,7 +18,7 @@ if (process.env.DATABASE_URL) {
   // Use Railway's connection string
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    logging: process.env.NODE_ENV === 'development' ? sqlLogger : false,
     dialectOptions: {
       // Only use SSL for public proxy connections, not private networking
       ...(isPrivateNetwork ? {} : {

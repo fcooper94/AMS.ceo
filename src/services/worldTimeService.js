@@ -6,6 +6,11 @@ const path = require('path');
 const { STORAGE_AIRPORTS } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
 const { CARGO_TYPES, CARGO_TYPE_KEYS, migrateOldConfig, migrateOldRates } = require('../config/cargoTypes');
 
+// Verbose per-tick simulation logs (maintenance checks, template revenue,
+// refresh progress) are gated behind DEBUG_SIM to keep the console readable.
+const DEBUG_SIM = process.env.DEBUG_SIM === '1' || process.env.DEBUG_SIM === 'true';
+const simLog = (...args) => { if (DEBUG_SIM) console.log(...args); };
+
 /**
  * World Time Service
  * Manages the continuous progression of game time with acceleration for multiple worlds
@@ -19,6 +24,7 @@ class WorldTimeService {
     this.lastFlightCheck = 0; // Timestamp of last flight check
     this.lastMaintenanceCheck = 0; // Timestamp of last maintenance check
     this.lastMaintenanceRefresh = {}; // Map of worldId -> last game week refreshed
+    this.lastMaintenancePruneDay = {}; // Map of worldId -> last game date completed-record prune ran
     this.creditCheckInterval = 30000; // Check credits every 30 seconds (real time)
     this.flightCheckInterval = 5000; // Check flights every 5 seconds (real time)
     this.maintenanceCheckInterval = 10000; // Check maintenance every 10 seconds (real time)
@@ -672,7 +678,7 @@ class WorldTimeService {
         }
       }
     } catch (error) {
-      console.error('Error processing flights:', error);
+      console.error('Error processing flights:', error.message);
     }
   }
 
@@ -736,9 +742,7 @@ class WorldTimeService {
       await template.aircraft.update({ lastTransitCheckDate: currentGameTime });
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`✓ Template flight ${template.route.routeNumber} revenue processed for ${gameDate}`);
-    }
+    simLog(`✓ Template flight ${template.route.routeNumber} revenue processed for ${gameDate}`);
   }
 
   /**
@@ -1975,8 +1979,8 @@ class WorldTimeService {
             } else if (checkType === 'weekly') {
               updateData.lastDailyCheckDate = currentGameTime;
             }
-            if (['A', 'C', 'D', 'weekly'].includes(checkType) && process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${checkType} Check also validates lower checks for ${aircraft.registration}`);
+            if (['A', 'C', 'D', 'weekly'].includes(checkType)) {
+              simLog(`🔧 ${checkType} Check also validates lower checks for ${aircraft.registration}`);
             }
 
             await aircraft.update(updateData);
@@ -1985,14 +1989,10 @@ class WorldTimeService {
             // so they don't keep being re-queried on every tick
             if (pattern.scheduledDate) {
               await pattern.update({ status: 'completed' });
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`🔧 ${checkType} Check marked as completed for ${aircraft.registration}`);
-              }
+              simLog(`🔧 ${checkType} Check marked as completed for ${aircraft.registration}`);
             }
 
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${checkType} Check recorded for ${aircraft.registration} at ${endTimeStr} (date: ${gameDate})`);
-            }
+            simLog(`🔧 ${checkType} Check recorded for ${aircraft.registration} at ${endTimeStr} (date: ${gameDate})`);
           }
         }
       }
@@ -2042,8 +2042,61 @@ class WorldTimeService {
       // Auto-schedule C and D checks the day before they expire
       await this.processAutomaticHeavyMaintenance(membershipIds, currentGameTime);
 
+      // Prune old completed maintenance records — at most once per game-day per world
+      if (this.lastMaintenancePruneDay[worldId] !== gameDate) {
+        this.lastMaintenancePruneDay[worldId] = gameDate;
+        await this.pruneOldMaintenanceRecords(membershipIds, currentGameTime);
+      }
+
     } catch (error) {
       console.error('Error processing maintenance:', error);
+    }
+  }
+
+  /**
+   * Tiered retention for completed maintenance records (game-time based).
+   * Routine daily/weekly completed rows are disposable once well past — the sim
+   * reads last-check dates off the aircraft, not these rows — so keep only ~90
+   * game-days. Heavy A/C/D checks are low-volume and meaningful history, kept
+   * 10 game-years. Scoped per world (worlds may run at different eras) and
+   * batched to respect the DB statement timeout.
+   */
+  async pruneOldMaintenanceRecords(membershipIds, currentGameTime) {
+    if (!membershipIds || membershipIds.length === 0) return;
+    if (!currentGameTime || isNaN(currentGameTime.getTime()) || currentGameTime.getFullYear() < 1980) return;
+
+    const sequelize = require('../config/database');
+
+    const shortCut = new Date(currentGameTime);
+    shortCut.setDate(shortCut.getDate() - 90);
+    const shortCutStr = shortCut.toISOString().split('T')[0];
+
+    const longCut = new Date(currentGameTime);
+    longCut.setFullYear(longCut.getFullYear() - 10);
+    const longCutStr = longCut.toISOString().split('T')[0];
+
+    let total = 0;
+    for (let batch = 0; batch < 30; batch++) {
+      const [, meta] = await sequelize.query(
+        `DELETE FROM recurring_maintenance WHERE ctid IN (
+           SELECT rm.ctid FROM recurring_maintenance rm
+           JOIN user_aircraft ua ON ua.id = rm.aircraft_id
+           WHERE rm.status = 'completed'
+             AND ua.world_membership_id IN (:ids)
+             AND (
+               (rm.check_type IN ('daily','weekly') AND rm.scheduled_date < :shortCut)
+               OR (rm.check_type IN ('A','C','D') AND rm.scheduled_date < :longCut)
+             )
+           LIMIT 10000
+         )`,
+        { replacements: { ids: membershipIds, shortCut: shortCutStr, longCut: longCutStr } }
+      );
+      const n = meta.rowCount || 0;
+      total += n;
+      if (n === 0) break;
+    }
+    if (total > 0) {
+      simLog(`🧹 Pruned ${total} old completed maintenance records (daily/weekly < ${shortCutStr}, A/C/D < ${longCutStr})`);
     }
   }
 
@@ -2054,148 +2107,129 @@ class WorldTimeService {
   async processAutomaticHeavyMaintenance(membershipIds, currentGameTime) {
     try {
       const eraEconomicService = require('./eraEconomicService');
+      const WeeklyFinancial = require('../models/WeeklyFinancial');
+      const { CHECK_INTERVALS, getCheckDurationDays, getCheckLeadDays } = require('../config/maintenanceConfig');
       const worldYear = currentGameTime.getFullYear();
 
-      // Get aircraft that need check processing (active for scheduling, maintenance/cabin_refit for return-to-service)
       const aircraft = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
           status: { [Op.in]: ['active', 'maintenance', 'cabin_refit'] }
         },
-        include: [{ model: Aircraft, as: 'aircraft', attributes: ['cCheckCost', 'dCheckCost'] }]
+        include: [{ model: Aircraft, as: 'aircraft', attributes: ['type', 'cCheckCost', 'dCheckCost'] }]
       });
 
-      const gameDate = currentGameTime.toISOString().split('T')[0];
+      // Per-airline concurrency: never ground more than ~15% of an airline's
+      // fleet at once (min 1) so an expired-check backlog drains in staggered
+      // waves instead of mass-grounding every carrier on the same tick.
+      const fleetSize = new Map();
+      const inMaint = new Map();
+      for (const ac of aircraft) {
+        fleetSize.set(ac.worldMembershipId, (fleetSize.get(ac.worldMembershipId) || 0) + 1);
+        if (ac.status === 'maintenance') inMaint.set(ac.worldMembershipId, (inMaint.get(ac.worldMembershipId) || 0) + 1);
+      }
+      const groundCap = (mid) => Math.max(1, Math.ceil((fleetSize.get(mid) || 1) * 0.15));
+
+      const chargeCheck = async (ac, cost) => {
+        if (!(cost > 0)) return;
+        const membership = await WorldMembership.findByPk(ac.worldMembershipId);
+        if (membership) {
+          membership.balance = (parseFloat(membership.balance) || 0) - cost;
+          await membership.save();
+        }
+        try {
+          const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
+          const [weekRecord] = await WeeklyFinancial.findOrCreate({
+            where: { worldMembershipId: ac.worldMembershipId, weekStart }, defaults: {}
+          });
+          await weekRecord.increment({ maintenanceCosts: Math.round(cost) });
+        } catch (_) { /* non-critical */ }
+      };
 
       for (const ac of aircraft) {
-        // Check C check expiry
-        if (ac.lastCCheckDate && ac.cCheckIntervalDays) {
-          const cCheckExpiry = new Date(ac.lastCCheckDate);
-          cCheckExpiry.setUTCDate(cCheckExpiry.getUTCDate() + ac.cCheckIntervalDays);
+        const acType = ac.aircraft?.type;
 
-          // Calculate days until expiry
-          const daysUntilCExpiry = Math.floor((cCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
-
-          // If check expires tomorrow or sooner, take aircraft out of service and charge cost
-          if (daysUntilCExpiry <= 1 && daysUntilCExpiry >= 0) {
-            await ac.update({ status: 'maintenance' });
-
-            // Deduct C check cost from airline balance (era-scaled) and record to financials
-            const cCost = ac.aircraft?.cCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.cCheckCost), worldYear) : 0;
-            if (cCost > 0) {
-              const membership = await WorldMembership.findByPk(ac.worldMembershipId);
-              if (membership) {
-                membership.balance = (parseFloat(membership.balance) || 0) - cCost;
-                await membership.save();
-              }
-              // Record to weekly financials
-              try {
-                const WeeklyFinancial = require('../models/WeeklyFinancial');
-                const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
-                const [weekRecord] = await WeeklyFinancial.findOrCreate({
-                  where: { worldMembershipId: ac.worldMembershipId, weekStart },
-                  defaults: {}
-                });
-                await weekRecord.increment({ maintenanceCosts: Math.round(cCost) });
-              } catch (_) { /* non-critical */ }
-            }
-
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${ac.registration} entering C Check maintenance (14 days) - cost: $${cCost.toLocaleString()}`);
-            }
-          }
-        }
-
-        // Check D check expiry
-        if (ac.lastDCheckDate && ac.dCheckIntervalDays) {
-          const dCheckExpiry = new Date(ac.lastDCheckDate);
-          dCheckExpiry.setUTCDate(dCheckExpiry.getUTCDate() + ac.dCheckIntervalDays);
-
-          // Calculate days until expiry
-          const daysUntilDExpiry = Math.floor((dCheckExpiry - currentGameTime) / (1000 * 60 * 60 * 24));
-
-          // If check expires tomorrow or sooner, take aircraft out of service and charge cost
-          if (daysUntilDExpiry <= 1 && daysUntilDExpiry >= 0) {
-            await ac.update({ status: 'maintenance' });
-
-            // Deduct D check cost from airline balance (era-scaled) and record to financials
-            const dCost = ac.aircraft?.dCheckCost ? eraEconomicService.convertToEraPrice(parseFloat(ac.aircraft.dCheckCost), worldYear) : 0;
-            if (dCost > 0) {
-              const membership = await WorldMembership.findByPk(ac.worldMembershipId);
-              if (membership) {
-                membership.balance = (parseFloat(membership.balance) || 0) - dCost;
-                await membership.save();
-              }
-              // Record to weekly financials
-              try {
-                const WeeklyFinancial = require('../models/WeeklyFinancial');
-                const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
-                const [weekRecord] = await WeeklyFinancial.findOrCreate({
-                  where: { worldMembershipId: ac.worldMembershipId, weekStart },
-                  defaults: {}
-                });
-                await weekRecord.increment({ maintenanceCosts: Math.round(dCost) });
-              } catch (_) { /* non-critical */ }
-            }
-
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 ${ac.registration} entering D Check maintenance (60 days) - cost: $${dCost.toLocaleString()}`);
-            }
-          }
-        }
-
-        // Check if aircraft in maintenance should be returned to service
-        // C check: 14 days, D check: 60 days
+        // 1) Return-to-service for completed heavy checks (frees a slot first).
         if (ac.status === 'maintenance') {
-          let shouldReturn = false;
-          let checkCompleted = null;
-
-          // Check if C check maintenance is complete
-          if (ac.lastCCheckDate) {
-            const cCheckStart = new Date(ac.lastCCheckDate);
-            const cCheckEnd = new Date(cCheckStart);
-            cCheckEnd.setUTCDate(cCheckEnd.getUTCDate() + 14); // 14 days duration
-
-            if (currentGameTime >= cCheckEnd) {
-              // C check duration completed - update the check date to now
-              await ac.update({ lastCCheckDate: currentGameTime });
-              shouldReturn = true;
-              checkCompleted = 'C';
-            }
-          }
-
-          // Check if D check maintenance is complete
+          let returned = null;
           if (ac.lastDCheckDate) {
-            const dCheckStart = new Date(ac.lastDCheckDate);
-            const dCheckEnd = new Date(dCheckStart);
-            dCheckEnd.setUTCDate(dCheckEnd.getUTCDate() + 60); // 60 days duration
-
-            if (currentGameTime >= dCheckEnd) {
-              // D check duration completed - update the check date to now
-              await ac.update({ lastDCheckDate: currentGameTime });
-              shouldReturn = true;
-              checkCompleted = 'D';
-            }
+            const dEnd = new Date(ac.lastDCheckDate);
+            dEnd.setUTCDate(dEnd.getUTCDate() + getCheckDurationDays('D', acType));
+            if (currentGameTime >= dEnd) returned = 'D';
           }
-
-          // Return aircraft to service if maintenance completed
-          if (shouldReturn) {
+          if (!returned && ac.lastCCheckDate) {
+            const cEnd = new Date(ac.lastCCheckDate);
+            cEnd.setUTCDate(cEnd.getUTCDate() + getCheckDurationDays('C', acType));
+            if (currentGameTime >= cEnd) returned = 'C';
+          }
+          if (returned) {
             await ac.update({ status: 'active' });
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`✓ ${ac.registration} returned to service after ${checkCompleted} Check maintenance`);
-            }
+            inMaint.set(ac.worldMembershipId, Math.max(0, (inMaint.get(ac.worldMembershipId) || 1) - 1));
+            simLog(`✓ ${ac.registration} returned to service after ${returned} Check`);
           }
+          continue;
         }
 
-        // Check if cabin refit is complete
-        if (ac.status === 'cabin_refit' && ac.cabinRefitEndDate) {
-          if (currentGameTime >= new Date(ac.cabinRefitEndDate)) {
+        if (ac.status === 'cabin_refit') {
+          if (ac.cabinRefitEndDate && currentGameTime >= new Date(ac.cabinRefitEndDate)) {
             await ac.update({ status: 'active', cabinRefitEndDate: null });
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`✓ ${ac.registration} returned to service after cabin refit`);
-            }
+            simLog(`✓ ${ac.registration} returned to service after cabin refit`);
+          }
+          continue;
+        }
+
+        // 2) Grounding decision for active aircraft. Ground once the check is
+        // within its (size-scaled) lead window so it COMPLETES before expiry;
+        // a null last-check date means never done => overdue now. D outranks
+        // C and also satisfies it (cascade).
+        const candidates = [];
+        const dInterval = ac.dCheckIntervalDays || CHECK_INTERVALS.D;
+        const cInterval = ac.cCheckIntervalDays || CHECK_INTERVALS.C;
+        {
+          const dExp = ac.lastDCheckDate ? new Date(ac.lastDCheckDate) : new Date(currentGameTime);
+          if (ac.lastDCheckDate) dExp.setUTCDate(dExp.getUTCDate() + dInterval); else dExp.setUTCDate(dExp.getUTCDate() - 1);
+          candidates.push({ type: 'D', exp: dExp });
+        }
+        {
+          const cExp = ac.lastCCheckDate ? new Date(ac.lastCCheckDate) : new Date(currentGameTime);
+          if (ac.lastCCheckDate) cExp.setUTCDate(cExp.getUTCDate() + cInterval); else cExp.setUTCDate(cExp.getUTCDate() - 1);
+          candidates.push({ type: 'C', exp: cExp });
+        }
+
+        let toGround = null;
+        for (const cand of candidates) {
+          const leadMs = getCheckLeadDays(cand.type, acType) * 86400000;
+          if ((cand.exp - currentGameTime) <= leadMs) { // includes already-expired (negative)
+            if (cand.type === 'D') { toGround = cand; break; }
+            if (!toGround) toGround = cand;
           }
         }
+        if (!toGround) continue;
+
+        // Staggering cap — defer to a later tick if this airline is at capacity.
+        if ((inMaint.get(ac.worldMembershipId) || 0) >= groundCap(ac.worldMembershipId)) continue;
+
+        // Ground. Reset the check clock to NOW (maintenance start) so the
+        // aircraft is legal from here and returns after the size-scaled
+        // duration. A D check satisfies C/A/weekly/daily; C satisfies A/weekly/
+        // daily (cascade — mirrors the scheduled-check engine).
+        const nowHours = parseFloat(ac.totalFlightHours) || 0;
+        const updates = {
+          status: 'maintenance',
+          lastCCheckDate: currentGameTime,
+          lastACheckDate: currentGameTime,
+          lastACheckHours: nowHours,
+          lastWeeklyCheckDate: currentGameTime,
+          lastDailyCheckDate: currentGameTime
+        };
+        if (toGround.type === 'D') updates.lastDCheckDate = currentGameTime;
+        await ac.update(updates);
+        inMaint.set(ac.worldMembershipId, (inMaint.get(ac.worldMembershipId) || 0) + 1);
+
+        const costRaw = toGround.type === 'D' ? ac.aircraft?.dCheckCost : ac.aircraft?.cCheckCost;
+        const cost = costRaw ? eraEconomicService.convertToEraPrice(parseFloat(costRaw), worldYear) : 0;
+        await chargeCheck(ac, cost);
+        simLog(`🔧 ${ac.registration} entering ${toGround.type} Check (${getCheckDurationDays(toGround.type, acType)}d) - cost: $${Math.round(cost).toLocaleString()}`);
       }
     } catch (error) {
       console.error('Error processing automatic heavy maintenance:', error);
@@ -2241,6 +2275,15 @@ class WorldTimeService {
       // Get game time once from memory to avoid repeated DB calls
       const gameTime = this.getCurrentTime(worldId);
 
+      // Don't refresh with an unset/invalid clock — downstream scheduling would
+      // otherwise generate epoch-dated (1970) maintenance rows.
+      if (!gameTime || isNaN(gameTime.getTime()) || gameTime.getFullYear() < 1980) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`[MAINT REFRESH] Skipping world ${worldId}: invalid game time (${gameTime ? gameTime.toISOString() : 'null'})`);
+        }
+        return;
+      }
+
       if (process.env.NODE_ENV === 'development') {
         console.log(`📅 Refreshing maintenance schedules for ${aircraftToRefresh.length} aircraft in world ${worldId} (gameTime: ${gameTime?.toISOString()})`);
       }
@@ -2254,9 +2297,7 @@ class WorldTimeService {
           try {
             // Pass game time to avoid DB calls
             await refreshAutoScheduledMaintenance(aircraft.id, worldId, gameTime);
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`📅 Refreshed maintenance for ${aircraft.registration} (${i + 1}/${aircraftToRefresh.length})`);
-            }
+            simLog(`📅 Refreshed maintenance for ${aircraft.registration} (${i + 1}/${aircraftToRefresh.length})`);
             break; // Success, exit retry loop
           } catch (err) {
             retries--;
