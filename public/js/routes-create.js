@@ -1357,10 +1357,10 @@ function generateCompetitionIndicator(airport) {
   const count = indicators.competitorCount || 0;
   const b = indicators.competitionBreakdown || {};
   let label, color;
-  if (count === 0) { label = 'None'; color = '#22c55e'; }
-  else if (score >= 67) { label = 'High'; color = '#ef4444'; }
-  else if (score >= 34) { label = 'Med'; color = '#f59e0b'; }
-  else { label = 'Low'; color = '#22c55e'; }
+  if (count === 0) { label = 'NONE'; color = '#22c55e'; }
+  else if (score >= 67) { label = 'HIGH'; color = '#ef4444'; }
+  else if (score >= 34) { label = 'MED'; color = '#f59e0b'; }
+  else { label = 'LOW'; color = '#22c55e'; }
 
   const tooltipContent = `
     <div style="font-weight: 600; margin-bottom: 0.3rem; font-size: 0.7rem; color: #fff;">Competition (Score: ${score})</div>
@@ -1381,8 +1381,8 @@ function generateCompetitionIndicator(airport) {
   `;
 
   return `
-    <div class="indicator-hover" style="cursor: help;">
-      <span style="font-size: 0.75rem; font-weight: 600; color: ${color};">${label}</span>
+    <div class="indicator-hover" style="cursor: help; text-align: center;">
+      <span style="font-size: 0.55rem; font-weight: 700; color: ${color}; letter-spacing: 0.5px;">${label}</span>
       <div class="indicator-tooltip">${tooltipContent}</div>
     </div>
   `;
@@ -1506,14 +1506,14 @@ function generateSupplyIndicator(airport) {
   // Gap label
   let gapLabel, gapColor;
   if (mktTotal === 0) {
-    gapLabel = demand >= 40 ? 'OPEN' : 'QUIET';
+    gapLabel = demand >= 40 ? 'NO SERVICE' : 'QUIET';
     gapColor = demand >= 40 ? '#22c55e' : '#94a3b8';
   } else {
     const ratio = mktTotal / Math.max(demand, 1);
-    if (ratio < 0.08)      { gapLabel = 'GAP';  gapColor = '#22c55e'; }
-    else if (ratio < 0.18) { gapLabel = 'LOW';  gapColor = '#84cc16'; }
-    else if (ratio < 0.35) { gapLabel = 'MED';  gapColor = '#f59e0b'; }
-    else                   { gapLabel = 'SAT';  gapColor = '#ef4444'; }
+    if (ratio < 0.08)      { gapLabel = 'UNDERSERVED'; gapColor = '#22c55e'; }
+    else if (ratio < 0.18) { gapLabel = 'BALANCED';    gapColor = '#84cc16'; }
+    else if (ratio < 0.35) { gapLabel = 'BUSY';        gapColor = '#f59e0b'; }
+    else                   { gapLabel = 'SATURATED';   gapColor = '#ef4444'; }
   }
 
   // Per-day demand using DOW multipliers, converted to pax
@@ -1594,7 +1594,61 @@ function generateSupplyIndicator(airport) {
     </div>
   `;
 
+  // Yield section for panel
+  const indicators = demandData?.indicators;
+  let yieldSection = '';
+  if (indicators) {
+    const score = indicators.yieldScore;
+    const b = indicators.yieldBreakdown || {};
+    let yLabel, yColor;
+    if (score >= 75) { yLabel = '$$$$'; yColor = '#22c55e'; }
+    else if (score >= 50) { yLabel = '$$$'; yColor = '#84cc16'; }
+    else if (score >= 25) { yLabel = '$$'; yColor = '#f59e0b'; }
+    else { yLabel = '$'; yColor = '#ef4444'; }
+
+    const pts = [];
+    if (b.incomeFactor != null) {
+      if (b.incomeFactor >= 1.4)      pts.push({ good: true,  text: 'Wealthy markets' });
+      else if (b.incomeFactor >= 1.0) pts.push({ good: true,  text: 'Good economies' });
+      else if (b.incomeFactor >= 0.7) pts.push({ good: null,  text: 'Average income' });
+      else                             pts.push({ good: false, text: 'Low income markets' });
+    }
+    if (b.hubPremium != null) {
+      if (b.hubPremium >= 1.10)       pts.push({ good: true,  text: 'Major destination airport' });
+      else if (b.hubPremium <= 0.85)  pts.push({ good: false, text: 'Small destination airport' });
+    }
+    const dk = b.distKm || 0;
+    if (dk < 500)        pts.push({ good: false, text: 'Very short route' });
+    else if (dk < 1200)  pts.push({ good: null,  text: 'Short haul' });
+    else if (dk < 1800)  pts.push({ good: true,  text: 'Medium haul' });
+    else if (dk < 4000)  pts.push({ good: true,  text: 'Ideal range' });
+    else if (dk < 7000)  pts.push({ good: null,  text: 'Long haul' });
+    else                 pts.push({ good: false, text: 'Ultra long haul' });
+
+    const ptsHtml = pts.map(p => {
+      const icon = p.good === true ? '+' : p.good === false ? '−' : '~';
+      const col  = p.good === true ? '#22c55e' : p.good === false ? '#ef4444' : '#f59e0b';
+      return `<div style="display:flex; align-items:center; gap:0.35rem;">
+        <span style="font-size:0.75rem; font-weight:700; color:${col}; width:10px; text-align:center;">${icon}</span>
+        <span style="font-size:0.65rem; color:#ccc;">${p.text}</span>
+      </div>`;
+    }).join('');
+
+    yieldSection = `
+      <div style="margin-bottom:0.65rem; padding-bottom:0.55rem; border-bottom:1px solid #2a2a3e;">
+        <div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:0.3rem;">
+          <span style="font-size:0.65rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Yield</span>
+          <span style="font-size:0.95rem; font-weight:700; color:${yColor};">${yLabel}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:0.2rem;">${ptsHtml}</div>
+        <div style="margin-top:0.3rem; font-size:0.6rem; color:#555;">
+          ${b.originCountry || '??'} $${(b.originGdp || 0).toLocaleString()} · ${b.destCountry || '??'} $${(b.destGdp || 0).toLocaleString()} · ${(dk).toLocaleString()} km
+        </div>
+      </div>`;
+  }
+
   const tooltipContent = `
+    ${yieldSection}
     <div style="font-weight:600; margin-bottom:0.6rem; font-size:0.8rem; color:#fff;">Demand vs Capacity</div>
     <div style="display:flex; gap:8px; align-items:flex-end;">${chart}</div>
     ${legend}
@@ -1609,14 +1663,14 @@ function generateSupplyIndicator(airport) {
   const baseIcao = baseAirport?.icaoCode || '???';
   const panelTitle = `${baseIcao} ↔ ${airport.icaoCode}`;
   return `
-    <div style="text-align:center; display:flex; flex-direction:column; align-items:center; gap:2px;">
-      <div style="font-size:0.55rem; color:${gapColor}; font-weight:700; letter-spacing:0.5px;">${gapLabel}</div>
+    <div style="display:flex; align-items:center; justify-content:center; gap:3px;">
+      <div style="font-size:0.55rem; color:${gapColor}; font-weight:700; letter-spacing:0.5px; white-space:nowrap;">${gapLabel}</div>
       <button class="capacity-open-btn"
         data-panel-title="${panelTitle.replace(/"/g, '&quot;')}"
         data-airport-id="${airport.id}"
-        style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; line-height:1; border-radius:3px;"
+        style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:1px 2px; line-height:1; border-radius:3px; flex-shrink:0;"
         title="View demand vs capacity chart">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </button>
@@ -1750,7 +1804,6 @@ function renderAirportItem(airport) {
       </div>
       <div style="text-align: center; color: var(--accent-color); font-weight: 600; font-size: 0.8rem; white-space: nowrap;">${Math.round(airport.distance)} <span style="font-weight: 400; font-size: 0.65rem; color: var(--text-muted);">nm</span></div>
       ${generateDemandIndicator(airport)}
-      ${generateYieldIndicator(airport)}
       ${generateCompetitionIndicator(airport)}
       ${generateSupplyIndicator(airport)}
     </div>
@@ -1837,8 +1890,7 @@ function displayAvailableAirports(airports) {
         <span>Demand</span>
         <span style="font-size: 0.52rem; letter-spacing: 0; text-transform: none; color: var(--text-muted);">pax/day</span>
       </span>
-      <span>Yield</span>
-      <span>Comp</span>
+      <span>Competition</span>
       <span title="Demand vs Capacity chart">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -4068,16 +4120,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     panel.style.display = 'block';
 
     requestAnimationFrame(() => {
-      const rect = btn.getBoundingClientRect();
       const pw = panel.offsetWidth;
       const ph = panel.offsetHeight;
-      let left = rect.right - pw;
-      let top  = rect.bottom + 6;
-      if (left < 8) left = 8;
-      if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
-      if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
-      panel.style.left = left + 'px';
-      panel.style.top  = top  + 'px';
+      panel.style.left = Math.max(8, (window.innerWidth  - pw) / 2) + 'px';
+      panel.style.top  = Math.max(8, (window.innerHeight - ph) / 2) + 'px';
     });
   });
 
