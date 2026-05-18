@@ -39,11 +39,13 @@ class RouteIndicatorService {
     let competitorCounts = {};
     let hubPresence = {};
     let slotsUsedMap = {};
+    let marketFrequency = {};
     try {
-      [competitorCounts, hubPresence, slotsUsedMap] = await Promise.all([
+      [competitorCounts, hubPresence, slotsUsedMap, marketFrequency] = await Promise.all([
         this._queryCompetitorCounts(baseAirport.id, worldId, playerMembershipId, destIds),
         this._queryHubPresence(worldId, destIds),
-        this._querySlotsUsed(worldId, destIds)
+        this._querySlotsUsed(worldId, destIds),
+        this._queryMarketFrequency(baseAirport.id, worldId, destIds)
       ]);
     } catch (sqlErr) {
       console.warn('Indicator queries failed, using defaults:', sqlErr.message);
@@ -135,7 +137,9 @@ class RouteIndicatorService {
           typeRisk: accessResult.typeRisk,
           congestionRisk: accessResult.congestionRisk,
           spareCapacity
-        }
+        },
+        marketByDay:         (marketFrequency[destAirport.id]?.flights  ) || [0,0,0,0,0,0,0],
+        marketCapacityByDay: (marketFrequency[destAirport.id]?.capacity ) || [0,0,0,0,0,0,0]
       };
     }
 
@@ -306,6 +310,66 @@ class RouteIndicatorService {
     const result = {};
     for (const row of rows) {
       result[row.airportId] = true;
+    }
+    return result;
+  }
+
+  /**
+   * Batch query: per-day-of-week flights (all airlines) between base and each destination.
+   * Returns { destId: [sun, mon, tue, wed, thu, fri, sat] } (index 0=Sun..6=Sat).
+   */
+  /**
+   * Batch query: per-day-of-week flights AND seat capacity between base and each destination.
+   * Joins to user_aircraft + aircraft so every airline's actual seat config is used.
+   * Falls back to aircraft.passenger_capacity when custom cabin is not yet configured,
+   * then to 150 if the route has no assigned aircraft at all.
+   *
+   * Returns { destId: { flights: [sun..sat], capacity: [sun..sat] } }
+   */
+  async _queryMarketFrequency(baseAirportId, worldId, destIds) {
+    if (destIds.length === 0) return {};
+
+    const rows = await sequelize.query(`
+      SELECT
+        CASE WHEN r.departure_airport_id = :baseId
+             THEN r.arrival_airport_id
+             ELSE r.departure_airport_id
+        END as "destId",
+        unnest(r.days_of_week) as "dow",
+        COUNT(*) as "flights",
+        SUM(
+          COALESCE(
+            NULLIF(
+              COALESCE(ua.economy_seats, 0) + COALESCE(ua.economy_plus_seats, 0)
+              + COALESCE(ua.business_seats, 0) + COALESCE(ua.first_seats, 0),
+              0
+            ),
+            a.passenger_capacity,
+            150
+          )
+        ) as "seats"
+      FROM routes r
+      LEFT JOIN user_aircraft ua ON r.assigned_aircraft_id = ua.id
+      LEFT JOIN aircraft a ON ua.aircraft_id = a.id
+      WHERE r.world_id = :worldId
+        AND r.is_active = true
+        AND (
+          (r.departure_airport_id = :baseId AND r.arrival_airport_id IN (:destIds))
+          OR
+          (r.arrival_airport_id = :baseId AND r.departure_airport_id IN (:destIds))
+        )
+      GROUP BY "destId", "dow"
+    `, {
+      replacements: { baseId: baseAirportId, worldId, destIds },
+      type: QueryTypes.SELECT
+    });
+
+    const result = {};
+    for (const row of rows) {
+      if (!result[row.destId]) result[row.destId] = { flights: [0,0,0,0,0,0,0], capacity: [0,0,0,0,0,0,0] };
+      const dow = parseInt(row.dow);
+      result[row.destId].flights[dow]  += parseInt(row.flights) || 0;
+      result[row.destId].capacity[dow] += parseInt(row.seats)   || 0;
     }
     return result;
   }

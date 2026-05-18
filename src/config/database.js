@@ -13,7 +13,10 @@ let sequelize;
 
 if (process.env.DATABASE_URL) {
   // Detect Railway private networking (internal URLs use .railway.internal)
-  const isPrivateNetwork = process.env.DATABASE_URL.includes('.railway.internal');
+  // Also skip SSL for localhost connections
+  const isPrivateNetwork = process.env.DATABASE_URL.includes('.railway.internal') ||
+    process.env.DATABASE_URL.includes('localhost') ||
+    process.env.DATABASE_URL.includes('127.0.0.1');
 
   // Use Railway's connection string
   sequelize = new Sequelize(process.env.DATABASE_URL, {

@@ -101,7 +101,7 @@
   /* Airport list table layout */
   .airport-row {
     display: grid;
-    grid-template-columns: 1fr 52px 78px 44px 72px 54px;
+    grid-template-columns: 1fr 52px 78px 44px 54px 62px;
     align-items: center;
     gap: 0.25rem;
     padding: 0.4rem 0.75rem;
@@ -117,7 +117,7 @@
   .airport-row .airport-select-zone:hover { opacity: 0.8; }
   .airport-list-header {
     display: grid;
-    grid-template-columns: 1fr 52px 78px 44px 72px 54px;
+    grid-template-columns: 1fr 52px 78px 44px 54px 62px;
     gap: 0.25rem;
     padding: 0.35rem 0.75rem;
     font-size: 0.6rem;
@@ -133,37 +133,37 @@
   }
   .airport-list-header > span:not(:first-child) { text-align: center; }
 
-  /* Indicator hover tooltips */
+  /* Indicator hover tooltips — inline divs are hidden; a single fixed-position
+     global tooltip is shown by JS so it escapes overflow:auto containers. */
   .indicator-hover {
     position: relative;
     display: flex;
     justify-content: center;
   }
   .indicator-tooltip {
+    display: none !important; /* content read by JS; never shown inline */
+  }
+  #globalIndicatorTooltip {
     display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    right: -8px;
+    position: fixed;
     background: #1a1a2e;
     border: 1px solid #333;
     border-radius: 6px;
-    padding: 0.5rem 0.65rem;
+    padding: 0.5rem 0.65rem 0.75rem;
     min-width: 190px;
     max-width: 230px;
-    z-index: 100;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 9000;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.65);
     pointer-events: none;
   }
-  .indicator-tooltip::before {
+  #globalIndicatorTooltip::before {
     content: '';
     position: absolute;
     bottom: 100%;
-    right: 16px;
+    left: 50%;
+    transform: translateX(-50%);
     border: 5px solid transparent;
     border-bottom-color: #333;
-  }
-  .indicator-hover:hover .indicator-tooltip {
-    display: block;
   }
   .nat-preview-label {
     background: none;
@@ -1159,4 +1159,19 @@
       <div id="expandedMapContainer" style="flex:1; min-height:0;"></div>
     </div>
   </div>
+</div>
+
+<!-- Global indicator tooltip — rendered outside overflow containers so it's never clipped -->
+<div id="globalIndicatorTooltip"></div>
+
+<!-- Capacity chart panel — stays open until dismissed -->
+<div id="capacityPanel" style="display:none; position:fixed; z-index:8500; background:#1a1a2e; border:1px solid #333; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.7); min-width:480px; max-width:520px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; border-bottom:1px solid #333;">
+    <div>
+      <div id="capacityPanelTitle" style="font-size:0.85rem; font-weight:700; color:#fff; letter-spacing:0.5px;"></div>
+      <div style="font-size:0.6rem; color:var(--text-muted); margin-top:1px;">Demand &amp; capacity · both directions (symmetric)</div>
+    </div>
+    <button onclick="closeCapacityPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.1rem; cursor:pointer; line-height:1; padding:0 0.15rem;">&times;</button>
+  </div>
+  <div id="capacityPanelBody" style="padding:0.6rem 0.75rem;"></div>
 </div>

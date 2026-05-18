@@ -68,15 +68,33 @@ networks (VATSIM).
    (leisure air travel barely existed in 1950). It does **not** touch the
    load-factor/revenue math.
 
+## Local dev / offline mode (added 2026-05)
+
+The user flies on plane WiFi frequently. A local PostgreSQL 18 instance is set
+up on this machine for offline dev:
+
+- **Local DB:** `airline_control` on `localhost:5432`, user `postgres`,
+  password `Chieftain1994`.
+- **Switching:** `npm run go` — interactive prompt picks Railway (prod) or
+  Local (offline). Rewrites `DATABASE_URL` in `.env` and starts nodemon.
+- **Refreshing local data:** `npm run db:pull` (`src/scripts/pullLocalDb.js`)
+  — drops and rebuilds `airline_control` from Railway. Excludes most of
+  `airport_route_demands` (keeps EGLL only) and truncates `weekly_financials`
+  to 2023+. Run this on good WiFi before a flight.
+- **SSL:** `config/database.js` skips SSL for localhost/127.0.0.1 URLs
+  (added 2026-05). Railway public proxy still uses SSL; private `.railway.internal`
+  URLs skip it too.
+- **Schema sync:** local DB was seeded via `pg_dump` from Railway — schema
+  matches production. Normal sync rules apply (opt-in `DB_AUTO_SYNC=true`).
+- If you see `SequelizeConnectionRefusedError` on the local URL, the
+  PostgreSQL 18 service may not be running — check Services (`postgresql-x64-18`).
+
 ## Database rules (read before touching the DB)
 
-- **Always use the live Railway Postgres. Never local Postgres.** There is no
-  local Postgres on this machine; a `localhost` `DATABASE_URL` →
-  `ECONNREFUSED` and cascades into auth/world-time/airway failures. In `.env`
-  keep the Railway `DATABASE_URL` active and the localhost line commented.
-  If you see `SequelizeConnectionRefusedError`, fix the URL — do **not**
-  suggest installing/starting local Postgres. `config/database.js` already
-  applies SSL for the public Railway proxy.
+- **Default to Railway Postgres for production.** Use `npm run go` to switch.
+  If you see `SequelizeConnectionRefusedError` on a Railway URL, fix the URL
+  — do **not** suggest installing local Postgres (it's already there).
+  `config/database.js` applies SSL for the public Railway proxy.
 - **Schema sync is opt-in (changed 2026-05).** Boot (`server.js`) now does
   `sequelize.authenticate()` + idempotent `ADD COLUMN IF NOT EXISTS` guards
   only. `sequelize.sync({ alter: true })` runs **only when
@@ -114,12 +132,77 @@ networks (VATSIM).
 
 ## Dev workflow
 
-- Run: `npm run dev` (nodemon). Server gates page requests behind
-  `db-updating.html` until `dbReady`; now near-instant on normal restarts.
+- **Start server:** `npm run go` (prompts Railway/Local, then nodemon) or
+  `npm run dev` (nodemon directly, uses whatever `DATABASE_URL` is in `.env`).
+- Server gates page requests behind `db-updating.html` until `dbReady`;
+  near-instant on normal restarts.
 - Seeding/migrations: `npm run db:*` scripts (see `package.json`).
 - SQL logging goes to `logs/sql.log` in development, not the console.
 - No automated tests (`npm test` is a stub). Verify JS with `node -c <file>`
   and, for logic, a quick `node -e` harness.
+
+## Route picker — indicator columns (updated 2026-05)
+
+`public/js/routes-create.js` renders the destination airport list with these
+columns: Airport · Dist · **Demand** · Yield · Comp · **Capacity (🔍)**.
+Class column was removed. CSS grid is in `public/routes-create.html`:
+`grid-template-columns: 1fr 52px 78px 44px 54px 62px` (6 cols).
+
+### Demand cell (`generateDemandIndicator`)
+Shows estimated pax/day in amber (summer) / blue (winter), converted from the
+0–100 demand score via `demandToPax(score, year)`. Archetype label below
+(e.g. `BEACH`, `SKI`, `BUSINESS`, `LEISURE`, `YEAR-ROUND`). Hover tooltip
+shows mini bars in pax + archetype description + swing text.
+
+**Conversion formula** (in `routes-create.js`):
+```
+pax/day = score × 80 × (worldPax[year] / worldPax[2020])
+```
+`WORLD_PAX_M` table mirrors `gravityCalibration.js worldPassengers`.
+Score 100 in 2020 = 8,000 pax/day (≈ world's busiest route). Era-scales
+linearly, e.g. score 60 → 4,800 pax/day (2020), ~280 pax/day (1960).
+Archetype `vfr` was renamed `leisure` (2026-05) in both
+`seasonalProfiles.js` and `seasonalityService.js`.
+
+### Capacity cell (`generateSupplyIndicator`)
+Shows gap label (`OPEN/GAP/LOW/MED/SAT`) + a **magnifying glass button**.
+Clicking opens `#capacityPanel` — a pinned `position:fixed` card that stays
+open until X is clicked or user clicks outside. Panel header shows the route
+(`EGLL ↔ EGAA`) with subtitle "both directions (symmetric)".
+
+Panel contains a 7-day bar chart (Mon–Sun), 4 bars per day in pax/day:
+- **Summer demand** (amber) — score × DOW_MULTIPLIER × demandToPax
+- **Winter demand** (blue) — same with winter score
+- **Total capacity** (grey) — all airlines' actual seats/day from DB query
+- **My capacity** (accent) — exact seats from my fleet's cabin config
+
+All 4 bars share the same pax/day scale. "Capacity" = seats if planes were
+full (potential supply, not actual pax carried).
+
+**My capacity** is built in `myCapacityByDay` global
+(`destAirportId → [mon..sun]` seat totals). Populated alongside `myByDayMap`
+from `allRoutes` using fleet seat config:
+`economySeats + economyPlusSeats + businessSeats + firstSeats`, falling back
+to `aircraft.passengerCapacity` when custom cabin not configured.
+
+**Market capacity** comes from `routeIndicatorService._queryMarketFrequency`
+which now `LEFT JOIN user_aircraft + aircraft` and returns both
+`{ flights: [...], capacity: [...] }` per destination (Sun-first arrays).
+`capacity` uses `COALESCE(custom_seats_sum, passenger_capacity, 150)` per
+flight. Indicator result exposes `marketByDay` (flights, for gap label) and
+`marketCapacityByDay` (seats, for chart bars).
+
+Demand/capacity data is **symmetric** — queries count both dep→dest and
+arr→dest directions together, so one chart covers both legs of the route.
+
+### Tooltip system
+Indicator hover tooltips use a **global `#globalIndicatorTooltip`** div
+(`position:fixed`, `z-index:9000`) driven by JS event delegation, not CSS
+`:hover`. This escapes `overflow:auto` on `#availableAirportsList`.
+On `mouseover .indicator-hover`, copies `.indicator-tooltip` innerHTML into
+the global div, inherits its `style.minWidth`, then positions via
+`requestAnimationFrame` + `getBoundingClientRect`. Inline `.indicator-tooltip`
+divs are `display:none !important` — their HTML is read by JS only.
 
 ## How the user wants Claude to work
 

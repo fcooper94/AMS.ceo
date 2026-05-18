@@ -17,7 +17,7 @@ const ARCHETYPE_FACTORS = {
   summer_sun:     { summer: 1.60, winter: 0.55 }, // Med/beach leisure
   winter_sun:     { summer: 0.95, winter: 1.40 }, // cold origin → tropical escape
   generic_leisure:{ summer: 1.35, winter: 0.75 }, // temperate leisure, summer-biased
-  vfr:            { summer: 1.15, winter: 0.95 }, // visiting friends/relatives, mild
+  leisure:        { summer: 1.15, winter: 0.95 }, // visiting friends/relatives, mild
   business:       { summer: 1.05, winter: 0.95 }, // near-flat
   flat:           { summer: 1.00, winter: 1.00 }
 };

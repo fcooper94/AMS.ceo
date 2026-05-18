@@ -73,7 +73,7 @@ class SeasonalityService {
     if (SUMMER_SUN.has(oIcao) || SUMMER_SUN.has(dIcao)) return 'summer_sun';
 
     if (rt === 'business') return 'business';
-    if (rt === 'regional' || rt === 'mixed') return 'vfr';
+    if (rt === 'regional' || rt === 'mixed') return 'leisure';
 
     if (rt === 'leisure') {
       // Temperate leisure skews summer; year-round-warm pairs stay flat.
