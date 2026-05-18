@@ -570,6 +570,11 @@ server.listen(PORT, () => {
     // Ensure all models and associations are loaded
     require('./models');
 
+    // Verify the DB connection up front — fail fast and explicit, instead of
+    // relying on the first ALTER/sync to surface a bad connection.
+    await sequelize.authenticate();
+    console.log('✓ Database connection verified');
+
     // Pre-add any new enum values before sync (Sequelize can't ALTER TYPE ADD VALUE)
     const enumUpdates = [
       { type: 'enum_user_aircraft_status', value: 'on_order' },
@@ -618,10 +623,22 @@ server.listen(PORT, () => {
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
 
-    await sequelize.sync({ alter: true });
-    console.log('✓ Database schema synced');
+    // Full schema reconciliation is opt-in. sequelize.sync({ alter: true }) is
+    // slow, used to run on every boot (hence the maintenance screen each
+    // restart) and re-attempts the known airports.operational_from DATE-cast
+    // abort. Code-only deploys need none of it — the idempotent
+    // ADD COLUMN IF NOT EXISTS guards above keep required columns present.
+    // Run it deliberately when a MODEL changes (or to create tables on a fresh
+    // DB): set DB_AUTO_SYNC=true for one boot, or use `npm run db:sync`.
+    if (process.env.DB_AUTO_SYNC === 'true') {
+      console.log('DB_AUTO_SYNC=true — running sequelize.sync({ alter: true })...');
+      await sequelize.sync({ alter: true });
+      console.log('✓ Database schema synced');
+    } else {
+      console.log('• Schema sync skipped (set DB_AUTO_SYNC=true to run sequelize.sync({ alter: true }))');
+    }
   } catch (err) {
-    console.error('✗ Database auto-sync warning:', err.message);
+    console.error('✗ Database startup warning:', err.message);
     console.error('  Server will continue — run "npm run db:sync" manually if needed');
   }
 

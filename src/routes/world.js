@@ -8,6 +8,7 @@ const airportSlotService = require('../services/airportSlotService');
 const routeDemandService = require('../services/routeDemandService');
 const routeIndicatorService = require('../services/routeIndicatorService');
 const airportCargoService = require('../services/airportCargoService');
+const seasonalityService = require('../services/seasonalityService');
 const { Op } = require('sequelize');
 const { World, WorldMembership, User, Airport, Aircraft, UserAircraft, Route, ScheduledFlight, RecurringMaintenance, PricingDefault, Notification, WeeklyFinancial, Loan, AirspaceRestriction, MarketingCampaign } = require('../models');
 
@@ -498,6 +499,19 @@ router.get('/airports/:id/demand', async (req, res) => {
       }
     } catch (cargoErr) {
       console.error('Cargo demand error:', cargoErr);
+    }
+
+    // At-a-glance seasonal demand + traffic type per destination
+    try {
+      for (const dest of destinations) {
+        if (!dest.airport) continue;
+        dest.seasonal = seasonalityService.computeSeasonal(
+          airport, dest.airport, dest.demand, dest.routeType, currentYear
+        );
+        dest.trafficType = seasonalityService.trafficType(dest.routeType);
+      }
+    } catch (seasonErr) {
+      console.error('Seasonality error:', seasonErr.message);
     }
 
     res.json({

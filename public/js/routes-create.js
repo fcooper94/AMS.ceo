@@ -941,7 +941,9 @@ async function loadAvailableAirports() {
                 demandCategory: dest.demandCategory,
                 routeType: dest.routeType,
                 indicators: dest.indicators || null,
-                cargoProfile: dest.cargoProfile || null
+                cargoProfile: dest.cargoProfile || null,
+                seasonal: dest.seasonal || null,
+                trafficType: dest.trafficType || null
               };
             }
           });
@@ -992,7 +994,9 @@ async function loadDemandForAirports(airports) {
               demandCategory: dest.demandCategory,
               routeType: dest.routeType,
               indicators: dest.indicators || null,
-              cargoProfile: dest.cargoProfile || null
+              cargoProfile: dest.cargoProfile || null,
+              seasonal: dest.seasonal || null,
+              trafficType: dest.trafficType || null
             };
           }
         });
@@ -1406,20 +1410,44 @@ function generateDemandIndicator(airport) {
     return `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem;">--</div>`;
   }
 
+  const demandColor = (v) => {
+    if (v >= 60) return '#22c55e';
+    if (v >= 40) return '#84cc16';
+    if (v >= 25) return '#eab308';
+    if (v >= 12) return '#f59e0b';
+    return '#ef4444';
+  };
+
+  // Glance view: Summer / Winter demand + traffic type.
+  // Season is conveyed by colour (amber = summer, blue = winter — matching the
+  // route-detail card), the number conveys magnitude, and traffic type sits on
+  // its own muted line so the cell reads clearly at a glance.
+  const s = demandData.seasonal;
+  const traffic = demandData.trafficType
+    || (demandData.routeType === 'cargo' ? 'Cargo' : null);
+  if (s) {
+    const SUMMER = '#f59e0b', WINTER = '#38bdf8';
+    const trafficTag = traffic
+      ? `<div title="Traffic type" style="font-size: 0.58rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; line-height: 1; margin-top: 3px;">${traffic}</div>`
+      : '';
+    return `
+    <div style="text-align: center; white-space: nowrap;" title="Summer / Winter demand &mdash; ${s.archetype}">
+      <div style="display: flex; align-items: center; gap: 0.4rem; justify-content: center; font-size: 0.72rem; font-weight: 700; line-height: 1;">
+        <span style="color: ${SUMMER};">&#9728; ${s.summer}</span>
+        <span style="color: ${WINTER};">&#10052; ${s.winter}</span>
+      </div>
+      ${trafficTag}
+    </div>
+  `;
+  }
+
+  // Fallback (no seasonal data): original single-demand bar.
   if (demandData.routeType === 'cargo') {
     return `<div style="text-align: center; color: #6366f1; font-size: 0.75rem; font-weight: 600;">Cargo</div>`;
   }
-
   const demand = demandData.demand || 0;
   const fillPercent = demand === 0 ? 0 : Math.round(Math.sqrt(demand / 100) * 100);
-
-  let labelColor;
-  if (demand >= 60) labelColor = '#22c55e';
-  else if (demand >= 40) labelColor = '#84cc16';
-  else if (demand >= 25) labelColor = '#eab308';
-  else if (demand >= 12) labelColor = '#f59e0b';
-  else labelColor = '#ef4444';
-
+  const labelColor = demandColor(demand);
   return `
     <div style="display: flex; align-items: center; gap: 0.3rem; justify-content: center;">
       <div style="position: relative; width: 48px; height: 7px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08);">
@@ -1535,7 +1563,10 @@ function displayAvailableAirports(airports) {
     <div class="airport-list-header">
       <span>Airport</span>
       <span>Dist</span>
-      <span>Demand</span>
+      <span style="display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1;">
+        <span>Demand</span>
+        <span style="font-size: 0.52rem; letter-spacing: 0; text-transform: none;"><span style="color: #f59e0b;">&#9728; Su</span> <span style="color: #38bdf8;">&#10052; Wi</span></span>
+      </span>
       <span>Yield</span>
       <span>Class</span>
       <span>Comp</span>
@@ -1621,10 +1652,19 @@ function populateRouteStats(airport) {
   const demandData = demandDataCache[airport.id];
   const indicators = demandData?.indicators;
 
-  // Demand stat
+  // Demand stat — Summer / Winter + traffic type at a glance
   const demand = demandData?.demand;
   const demandEl = document.getElementById('statDemand');
-  if (demand != null) {
+  const seasonal = demandData?.seasonal;
+  if (seasonal) {
+    const traffic = demandData.trafficType
+      ? ` <span title="Traffic type" style="color: var(--text-muted); font-weight: 600;">${demandData.trafficType}</span>`
+      : '';
+    demandEl.style.color = 'var(--text-primary)';
+    demandEl.innerHTML =
+      `<span title="Summer demand (${seasonal.archetype})" style="color: #f59e0b;">&#9728; ${seasonal.summer}</span> ` +
+      `<span title="Winter demand (${seasonal.archetype})" style="color: #38bdf8;">&#10052; ${seasonal.winter}</span>${traffic}`;
+  } else if (demand != null) {
     const cat = demandData.demandCategory || 'very_low';
     const catColors = { very_high: '#22c55e', high: '#3b82f6', medium: '#f59e0b', low: '#9ca3af', very_low: '#6b7280' };
     demandEl.style.color = catColors[cat] || '#9ca3af';
