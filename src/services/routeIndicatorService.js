@@ -138,8 +138,9 @@ class RouteIndicatorService {
           congestionRisk: accessResult.congestionRisk,
           spareCapacity
         },
-        marketByDay:         (marketFrequency[destAirport.id]?.flights  ) || [0,0,0,0,0,0,0],
-        marketCapacityByDay: (marketFrequency[destAirport.id]?.capacity ) || [0,0,0,0,0,0,0]
+        marketByDay:             (marketFrequency[destAirport.id]?.flights    ) || [0,0,0,0,0,0,0],
+        marketCapacityByDay:     (marketFrequency[destAirport.id]?.capacity   ) || [0,0,0,0,0,0,0],
+        marketCargoTonnesByDay:  (marketFrequency[destAirport.id]?.cargoTonnes) || [0,0,0,0,0,0,0]
       };
     }
 
@@ -347,7 +348,8 @@ class RouteIndicatorService {
             a.passenger_capacity,
             150
           )
-        ) as "seats"
+        ) as "seats",
+        SUM(COALESCE(a.cargo_capacity_kg, 0)) / 1000.0 as "cargoTonnes"
       FROM routes r
       LEFT JOIN user_aircraft ua ON r.assigned_aircraft_id = ua.id
       LEFT JOIN aircraft a ON ua.aircraft_id = a.id
@@ -366,10 +368,11 @@ class RouteIndicatorService {
 
     const result = {};
     for (const row of rows) {
-      if (!result[row.destId]) result[row.destId] = { flights: [0,0,0,0,0,0,0], capacity: [0,0,0,0,0,0,0] };
+      if (!result[row.destId]) result[row.destId] = { flights: [0,0,0,0,0,0,0], capacity: [0,0,0,0,0,0,0], cargoTonnes: [0,0,0,0,0,0,0] };
       const dow = parseInt(row.dow);
-      result[row.destId].flights[dow]  += parseInt(row.flights) || 0;
-      result[row.destId].capacity[dow] += parseInt(row.seats)   || 0;
+      result[row.destId].flights[dow]    += parseInt(row.flights)          || 0;
+      result[row.destId].capacity[dow]   += parseInt(row.seats)            || 0;
+      result[row.destId].cargoTonnes[dow] += parseFloat(row.cargoTonnes)   || 0;
     }
     return result;
   }

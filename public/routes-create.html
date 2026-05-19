@@ -101,15 +101,22 @@
   /* Airport list table layout */
   .airport-row {
     display: grid;
-    grid-template-columns: 1fr 52px 78px 66px 62px;
+    grid-template-columns: 1fr 64px 96px 90px 90px;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.4rem 0.75rem;
+    gap: 0;
+    padding: 0.5rem 0;
     border-bottom: 1px solid var(--border-color);
     transition: background 0.15s;
   }
   .airport-row:hover { background: rgba(255,255,255,0.03); }
   .airport-row.selected { background: var(--accent-color-dim); }
+  .airport-row > * {
+    padding: 0 0.75rem;
+  }
+  .airport-row > *:not(:first-child) {
+    border-left: 1px solid rgba(255,255,255,0.06);
+    text-align: center;
+  }
   .airport-row .airport-select-zone {
     cursor: pointer;
     min-width: 0;
@@ -117,21 +124,27 @@
   .airport-row .airport-select-zone:hover { opacity: 0.8; }
   .airport-list-header {
     display: grid;
-    grid-template-columns: 1fr 52px 78px 66px 62px;
-    gap: 0.25rem;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.6rem;
-    font-weight: 600;
+    grid-template-columns: 1fr 64px 96px 90px 90px;
+    gap: 0;
+    padding: 0.4rem 0;
+    font-size: 0.65rem;
+    font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border-color);
+    letter-spacing: 0.6px;
+    border-bottom: 2px solid var(--border-color);
     background: var(--surface-elevated);
     position: sticky;
     top: 0;
     z-index: 2;
   }
-  .airport-list-header > span:not(:first-child) { text-align: center; }
+  .airport-list-header > span {
+    padding: 0 0.75rem;
+  }
+  .airport-list-header > span:not(:first-child) {
+    text-align: center;
+    border-left: 1px solid rgba(255,255,255,0.08);
+  }
 
   /* Indicator hover tooltips — inline divs are hidden; a single fixed-position
      global tooltip is shown by JS so it escapes overflow:auto containers. */
@@ -183,38 +196,53 @@
   .cargo-demand-item {
     background: var(--surface-elevated);
     border: 1px solid var(--border-color);
-    border-radius: 5px;
-    padding: 0.3rem 0.45rem;
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
     display: flex;
     flex-direction: column;
-    gap: 0.18rem;
+    justify-content: center;
+    gap: 0.35rem;
   }
   .cargo-demand-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
+    min-width: 0;
+    overflow: hidden;
   }
   .cargo-demand-code {
-    font-size: 0.58rem;
+    font-size: 0.85rem;
     font-weight: 800;
     letter-spacing: 0.5px;
     text-transform: uppercase;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .cargo-demand-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 0.7;
   }
   .cargo-demand-value {
-    font-size: 0.58rem;
+    font-size: 0.85rem;
     font-family: 'Courier New', monospace;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-weight: 700;
+    color: var(--text-secondary);
   }
   .cargo-demand-bar-track {
-    height: 3px;
+    height: 7px;
     background: var(--border-color);
-    border-radius: 2px;
+    border-radius: 4px;
     overflow: hidden;
   }
   .cargo-demand-bar-fill {
     height: 100%;
-    border-radius: 2px;
+    border-radius: 4px;
     transition: width 0.3s ease;
   }
 </style>
@@ -254,6 +282,7 @@
           </div>
         </div>
         <div class="panel-body" style="padding: 0.75rem;">
+
           <!-- Row 1: Airport info -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
@@ -263,36 +292,72 @@
             <div id="selectedDestDistanceStep1" style="color: var(--accent-color); font-weight: 700; font-size: 1.4rem; line-height: 1; white-space: nowrap;">-- NM</div>
           </div>
 
-          <!-- Row 2: Route stats -->
-          <div id="selectedDestStats" style="display: grid; grid-template-columns: 1fr 1fr 2fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
-            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
-              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Demand</div>
-              <div id="statDemand" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+          <!-- Row 2: Stats strip — Yield | Class Mix | Competition -->
+          <div style="display: grid; grid-template-columns: minmax(0,auto) 1fr minmax(0,auto); gap: 0.65rem; margin-bottom: 0.75rem;">
+
+            <!-- Yield card -->
+            <div id="selectedDestYieldBreakdown" style="background: var(--surface-elevated); border-radius: 6px; padding: 0.55rem 0.8rem; min-width: 0;">
+              <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.3rem;">
+                <span style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Yield</span>
+                <span id="statYield" style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary);">--</span>
+              </div>
+              <div id="yieldFactorsList" style="display: flex; gap: 0.35rem; flex-wrap: wrap;"></div>
             </div>
-            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
-              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Yield</div>
-              <div id="statYield" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+
+            <!-- Class mix card -->
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.55rem 0.8rem;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.35rem;">Class Mix</div>
+              <div id="statClassMix" style="font-size: 0.85rem; color: var(--text-primary);">--</div>
             </div>
-            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
-              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Class Mix</div>
-              <div id="statClassMix" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">--</div>
-            </div>
-            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.5rem 0.6rem; text-align: center;">
-              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; margin-bottom: 0.2rem;">Competition</div>
-              <div id="statCompetition" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">--</div>
+
+            <!-- Competition card -->
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.55rem 0.8rem; text-align: center; min-width: 100px;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.35rem;">Competition</div>
+              <div id="statCompetition" style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">--</div>
             </div>
           </div>
 
-          <!-- Row 3: Yield breakdown (pros/cons) -->
-          <div id="selectedDestYieldBreakdown" style="margin-bottom: 0.75rem; display: none;">
-            <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">Yield Factors</div>
-            <div id="yieldFactorsList" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+          <!-- Row 3: Equal charts — Pax left, Cargo right -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+
+            <!-- LEFT: Passenger demand chart -->
+            <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.65rem 0.85rem;">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.45rem;">
+                <span style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Passenger Demand</span>
+                <span id="selectedDestArchetype" style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;"></span>
+              </div>
+              <div style="display: flex; gap: 1.5rem; align-items: baseline; margin-bottom: 0.55rem;">
+                <div style="display: flex; align-items: baseline; gap: 0.35rem;">
+                  <span style="font-size: 0.75rem; color: #f59e0b;">&#9728; Summer</span>
+                  <span id="selectedDestSummerPax" style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">--</span>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">peak/day</span>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 0.35rem;">
+                  <span style="font-size: 0.75rem; color: #38bdf8;">&#10052; Winter</span>
+                  <span id="selectedDestWinterPax" style="font-size: 1.25rem; font-weight: 700; color: #38bdf8;">--</span>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">peak/day</span>
+                </div>
+              </div>
+              <div id="selectedDestPaxChart" style="margin-bottom: 0.4rem;"></div>
+              <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+                <span style="font-size: 0.72rem; color: #f59e0b;">▪ Summer demand</span>
+                <span style="font-size: 0.72rem; color: #38bdf8;">▪ Winter demand</span>
+                <span style="font-size: 0.72rem; color: #6b7280;">▪ Total capacity</span>
+                <span style="font-size: 0.72rem; color: var(--accent-color);">▪ My capacity</span>
+              </div>
+            </div>
+
+            <!-- RIGHT: Cargo demand chart (hidden when no cargo) -->
+            <div id="selectedDestCargoSection" style="display: none; background: var(--surface-elevated); border-radius: 6px; padding: 0.65rem 0.85rem; flex-direction: column;">
+              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Cargo Demand &amp; Supply</div>
+              <div id="selectedDestCargoChart" style="flex: 1;"></div>
+            </div>
           </div>
 
-          <!-- Row 4: Cargo demand -->
-          <div id="selectedDestCargoSection" style="display: none; margin-bottom: 0.75rem;">
-            <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; font-weight: 600; margin-bottom: 0.4rem; letter-spacing: 0.5px;">Cargo Demand</div>
-            <div id="cargoDemandGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem;"></div>
+          <!-- Row 4: Cargo type breakdown — full width, 4 cols (hidden when no cargo) -->
+          <div id="selectedDestCargoTypeRow" style="display: none; background: var(--surface-elevated); border-radius: 6px; padding: 0.6rem 0.85rem; margin-bottom: 0.75rem;">
+            <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.45rem;">By Cargo Type</div>
+            <div id="cargoDemandGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45rem;"></div>
           </div>
 
           <!-- Row 5: Airport movements chart -->
@@ -310,7 +375,7 @@
             </div>
           </div>
 
-          <!-- Row 5: Competitors + Popular Origins side by side -->
+          <!-- Row 6: Competitors + Popular Origins side by side -->
           <div id="selectedDestRouteInfo" style="display: none; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
             <div id="selectedDestCompetitors" style="border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
               <div style="background: var(--surface-elevated); padding: 0.4rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color);">
@@ -1165,13 +1230,13 @@
 <div id="globalIndicatorTooltip"></div>
 
 <!-- Capacity chart panel — stays open until dismissed -->
-<div id="capacityPanel" style="display:none; position:fixed; z-index:8500; background:#1a1a2e; border:1px solid #333; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.7); min-width:480px; max-width:520px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; border-bottom:1px solid #333;">
+<div id="capacityPanel" style="display:none; position:fixed; z-index:8500; background:#1a1a2e; border:1px solid #333; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.7); min-width:560px; max-width:620px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:0.65rem 1rem; border-bottom:1px solid #333;">
     <div>
-      <div id="capacityPanelTitle" style="font-size:0.85rem; font-weight:700; color:#fff; letter-spacing:0.5px;"></div>
-      <div style="font-size:0.6rem; color:var(--text-muted); margin-top:1px;">Demand &amp; capacity · both directions (symmetric)</div>
+      <div id="capacityPanelTitle" style="font-size:1rem; font-weight:700; color:#fff; letter-spacing:0.5px;"></div>
+      <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Demand &amp; capacity · both directions (symmetric)</div>
     </div>
-    <button onclick="closeCapacityPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.1rem; cursor:pointer; line-height:1; padding:0 0.15rem;">&times;</button>
+    <button onclick="closeCapacityPanel()" style="background:none; border:none; color:var(--text-muted); font-size:1.3rem; cursor:pointer; line-height:1; padding:0 0.15rem;">&times;</button>
   </div>
-  <div id="capacityPanelBody" style="padding:0.6rem 0.75rem;"></div>
+  <div id="capacityPanelBody" style="padding:0.85rem 1rem;"></div>
 </div>
