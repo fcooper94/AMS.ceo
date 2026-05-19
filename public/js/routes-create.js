@@ -1627,8 +1627,8 @@ function generateSupplyIndicator(airport) {
     <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:10px;">
       <span style="font-size:0.78rem; color:#f59e0b;">▪ Summer demand</span>
       <span style="font-size:0.78rem; color:#38bdf8;">▪ Winter demand</span>
-      <span style="font-size:0.78rem; color:#6b7280;">▪ Total capacity</span>
-      <span style="font-size:0.78rem; color:var(--accent-color);">▪ My capacity</span>
+      <span style="font-size:0.78rem; color:#6b7280;">▪ Total supply</span>
+      <span style="font-size:0.78rem; color:var(--accent-color);">▪ My supply</span>
     </div>
   `;
 
@@ -1687,12 +1687,12 @@ function generateSupplyIndicator(airport) {
 
   const tooltipContent = `
     ${yieldSection}
-    <div style="font-weight:600; margin-bottom:0.6rem; font-size:0.95rem; color:#fff;">Demand vs Capacity</div>
+    <div style="font-weight:600; margin-bottom:0.6rem; font-size:0.95rem; color:#fff;">Demand vs Supply</div>
     <div style="display:flex; gap:8px; align-items:flex-end;">${chart}</div>
     ${legend}
     <div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px solid #333; font-size:0.8rem; color:#888;">
       Peak demand: <span style="color:#f59e0b;">${fmtPax(peakSummerPax)}</span> summer · <span style="color:#38bdf8;">${fmtPax(peakWinterPax)}</span> winter
-      ${totalSupplyWeekly > 0 ? `· Total capacity <span style="color:#6b7280;">${fmtPax(totalSupplyWeekly)}</span> seats/wk` : ''}
+      ${totalSupplyWeekly > 0 ? `· Total supply <span style="color:#6b7280;">${fmtPax(totalSupplyWeekly)}</span> seats/wk` : ''}
       ${mySupplyWeekly > 0 ? `· Mine <span style="color:var(--accent-color);">${fmtPax(mySupplyWeekly)}</span> seats/wk` : ''}
     </div>
   `;
@@ -2048,13 +2048,13 @@ function populateRouteStats(airport) {
     const CHART_H = 100;
     const BAR_W = 13;
 
-    const bar = (h, totalH, bg) =>
-      `<div style="width:${BAR_W}px; height:${totalH}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
+    const bar = (h, bg) =>
+      `<div style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
         ${h > 0 ? `<div style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
       </div>`;
     const lbl = (val, color) => val > 0
-      ? `<div style="font-size:0.6rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtPax(val)}</div>`
-      : `<div style="font-size:0.6rem;color:transparent;">0</div>`;
+      ? `<div style="font-size:0.65rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtPax(val)}</div>`
+      : `<div style="font-size:0.65rem;color:transparent;">0</div>`;
 
     const chartHtml = DOW_LABELS.map((dayLabel, i) => {
       const suH  = Math.round((summerPaxByDay[i]   / maxAllPax) * CHART_H);
@@ -2064,12 +2064,12 @@ function populateRouteStats(airport) {
       return `
         <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
           <div style="display:flex;gap:2px;align-items:flex-end;">
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerPaxByDay[i],'#f59e0b')}${bar(suH,CHART_H,'#f59e0b')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterPaxByDay[i],'#38bdf8')}${bar(wiH,CHART_H,'#38bdf8')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupplyByDay[i],'#6b7280')}${bar(totH,CHART_H,'#6b7280')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCapDay[i],'var(--accent-color)')}${bar(meH,CHART_H,'var(--accent-color)')}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerPaxByDay[i],'#f59e0b')}${bar(suH,'#f59e0b')}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterPaxByDay[i],'#38bdf8')}${bar(wiH,'#38bdf8')}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupplyByDay[i],'#6b7280')}${bar(totH,'#6b7280')}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCapDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)')}</div>
           </div>
-          <div style="font-size:0.7rem;color:#888;">${dayLabel}</div>
+          <div style="font-size:0.72rem;color:#888;">${dayLabel}</div>
         </div>`;
     }).join('');
 
@@ -2189,7 +2189,7 @@ function populateRouteStats(airport) {
 
   // Cargo 7-day chart + type grid
   renderCargoChart(airport, demandData, indicators, gameYear);
-  renderCargoDemand(demandData?.cargoProfile, gameYear);
+  renderCargoDemand(demandData?.cargoProfile, demandData?.seasonal, gameYear);
 }
 
 function renderCargoChart(airport, demandData, indicators, gameYear) {
@@ -2228,16 +2228,16 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
   const totalSupply    = mktCargoByDay || [0,0,0,0,0,0,0];
 
   const maxVal = Math.max(1, ...summerByDay, ...winterByDay, ...totalSupply, ...myCargoByDay);
-  const CHART_H = 90;
-  const BAR_W = 12;
+  const CHART_H = 100;
+  const BAR_W = 13;
 
   const bar = (h, bg) =>
     `<div style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
       ${h > 0 ? `<div style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
     </div>`;
   const lbl = (val, color) => val > 0
-    ? `<div style="font-size:0.58rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtTonnes(val)}</div>`
-    : `<div style="font-size:0.58rem;color:transparent;">0</div>`;
+    ? `<div style="font-size:0.65rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtTonnes(val)}</div>`
+    : `<div style="font-size:0.65rem;color:transparent;">0</div>`;
 
   const chartHtml = DOW_LABELS.map((dayLabel, i) => {
     const suH  = Math.round((summerByDay[i]  / maxVal) * CHART_H);
@@ -2252,7 +2252,7 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupply[i],'#6b7280')}${bar(totH,'#6b7280')}</div>
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCargoByDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)')}</div>
         </div>
-        <div style="font-size:0.68rem;color:#888;">${dayLabel}</div>
+        <div style="font-size:0.72rem;color:#888;">${dayLabel}</div>
       </div>`;
   }).join('');
 
@@ -2261,10 +2261,15 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
     <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:8px;">
       <span style="font-size:0.72rem;color:#f59e0b;">▪ Summer demand</span>
       <span style="font-size:0.72rem;color:#38bdf8;">▪ Winter demand</span>
-      <span style="font-size:0.72rem;color:#6b7280;">▪ Total capacity</span>
-      <span style="font-size:0.72rem;color:var(--accent-color);">▪ My capacity</span>
+      <span style="font-size:0.72rem;color:#6b7280;">▪ Total supply</span>
+      <span style="font-size:0.72rem;color:var(--accent-color);">▪ My supply</span>
     </div>`;
   chartEl.style.display = 'block';
+
+  const summerCargoEl = document.getElementById('selectedDestSummerCargo');
+  const winterCargoEl = document.getElementById('selectedDestWinterCargo');
+  if (summerCargoEl) summerCargoEl.textContent = fmtTonnes(Math.max(...summerByDay));
+  if (winterCargoEl) winterCargoEl.textContent = fmtTonnes(Math.max(...winterByDay));
 }
 
 const CARGO_TYPE_META = [
@@ -2278,7 +2283,7 @@ const CARGO_TYPE_META = [
   { key: 'highValue', code: 'VAL', label: 'High-Value', color: '#EC4899' },
 ];
 
-function renderCargoDemand(cargoProfile, year) {
+function renderCargoDemand(cargoProfile, seasonal, year) {
   const section = document.getElementById('selectedDestCargoTypeRow');
   const grid    = document.getElementById('cargoDemandGrid');
   if (!cargoProfile) { section.style.display = 'none'; return; }
@@ -2286,11 +2291,26 @@ function renderCargoDemand(cargoProfile, year) {
 
   const gameYear = year || (worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020);
 
-  grid.innerHTML = CARGO_TYPE_META.map(({ key, code, label, color }) => {
-    const score = cargoProfile[key] ?? 0;
-    const tonnes = cargoScoreToTonnes(score, gameYear);
+  // Compute peak-day total tonnes using same formula as renderCargoChart
+  const totalScore = Math.min(100, Object.values(cargoProfile).reduce((a, b) => a + b, 0) / CARGO_TYPE_META.length);
+  const baseTonnes = cargoScoreToTonnes(totalScore, gameYear);
+  const paxSummerF = seasonal ? (seasonal.summer / 100) : 1;
+  const paxWinterF = seasonal ? (seasonal.winter / 100) : 1;
+  const avgF = (paxSummerF + paxWinterF) / 2;
+  const summerF = avgF + (paxSummerF - avgF) * 0.2;
+  const peakTonnes = Math.round(baseTonnes * summerF * Math.max(...CARGO_DOW_MULTIPLIERS));
+
+  // Distribute peakTonnes proportionally by raw score
+  const rawScores = CARGO_TYPE_META.map(({ key }) => cargoProfile[key] ?? 0);
+  const rawSum = rawScores.reduce((a, b) => a + b, 0) || 1;
+  const typeMaxTonnes = Math.max(...rawScores.map(s => Math.round(peakTonnes * s / rawSum)));
+
+  grid.innerHTML = CARGO_TYPE_META.map(({ key, code, label, color }, i) => {
+    const raw = rawScores[i];
+    const tonnes = Math.round(peakTonnes * raw / rawSum);
+    const barPct = typeMaxTonnes > 0 ? (tonnes / typeMaxTonnes) * 100 : 0;
     return `
-      <div class="cargo-demand-item" title="${label}: ${fmtTonnes(tonnes)}/day (score ${score}/100)">
+      <div class="cargo-demand-item" title="${label}: ${fmtTonnes(tonnes)}/day peak">
         <div class="cargo-demand-header">
           <span class="cargo-demand-code" style="color:${color}; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
             ${code} <span class="cargo-demand-label">${label}</span>
@@ -2298,7 +2318,7 @@ function renderCargoDemand(cargoProfile, year) {
           <span class="cargo-demand-value" style="flex-shrink:0; margin-left:0.4rem;">${fmtTonnes(tonnes)}</span>
         </div>
         <div class="cargo-demand-bar-track">
-          <div class="cargo-demand-bar-fill" style="width:${score}%; background:${color};"></div>
+          <div class="cargo-demand-bar-fill" style="width:${barPct}%; background:${color};"></div>
         </div>
       </div>`;
   }).join('');
@@ -4286,7 +4306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chartData = btn.parentElement?.querySelector('.capacity-chart-data');
     if (!chartData) return;
 
-    document.getElementById('capacityPanelTitle').textContent = btn.dataset.panelTitle || 'Demand vs Capacity';
+    document.getElementById('capacityPanelTitle').textContent = btn.dataset.panelTitle || 'Demand vs Supply';
     document.getElementById('capacityPanelBody').innerHTML = chartData.innerHTML;
     panel.style.display = 'block';
 

@@ -322,8 +322,8 @@
 
             <!-- LEFT: Passenger demand chart -->
             <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.65rem 0.85rem;">
-              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.45rem;">
-                <span style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Passenger Demand</span>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.45rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem;">
+                <span style="color: var(--text-primary); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.6px;">Passenger Demand</span>
                 <span id="selectedDestArchetype" style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px;"></span>
               </div>
               <div style="display: flex; gap: 1.5rem; align-items: baseline; margin-bottom: 0.55rem;">
@@ -342,21 +342,35 @@
               <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
                 <span style="font-size: 0.72rem; color: #f59e0b;">▪ Summer demand</span>
                 <span style="font-size: 0.72rem; color: #38bdf8;">▪ Winter demand</span>
-                <span style="font-size: 0.72rem; color: #6b7280;">▪ Total capacity</span>
-                <span style="font-size: 0.72rem; color: var(--accent-color);">▪ My capacity</span>
+                <span style="font-size: 0.72rem; color: #6b7280;">▪ Total supply</span>
+                <span style="font-size: 0.72rem; color: var(--accent-color);">▪ My supply</span>
               </div>
             </div>
 
             <!-- RIGHT: Cargo demand chart (hidden when no cargo) -->
             <div id="selectedDestCargoSection" style="display: none; background: var(--surface-elevated); border-radius: 6px; padding: 0.65rem 0.85rem; flex-direction: column;">
-              <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Cargo Demand &amp; Supply</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.45rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem;">
+                <span style="color: var(--text-primary); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.6px;">Cargo Demand &amp; Supply</span>
+              </div>
+              <div style="display: flex; gap: 1.5rem; align-items: baseline; margin-bottom: 0.55rem;">
+                <div style="display: flex; align-items: baseline; gap: 0.35rem;">
+                  <span style="font-size: 0.75rem; color: #f59e0b;">&#9728; Summer</span>
+                  <span id="selectedDestSummerCargo" style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">--</span>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">peak/day</span>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 0.35rem;">
+                  <span style="font-size: 0.75rem; color: #38bdf8;">&#10052; Winter</span>
+                  <span id="selectedDestWinterCargo" style="font-size: 1.25rem; font-weight: 700; color: #38bdf8;">--</span>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">peak/day</span>
+                </div>
+              </div>
               <div id="selectedDestCargoChart" style="flex: 1;"></div>
             </div>
           </div>
 
           <!-- Row 4: Cargo type breakdown — full width, 4 cols (hidden when no cargo) -->
           <div id="selectedDestCargoTypeRow" style="display: none; background: var(--surface-elevated); border-radius: 6px; padding: 0.6rem 0.85rem; margin-bottom: 0.75rem;">
-            <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.45rem;">By Cargo Type</div>
+            <div style="color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 0.45rem;">By Cargo Type <span style="font-weight:400; text-transform:none; letter-spacing:0;">(peak day, sums to summer peak)</span></div>
             <div id="cargoDemandGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45rem;"></div>
           </div>
 
