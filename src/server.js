@@ -642,6 +642,23 @@ server.listen(PORT, () => {
     console.error('  Server will continue — run "npm run db:sync" manually if needed');
   }
 
+  // Load demand cache (from static file)
+  const demandCacheService = require('./services/demandCacheService');
+  if (process.env.NODE_ENV === 'development') {
+    const readline = require('readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise(resolve => {
+      rl.question('Load demand data? (y/N): ', ans => { rl.close(); resolve(ans); });
+    });
+    if (answer.toLowerCase() === 'y') {
+      await demandCacheService.initialize();
+    } else {
+      console.log('[DemandCache] Skipped');
+    }
+  } else {
+    await demandCacheService.initialize();
+  }
+
   // Mark as ready — gate middleware will now let requests through
   dbReady = true;
   console.log('✓ Server ready');

@@ -69,7 +69,8 @@ const AIRPORT_DETAILS = {
   'EPWA': { name: 'Warsaw Chopin Airport', city: 'Warsaw', country: 'Poland', lat: 52.1657, lon: 20.9671, iata: 'WAW' },
 
   // Level 4
-  'FAJS': { name: 'Lanseria International Airport', city: 'Johannesburg', country: 'South Africa', lat: -25.9385, lon: 27.9261, iata: 'HLA' },
+  // FAJS was the old ICAO code for O.R. Tambo (now FAOR) — not Lanseria.
+  'FALA': { name: 'Lanseria International Airport', city: 'Johannesburg', country: 'South Africa', lat: -25.9385, lon: 27.9261, iata: 'HLA' },
   'LSZH': { name: 'Zurich Airport', city: 'Zurich', country: 'Switzerland', lat: 47.4647, lon: 8.5492, iata: 'ZRH' },
 
   // USA - Major Hubs
@@ -188,7 +189,8 @@ async function seedMajorAirports() {
   try {
     console.log('=== Seeding Major Airports with Historical Data ===\n');
 
-    await sequelize.sync();
+    // Tables already exist — just verify connection
+    await sequelize.authenticate();
 
     const airports = Object.entries(airportGrowthService.AIRPORT_2024_DATA).map(([icaoCode, data]) => {
       const details = AIRPORT_DETAILS[icaoCode];

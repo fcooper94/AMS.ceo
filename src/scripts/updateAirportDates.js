@@ -16,7 +16,7 @@ const KNOWN_EXACT_DATES = {
   'ENFB': { from: '1939-06-01', until: '1998-10-07' },   // Oslo Fornebu — closed Oct 7 1998
   'KCGX': { from: '1948-12-10', until: '2003-03-30' },   // Meigs Field — bulldozed Mar 30 2003
   'KIDL': { from: '1948-07-01', until: '1963-12-24' },   // Idlewild (became JFK)
-  'FAJS': { from: '1952-03-21', until: '1994-10-01' },   // Jan Smuts (became O.R. Tambo code change)
+  // FAJS → FAOR was an ICAO code rename (2013), not a closure. Same airport (O.R. Tambo).
   'YMEN': { from: '1921-01-01', until: '1970-07-01' },   // Essendon — replaced by Tullamarine
   'LFPB': { from: '1919-02-15', until: '1977-03-08' },   // Le Bourget — last scheduled flight 1977
   'EDDM': { from: '1939-10-25', until: '1992-05-16' },   // Munich-Riem — closed May 16 1992

@@ -491,11 +491,11 @@ class AirportGrowthService {
     },
 
     // Level 4 (10-20M)
-    'FAJS': {
-      pax2024: 18, opened: 1952, majorFrom: 1994,
+    // FAJS was the old ICAO for O.R. Tambo (now FAOR) — data is under FAOR
+    'FALA': {
+      pax2024: 2, opened: 1993, majorFrom: 2006,
       infraMilestones: [
-        { year: 1994, level: 3, reason: 'Secondary airport' },
-        { year: 2010, level: 5, reason: 'Business aviation hub' }
+        { year: 2006, level: 3, reason: 'Lanseria commercial expansion' }
       ]
     },
     'LSZH': {

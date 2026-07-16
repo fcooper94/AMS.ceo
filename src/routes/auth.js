@@ -76,7 +76,7 @@ router.post('/dev-bypass', async (req, res) => {
           firstName: 'WebTen',
           lastName: 'Dev',
           email: 'dev@localhost',
-          rating: 'C1',
+          rating: 1,
           pilotRating: 0,
           division: 'DEV',
           isAdmin: true,

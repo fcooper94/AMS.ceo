@@ -53,7 +53,7 @@ module.exports = {
   },
 
   // Distance thresholds for filtering
-  minDistanceNm: 100,    // Minimum distance for viable air routes
+  minDistanceNm: 50,     // Minimum distance for viable air routes (lowered from 100 to cover short UK domestic)
   maxDistanceNm: 10000,  // Maximum distance for viable air routes
   minEffectiveDistanceNm: 800,  // Floor for gravity distance decay (prevents ultra-short domestic from dominating)
 

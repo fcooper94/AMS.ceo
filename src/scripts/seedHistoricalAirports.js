@@ -321,21 +321,8 @@ const HISTORICAL_AIRPORTS = [
   },
 
   // === AFRICA ===
-  {
-    icaoCode: 'FAJS',
-    iataCode: 'JNB',
-    name: 'Jan Smuts Airport (now O.R. Tambo)',
-    city: 'Johannesburg',
-    country: 'South Africa',
-    latitude: -26.1392,
-    longitude: 28.2460,
-    elevation: 5558,
-    type: 'International Hub',
-    timezone: 'Africa/Johannesburg',
-    operationalFrom: '1952-01-01',
-    operationalUntil: '1994-12-31',
-    isActive: true
-  },
+  // FAJS was the ICAO code for Johannesburg until 2013 when it became FAOR.
+  // Same physical airport (O.R. Tambo) — not a closure. Handled via metroZones alias.
 
   // === SOUTH AMERICA ===
   {

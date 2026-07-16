@@ -4,8 +4,8 @@
   "description": "A persistent, real-time airline operations management platform integrated with live flight simulation networks",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node --max-old-space-size=4096 src/server.js",
+    "dev": "nodemon --exec \"node --max-old-space-size=4096\" src/server.js",
     "go": "node start.js",
     "db:pull": "node src/scripts/pullLocalDb.js",
     "db:sync": "node src/scripts/syncDb.js",

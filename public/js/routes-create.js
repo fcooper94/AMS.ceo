@@ -913,7 +913,7 @@ async function loadAvailableAirports() {
     // Fetch airports and demand in parallel
     const [airportsResponse, demandResponse] = await Promise.all([
       fetch('/api/world/airports'),
-      fetch(`/api/world/airports/${baseAirport.id}/demand?limit=500`)
+      fetch(`/api/world/airports/${baseAirport.id}/demand?limit=10000`)
     ]);
 
     if (airportsResponse.ok) {
@@ -1017,7 +1017,7 @@ async function loadDemandForAirports(airports) {
 
   try {
     // Fetch top 500 destinations from base airport (increased from 100)
-    const response = await fetch(`/api/world/airports/${baseAirport.id}/demand?limit=500`);
+    const response = await fetch(`/api/world/airports/${baseAirport.id}/demand?limit=10000`);
     if (response.ok) {
       const data = await response.json();
 
