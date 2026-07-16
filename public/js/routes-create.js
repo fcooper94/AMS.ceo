@@ -605,6 +605,13 @@ async function fetchWorldInfo() {
         baseAirport = worldInfo.baseAirport;
         document.getElementById('departureAirport').value =
           `${baseAirport.icaoCode} - ${baseAirport.name}`;
+        // Show base airport banner at top of page
+        const banner = document.getElementById('baseAirportBanner');
+        if (banner) {
+          document.getElementById('baseAirportCode').textContent = baseAirport.icaoCode;
+          document.getElementById('baseAirportName').textContent = `— ${baseAirport.name}, ${baseAirport.city || ''}`;
+          banner.style.display = 'block';
+        }
       }
 
       // Set route number prefix from airline IATA code
