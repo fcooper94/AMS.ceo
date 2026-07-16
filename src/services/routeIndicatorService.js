@@ -351,9 +351,10 @@ class RouteIndicatorService {
         ) as "seats",
         SUM(COALESCE(a.cargo_capacity_kg, 0)) / 1000.0 as "cargoTonnes"
       FROM routes r
+      JOIN world_memberships wm ON r.world_membership_id = wm.id
       LEFT JOIN user_aircraft ua ON r.assigned_aircraft_id = ua.id
       LEFT JOIN aircraft a ON ua.aircraft_id = a.id
-      WHERE r.world_id = :worldId
+      WHERE wm.world_id = :worldId
         AND r.is_active = true
         AND (
           (r.departure_airport_id = :baseId AND r.arrival_airport_id IN (:destIds))

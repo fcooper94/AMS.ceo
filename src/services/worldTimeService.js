@@ -1504,15 +1504,14 @@ class WorldTimeService {
             const balance = parseFloat(membership.balance) || 0;
             const acName = ua.aircraft ? `${ua.aircraft.manufacturer} ${ua.aircraft.model}` : ua.registration;
 
-            // Assign fresh check dates for new aircraft
-            // C, D, A checks valid from factory. Only Daily/Weekly needed before first flight.
+            // Assign fresh check dates for new aircraft — all checks valid from factory
             const now = new Date(gameTime);
             ua.lastCCheckDate = now;
             ua.lastDCheckDate = now;
             ua.cCheckIntervalDays = 600 + Math.floor(Math.random() * 120);
             ua.dCheckIntervalDays = 2190 + Math.floor(Math.random() * 1460);
-            ua.lastDailyCheckDate = new Date(now.getTime() - ((3 + Math.floor(Math.random() * 3)) * 24 * 60 * 60 * 1000));
-            ua.lastWeeklyCheckDate = new Date(now.getTime() - ((2 + Math.floor(Math.random() * 4)) * 24 * 60 * 60 * 1000));
+            ua.lastDailyCheckDate = now;
+            ua.lastWeeklyCheckDate = now;
             ua.lastACheckDate = now;
             ua.lastACheckHours = 0;
             ua.aCheckIntervalHours = 800 + Math.floor(Math.random() * 200);
