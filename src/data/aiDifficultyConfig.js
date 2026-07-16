@@ -68,9 +68,21 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 6,             // Go bankrupt after 6 loss cycles
     spawnReplacements: false,            // Don't replace bankrupt AI
 
+    // Intelligence parameters
+    playerRouteTargetChance: 0,           // Never deliberately targets player routes
+    competitiveResponseChance: 0,         // Does nothing when player enters their routes
+    monopolyPriceMultiplier: 1.10,        // Modest monopoly premium
+    priceFloor: 1.0,                      // Never prices below market
+    maxPriceDropPerCycle: 0,              // Never drops price in response to competition
+
     spawnTiers: SPAWN_TIERS,
     regionWeights: REGION_WEIGHTS,
-    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
+    baseAirportCompetitors: {
+      'International Hub': { min: 1, max: 2 },
+      'Major':            { min: 1, max: 1 },
+      'Regional':         { min: 0, max: 1 },
+      'Small Regional':   { min: 0, max: 0 }
+    }
   },
 
   medium: {
@@ -100,9 +112,22 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 5,
     spawnReplacements: true,
 
+    // Intelligence parameters
+    playerRouteTargetChance: 0.3,         // 30% chance to target player routes
+    competitiveResponseChance: 0.4,       // 40% base chance to respond to player competition
+    monopolyPriceMultiplier: 1.15,        // Monopoly premium
+    priceFloor: 0.90,                     // Won't go below 90% of market
+    maxPriceDropPerCycle: 0.10,           // Max 10% price drop per response
+    targetPlayerRoutes: true,
+
     spawnTiers: SPAWN_TIERS,
     regionWeights: REGION_WEIGHTS,
-    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
+    baseAirportCompetitors: {
+      'International Hub': { min: 4, max: 6 },
+      'Major':            { min: 3, max: 4 },
+      'Regional':         { min: 2, max: 3 },
+      'Small Regional':   { min: 1, max: 2 }
+    }
   },
 
   hard: {
@@ -132,9 +157,22 @@ const AI_DIFFICULTY = {
     lossCyclesToBankrupt: 4,
     spawnReplacements: true,
 
+    // Intelligence parameters
+    playerRouteTargetChance: 0.5,         // 50% chance to target player routes
+    competitiveResponseChance: 0.8,       // 80% base chance to respond
+    monopolyPriceMultiplier: 1.20,        // Strong monopoly premium
+    priceFloor: 0.85,                     // Can go as low as 85% of market
+    maxPriceDropPerCycle: 0.15,           // Max 15% price drop per response
+    targetPlayerRoutes: true,
+
     spawnTiers: SPAWN_TIERS,
     regionWeights: REGION_WEIGHTS,
-    baseAirportCompetitors: BASE_AIRPORT_COMPETITORS
+    baseAirportCompetitors: {
+      'International Hub': { min: 6, max: 8 },
+      'Major':            { min: 4, max: 6 },
+      'Regional':         { min: 3, max: 4 },
+      'Small Regional':   { min: 2, max: 3 }
+    }
   }
 };
 

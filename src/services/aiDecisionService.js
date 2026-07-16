@@ -1,11 +1,14 @@
 /**
  * AI Decision Service
  * Makes strategic decisions for AI airlines in single-player worlds:
- * - Route creation (finding opportunities, checking slots, assigning aircraft)
- * - Pricing adjustments based on difficulty/personality
- * - Fleet expansion (buying new aircraft when profitable)
- * - Network contraction (cancelling routes when losing money)
- * - Bankruptcy handling
+ * - Route creation with player targeting, smart frequency, smart departure times
+ * - Competition-aware pricing with cost floors and smoothing
+ * - Competitive response to player entering AI routes
+ * - Fleet expansion with profitability gates
+ * - Network contraction and bankruptcy handling
+ *
+ * Difficulty scales AI intelligence: Easy is passive, Hard is strategic.
+ * Personality (conservative/balanced/aggressive) shapes each decision.
  */
 
 const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification } = require('../models');
@@ -16,8 +19,10 @@ const eraEconomicService = require('./eraEconomicService');
 const routeDemandService = require('./routeDemandService');
 const airportSlotService = require('./airportSlotService');
 
+// ─── Helper functions ────────────────────────────────────────────────
+
 /**
- * Get the human player's membership ID for a world (for sending notifications)
+ * Get the human player's membership ID for a world
  */
 async function getPlayerMembershipId(worldId) {
   const player = await WorldMembership.findOne({
@@ -46,7 +51,7 @@ async function notifyPlayer(worldId, title, message, gameTime, opts = {}) {
       gameTime
     });
   } catch (err) {
-    // Non-critical - don't let notification failures break AI decisions
+    // Non-critical
   }
 }
 
@@ -70,7 +75,7 @@ function calculateDistanceNm(lat1, lon1, lat2, lon2) {
  */
 function generateFlightNumber(iataCode, existingNumbers) {
   for (let i = 0; i < 200; i++) {
-    const num = 100 + Math.floor(Math.random() * 900); // 100-999
+    const num = 100 + Math.floor(Math.random() * 900);
     const fn = `${iataCode}${num}`;
     if (!existingNumbers.has(fn)) return fn;
   }
@@ -78,25 +83,13 @@ function generateFlightNumber(iataCode, existingNumbers) {
 }
 
 /**
- * Generate a departure time - AI airlines operate throughout the day
- */
-function generateDepartureTime() {
-  // Weight toward business-friendly hours (06:00-22:00)
-  const hour = Math.random() < 0.8
-    ? 6 + Math.floor(Math.random() * 16)  // 06-21
-    : Math.floor(Math.random() * 24);      // any hour
-  const minute = Math.floor(Math.random() * 12) * 5; // 5-minute increments
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-}
-
-/**
- * Calculate arrival date/time for a route (simplified server-side version)
+ * Calculate arrival date/time for a route
  */
 function calculateArrivalDateTime(departureDate, departureTime, distanceNm, cruiseSpeed, turnaroundMinutes) {
   const depDateTime = new Date(`${departureDate}T${departureTime}`);
   const speed = cruiseSpeed || 450;
   const outboundMinutes = (distanceNm / speed) * 60;
-  const returnMinutes = outboundMinutes; // Approximate (no wind calc for AI)
+  const returnMinutes = outboundMinutes;
   const totalMinutes = outboundMinutes + (turnaroundMinutes || 45) + returnMinutes;
 
   const arrDateTime = new Date(depDateTime.getTime() + totalMinutes * 60 * 1000);
@@ -113,12 +106,216 @@ function calculateArrivalDateTime(departureDate, departureTime, distanceNm, crui
 }
 
 /**
- * Process AI decisions for all AI airlines in a world
- * Called from worldTimeService on a throttled interval
+ * Get max passenger capacity appropriate for an airport type
+ */
+function getMaxCapacityForAirport(airportType) {
+  switch (airportType) {
+    case 'International Hub': return 9999;
+    case 'Major':             return 350;
+    case 'Regional':          return 200;
+    case 'Small Regional':    return 100;
+    default:                  return 200;
+  }
+}
+
+// ─── New intelligence helpers ────────────────────────────────────────
+
+/**
+ * Find player routes that the AI could compete on from its base airport.
+ * Returns destination airports sorted by player profitability (most profitable first).
+ */
+async function getPlayerRouteTargets(worldId, airlineId, baseAirportId, worldYear) {
+  const playerRoutes = await Route.findAll({
+    where: {
+      isActive: true,
+      departureAirportId: baseAirportId,
+      worldMembershipId: { [Op.ne]: airlineId }
+    },
+    include: [
+      { model: WorldMembership, as: 'membership', where: { isAI: false } },
+      { model: Airport, as: 'arrivalAirport', attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'type', 'latitude', 'longitude'] }
+    ]
+  });
+
+  if (playerRoutes.length === 0) {
+    // Also check routes arriving at the AI base (player flies TO our base)
+    const inboundRoutes = await Route.findAll({
+      where: {
+        isActive: true,
+        arrivalAirportId: baseAirportId,
+        worldMembershipId: { [Op.ne]: airlineId }
+      },
+      include: [
+        { model: WorldMembership, as: 'membership', where: { isAI: false } },
+        { model: Airport, as: 'departureAirport', attributes: ['id', 'icaoCode', 'iataCode', 'name', 'city', 'country', 'type', 'latitude', 'longitude'] }
+      ]
+    });
+    // Convert inbound routes to "destination" format (the other end of the route)
+    return inboundRoutes
+      .sort((a, b) => {
+        const profitA = (parseFloat(a.totalRevenue) || 0) - (parseFloat(a.totalCosts) || 0);
+        const profitB = (parseFloat(b.totalRevenue) || 0) - (parseFloat(b.totalCosts) || 0);
+        return profitB - profitA;
+      })
+      .map(r => ({ airport: r.departureAirport, demand: r.demand || 50 }));
+  }
+
+  return playerRoutes
+    .sort((a, b) => {
+      const profitA = (parseFloat(a.totalRevenue) || 0) - (parseFloat(a.totalCosts) || 0);
+      const profitB = (parseFloat(b.totalRevenue) || 0) - (parseFloat(b.totalCosts) || 0);
+      return profitB - profitA;
+    })
+    .map(r => ({ airport: r.arrivalAirport, demand: r.demand || 50 }));
+}
+
+/**
+ * Calculate smart frequency based on demand score, aircraft size, and personality.
+ * Returns { frequency, daysOfWeek }.
+ */
+function calculateSmartFrequency(demandScore, aircraftCapacity, personality) {
+  const isSmallAircraft = aircraftCapacity < 100;
+
+  let daysPerWeek;
+  if (demandScore < 15 && isSmallAircraft) {
+    daysPerWeek = 2 + Math.floor(Math.random() * 2); // 2-3
+  } else if (demandScore < 15) {
+    daysPerWeek = 3;
+  } else if (demandScore < 30) {
+    daysPerWeek = 3 + Math.floor(Math.random() * 3); // 3-5
+  } else if (demandScore < 60) {
+    daysPerWeek = 7;
+  } else {
+    daysPerWeek = 7;
+  }
+
+  // Personality modifier
+  if (personality === 'aggressive' && demandScore >= 40) {
+    daysPerWeek = 7;
+  }
+  if (personality === 'conservative' && demandScore < 40) {
+    daysPerWeek = Math.max(2, daysPerWeek - 1);
+  }
+
+  daysPerWeek = Math.min(7, Math.max(2, daysPerWeek));
+
+  if (daysPerWeek === 7) {
+    return { frequency: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
+  }
+
+  // Pick evenly spaced days, always including Mon (1) and Fri (5)
+  const days = new Set();
+  days.add(1); // Monday
+  if (daysPerWeek >= 3) days.add(5); // Friday
+  if (daysPerWeek >= 4) days.add(3); // Wednesday
+  if (daysPerWeek >= 5) days.add(0); // Sunday
+  if (daysPerWeek >= 6) days.add(4); // Thursday
+
+  const allDays = [0, 1, 2, 3, 4, 5, 6];
+  while (days.size < daysPerWeek) {
+    const remaining = allDays.filter(d => !days.has(d));
+    days.add(remaining[Math.floor(Math.random() * remaining.length)]);
+  }
+
+  return { frequency: 'weekly', daysOfWeek: [...days].sort((a, b) => a - b) };
+}
+
+/**
+ * Estimate operating cost per passenger for a route.
+ * Used as a price floor — AI should never price below this.
+ */
+function calculateOperatingCostPerPax(distance, paxCapacity, worldYear) {
+  const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
+  const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
+  const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier);
+  const crewCost = Math.round(distance * 2 * 0.8 * eraMultiplier);
+  const maintenanceCost = Math.round(distance * 2 * 0.5 * eraMultiplier);
+  const airportFees = Math.round((1500 + paxCapacity * 3) * eraMultiplier);
+  const totalCost = fuelCost + crewCost + maintenanceCost + airportFees;
+  const estimatedPax = Math.round(paxCapacity * 0.75);
+  return estimatedPax > 0 ? Math.round(totalCost / estimatedPax) : totalCost;
+}
+
+/**
+ * Count active competing routes on the same airport pair.
+ */
+async function countCompetitors(route) {
+  return Route.count({
+    where: {
+      [Op.or]: [
+        { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
+        { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
+      ],
+      isActive: true,
+      worldMembershipId: { [Op.ne]: route.worldMembershipId }
+    }
+  });
+}
+
+/**
+ * Generate a departure time with awareness of route type, personality, and existing competition.
+ * Tries to find a time slot with good separation from existing departures.
+ */
+function generateSmartDepartureTime(routeType, personality, existingDepartures) {
+  const peakMorning = [6, 7, 8, 9];
+  const peakEvening = [16, 17, 18, 19];
+  const midDay = [10, 11, 12, 13, 14, 15];
+  const offPeak = [20, 21, 5];
+
+  let hourPool;
+  if (routeType === 'business') {
+    hourPool = [...peakMorning, ...peakMorning, ...midDay, ...peakEvening];
+  } else if (routeType === 'leisure') {
+    hourPool = [...peakMorning, ...midDay, ...midDay, ...peakEvening, ...offPeak];
+  } else {
+    hourPool = [...peakMorning, ...midDay, ...peakEvening];
+  }
+
+  if (personality === 'aggressive') {
+    hourPool = [...peakMorning, ...peakMorning, ...peakEvening, ...peakEvening, ...midDay];
+  }
+
+  // Parse existing departure hours
+  const existingHours = (existingDepartures || []).map(t => {
+    const parts = String(t).split(':');
+    return parseInt(parts[0]) + parseInt(parts[1] || 0) / 60;
+  });
+
+  // Try 10 candidates, pick the one with best separation from existing
+  let bestHour = hourPool[Math.floor(Math.random() * hourPool.length)];
+  let bestGap = -1;
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidateHour = hourPool[Math.floor(Math.random() * hourPool.length)];
+
+    if (existingHours.length === 0) {
+      bestHour = candidateHour;
+      break;
+    }
+
+    const minGap = Math.min(...existingHours.map(eh => {
+      const diff = Math.abs(candidateHour - eh);
+      return Math.min(diff, 24 - diff);
+    }));
+
+    if (minGap > bestGap) {
+      bestGap = minGap;
+      bestHour = candidateHour;
+    }
+  }
+
+  const minute = Math.floor(Math.random() * 12) * 5;
+  return `${String(bestHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+}
+
+// ─── Core decision functions ─────────────────────────────────────────
+
+/**
+ * Process AI decisions for all AI airlines in a world.
+ * Called from worldTimeService on a throttled interval.
  */
 async function processAIDecisions(worldId, gameTime) {
   try {
-    // Find the world to check worldType
     const World = require('../models/World');
     const world = await World.findByPk(worldId);
     if (!world || world.worldType !== 'singleplayer') return;
@@ -126,7 +323,6 @@ async function processAIDecisions(worldId, gameTime) {
     const config = AI_DIFFICULTY[world.difficulty] || AI_DIFFICULTY.medium;
     const decisionIntervalMs = config.decisionIntervalGameDays * 24 * 60 * 60 * 1000;
 
-    // Only fetch AI airlines whose decision time has elapsed (avoids loading all 300+)
     const decisionCutoff = new Date(gameTime.getTime() - decisionIntervalMs);
     const aiAirlines = await WorldMembership.findAll({
       where: {
@@ -138,12 +334,9 @@ async function processAIDecisions(worldId, gameTime) {
           { aiLastDecisionTime: { [Op.lte]: decisionCutoff } }
         ]
       },
-      include: [{
-        model: Airport,
-        as: 'baseAirport'
-      }],
-      limit: 10, // Process max 10 airlines per tick to avoid blocking
-      order: [['aiLastDecisionTime', 'ASC']] // Oldest first
+      include: [{ model: Airport, as: 'baseAirport' }],
+      limit: 10,
+      order: [['aiLastDecisionTime', 'ASC']]
     });
 
     if (aiAirlines.length === 0) return;
@@ -163,14 +356,13 @@ async function processAIDecisions(worldId, gameTime) {
 }
 
 /**
- * Run a single decision cycle for an AI airline
+ * Run a single decision cycle for an AI airline.
+ * Order: routes → expand → contract → bankruptcy → competitive response → pricing
  */
 async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
-  // Refresh balance
   await airline.reload();
   const balance = parseFloat(airline.balance) || 0;
 
-  // Get current fleet and routes
   const fleet = await UserAircraft.findAll({
     where: { worldMembershipId: airline.id, status: 'active' },
     include: [{ model: Aircraft, as: 'aircraft' }]
@@ -191,59 +383,71 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
       routesPerAircraft[route.assignedAircraftId] = (routesPerAircraft[route.assignedAircraftId] || 0) + 1;
     }
   }
-
-  // Find aircraft with no routes assigned
   const unassignedAircraft = fleet.filter(ac => !routesPerAircraft[ac.id]);
 
   // Assess financial health
   const totalRevenue = routes.reduce((sum, r) => sum + (parseFloat(r.totalRevenue) || 0), 0);
   const totalCosts = routes.reduce((sum, r) => sum + (parseFloat(r.totalCosts) || 0), 0);
-  const isProfitable = totalRevenue > totalCosts || routes.length === 0; // No routes = just starting
+  const isProfitable = totalRevenue > totalCosts || routes.length === 0;
 
-  // Decision: Try to create routes for unassigned aircraft (allow even with negative balance — idle fleet earns nothing)
+  // Average route profitability (for expansion gate)
+  const avgProfitPerRoute = routes.length > 0
+    ? (totalRevenue - totalCosts) / routes.length
+    : 0;
+
+  // 1. Create routes for unassigned aircraft
   if (unassignedAircraft.length > 0) {
     await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear);
   }
 
-  // Decision: Expand if profitable and have budget
+  // 2. Expand if profitable AND average route profitability is positive
   const startingCapital = eraEconomicService.getStartingCapital(worldYear);
-  const expansionThreshold = startingCapital * 0.3; // Need 30% of starting capital to expand
+  const expansionThreshold = startingCapital * 0.3;
   const isFreshStart = fleet.length === 0 && routes.length === 0;
+  const shouldExpand = isProfitable && avgProfitPerRoute >= 0;
 
-  if (isProfitable && balance > expansionThreshold && fleet.length < config.maxFleetSize) {
-    // Fresh airlines always buy on first cycle; established ones have 30% chance
+  if (shouldExpand && balance > expansionThreshold && fleet.length < config.maxFleetSize) {
     if (isFreshStart || Math.random() < 0.3) {
       await tryBuyAircraft(airline, world, config, fleet, worldYear, gameTime);
     }
   }
 
-  // Decision: Contract if losing money significantly
+  // 3. Cancel clearly bleeding individual routes (even if airline overall is OK)
+  if (routes.length > 1) {
+    const matureRoutes = routes.filter(r => (parseInt(r.totalFlights) || 0) >= 10);
+    const bleeding = matureRoutes.filter(r => {
+      const rev = parseFloat(r.totalRevenue) || 0;
+      const cost = parseFloat(r.totalCosts) || 0;
+      return cost > 0 && rev / cost < 0.7; // Revenue covers less than 70% of costs
+    });
+    if (bleeding.length > 0) {
+      await tryContractNetwork(airline, bleeding, config, world, gameTime);
+    }
+  }
+
+  // 4. Contract if losing money significantly (existing logic)
   if (!isProfitable && routes.length > 1 && balance < startingCapital * 0.1) {
     await tryContractNetwork(airline, routes, config, world, gameTime);
   }
 
-  // Decision: Bankruptcy check - progressive stages
+  // 5. Bankruptcy check
   if (balance < 0) {
     const deficit = Math.abs(balance);
 
-    // Stage 1: Sell aircraft from unprofitable routes
     if (routes.length > 0 && deficit > startingCapital * 0.5) {
       await tryContractNetwork(airline, routes, config, world, gameTime);
     }
 
-    // Stage 2: Full bankruptcy - deeply in debt or no operations at all
     if (balance < -startingCapital * 1.5 || (routes.length === 0 && fleet.length === 0)) {
       console.log(`[AI-DECISION] ${airline.airlineName} has gone bankrupt (balance: $${Math.round(balance)})`);
       airline.isActive = false;
       await airline.save();
 
-      // Cancel any remaining routes and flights
       await Route.update({ isActive: false }, { where: { worldMembershipId: airline.id } });
       await ScheduledFlight.destroy({
         where: { routeId: { [Op.in]: routes.map(r => r.id) } }
       });
 
-      // Notify player
       await notifyPlayer(world.id,
         `${airline.airlineName} Ceased Operations`,
         `${airline.airlineName} (${airline.airlineCode}) has gone bankrupt and ceased all operations.`,
@@ -251,7 +455,6 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
         { type: 'operations', icon: 'alert', priority: 3, link: '/competition' }
       );
 
-      // Queue replacement spawn on Medium/Hard
       if (config.spawnReplacements) {
         scheduleReplacementSpawn(world, config, gameTime);
       }
@@ -259,8 +462,13 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     }
   }
 
-  // Decision: Adjust pricing
-  if (routes.length > 0 && Math.random() < 0.2) {
+  // 6. Competitive response (medium/hard only)
+  if (routes.length > 0 && config.competitiveResponseChance > 0) {
+    await checkCompetitiveResponse(airline, routes, config, world, gameTime, worldYear);
+  }
+
+  // 7. Adjust pricing (competition-aware)
+  if (routes.length > 0) {
     await adjustPricing(airline, routes, config, worldYear, world, gameTime);
   }
 
@@ -270,28 +478,25 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
 }
 
 /**
- * Try to create routes for aircraft that have none
+ * Try to create routes for aircraft that have none.
+ * Includes player targeting, smart frequency, smart departure times, proper range check.
  */
 async function tryCreateRoutes(airline, world, config, unassignedAircraft, existingRoutes, gameTime, worldYear) {
   if (!airline.baseAirportId) return;
 
-  // Get top destination opportunities
+  // Get top destination opportunities by demand
   let opportunities;
   try {
     opportunities = await routeDemandService.getTopDestinations(
       airline.baseAirportId, worldYear, 20
     );
   } catch (err) {
-    // Fallback: get nearby airports directly
     opportunities = [];
   }
 
   if (!opportunities || opportunities.length === 0) {
-    // Fallback: find airports by passenger volume
     const airports = await Airport.findAll({
-      where: {
-        id: { [Op.ne]: airline.baseAirportId }
-      },
+      where: { id: { [Op.ne]: airline.baseAirportId } },
       order: [['traffic_demand', 'DESC']],
       limit: 20
     });
@@ -300,24 +505,38 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
 
   // Filter out destinations we already fly to
   const existingDestIds = new Set(existingRoutes.map(r => r.arrivalAirportId));
-  const newOpportunities = opportunities.filter(o => {
+  let newOpportunities = opportunities.filter(o => {
     const apId = o.airport?.id || o.id;
     return !existingDestIds.has(apId);
   });
+
+  // Player route targeting (medium/hard)
+  if (config.targetPlayerRoutes && config.playerRouteTargetChance > 0) {
+    if (Math.random() < config.playerRouteTargetChance) {
+      try {
+        const playerTargets = await getPlayerRouteTargets(world.id, airline.id, airline.baseAirportId, worldYear);
+        const filteredTargets = playerTargets.filter(t => t.airport && !existingDestIds.has(t.airport.id));
+        if (filteredTargets.length > 0) {
+          const targetCount = Math.min(filteredTargets.length, airline.aiPersonality === 'aggressive' ? 2 : 1);
+          newOpportunities.unshift(...filteredTargets.slice(0, targetCount));
+        }
+      } catch (err) {
+        // Non-critical — fall back to demand-based selection
+      }
+    }
+  }
 
   if (newOpportunities.length === 0) return;
 
   // Apply route selection accuracy (lower difficulty = more random)
   const sorted = [...newOpportunities];
   if (Math.random() > config.routeSelectionAccuracy) {
-    // Shuffle to pick a suboptimal route
     for (let i = sorted.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
     }
   }
 
-  // Collect existing flight numbers
   const existingFlightNums = new Set(
     existingRoutes.flatMap(r => [r.routeNumber, r.returnRouteNumber].filter(Boolean))
   );
@@ -325,7 +544,16 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
   const baseAirport = await Airport.findByPk(airline.baseAirportId);
   if (!baseAirport) return;
 
-  // Try to assign routes to each unassigned aircraft (max 1 route per aircraft per cycle)
+  // Pre-query existing departure times on routes from our base (for smart scheduling)
+  const competingRoutes = await Route.findAll({
+    where: {
+      departureAirportId: airline.baseAirportId,
+      isActive: true,
+      worldMembershipId: { [Op.ne]: airline.id }
+    },
+    attributes: ['id', 'arrivalAirportId', 'scheduledDepartureTime']
+  });
+
   for (const aircraft of unassignedAircraft) {
     if (sorted.length === 0) break;
 
@@ -333,22 +561,20 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     let destAirport = destData.airport || destData;
     if (!destAirport.id) continue;
 
-    // Ensure we have coordinates (getTopDestinations doesn't include lat/lon)
     if (!destAirport.latitude || !destAirport.longitude) {
       destAirport = await Airport.findByPk(destAirport.id);
       if (!destAirport) continue;
     }
 
-    // Check aircraft range
+    // Proper aircraft range check
     const distance = calculateDistanceNm(
       parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
       parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
     );
 
-    // Skip if too far for this aircraft (rough range check)
-    const cruiseSpeed = aircraft.aircraft?.cruiseSpeed || 450;
-    const maxRange = cruiseSpeed * 12; // Very rough: 12 hours max flight
-    if (distance > maxRange) continue;
+    const rangeNm = aircraft.aircraft?.rangeNm;
+    const maxRange = rangeNm || (aircraft.aircraft?.cruiseSpeed || 450) * 12;
+    if (distance > maxRange * 0.95) continue; // 5% buffer for winds/routing
 
     // Check slot availability
     try {
@@ -371,16 +597,29 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     const businessPrice = Math.round(economyPrice * 2.5);
     const firstPrice = Math.round(economyPrice * 4);
 
-    // Calculate turnaround (simplified)
+    // Turnaround time
     const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
     let turnaroundTime = 45;
     if (paxCapacity > 250) turnaroundTime = 75;
     else if (paxCapacity > 150) turnaroundTime = 60;
     else if (paxCapacity < 80) turnaroundTime = 30;
 
-    const departureTime = generateDepartureTime();
+    // Smart departure time
+    const existingTimesOnPair = competingRoutes
+      .filter(r => r.arrivalAirportId === destAirport.id)
+      .map(r => r.scheduledDepartureTime);
+    const departureTime = generateSmartDepartureTime(
+      destData.routeType || 'mixed',
+      airline.aiPersonality,
+      existingTimesOnPair
+    );
 
-    // Create the route
+    // Smart frequency
+    const demandScore = destData.demand || 50;
+    const { frequency: smartFreq, daysOfWeek: smartDays } = calculateSmartFrequency(
+      demandScore, paxCapacity, airline.aiPersonality
+    );
+
     try {
       const route = await Route.create({
         worldMembershipId: airline.id,
@@ -392,9 +631,9 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         distance,
         scheduledDepartureTime: departureTime,
         turnaroundTime,
-        frequency: 'daily',
-        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-        demand: destData.demand || 50,
+        frequency: smartFreq,
+        daysOfWeek: smartDays,
+        demand: demandScore,
         ticketPrice: economyPrice,
         economyPrice,
         economyPlusPrice: Math.round(economyPrice * 1.3),
@@ -420,10 +659,10 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         }
       } catch (wpErr) { /* non-critical */ }
 
-      // Create weekly flight templates
       await scheduleAIFlights(route, aircraft);
 
-      console.log(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm)`);
+      const freqLabel = smartDays.length === 7 ? 'daily' : `${smartDays.length}x/week`;
+      console.log(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm, ${freqLabel})`);
 
       // Notify player if this competes with their routes
       const playerCompeting = await Route.findOne({
@@ -440,7 +679,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
       if (playerCompeting) {
         await notifyPlayer(world.id,
           `New Competitor: ${baseAirport.icaoCode}-${destAirport.icaoCode}`,
-          `${airline.airlineName} has launched ${outboundNum} on the ${baseAirport.icaoCode}-${destAirport.icaoCode} route, competing with your ${playerCompeting.routeNumber}.`,
+          `${airline.airlineName} has launched ${outboundNum} on the ${baseAirport.icaoCode}-${destAirport.icaoCode} route (${freqLabel}), competing with your ${playerCompeting.routeNumber}.`,
           gameTime,
           { type: 'operations', icon: 'route', priority: 3, link: '/competition' }
         );
@@ -462,14 +701,12 @@ async function scheduleAIFlights(route, aircraft) {
   const flightsToCreate = [];
 
   for (const dow of daysOfWeek) {
-    // Check for existing template on this day
     const existing = await ScheduledFlight.findOne({
       where: { routeId: route.id, aircraftId: aircraft.id, dayOfWeek: dow }
     });
     if (existing) continue;
 
-    // Use a reference date for arrival calculation
-    const refDate = new Date('2024-01-07T00:00:00'); // Known Sunday
+    const refDate = new Date('2024-01-07T00:00:00');
     refDate.setDate(refDate.getDate() + dow);
     const refDateStr = refDate.toISOString().split('T')[0];
 
@@ -481,7 +718,6 @@ async function scheduleAIFlights(route, aircraft) {
       (new Date(refArrDate + 'T00:00:00') - new Date(refDateStr + 'T00:00:00')) / 86400000
     );
 
-    // Calculate total round-trip duration
     const [dh, dm] = depTime.split(':').map(Number);
     const [ah, am] = arrivalTime.split(':').map(Number);
     const totalDurationMinutes = (arrivalDayOffset * 1440) + (ah * 60 + am) - (dh * 60 + dm);
@@ -504,30 +740,14 @@ async function scheduleAIFlights(route, aircraft) {
 }
 
 /**
- * Get max appropriate passenger capacity for an airport type
- */
-function getMaxCapacityForAirport(airportType) {
-  switch (airportType) {
-    case 'International Hub': return 9999;  // No limit
-    case 'Major':             return 350;   // Up to widebody, no superjumbos
-    case 'Regional':          return 200;   // Narrowbody only
-    case 'Small Regional':    return 100;   // Regional jets only
-    default:                  return 200;
-  }
-}
-
-/**
- * Try to buy a new aircraft for the AI airline
- * Prefers aircraft types already in fleet (commonality) and appropriate for base airport size
+ * Try to buy a new aircraft for the AI airline.
+ * Prefers fleet commonality and airport-appropriate sizing.
  */
 async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, gameTime) {
   const balance = parseFloat(airline.balance) || 0;
 
-  // Get era-appropriate aircraft
   const availableAircraft = await Aircraft.findAll({
-    where: {
-      availableFrom: { [Op.lte]: worldYear }
-    },
+    where: { availableFrom: { [Op.lte]: worldYear } },
     order: [['passengerCapacity', 'ASC']]
   });
 
@@ -538,7 +758,6 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   if (eraAircraft.length === 0) return;
 
-  // Filter by budget (spend max 40% of balance)
   const maxSpend = balance * 0.4;
   const affordable = eraAircraft.filter(ac => {
     const price = parseFloat(ac.purchasePrice) || 50000000;
@@ -547,21 +766,17 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   if (affordable.length === 0) return;
 
-  // Filter by airport size — don't put 747s at tiny airports
   const baseAirport = airline.baseAirport || await Airport.findByPk(airline.baseAirportId);
   const maxPax = getMaxCapacityForAirport(baseAirport?.type);
   const sizeAppropriate = affordable.filter(ac => ac.passengerCapacity <= maxPax);
   const candidates = sizeAppropriate.length > 0 ? sizeAppropriate : affordable;
 
-  // Fleet commonality: identify type families already in fleet
+  // Fleet commonality
   const existingFamilies = new Set();
   for (const ac of currentFleet) {
-    if (ac.aircraft) {
-      existingFamilies.add(`${ac.aircraft.manufacturer} ${ac.aircraft.model}`);
-    }
+    if (ac.aircraft) existingFamilies.add(`${ac.aircraft.manufacturer} ${ac.aircraft.model}`);
   }
 
-  // Strongly prefer aircraft from existing type families (80% chance if available)
   const sameFamily = candidates.filter(ac => existingFamilies.has(`${ac.manufacturer} ${ac.model}`));
   const useCommonFleet = sameFamily.length > 0 && Math.random() < 0.8;
   const pool = useCommonFleet ? sameFamily : candidates;
@@ -614,13 +829,11 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
       lastDCheckDate: new Date(gameTime || new Date())
     });
 
-    // Deduct cost
     airline.balance = parseFloat(airline.balance) - purchasePrice;
     await airline.save();
 
     console.log(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
 
-    // Notify player
     await notifyPlayer(world.id,
       `${airline.airlineName} Acquired Aircraft`,
       `${airline.airlineName} purchased a ${chosen.manufacturer} ${chosen.model}${chosen.variant ? ' ' + chosen.variant : ''} (${reg}).`,
@@ -636,35 +849,34 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
  * Contract the network by cancelling the least profitable route
  */
 async function tryContractNetwork(airline, routes, config, world, gameTime) {
-  // Find worst-performing route
+  // Find worst-performing route (by revenue/cost ratio, not absolute profit)
   let worstRoute = null;
-  let worstProfit = Infinity;
+  let worstRatio = Infinity;
 
   for (const route of routes) {
+    const flights = parseInt(route.totalFlights) || 0;
+    if (flights < 3) continue; // Give new routes time to mature
     const revenue = parseFloat(route.totalRevenue) || 0;
     const costs = parseFloat(route.totalCosts) || 0;
-    const profit = revenue - costs;
-    if (profit < worstProfit) {
-      worstProfit = profit;
+    const ratio = costs > 0 ? revenue / costs : 1;
+    if (ratio < worstRatio) {
+      worstRatio = ratio;
       worstRoute = route;
     }
   }
 
   if (!worstRoute) return;
 
-  // Cancel the route
   try {
     worstRoute.isActive = false;
     await worstRoute.save();
 
-    // Delete flight templates for cancelled route
     await ScheduledFlight.destroy({
       where: { routeId: worstRoute.id }
     });
 
-    console.log(`[AI-DECISION] ${airline.airlineName} cancelled route ${worstRoute.routeNumber} (unprofitable)`);
+    console.log(`[AI-DECISION] ${airline.airlineName} cancelled route ${worstRoute.routeNumber} (rev/cost ratio: ${worstRatio.toFixed(2)})`);
 
-    // Notify player if they competed on this route
     if (world && gameTime) {
       const depCode = worstRoute.departureAirport?.icaoCode || '???';
       const arrCode = worstRoute.arrivalAirport?.icaoCode || '???';
@@ -681,90 +893,222 @@ async function tryContractNetwork(airline, routes, config, world, gameTime) {
 }
 
 /**
- * Adjust pricing on existing routes based on personality and load factors
+ * Competition-aware pricing.
+ * Considers monopoly/competition status, load factor, cost floor, and price smoothing.
+ * Processes up to 5 routes per decision cycle.
  */
 async function adjustPricing(airline, routes, config, worldYear, world, gameTime) {
-  // Pick a random route to adjust
-  const route = routes[Math.floor(Math.random() * routes.length)];
-  if (!route) return;
+  // Shuffle and pick up to 5 routes to review
+  const routesToReview = [...routes].sort(() => Math.random() - 0.5).slice(0, 5);
 
-  const loadFactor = parseFloat(route.averageLoadFactor) || 0.7;
-  const distance = parseFloat(route.distance) || 500;
+  for (const route of routesToReview) {
+    const distance = parseFloat(route.distance) || 500;
+    const loadFactor = parseFloat(route.averageLoadFactor) || 0.7;
+    const marketPrice = eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy');
 
-  // Base market price
-  const marketPrice = eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy');
-  let newPrice = Math.round(marketPrice * config.pricingModifier);
-
-  // Adjust based on load factor
-  if (loadFactor > 0.85) {
-    // High demand - can increase prices
-    newPrice = Math.round(newPrice * (1 + Math.random() * 0.1)); // up to +10%
-  } else if (loadFactor < 0.5) {
-    // Low demand - lower prices
-    newPrice = Math.round(newPrice * (0.85 + Math.random() * 0.1)); // -5% to -15%
-  }
-
-  // Personality adjustments
-  if (airline.aiPersonality === 'aggressive') {
-    newPrice = Math.round(newPrice * 0.95); // 5% cheaper
-  } else if (airline.aiPersonality === 'conservative') {
-    newPrice = Math.round(newPrice * 1.05); // 5% more expensive
-  }
-
-  // Ensure minimum price
-  newPrice = Math.max(newPrice, Math.round(distance * 0.05));
-
-  const oldPrice = parseFloat(route.economyPrice) || 0;
-
-  try {
-    await route.update({
-      economyPrice: newPrice,
-      economyPlusPrice: Math.round(newPrice * 1.3),
-      businessPrice: Math.round(newPrice * 2.5),
-      firstPrice: Math.round(newPrice * 4)
-    });
-
-    // Notify player if AI undercut them on a competing route
-    if (world && gameTime && newPrice < oldPrice) {
-      const playerRoute = await Route.findOne({
-        where: {
-          isActive: true,
-          worldMembershipId: { [Op.ne]: airline.id },
-          [Op.or]: [
-            { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
-            { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
-          ]
-        },
-        include: [{ model: WorldMembership, as: 'membership', where: { isAI: false } }]
+    // Get aircraft capacity for cost floor
+    let paxCapacity = 150;
+    if (route.assignedAircraftId) {
+      const ac = await UserAircraft.findByPk(route.assignedAircraftId, {
+        include: [{ model: Aircraft, as: 'aircraft' }]
       });
+      if (ac?.aircraft) paxCapacity = ac.aircraft.passengerCapacity || 150;
+    }
 
-      if (playerRoute && newPrice < parseFloat(playerRoute.economyPrice)) {
-        const depAp = await Airport.findByPk(route.departureAirportId, { attributes: ['icaoCode'] });
-        const arrAp = await Airport.findByPk(route.arrivalAirportId, { attributes: ['icaoCode'] });
-        await notifyPlayer(world.id,
-          `Price Undercut: ${depAp?.icaoCode || '???'}-${arrAp?.icaoCode || '???'}`,
-          `${airline.airlineName} lowered their economy fares on ${depAp?.icaoCode || '???'}-${arrAp?.icaoCode || '???'} to $${newPrice} (your price: $${Math.round(parseFloat(playerRoute.economyPrice))}).`,
-          gameTime,
-          { type: 'finance', icon: 'dollar', priority: 3, link: '/competition' }
-        );
+    const costFloor = calculateOperatingCostPerPax(distance, paxCapacity, worldYear);
+    const competitors = await countCompetitors(route);
+
+    // Step 1: Base price from competition level
+    let targetPrice;
+    if (competitors === 0) {
+      // Monopoly — charge premium
+      targetPrice = Math.round(marketPrice * (config.monopolyPriceMultiplier || 1.10));
+    } else if (competitors <= 2) {
+      // Light competition — market rate with personality
+      targetPrice = Math.round(marketPrice * config.pricingModifier);
+    } else {
+      // Heavy competition (3+) — personality-driven
+      if (airline.aiPersonality === 'aggressive') {
+        targetPrice = Math.round(marketPrice * 0.93);
+      } else if (airline.aiPersonality === 'conservative') {
+        targetPrice = Math.round(marketPrice * 1.05);
+      } else {
+        targetPrice = Math.round(marketPrice * config.pricingModifier);
       }
     }
-  } catch (err) {
-    // Pricing update failed, not critical
+
+    // Step 2: Load factor adjustment
+    if (loadFactor > 0.85) {
+      targetPrice = Math.round(targetPrice * (1.0 + (loadFactor - 0.85) * 0.5)); // up to +7.5%
+    } else if (loadFactor < 0.50) {
+      targetPrice = Math.round(targetPrice * (0.90 + loadFactor * 0.2)); // -10% at 0 LF
+    }
+
+    // Step 3: Enforce floors (never below operating cost or config minimum)
+    const configFloor = Math.round(marketPrice * (config.priceFloor || 0.85));
+    targetPrice = Math.max(targetPrice, costFloor, configFloor);
+
+    // Step 4: Smooth changes (max 15% shift per cycle)
+    const oldPrice = parseFloat(route.economyPrice) || targetPrice;
+    const maxChange = oldPrice * 0.15;
+    if (Math.abs(targetPrice - oldPrice) > maxChange) {
+      targetPrice = targetPrice > oldPrice
+        ? Math.round(oldPrice + maxChange)
+        : Math.round(oldPrice - maxChange);
+    }
+
+    // Skip if price barely changed
+    if (Math.abs(targetPrice - oldPrice) < 2) continue;
+
+    try {
+      await route.update({
+        economyPrice: targetPrice,
+        economyPlusPrice: Math.round(targetPrice * 1.3),
+        businessPrice: Math.round(targetPrice * 2.5),
+        firstPrice: Math.round(targetPrice * 4)
+      });
+
+      // Notify player on undercut
+      if (world && gameTime && targetPrice < oldPrice) {
+        const playerRoute = await Route.findOne({
+          where: {
+            isActive: true,
+            worldMembershipId: { [Op.ne]: airline.id },
+            [Op.or]: [
+              { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
+              { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
+            ]
+          },
+          include: [{ model: WorldMembership, as: 'membership', where: { isAI: false } }]
+        });
+
+        if (playerRoute && targetPrice < parseFloat(playerRoute.economyPrice)) {
+          const depAp = await Airport.findByPk(route.departureAirportId, { attributes: ['icaoCode'] });
+          const arrAp = await Airport.findByPk(route.arrivalAirportId, { attributes: ['icaoCode'] });
+          await notifyPlayer(world.id,
+            `Price Undercut: ${depAp?.icaoCode || '???'}-${arrAp?.icaoCode || '???'}`,
+            `${airline.airlineName} lowered their economy fares on ${depAp?.icaoCode || '???'}-${arrAp?.icaoCode || '???'} to $${targetPrice} (your price: $${Math.round(parseFloat(playerRoute.economyPrice))}).`,
+            gameTime,
+            { type: 'finance', icon: 'dollar', priority: 3, link: '/competition' }
+          );
+        }
+      }
+    } catch (err) {
+      // Pricing update failed, not critical
+    }
   }
 }
 
-// refreshAIFlightSchedules removed - weekly templates repeat forever, no refresh needed
+/**
+ * Check if the player has entered any of the AI's routes and respond.
+ * Response varies by personality: conservative holds, balanced matches, aggressive undercuts.
+ * Only triggers when AI route load factor has dropped or player route is recent.
+ */
+async function checkCompetitiveResponse(airline, routes, config, world, gameTime, worldYear) {
+  for (const route of routes) {
+    // Find player routes competing with this AI route
+    const playerRoutes = await Route.findAll({
+      where: {
+        [Op.or]: [
+          { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
+          { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
+        ],
+        isActive: true,
+        worldMembershipId: { [Op.ne]: airline.id }
+      },
+      include: [{ model: WorldMembership, as: 'membership', where: { isAI: false } }]
+    });
+
+    if (playerRoutes.length === 0) continue;
+
+    // Only respond if our load factor has dropped or player route is recent
+    const loadFactor = parseFloat(route.averageLoadFactor) || 0.7;
+    const playerRouteAge = Math.min(
+      ...playerRoutes.map(r => gameTime.getTime() - new Date(r.createdAt).getTime())
+    );
+    const thirtyGameDays = 30 * 24 * 60 * 60 * 1000;
+    const needsResponse = loadFactor < 0.60 || playerRouteAge < thirtyGameDays;
+    if (!needsResponse) continue;
+
+    // Personality-modified response chance
+    let responseChance = config.competitiveResponseChance;
+    if (airline.aiPersonality === 'aggressive') responseChance = Math.min(1.0, responseChance * 1.5);
+    if (airline.aiPersonality === 'conservative') responseChance *= 0.5;
+
+    if (Math.random() > responseChance) continue;
+
+    const cheapestPlayerPrice = Math.min(
+      ...playerRoutes.map(r => parseFloat(r.economyPrice) || Infinity)
+    );
+    const myPrice = parseFloat(route.economyPrice) || 0;
+    const distance = parseFloat(route.distance) || 500;
+    const marketPrice = eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy');
+    const costFloor = calculateOperatingCostPerPax(distance, 150, worldYear);
+    const configFloor = Math.round(marketPrice * (config.priceFloor || 0.85));
+    const absoluteFloor = Math.max(costFloor, configFloor);
+
+    let newPrice = myPrice;
+
+    if (airline.aiPersonality === 'aggressive') {
+      // Undercut player by 5%, but respect floor
+      newPrice = Math.round(cheapestPlayerPrice * 0.95);
+    } else if (airline.aiPersonality === 'conservative') {
+      // Don't price war — only adjust if significantly overpriced vs market
+      if (myPrice > marketPrice * 1.15) {
+        newPrice = Math.round(marketPrice * 1.02); // Slight premium, stop bleeding
+      } else {
+        continue; // Conservative holds price
+      }
+    } else {
+      // Balanced — match player price
+      newPrice = Math.round(cheapestPlayerPrice);
+    }
+
+    // Enforce floor
+    newPrice = Math.max(newPrice, absoluteFloor);
+
+    // Enforce max drop per cycle
+    const maxDrop = Math.round(myPrice * (config.maxPriceDropPerCycle || 0.10));
+    if (myPrice - newPrice > maxDrop) {
+      newPrice = myPrice - maxDrop;
+    }
+
+    // Only apply if actually changing
+    if (newPrice >= myPrice) continue;
+
+    try {
+      await route.update({
+        economyPrice: newPrice,
+        economyPlusPrice: Math.round(newPrice * 1.3),
+        businessPrice: Math.round(newPrice * 2.5),
+        firstPrice: Math.round(newPrice * 4)
+      });
+
+      const depCode = route.departureAirport?.icaoCode || '???';
+      const arrCode = route.arrivalAirport?.icaoCode || '???';
+      const action = airline.aiPersonality === 'aggressive' ? 'undercut your fares' : 'adjusted fares';
+      await notifyPlayer(world.id,
+        `Competitive Response: ${depCode}-${arrCode}`,
+        `${airline.airlineName} has ${action} on ${depCode}-${arrCode} to $${newPrice} (was $${Math.round(myPrice)}).`,
+        gameTime,
+        { type: 'finance', icon: 'dollar', priority: 3, link: '/competition' }
+      );
+    } catch (err) {
+      // Non-critical
+    }
+  }
+}
+
+// ─── Replacement spawning ────────────────────────────────────────────
 
 /**
- * Schedule a replacement AI airline to spawn after a delay
- * Only on Medium/Hard difficulty when an AI goes bankrupt
+ * Schedule a replacement AI airline to spawn after a delay.
+ * Only on Medium/Hard difficulty when an AI goes bankrupt.
  */
 function scheduleReplacementSpawn(world, config, gameTime) {
-  // Delay: 30-90 game days worth of real time (based on time acceleration)
   const delayGameDays = 30 + Math.floor(Math.random() * 60);
   const delayMs = (delayGameDays * 24 * 60 * 60 * 1000) / (world.timeAcceleration || 60);
-  const cappedDelay = Math.min(delayMs, 10 * 60 * 1000); // Cap at 10 minutes real time
+  const cappedDelay = Math.min(delayMs, 10 * 60 * 1000);
 
   console.log(`[AI-SPAWN] Scheduling replacement AI in ${Math.round(cappedDelay / 1000)}s (${delayGameDays} game days)`);
 
@@ -774,12 +1118,10 @@ function scheduleReplacementSpawn(world, config, gameTime) {
       const freshWorld = await World.findByPk(world.id);
       if (!freshWorld || freshWorld.status !== 'active') return;
 
-      // Check current AI count
       const currentAI = await WorldMembership.count({
         where: { worldId: world.id, isAI: true, isActive: true }
       });
 
-      // Get the player to determine base airport for replacement spawning
       const player = await WorldMembership.findOne({
         where: { worldId: world.id, isAI: false, isActive: true },
         include: [{ model: Airport, as: 'baseAirport' }]
@@ -788,17 +1130,10 @@ function scheduleReplacementSpawn(world, config, gameTime) {
 
       const { getAICount } = require('../data/aiDifficultyConfig');
       const targetCount = getAICount(freshWorld.difficulty);
+      if (currentAI >= targetCount) return;
 
-      if (currentAI >= targetCount) return; // Already at max
+      const spawnResult = await spawnOneAIAirline(freshWorld, freshWorld.difficulty, player.baseAirport);
 
-      // Spawn one replacement
-      const { spawnAIAirlines } = require('./aiSpawningService');
-
-      // Create a mini-spawn (1 airline) by temporarily limiting
-      const origDifficulty = freshWorld.difficulty;
-      const spawnResult = await spawnOneAIAirline(freshWorld, origDifficulty, player.baseAirport);
-
-      // Get game time for notification
       const worldTimeService = require('./worldTimeService');
       const currentGameTime = worldTimeService.getCurrentTime(world.id) || new Date();
 
@@ -833,7 +1168,6 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
   const worldYear = new Date(world.startDate).getFullYear();
   const humanRegion = getRegionFromCountry(humanBaseAirport.country);
 
-  // Get existing codes
   const existingMembers = await WorldMembership.findAll({
     where: { worldId: world.id },
     attributes: ['airlineCode', 'iataCode', 'airlineName']
@@ -842,7 +1176,6 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
   const existingIATA = new Set(existingMembers.map(m => m.iataCode).filter(Boolean));
   const existingNames = new Set(existingMembers.map(m => m.airlineName).filter(Boolean));
 
-  // Find a base airport
   const airports = await Airport.findAll({
     where: {
       id: { [Op.ne]: humanBaseAirport.id },
@@ -854,7 +1187,6 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
 
   if (airports.length === 0) return;
 
-  // Score and pick
   const scored = airports.map(ap => {
     const sameRegion = getRegionFromCountry(ap.country) === humanRegion;
     let score = (ap.trafficDemand || 10) * (0.7 + Math.random() * 0.6);
@@ -893,7 +1225,6 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
 
   console.log(`[AI-SPAWN] Replacement: ${airline.name} (${airline.icaoCode}) at ${baseAirport.icaoCode} [${personality}]`);
 
-  // Give initial fleet
   const availableAircraft = await Aircraft.findAll({
     where: { availableFrom: { [Op.lte]: worldYear } },
     order: [['passengerCapacity', 'ASC']]
@@ -911,7 +1242,7 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
 }
 
 /**
- * Map country to region (duplicated from aiSpawningService for standalone use)
+ * Map country to region
  */
 function getRegionFromCountry(country) {
   const regionMap = {
