@@ -342,7 +342,7 @@ function populateFormFields() {
   document.getElementById('isActive').checked = existingRoute.isActive;
 
   // Set turnaround time
-  document.getElementById('turnaroundTime').value = existingRoute.turnaroundTime || 45;
+  document.getElementById('turnaroundTime').value = roundTo5(existingRoute.turnaroundTime || 45);
 
   // Set transport type + show the matching pricing sections
   document.getElementById('transportType').value = existingRoute.transportType || 'both';
@@ -814,7 +814,7 @@ async function submitRouteUpdate() {
   const returnRouteNumberPart = document.getElementById('returnRouteNumber').value.trim();
   const assignedAircraftId = document.getElementById('assignedAircraft').value || null;
   const departureTime = document.getElementById('departureTime').value;
-  const turnaroundTime = parseInt(document.getElementById('turnaroundTime').value) || 45;
+  const turnaroundTime = roundTo5(parseInt(document.getElementById('turnaroundTime').value) || 45);
   const transportType = document.getElementById('transportType').value;
   const isActive = document.getElementById('isActive').checked;
 
@@ -1728,13 +1728,13 @@ function calculateFlightTiming() {
   if (minDisplay) minDisplay.textContent = minTurnaround;
   if (minInfo) minInfo.style.display = 'block';
 
-  // Set turnaround input minimum and auto-update if needed
+  // Set turnaround input minimum and snap the value to the nearest 5 minutes.
+  // (minTurnaround is already a multiple of 5 via the rounded ground-op durations.)
   turnaroundInput.min = minTurnaround;
-  let turnaroundMinutes = parseInt(turnaroundInput.value) || minTurnaround;
-  if (turnaroundMinutes < minTurnaround) {
-    turnaroundMinutes = minTurnaround;
-    turnaroundInput.value = minTurnaround;
-  }
+  let turnaroundMinutes = roundTo5(parseInt(turnaroundInput.value) || minTurnaround);
+  if (turnaroundMinutes < minTurnaround) turnaroundMinutes = minTurnaround;
+  // This render is change-driven on the edit page, so writing back is safe.
+  if (parseInt(turnaroundInput.value) !== turnaroundMinutes) turnaroundInput.value = turnaroundMinutes;
 
   // Calculate asymmetric flight times (wind affects outbound vs return differently)
   const outboundFlightMinutes = calculateFlightTimeForLeg(effectiveDistance, aircraftData, baseLat, baseLng, destLat, destLng);

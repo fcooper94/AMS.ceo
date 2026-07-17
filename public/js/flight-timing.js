@@ -10,6 +10,12 @@ const WIND_ADJUSTMENT_FACTOR = 0.13;
 const ROUTE_VARIATION_FACTOR = 0.035;
 const DAILY_CHECK_DURATION = 30;
 
+// Round a duration to the nearest 5 minutes — keeps turnaround timings realistic
+// (no airline quotes a 93-minute turnaround; it's 90 or 95).
+function roundTo5(mins) {
+  return Math.round((mins || 0) / 5) * 5;
+}
+
 // === WIND & FLIGHT TIME ===
 
 function getWindMultiplier(depLng, arrLng, depLat = 0, arrLat = 0) {
@@ -90,26 +96,26 @@ function calculateCleaningDuration(paxCapacity) {
 // === COMPOSITE CALCULATIONS ===
 
 function calculatePreFlightTotal(distanceNM, paxCapacity, acType) {
-  const fuelling = calculateFuellingDuration(distanceNM);
-  const catering = calculateCateringDuration(paxCapacity, acType);
-  const boarding = calculateBoardingDuration(paxCapacity, acType);
+  const fuelling = roundTo5(calculateFuellingDuration(distanceNM));
+  const catering = roundTo5(calculateCateringDuration(paxCapacity, acType));
+  const boarding = roundTo5(calculateBoardingDuration(paxCapacity, acType));
   const total = Math.max(catering + boarding, fuelling);
   return { fuelling, catering, boarding, total };
 }
 
 function calculatePostFlightTotal(paxCapacity, acType) {
-  const deboarding = calculateDeboardingDuration(paxCapacity, acType);
-  const cleaning = calculateCleaningDuration(paxCapacity);
+  const deboarding = roundTo5(calculateDeboardingDuration(paxCapacity, acType));
+  const cleaning = roundTo5(calculateCleaningDuration(paxCapacity));
   const total = deboarding + cleaning;
   return { deboarding, cleaning, total };
 }
 
 function calculateTurnaroundBreakdown(distanceNM, paxCapacity, acType) {
-  const fuelling = calculateFuellingDuration(distanceNM);
-  const deboarding = calculateDeboardingDuration(paxCapacity, acType);
-  const catering = calculateCateringDuration(paxCapacity, acType);
-  const cleaning = calculateCleaningDuration(paxCapacity);
-  const boarding = calculateBoardingDuration(paxCapacity, acType);
+  const fuelling = roundTo5(calculateFuellingDuration(distanceNM));
+  const deboarding = roundTo5(calculateDeboardingDuration(paxCapacity, acType));
+  const catering = roundTo5(calculateCateringDuration(paxCapacity, acType));
+  const cleaning = roundTo5(calculateCleaningDuration(paxCapacity));
+  const boarding = roundTo5(calculateBoardingDuration(paxCapacity, acType));
 
   const parallelCateringCleaning = Math.max(catering, cleaning);
   const sequentialPath = deboarding + parallelCateringCleaning + boarding;
@@ -139,11 +145,11 @@ function calculateMinTurnaround(distanceNM, paxCapacity, acType) {
 function applyContractorModifiers(breakdown, modifiers) {
   if (!modifiers) return breakdown;
   const m = { cleaningMult: 1, boardingMult: 1, deboardingMult: 1, fuellingMult: 1, ...modifiers };
-  const cleaning = Math.round(breakdown.cleaning * m.cleaningMult);
-  const boarding = Math.round(breakdown.boarding * m.boardingMult);
-  const deboarding = Math.round(breakdown.deboarding * m.deboardingMult);
-  const fuelling = Math.round(breakdown.fuelling * m.fuellingMult);
-  const catering = breakdown.catering;
+  const cleaning = roundTo5(breakdown.cleaning * m.cleaningMult);
+  const boarding = roundTo5(breakdown.boarding * m.boardingMult);
+  const deboarding = roundTo5(breakdown.deboarding * m.deboardingMult);
+  const fuelling = roundTo5(breakdown.fuelling * m.fuellingMult);
+  const catering = roundTo5(breakdown.catering);
 
   // Parallel catering+cleaning = max of catering and modified cleaning
   const parallelCateringCleaning = Math.max(catering, cleaning);

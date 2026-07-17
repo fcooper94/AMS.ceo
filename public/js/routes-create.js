@@ -2923,9 +2923,12 @@ function calculateFlightTiming() {
   if (minDisplay) minDisplay.textContent = minTurnaround;
   if (minInfo) minInfo.style.display = 'block';
 
-  // Set turnaround input minimum and auto-update if needed
+  // Set turnaround input minimum and auto-update if needed.
+  // Use the value rounded to the nearest 5 for timing (minTurnaround is already
+  // a multiple of 5). No mid-type write-back here — this render is input-driven;
+  // the submit handler rounds the saved value.
   turnaroundInput.min = minTurnaround;
-  let turnaroundMinutes = parseInt(turnaroundInput.value) || minTurnaround;
+  let turnaroundMinutes = roundTo5(parseInt(turnaroundInput.value) || minTurnaround);
   if (turnaroundMinutes < minTurnaround) {
     turnaroundMinutes = minTurnaround;
     turnaroundInput.value = minTurnaround;
@@ -3676,7 +3679,7 @@ async function submitNewRoute() {
   const returnRouteNumber = prefix + returnRouteNumberPart;
   const assignedAircraftId = document.getElementById('assignedAircraft').value || null;
   const departureTime = document.getElementById('departureTime').value;
-  const turnaroundTime = parseInt(document.getElementById('turnaroundTime').value) || 45;
+  const turnaroundTime = roundTo5(parseInt(document.getElementById('turnaroundTime').value) || 45);
 
   // Get pricing values
   const economyPrice = parseFloat(document.getElementById('economyPrice').value) || 0;
