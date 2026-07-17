@@ -1188,14 +1188,43 @@ function selectScrapOffer(el, offerId) {
  * View scrapping aircraft ferry route on a mini-map popup.
  */
 async function viewScrapOnMap(fromIcao, toIcao, registration) {
-  // Fetch airport coordinates
   try {
+    // Fetch airports — try API first, fall back to scrapyard data for the destination
     const r = await fetch('/api/world/airports');
-    const airports = await r.json();
+    const data = await r.json();
+    const airports = data.airports || data;
+
+    const from = airports.find(a => a.icaoCode === fromIcao);
+    let to = airports.find(a => a.icaoCode === toIcao);
+
+    // If scrapyard airport not in world airports (era filter), fetch its coords from scrapyard list
+    if (!to) {
+      try {
+        const scrapRes = await fetch('/api/fleet/' + (fleetData.find(a => a.scrapAirportCode === toIcao)?.id || 'x') + '/scrap-offers');
+        // Fall back: use a known scrapyard location lookup
+      } catch (_) {}
+    }
+    // Hard-coded scrapyard coordinates as fallback (from scrapyardCompanies.js)
+    if (!to) {
+      const scrapyards = {
+        KDMA: { lat: 32.1665, lon: -110.8831 }, KIGM: { lat: 35.2595, lon: -113.9381 },
+        KMHV: { lat: 35.0585, lon: -118.1518 }, KROW: { lat: 33.3016, lon: -104.5307 },
+        KMZJ: { lat: 32.5107, lon: -111.3283 }, KVCV: { lat: 34.5975, lon: -117.3830 },
+        CYMX: { lat: 45.6795, lon: -74.0387 }, EGDX: { lat: 51.4048, lon: -3.4357 },
+        EGHL: { lat: 51.1872, lon: -1.0335 }, EGBP: { lat: 51.6681, lon: -2.0569 },
+        LFOC: { lat: 48.0581, lon: 1.3767 }, LFBT: { lat: 43.1788, lon: 0.0006 },
+        EHBK: { lat: 50.9117, lon: 5.7706 }, LEMI: { lat: 40.3442, lon: -1.1076 },
+        ZGGG: { lat: 23.3924, lon: 113.2988 }, YBAS: { lat: -23.8067, lon: 133.9019 },
+        RJAA: { lat: 35.7647, lon: 140.3864 }, OMAA: { lat: 24.4440, lon: 54.6511 },
+        FAOR: { lat: -26.1392, lon: 28.2460 }
+      };
+      if (scrapyards[toIcao]) {
+        to = { icaoCode: toIcao, latitude: scrapyards[toIcao].lat, longitude: scrapyards[toIcao].lon, name: 'Scrapyard' };
+      }
+    }
+
+    if (!from && !to) return;
     {
-      const from = airports.find(a => a.icaoCode === fromIcao);
-      const to = airports.find(a => a.icaoCode === toIcao);
-      if (!from && !to) return;
 
       // Create modal with map
       const backdrop = document.createElement('div');
@@ -1244,6 +1273,9 @@ async function viewScrapOnMap(fromIcao, toIcao, registration) {
         maxZoom: 18
       }).addTo(map);
 
+      // Force Leaflet to recalculate size after modal render
+      setTimeout(() => map.invalidateSize(), 100);
+
       const points = [];
       if (from) points.push([parseFloat(from.latitude), parseFloat(from.longitude)]);
       if (to) points.push([parseFloat(to.latitude), parseFloat(to.longitude)]);
@@ -1280,9 +1312,9 @@ async function viewScrapOnMap(fromIcao, toIcao, registration) {
           })
         }).bindPopup(`<b>${registration}</b><br>In transit to scrapyard`).addTo(map);
 
-        map.fitBounds(points, { padding: [40, 40] });
+        setTimeout(() => map.fitBounds(points, { padding: [40, 40] }), 150);
       } else if (points.length === 1) {
-        map.setView(points[0], 6);
+        setTimeout(() => map.setView(points[0], 6), 150);
       }
     }
   } catch (err) {

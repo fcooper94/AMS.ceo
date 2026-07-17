@@ -5580,9 +5580,15 @@ router.get('/:aircraftId/scrap-offers', async (req, res) => {
       if (ap) { acLat = parseFloat(ap.latitude); acLon = parseFloat(ap.longitude); }
     }
 
-    // Pick 2-4 random scrapyards (weighted toward same region)
-    const shuffled = [...scrapyardCompanies].sort(() => Math.random() - 0.5);
-    const offerCount = 2 + Math.floor(Math.random() * 3); // 2-4
+    // Filter scrapyards by era and pick 2-4
+    const world = await World.findByPk(req.session?.activeWorldId);
+    const worldYear = world ? new Date(world.currentTime).getFullYear() : 2020;
+    const eraFiltered = scrapyardCompanies.filter(c => !c.availableFrom || c.availableFrom <= worldYear);
+    if (eraFiltered.length === 0) {
+      return res.status(400).json({ error: 'No scrapyards available in this era' });
+    }
+    const shuffled = [...eraFiltered].sort(() => Math.random() - 0.5);
+    const offerCount = Math.min(2 + Math.floor(Math.random() * 3), shuffled.length); // 2-4
     const selected = shuffled.slice(0, offerCount);
 
     const offers = selected.map((company, idx) => {
