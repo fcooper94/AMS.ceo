@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AMS.ceo - Airline Management Simulation integrated with VATSIM. Build your airline empire.">
+  <meta name="description" content="AMS.ceo - a deep airline management simulation. Buy aircraft, open routes, and compete against AI airlines through decades of aviation history.">
   <title>AMS.ceo - Airline Management Sim</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%230066cc'/%3E%3Ctext x='50' y='42' font-family='Arial, sans-serif' font-size='28' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3EAMS%3C/text%3E%3Ctext x='50' y='70' font-family='Arial, sans-serif' font-size='18' font-weight='600' fill='%2399ccff' text-anchor='middle' dominant-baseline='central'%3E.ceo%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/css/style.css">
@@ -242,42 +242,6 @@
       color: #fbbf24;
     }
 
-    /* VATSIM callout */
-    .cs-vatsim {
-      max-width: 1000px;
-      margin: 0 auto;
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.02));
-      border: 1px solid rgba(37, 99, 235, 0.2);
-      padding: 2.5rem;
-      display: flex;
-      align-items: center;
-      gap: 2rem;
-    }
-
-    .cs-vatsim-badge {
-      flex-shrink: 0;
-      padding: 0.75rem 1.25rem;
-      background: var(--primary-color);
-      border: 2px solid var(--accent-color);
-      font-weight: 700;
-      font-size: 1rem;
-      color: white;
-      letter-spacing: 1px;
-    }
-
-    .cs-vatsim-title {
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin-bottom: 0.3rem;
-    }
-
-    .cs-vatsim-desc {
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-
     /* Footer */
     .cs-footer {
       padding: 1.5rem 2rem;
@@ -332,11 +296,6 @@
         grid-template-columns: 1fr;
       }
 
-      .cs-vatsim {
-        flex-direction: column;
-        text-align: center;
-      }
-
       .cs-section {
         padding: 2.5rem 1.5rem;
       }
@@ -374,8 +333,9 @@
       <div class="cs-badge">Early Access Coming Soon</div>
       <h1 class="cs-title">Build Your <span>Airline Empire</span></h1>
       <p class="cs-subtitle">
-        A deep airline management simulation integrated with the VATSIM flight simulation network.
-        Manage fleets, plan routes, compete with real players, and track live flights across the globe.
+        A deep, persistent airline management simulation. Buy and lease aircraft, open routes,
+        configure cabins and pricing, and out-manoeuvre AI airlines in shared worlds that run
+        on a living game clock.
       </p>
       <div class="cs-stats">
         <div class="cs-stat">
@@ -388,11 +348,11 @@
         </div>
         <div class="cs-stat">
           <div class="cs-stat-value">Live</div>
-          <div class="cs-stat-label">VATSIM Tracking</div>
+          <div class="cs-stat-label">Simulated Economy</div>
         </div>
         <div class="cs-stat">
           <div class="cs-stat-value">1950+</div>
-          <div class="cs-stat-label">Era Simulation</div>
+          <div class="cs-stat-label">Aviation Eras</div>
         </div>
       </div>
     </div>
@@ -407,32 +367,47 @@
         <div class="cs-feature">
           <span class="cs-feature-icon">&#9992;</span>
           <div class="cs-feature-title">Fleet Management</div>
-          <div class="cs-feature-desc">Purchase, lease, and maintain aircraft. Manage A/B/C/D checks, assign registrations, and optimise fleet utilisation across your route network.</div>
+          <div class="cs-feature-desc">Buy or lease aircraft and keep them flying. Schedule A/C/D maintenance checks, assign registrations, and squeeze the most out of every airframe.</div>
         </div>
         <div class="cs-feature">
           <span class="cs-feature-icon">&#127760;</span>
           <div class="cs-feature-title">Route Network</div>
-          <div class="cs-feature-desc">Build routes across real-world airports with realistic ATC waypoint routing via airways, SIDs, STARs, and North Atlantic Tracks.</div>
+          <div class="cs-feature-desc">Open routes between real-world airports with realistic airway routing. A gravity-based demand model, yield, competition and seasonality guide every decision.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#127912;</span>
+          <div class="cs-feature-title">Airline Branding</div>
+          <div class="cs-feature-desc">Design your identity — pick your colours and a procedurally generated logo and livery, shown on the map, the competitors page and the leaderboards.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#128186;</span>
+          <div class="cs-feature-title">Cabin & Cargo</div>
+          <div class="cs-feature-desc">Configure each aircraft's cabin from economy to first, and allocate belly and freighter cargo, to match the demand mix on the routes you fly.</div>
         </div>
         <div class="cs-feature">
           <span class="cs-feature-icon">&#128176;</span>
           <div class="cs-feature-title">Financial Management</div>
-          <div class="cs-feature-desc">Track weekly revenue, costs, and profit. Detailed breakdowns for fuel, crew, maintenance, airport fees, and staff salaries.</div>
+          <div class="cs-feature-desc">Track weekly revenue, costs and profit with detailed breakdowns for fuel, crew, maintenance, airport fees and staff salaries.</div>
         </div>
         <div class="cs-feature">
           <span class="cs-feature-icon">&#128101;</span>
           <div class="cs-feature-title">Staff & Operations</div>
-          <div class="cs-feature-desc">Manage departments including pilots, cabin crew, engineering, and ground services. Set salary levels and outsource contractors.</div>
+          <div class="cs-feature-desc">Run your departments — pilots, cabin crew, engineering and ground services. Set pay, manage headcount, and outsource to contractors.</div>
         </div>
         <div class="cs-feature">
           <span class="cs-feature-icon">&#127970;</span>
           <div class="cs-feature-title">Banking & Loans</div>
-          <div class="cs-feature-desc">Apply for loans from multiple banks with dynamic interest rates based on your airline's credit score, reputation, and profitability.</div>
+          <div class="cs-feature-desc">Borrow from competing banks at interest rates driven by your credit score, reputation and profitability — then invest it in growth.</div>
+        </div>
+        <div class="cs-feature">
+          <span class="cs-feature-icon">&#128197;</span>
+          <div class="cs-feature-title">Scheduling & Timetables</div>
+          <div class="cs-feature-desc">Assign aircraft to routes and build weekly timetables with smart departure times and turnarounds. Flights then run automatically on the world's game clock.</div>
         </div>
         <div class="cs-feature">
           <span class="cs-feature-icon">&#128200;</span>
-          <div class="cs-feature-title">Competition</div>
-          <div class="cs-feature-desc">Compete against real players and AI airlines. Track competitor routes, pricing, and performance. Climb the revenue leaderboard.</div>
+          <div class="cs-feature-title">Competition & Marketing</div>
+          <div class="cs-feature-desc">Go head-to-head with AI airlines of distinct business models. Run marketing campaigns to lift demand and reputation, and climb the revenue leaderboard.</div>
         </div>
       </div>
     </div>
@@ -447,12 +422,12 @@
           <div class="cs-highlight-icon">&#128506;</div>
           <div>
             <div class="cs-highlight-title">Interactive World Map</div>
-            <div class="cs-highlight-desc">Live visualisation of your airline's operations. See routes, competitor activity, airport demand heatmaps, FIR boundaries, and NAT tracks overlaid on a real-world map.</div>
+            <div class="cs-highlight-desc">See your network come alive: your routes, competitor activity, airport demand heatmaps, FIR boundaries and North Atlantic Tracks overlaid on a real-world map.</div>
             <div class="cs-highlight-tags">
-              <span class="cs-tag">Live Flights</span>
+              <span class="cs-tag">Route Map</span>
+              <span class="cs-tag">Demand Heatmaps</span>
               <span class="cs-tag">FIR Zones</span>
               <span class="cs-tag">NAT Tracks</span>
-              <span class="cs-tag">Demand Data</span>
             </div>
           </div>
         </div>
@@ -490,21 +465,6 @@
               <span class="cs-tag">AI Airlines</span>
               <span class="cs-tag">Difficulty Levels</span>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- VATSIM Integration -->
-    <div class="cs-section cs-section-alt">
-      <div class="cs-vatsim">
-        <div class="cs-vatsim-badge">VATSIM</div>
-        <div>
-          <div class="cs-vatsim-title">Powered by the VATSIM Network</div>
-          <div class="cs-vatsim-desc">
-            Log in with your VATSIM account. AMS.ceo tracks live flights on the network in real-time,
-            connecting your simulation airline with the world's largest online flight simulation community.
-            Flights on VATSIM count towards your airline's operations.
           </div>
         </div>
       </div>
@@ -637,11 +597,68 @@
           cursor: pointer;
         ">Back</button>
       </div>
+
+      <!-- Phase 3: Protected account second password -->
+      <div id="devBypassSecondView" style="display: none;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <span style="color: var(--warning-color, #d97706);">&#128274;</span>
+          <span id="devBypassSecondName" style="color: var(--text-primary, #f1f5f9); font-weight: 600; font-size: 0.95rem;"></span>
+        </div>
+        <label style="display: block; font-size: 0.85rem; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem;">
+          This account is protected. Enter the second password.
+        </label>
+        <input type="password" id="devBypassSecondPassword" placeholder="Second password"
+          onkeydown="if(event.key==='Enter')submitSecondPassword()" style="
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--surface, #0f172a);
+            border: 1px solid var(--border-color, #334155);
+            border-radius: 4px;
+            color: var(--text-primary, #f1f5f9);
+            font-size: 1rem;
+            box-sizing: border-box;
+          ">
+        <div id="devBypassSecondError" style="
+          display: none;
+          margin-top: 0.5rem;
+          padding: 0.5rem;
+          background: rgba(220, 38, 38, 0.2);
+          border: 1px solid #dc2626;
+          border-radius: 4px;
+          color: #fca5a5;
+          font-size: 0.85rem;
+        "></div>
+        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+          <button onclick="devBypassBackToUsers()" style="
+            flex: 1;
+            padding: 0.75rem;
+            background: var(--surface, #0f172a);
+            border: 1px solid var(--border-color, #334155);
+            border-radius: 4px;
+            color: var(--text-primary, #f1f5f9);
+            font-size: 0.9rem;
+            cursor: pointer;
+          ">Back</button>
+          <button onclick="submitSecondPassword()" style="
+            flex: 1;
+            padding: 0.75rem;
+            background: var(--warning-color, #d97706);
+            border: 1px solid var(--warning-color, #d97706);
+            border-radius: 4px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+          ">Continue</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     let devBypassStoredPassword = '';
+    let pendingProtectedUserId = null;
+    const PROTECTED_DEV_ID = '1303570'; // owner account gated behind a second password
 
     function devBypassLogin() {
       document.getElementById('devBypassModal').style.display = 'flex';
@@ -649,6 +666,7 @@
       document.getElementById('devBypassError').style.display = 'none';
       document.getElementById('devBypassPasswordView').style.display = '';
       document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassSecondView').style.display = 'none';
       document.getElementById('devBypassTitle').textContent = 'Dev Bypass Authentication';
       document.getElementById('devBypassPassword').focus();
     }
@@ -714,20 +732,23 @@
         align-items: center;
       `;
 
-      let html = `<div onclick="selectDevUser('new')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--warning-color, #d97706)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
-        <div>
-          <div style="color: var(--warning-color, #d97706); font-weight: 600; font-size: 0.9rem;">+ New Dev User</div>
-          <div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">Creates default admin account</div>
-        </div>
-      </div>`;
+      // Tester entry points — Register / Login (session is now dev-unlocked).
+      let html = `<div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <a href="/register" style="flex: 1; text-align: center; padding: 0.6rem; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 0.85rem; background: var(--accent-color, #2563eb); border: 1px solid var(--accent-color, #2563eb); color: #fff;">Register</a>
+        <a href="/login" style="flex: 1; text-align: center; padding: 0.6rem; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 0.85rem; background: transparent; border: 1px solid var(--border-color, #334155); color: var(--text-secondary, #94a3b8);">Login</a>
+      </div>
+      <div style="font-size: 0.7rem; color: var(--text-muted, #64748b); text-align: center; margin-bottom: 0.5rem;">— or pick a dev account —</div>`;
 
       users.forEach(u => {
         const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
         const badge = u.isAdmin ? '<span style="background: var(--warning-color, #d97706); color: white; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; margin-left: 0.5rem;">ADMIN</span>' : '';
+        const locked = u.vatsimId === PROTECTED_DEV_ID
+          ? '<span style="color: var(--warning-color, #d97706); font-size: 0.7rem; margin-left: 0.4rem;">&#128274;</span>' : '';
         const email = u.email ? `<div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">${u.email}</div>` : '';
-        html += `<div onclick="selectDevUser('${u.id}')" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
+        const onclick = u.vatsimId === PROTECTED_DEV_ID ? `selectProtectedUser('${u.id}', '${name.replace(/'/g, "\\'")}')` : `selectDevUser('${u.id}')`;
+        html += `<div onclick="${onclick}" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
           <div>
-            <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}</div>
+            <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}${locked}</div>
             ${email}
           </div>
           <div style="color: var(--text-muted, #64748b); font-size: 0.7rem; font-family: monospace;">${u.vatsimId || ''}</div>
@@ -737,16 +758,66 @@
       list.innerHTML = html;
     }
 
-    function selectDevUser(userId) {
+    function selectProtectedUser(userId, name) {
+      pendingProtectedUserId = userId;
+      document.getElementById('devBypassUserView').style.display = 'none';
+      document.getElementById('devBypassSecondView').style.display = '';
+      document.getElementById('devBypassTitle').textContent = 'Protected Account';
+      document.getElementById('devBypassSecondName').textContent = name || '';
+      const err = document.getElementById('devBypassSecondError');
+      err.style.display = 'none';
+      const inp = document.getElementById('devBypassSecondPassword');
+      inp.value = '';
+      inp.focus();
+    }
+
+    function devBypassBackToUsers() {
+      document.getElementById('devBypassSecondView').style.display = 'none';
+      document.getElementById('devBypassUserView').style.display = '';
+      document.getElementById('devBypassTitle').textContent = 'Select User';
+    }
+
+    function submitSecondPassword() {
+      const pw = document.getElementById('devBypassSecondPassword').value;
+      const errorDiv = document.getElementById('devBypassSecondError');
+      errorDiv.style.display = 'none';
+      if (!pw) {
+        errorDiv.textContent = 'Please enter the password';
+        errorDiv.style.display = 'block';
+        return;
+      }
       fetch('/auth/dev-bypass', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bypassPassword: devBypassStoredPassword, userId })
+        body: JSON.stringify({ bypassPassword: devBypassStoredPassword, userId: pendingProtectedUserId, secondPassword: pw })
       })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
             window.location.href = data.redirect;
+          } else {
+            errorDiv.textContent = data.error || 'Incorrect password';
+            errorDiv.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Login failed: ' + err.message;
+          errorDiv.style.display = 'block';
+        });
+    }
+
+    function selectDevUser(userId, secondPassword) {
+      fetch('/auth/dev-bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bypassPassword: devBypassStoredPassword, userId, secondPassword })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else if (data.error) {
+            alert(data.error);
           }
         })
         .catch(err => {
