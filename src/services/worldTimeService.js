@@ -1048,10 +1048,16 @@ class WorldTimeService {
       const firstPrice = parseFloat(route.firstPrice) || economyPrice * 4;
 
       // Use actual seat counts from aircraft cabin configuration
-      const ecoSeats = parseInt(aircraft?.economySeats) || 0;
+      let ecoSeats = parseInt(aircraft?.economySeats) || 0;
       const ecoPlusSeats = parseInt(aircraft?.economyPlusSeats) || 0;
       const bizSeats = parseInt(aircraft?.businessSeats) || 0;
       const firstSeats = parseInt(aircraft?.firstSeats) || 0;
+      // No custom cabin config (all AI aircraft, unconfigured player aircraft) →
+      // treat the whole cabin as economy. Without this the fare fractions below
+      // all collapse to 0 and the flight earns $0 ticket revenue.
+      if (ecoSeats + ecoPlusSeats + bizSeats + firstSeats === 0) {
+        ecoSeats = paxCapacity;
+      }
       const totalSeats = ecoSeats + ecoPlusSeats + bizSeats + firstSeats || paxCapacity;
 
       // Distribute passengers proportionally to configured seats

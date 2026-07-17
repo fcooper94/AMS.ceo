@@ -369,7 +369,6 @@ function renderAirlineModal(data) {
           <tr>
             <th>Route</th>
             <th>Distance</th>
-            <th>Economy</th>
             <th>LF</th>
             <th>Revenue</th>
           </tr>
@@ -384,7 +383,6 @@ function renderAirlineModal(data) {
             <div class="airline-route-city">${r.departureCity} - ${r.arrivalCity}</div>
           </td>
           <td>${r.distance.toLocaleString()} nm</td>
-          <td>$${r.economyPrice}</td>
           <td>${Math.round(r.loadFactor * 100)}%</td>
           <td>${formatCurrency(r.totalRevenue)}</td>
         </tr>
