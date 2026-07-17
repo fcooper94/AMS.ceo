@@ -52,38 +52,46 @@ class DemandCacheService {
       this.icaoToId.set(a.icaoCode, a.id);
     }
 
-    // Load static demand data
-    const demandDataPath = path.join(__dirname, '../data/demandData.json');
+    // Load static demand data. Prefer the committed gzip (~18MB — a normal Git
+    // file that deploys everywhere, incl. Railway); fall back to the plain JSON
+    // for local dev. The plain file is ~172MB and Git LFS-tracked, so it is NOT
+    // present on hosts that don't pull LFS.
     const fs = require('fs');
+    const zlib = require('zlib');
+    const gzPath = path.join(__dirname, '../data/demandData.json.gz');
+    const jsonPath = path.join(__dirname, '../data/demandData.json');
 
-    if (!fs.existsSync(demandDataPath)) {
-      console.warn('[DemandCache] demandData.json not found — run: node src/scripts/generateDemandData.js');
+    let raw;
+    if (fs.existsSync(gzPath)) {
+      console.log(`[DemandCache] Decompressing demand file (${(fs.statSync(gzPath).size / 1024 / 1024).toFixed(0)}MB gz)...`);
+      try {
+        raw = zlib.gunzipSync(fs.readFileSync(gzPath)).toString('utf8');
+      } catch (err) {
+        console.warn(`[DemandCache] Could not decompress demandData.json.gz (${err.message}) — skipping cache.`);
+        this._ready = true;
+        return;
+      }
+    } else if (fs.existsSync(jsonPath)) {
+      raw = fs.readFileSync(jsonPath, 'utf8');
+      // On a host where Git LFS content wasn't pulled, this file is just an LFS
+      // pointer, not the JSON — don't crash, just skip the cache.
+      if (raw.startsWith('version https://git-lfs')) {
+        console.warn('[DemandCache] demandData.json is an unresolved Git LFS pointer — skipping cache. Run `git lfs pull` or regenerate with `node src/scripts/generateDemandData.js`.');
+        this._ready = true;
+        return;
+      }
+    } else {
+      console.warn('[DemandCache] No demand file found (.gz or .json) — run: node src/scripts/generateDemandData.js');
       this._ready = true;
       return;
     }
 
-    // Read and parse in chunks with progress
-    const fileSize = fs.statSync(demandDataPath).size;
-    console.log(`[DemandCache] Parsing ${(fileSize / 1024 / 1024).toFixed(0)}MB demand file...`);
-
-    const raw = fs.readFileSync(demandDataPath, 'utf8');
     console.log('[DemandCache] File read, building index...');
-
-    // Guard: on a host where Git LFS content wasn't pulled, this file is just an
-    // LFS pointer ("version https://git-lfs.github.com/..."), not the JSON. Don't
-    // crash the whole server — skip the cache and let demand fall back to
-    // on-demand calculation.
-    if (raw.startsWith('version https://git-lfs')) {
-      console.warn('[DemandCache] demandData.json is an unresolved Git LFS pointer — skipping cache. Run `git lfs pull` on this host, or regenerate with `node src/scripts/generateDemandData.js`.');
-      this._ready = true;
-      return;
-    }
-
     let demandData;
     try {
       demandData = JSON.parse(raw);
     } catch (err) {
-      console.warn(`[DemandCache] Could not parse demandData.json (${err.message}) — skipping cache; demand will be computed on demand.`);
+      console.warn(`[DemandCache] Could not parse demand data (${err.message}) — skipping cache; demand will be computed on demand.`);
       this._ready = true;
       return;
     }

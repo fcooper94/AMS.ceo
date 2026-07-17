@@ -16,3 +16,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Large generated demand data — the committed .gz is used instead
+src/data/demandData.json

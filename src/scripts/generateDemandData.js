@@ -269,6 +269,13 @@ async function generate() {
 
   const size = fs.statSync(outputPath).size;
   console.log('Written to ' + outputPath + ': ' + (size / 1024 / 1024).toFixed(1) + ' MB (' + written + ' pairs)');
+
+  // Also write the gzip — that's the version committed to git and loaded at boot
+  // (the plain .json is git-ignored; too big for a normal repo file / LFS).
+  const zlib = require('zlib');
+  const gzPath = outputPath + '.gz';
+  fs.writeFileSync(gzPath, zlib.gzipSync(fs.readFileSync(outputPath), { level: 9 }));
+  console.log('Written to ' + gzPath + ': ' + (fs.statSync(gzPath).size / 1024 / 1024).toFixed(1) + ' MB (compressed)');
   console.log('Done in ' + ((Date.now() - startTime) / 1000).toFixed(0) + 's');
 
   process.exit(0);
