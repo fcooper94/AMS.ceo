@@ -234,7 +234,7 @@ router.post('/register', requireDevUnlock, async (req, res) => {
               </div>
               <div style="padding: 1.25rem 2rem; border-top: 1px solid #21262d; text-align: center;">
                 <p style="font-size: 0.7rem; color: #8b949e; margin: 0;">Expand &#9670; Explore &#9670; Evolve</p>
-                <p style="font-size: 0.7rem; color: #484f58; margin: 0.5rem 0 0 0;">&copy; 2026 AMS.ceo - Airline Management Sim</p>
+                <p style="font-size: 0.7rem; color: #8b949e; margin: 0.5rem 0 0 0;">&copy; 2026 AMS.ceo - Airline Management Sim</p>
               </div>
             </div>
           </td></tr>
