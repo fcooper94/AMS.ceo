@@ -69,7 +69,24 @@ class DemandCacheService {
     const raw = fs.readFileSync(demandDataPath, 'utf8');
     console.log('[DemandCache] File read, building index...');
 
-    const demandData = JSON.parse(raw);
+    // Guard: on a host where Git LFS content wasn't pulled, this file is just an
+    // LFS pointer ("version https://git-lfs.github.com/..."), not the JSON. Don't
+    // crash the whole server — skip the cache and let demand fall back to
+    // on-demand calculation.
+    if (raw.startsWith('version https://git-lfs')) {
+      console.warn('[DemandCache] demandData.json is an unresolved Git LFS pointer — skipping cache. Run `git lfs pull` on this host, or regenerate with `node src/scripts/generateDemandData.js`.');
+      this._ready = true;
+      return;
+    }
+
+    let demandData;
+    try {
+      demandData = JSON.parse(raw);
+    } catch (err) {
+      console.warn(`[DemandCache] Could not parse demandData.json (${err.message}) — skipping cache; demand will be computed on demand.`);
+      this._ready = true;
+      return;
+    }
     const totalEntries = Object.keys(demandData).length;
     console.log(`[DemandCache] ${totalEntries.toLocaleString()} pairs loaded, mapping to airports...`);
 
