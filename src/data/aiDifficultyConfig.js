@@ -138,7 +138,7 @@ const AI_DIFFICULTY = {
     maxFleetSize: 8,
 
     // Decision making
-    decisionIntervalGameDays: 7,          // Weekly decisions (player can act instantly, AI needs to keep pace)
+    decisionIntervalGameDays: { min: 3, max: 5 },  // 3-5 day random intervals
     routeSelectionAccuracy: 0.6,         // 60% chance of picking optimal route
     expansionRate: 'slow',
 
@@ -187,7 +187,7 @@ const AI_DIFFICULTY = {
     startingBalanceMultiplier: 1.2,
     maxFleetSize: 15,
 
-    decisionIntervalGameDays: 3,          // Every few days
+    decisionIntervalGameDays: { min: 1, max: 3 },  // 1-3 day random intervals
     routeSelectionAccuracy: 0.8,
     expansionRate: 'moderate',
 
@@ -232,7 +232,7 @@ const AI_DIFFICULTY = {
     startingBalanceMultiplier: 1.0,      // Same money as player
     maxFleetSize: 25,
 
-    decisionIntervalGameDays: 1,          // Daily decisions (aggressive, mirrors a competitive player)
+    decisionIntervalGameDays: { min: 0.5, max: 1.5 },  // Half-day to 1.5 day random intervals
     routeSelectionAccuracy: 0.95,
     expansionRate: 'fast',
 

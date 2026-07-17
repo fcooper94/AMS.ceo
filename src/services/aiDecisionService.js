@@ -321,7 +321,12 @@ async function processAIDecisions(worldId, gameTime) {
     if (!world || world.worldType !== 'singleplayer') return;
 
     const config = AI_DIFFICULTY[world.difficulty] || AI_DIFFICULTY.medium;
-    const decisionIntervalMs = config.decisionIntervalGameDays * 24 * 60 * 60 * 1000;
+    // Use minimum interval for the cutoff query — individual airlines get random
+    // intervals via their own aiLastDecisionTime jitter (set after each cycle)
+    const intervalDays = typeof config.decisionIntervalGameDays === 'object'
+      ? config.decisionIntervalGameDays.min
+      : config.decisionIntervalGameDays;
+    const decisionIntervalMs = intervalDays * 24 * 60 * 60 * 1000;
 
     const decisionCutoff = new Date(gameTime.getTime() - decisionIntervalMs);
     const aiAirlines = await WorldMembership.findAll({
@@ -472,8 +477,16 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     await adjustPricing(airline, routes, config, worldYear, world, gameTime);
   }
 
-  // Update last decision time
-  airline.aiLastDecisionTime = gameTime;
+  // Update last decision time with random jitter so airlines don't all act in lockstep.
+  // Each airline gets a random offset within the interval range, making the world feel alive.
+  const interval = config.decisionIntervalGameDays;
+  const minDays = typeof interval === 'object' ? interval.min : interval;
+  const maxDays = typeof interval === 'object' ? interval.max : interval;
+  const jitterDays = minDays + Math.random() * (maxDays - minDays);
+  // Shift the "last decision" forward so the NEXT decision fires after jitterDays
+  // (the cutoff query uses min interval, so we offset from gameTime to create the spread)
+  const nextDecisionAt = new Date(gameTime.getTime() + (jitterDays - minDays) * 24 * 60 * 60 * 1000);
+  airline.aiLastDecisionTime = nextDecisionAt;
   await airline.save();
 }
 
@@ -778,13 +791,23 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   if (typeFiltered.length === 0) return;
   const paxAircraft = typeFiltered;
 
-  const maxSpend = balance * 0.4;
+  // Budget: decide between purchase and lease
+  const hasRoutes = await Route.count({ where: { worldMembershipId: airline.id, isActive: true } }) > 0;
+  const maxPurchase = balance * (hasRoutes ? 0.4 : 0.7);
+
+  // Lease affordability: can afford weekly payment = ~1% of aircraft value per week
+  // AI can lease if it has at least 8 weeks of payments in balance
+  const maxLeaseValue = balance / 0.01 / 8; // Can lease aircraft worth up to this
+
   const affordable = paxAircraft.filter(ac => {
     const price = parseFloat(ac.purchasePrice) || 50000000;
-    return price <= maxSpend;
+    return price <= maxPurchase || price <= maxLeaseValue;
   });
 
   if (affordable.length === 0) return;
+
+  // Track whether we'll need to lease (decided after scoring)
+  let useLease = false;
 
   const baseAirport = airline.baseAirport || await Airport.findByPk(airline.baseAirportId);
   const maxPax = getMaxCapacityForAirport(baseAirport?.type);
@@ -872,6 +895,19 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   const purchasePrice = parseFloat(chosen.purchasePrice) || 50000000;
 
+  // Decide: purchase or lease?
+  // Lease if can't afford purchase, or if conservative personality (prefers lower upfront risk)
+  const canAffordPurchase = purchasePrice <= maxPurchase;
+  const prefersLease = airline.aiPersonality === 'conservative' && Math.random() < 0.6;
+  useLease = !canAffordPurchase || prefersLease;
+
+  // Lease terms: ~1% of value per week, 36-month duration
+  const leaseWeeklyPayment = Math.round(purchasePrice * 0.01);
+  const leaseDurationMonths = 36;
+
+  // Final affordability check for lease
+  if (useLease && balance < leaseWeeklyPayment * 8) return; // Need 8 weeks runway
+
   // Generate registration
   const existingRegs = new Set(currentFleet.map(ac => ac.registration));
   const prefixes = {
@@ -891,31 +927,71 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   }
 
   try {
-    await UserAircraft.create({
-      worldMembershipId: airline.id,
-      aircraftId: chosen.id,
-      registration: reg,
-      acquisitionType: 'purchase',
-      purchasePrice,
-      totalFlightHours: 0,
-      autoScheduleDaily: true,
-      autoScheduleWeekly: true,
-      lastDailyCheckDate: new Date(gameTime || new Date()),
-      lastWeeklyCheckDate: new Date(gameTime || new Date()),
-      lastACheckDate: new Date(gameTime || new Date()),
-      lastACheckHours: 0,
-      lastCCheckDate: new Date(gameTime || new Date()),
-      lastDCheckDate: new Date(gameTime || new Date())
-    });
+    const now = new Date(gameTime || new Date());
 
-    airline.balance = parseFloat(airline.balance) - purchasePrice;
-    await airline.save();
+    if (useLease) {
+      const leaseEnd = new Date(now);
+      leaseEnd.setMonth(leaseEnd.getMonth() + leaseDurationMonths);
 
-    console.log(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
+      await UserAircraft.create({
+        worldMembershipId: airline.id,
+        aircraftId: chosen.id,
+        registration: reg,
+        acquisitionType: 'lease',
+        purchasePrice: null,
+        leaseWeeklyPayment,
+        leaseDurationMonths,
+        leaseStartDate: now,
+        leaseEndDate: leaseEnd,
+        totalFlightHours: 0,
+        status: 'active',
+        autoScheduleDaily: true,
+        autoScheduleWeekly: true,
+        lastDailyCheckDate: now,
+        lastWeeklyCheckDate: now,
+        lastACheckDate: now,
+        lastACheckHours: 0,
+        lastCCheckDate: now,
+        lastDCheckDate: now
+      });
 
+      // Deduct first week's payment
+      airline.balance = parseFloat(airline.balance) - leaseWeeklyPayment;
+      await airline.save();
+
+      console.log(`[AI-DECISION] ${airline.airlineName} leased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${Math.round(leaseWeeklyPayment).toLocaleString()}/week`);
+    } else {
+      await UserAircraft.create({
+        worldMembershipId: airline.id,
+        aircraftId: chosen.id,
+        registration: reg,
+        acquisitionType: 'purchase',
+        purchasePrice,
+        totalFlightHours: 0,
+        status: 'active',
+        autoScheduleDaily: true,
+        autoScheduleWeekly: true,
+        lastDailyCheckDate: now,
+        lastWeeklyCheckDate: now,
+        lastACheckDate: now,
+        lastACheckHours: 0,
+        lastCCheckDate: now,
+        lastDCheckDate: now
+      });
+
+      airline.balance = parseFloat(airline.balance) - purchasePrice;
+      await airline.save();
+
+      console.log(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
+    }
+
+    const acqType = useLease ? 'leased' : 'purchased';
+    const acqDetail = useLease
+      ? `$${Math.round(leaseWeeklyPayment).toLocaleString()}/week`
+      : `$${(purchasePrice / 1000000).toFixed(1)}M`;
     await notifyPlayer(world.id,
       `${airline.airlineName} Acquired Aircraft`,
-      `${airline.airlineName} purchased a ${chosen.manufacturer} ${chosen.model}${chosen.variant ? ' ' + chosen.variant : ''} (${reg}).`,
+      `${airline.airlineName} ${acqType} a ${chosen.manufacturer} ${chosen.model}${chosen.variant ? ' ' + chosen.variant : ''} (${reg}) for ${acqDetail}.`,
       gameTime,
       { type: 'operations', icon: 'plane', priority: 5, link: '/competition' }
     );
