@@ -156,8 +156,8 @@
 
       <!-- STEP 1: World Setup -->
       <div id="spStep1">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-          <!-- Left column: Era, Speed -->
+        <!-- Row 1: Era + Speed on the left, Difficulty on the right -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; margin-bottom: 1rem;">
           <div>
             <div class="form-group" style="margin-bottom: 0.75rem;">
               <label for="spEra">ERA / START YEAR *</label>
@@ -172,7 +172,7 @@
                 <option value="2020">2020s - Current Era</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom: 0.75rem;">
+            <div class="form-group" style="margin-bottom: 0;">
               <label for="spSpeed">GAME SPEED</label>
               <select id="spSpeed">
                 <option value="30">30x (Slow)</option>
@@ -181,36 +181,7 @@
                 <option value="240">240x (Very Fast)</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom: 0.75rem;">
-              <label>WHEN I LEAVE</label>
-              <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.25rem;">
-                <label class="difficulty-option">
-                  <input type="radio" name="spPauseOnLeave" value="run" checked>
-                  <div>
-                    <div style="font-weight: 600; color: var(--text-primary);">Let the world run</div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Time keeps advancing while you're away.</div>
-                  </div>
-                </label>
-                <label class="difficulty-option">
-                  <input type="radio" name="spPauseOnLeave" value="pause">
-                  <div>
-                    <div style="font-weight: 600; color: var(--text-primary);">Pause when I leave</div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Auto-pauses when you close the site or log out. You can change this later in World Controls.</div>
-                  </div>
-                </label>
-              </div>
-            </div>
-            <div class="form-info" style="margin-top: 0;">
-              <p id="spStartingCapital">Starting Capital: Loading...</p>
-              <p>Starting Reputation: 50/100</p>
-              <p id="spCreditCost" style="margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--border-color);">
-                <span style="color: var(--warning-color); font-weight: 600;">Creation Cost: 10 Credits</span>
-                <span id="spUserCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
-              </p>
-              <p style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week (first 4 weeks free)</p>
-            </div>
           </div>
-          <!-- Right column: Difficulty -->
           <div>
             <div class="form-group" style="margin-bottom: 0;">
               <label>DIFFICULTY *</label>
@@ -239,6 +210,38 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Row 2: When I leave — two options side by side -->
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label>WHEN I LEAVE</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.25rem; align-items: stretch;">
+            <label class="difficulty-option">
+              <input type="radio" name="spPauseOnLeave" value="run" checked>
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">Let the world run</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Time keeps advancing while you're away.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spPauseOnLeave" value="pause">
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">Pause when I leave</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Auto-pauses when you close the site or log out. Change it later in World Controls.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Row 3: Summary -->
+        <div class="form-info" style="margin-top: 0;">
+          <p id="spStartingCapital">Starting Capital: Loading...</p>
+          <p>Starting Reputation: 50/100</p>
+          <p id="spCreditCost" style="margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--border-color);">
+            <span style="color: var(--warning-color); font-weight: 600;">Creation Cost: 10 Credits</span>
+            <span id="spUserCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
+          </p>
+          <p style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week (first 4 weeks free)</p>
         </div>
       </div>
 
