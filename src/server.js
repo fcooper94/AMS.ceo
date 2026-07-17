@@ -798,13 +798,38 @@ server.listen(PORT, () => {
 })();
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n\nShutting down gracefully...');
-  await worldTimeService.stopAll();
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return; // ignore repeated signals
+  shuttingDown = true;
+  console.log(`\n\nReceived ${signal}, shutting down gracefully...`);
+
+  // Backstop: if cleanup or connection draining hangs (Socket.IO keep-alive
+  // clients block server.close from ever firing), force-exit so the port is
+  // released and nodemon can restart cleanly instead of hitting EADDRINUSE.
+  const forceExit = setTimeout(() => {
+    console.warn('Shutdown timed out — forcing exit');
+    process.exit(1);
+  }, 8000);
+  forceExit.unref();
+
+  try {
+    await worldTimeService.stopAll();
+  } catch (err) {
+    console.error('Error during shutdown cleanup:', err.message);
+  }
+
+  // Close Socket.IO first so its persistent connections don't block server.close()
+  io.close();
+
   server.close(() => {
+    clearTimeout(forceExit);
     console.log('Server closed');
     process.exit(0);
   });
-});
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 module.exports = { app, server, io };
