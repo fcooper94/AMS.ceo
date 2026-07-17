@@ -654,9 +654,11 @@ server.listen(PORT, () => {
     console.error('  Server will continue — run "npm run db:sync" manually if needed');
   }
 
-  // Load demand cache (from static file)
+  // Load demand cache (from static file).
+  // Only prompt when running in an interactive terminal (local dev) — a headless
+  // server (Railway, CI) has no TTY to answer, so it must never block on input.
   const demandCacheService = require('./services/demandCacheService');
-  if (process.env.NODE_ENV === 'development') {
+  if (process.stdin.isTTY) {
     const readline = require('readline');
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const answer = await new Promise(resolve => {
@@ -804,13 +806,12 @@ async function gracefulShutdown(signal) {
   shuttingDown = true;
   console.log(`\n\nReceived ${signal}, shutting down gracefully...`);
 
-  // Backstop: if cleanup or connection draining hangs (Socket.IO keep-alive
-  // clients block server.close from ever firing), force-exit so the port is
-  // released and nodemon can restart cleanly instead of hitting EADDRINUSE.
+  // Backstop: force-exit if something hangs, so the port is always released and
+  // nodemon can restart cleanly instead of hitting EADDRINUSE.
   const forceExit = setTimeout(() => {
     console.warn('Shutdown timed out — forcing exit');
     process.exit(1);
-  }, 8000);
+  }, 3000);
   forceExit.unref();
 
   try {
@@ -827,6 +828,11 @@ async function gracefulShutdown(signal) {
     console.log('Server closed');
     process.exit(0);
   });
+
+  // server.close() waits for existing keep-alive / Socket.IO connections to end,
+  // which they won't on their own — so actively destroy them (Node 18.2+) to let
+  // the close callback fire immediately and free port 3000 right away.
+  if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
 }
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
