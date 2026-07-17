@@ -84,8 +84,8 @@ async function isAtHomeBase(aircraftId, dateStr, startMinutes, duration) {
     const pax = flight.aircraft?.aircraft?.passengerCapacity || 150;
     const dist = flight.route?.distance || 0;
 
-    let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : pax < 200 ? 10 : 15) : 0;
-    let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 20 : pax < 300 ? 25 : 35) : 0;
+    let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : 10) : 0;
+    let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 15 : pax < 300 ? 20 : 25) : 0;
     let fuelling = dist < 500 ? 10 : dist < 1500 ? 15 : dist < 3000 ? 20 : 25;
     const preFlight = Math.max(catering + boarding, fuelling);
 
@@ -97,8 +97,8 @@ async function isAtHomeBase(aircraftId, dateStr, startMinutes, duration) {
     if (flight.dayOfWeek === targetDow) {
       const leavesHome = depH * 60 + depM - preFlight;
       if (arrOffset === 0) {
-        let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 8 : pax < 200 ? 12 : pax < 300 ? 15 : 20) : 0;
-        let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 15 : pax < 300 ? 20 : 25;
+        let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 5 : pax < 200 ? 10 : pax < 300 ? 10 : 15) : 0;
+        let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 10 : pax < 300 ? 15 : 20;
         const postFlight = deboard + clean;
         const returnsHome = arrH * 60 + arrM + postFlight;
         awayPeriods.push({ start: Math.max(0, leavesHome), end: Math.min(1440, returnsHome) });
@@ -111,8 +111,8 @@ async function isAtHomeBase(aircraftId, dateStr, startMinutes, duration) {
     if (arrOffset > 0) {
       const arrDow = (flight.dayOfWeek + arrOffset) % 7;
       if (arrDow === targetDow) {
-        let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 8 : pax < 200 ? 12 : pax < 300 ? 15 : 20) : 0;
-        let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 15 : pax < 300 ? 20 : 25;
+        let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 5 : pax < 200 ? 10 : pax < 300 ? 10 : 15) : 0;
+        let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 10 : pax < 300 ? 15 : 20;
         const postFlight = deboard + clean;
         const returnsHome = arrH * 60 + arrM + postFlight;
         awayPeriods.push({ start: 0, end: Math.min(1440, returnsHome) });
@@ -218,13 +218,13 @@ function getFlightSlotsFromTemplates(templates, targetDow, forDailyCheck = false
     const pax = flight.aircraft?.aircraft?.passengerCapacity || 150;
     const dist = flight.route?.distance || 0;
 
-    let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : pax < 200 ? 10 : 15) : 0;
-    let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 20 : pax < 300 ? 25 : 35) : 0;
+    let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : 10) : 0;
+    let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 15 : pax < 300 ? 20 : 25) : 0;
     let fuelling = dist < 500 ? 10 : dist < 1500 ? 15 : dist < 3000 ? 20 : 25;
     const preFlight = Math.max(catering + boarding, fuelling);
 
-    let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 8 : pax < 200 ? 12 : pax < 300 ? 15 : 20) : 0;
-    let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 15 : pax < 300 ? 20 : 25;
+    let deboard = acType !== 'Cargo' ? (pax < 50 ? 5 : pax < 100 ? 5 : pax < 200 ? 10 : pax < 300 ? 10 : 15) : 0;
+    let clean = pax < 50 ? 5 : pax < 100 ? 10 : pax < 200 ? 10 : pax < 300 ? 15 : 20;
     const postFlight = deboard + clean;
 
     const [depH, depM] = flight.departureTime.split(':').map(Number);
@@ -4474,8 +4474,8 @@ async function optimizeMaintenanceForDates(aircraftId, dates) {
       const dist = flight.route?.distance || 0;
 
       // Pre-flight calculation
-      let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : pax < 200 ? 10 : 15) : 0;
-      let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 20 : pax < 300 ? 25 : 35) : 0;
+      let catering = pax >= 50 && acType !== 'Cargo' ? (pax < 100 ? 5 : 10) : 0;
+      let boarding = acType !== 'Cargo' ? (pax < 50 ? 10 : pax < 100 ? 15 : pax < 200 ? 15 : pax < 300 ? 20 : 25) : 0;
       let fuelling = dist < 500 ? 10 : dist < 1500 ? 15 : dist < 3000 ? 20 : 25;
       const preFlight = Math.max(catering + boarding, fuelling);
 

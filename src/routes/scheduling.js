@@ -464,19 +464,18 @@ function getReferenceDateForDow(dayOfWeek) {
  * Calculate pre-flight and post-flight durations for an aircraft/route combination
  */
 function calculateFlightDurations(acType, paxCapacity, routeDistance) {
+  // NOTE: keep these in sync with public/js/flight-timing.js (client-side).
   let cateringDuration = 0;
   if (paxCapacity >= 50 && acType !== 'Cargo') {
-    if (paxCapacity < 100) cateringDuration = 5;
-    else if (paxCapacity < 200) cateringDuration = 10;
-    else cateringDuration = 15;
+    cateringDuration = paxCapacity < 100 ? 5 : 10;
   }
   let boardingDuration = 0;
   if (acType !== 'Cargo') {
     if (paxCapacity < 50) boardingDuration = 10;
     else if (paxCapacity < 100) boardingDuration = 15;
-    else if (paxCapacity < 200) boardingDuration = 20;
-    else if (paxCapacity < 300) boardingDuration = 25;
-    else boardingDuration = 35;
+    else if (paxCapacity < 200) boardingDuration = 15;
+    else if (paxCapacity < 300) boardingDuration = 20;
+    else boardingDuration = 25;
   }
   let fuellingDuration = 0;
   if (routeDistance < 500) fuellingDuration = 10;
@@ -488,17 +487,17 @@ function calculateFlightDurations(acType, paxCapacity, routeDistance) {
   let deboardingDuration = 0;
   if (acType !== 'Cargo') {
     if (paxCapacity < 50) deboardingDuration = 5;
-    else if (paxCapacity < 100) deboardingDuration = 8;
-    else if (paxCapacity < 200) deboardingDuration = 12;
-    else if (paxCapacity < 300) deboardingDuration = 15;
-    else deboardingDuration = 20;
+    else if (paxCapacity < 100) deboardingDuration = 5;
+    else if (paxCapacity < 200) deboardingDuration = 10;
+    else if (paxCapacity < 300) deboardingDuration = 10;
+    else deboardingDuration = 15;
   }
   let cleaningDuration;
   if (paxCapacity < 50) cleaningDuration = 5;
   else if (paxCapacity < 100) cleaningDuration = 10;
-  else if (paxCapacity < 200) cleaningDuration = 15;
-  else if (paxCapacity < 300) cleaningDuration = 20;
-  else cleaningDuration = 25;
+  else if (paxCapacity < 200) cleaningDuration = 10;
+  else if (paxCapacity < 300) cleaningDuration = 15;
+  else cleaningDuration = 20;
   const postFlightDuration = deboardingDuration + cleaningDuration;
 
   return { preFlightDuration, postFlightDuration };
