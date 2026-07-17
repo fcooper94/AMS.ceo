@@ -7,7 +7,20 @@ const { User, SystemSettings } = require('../models');
 const { Op } = require('sequelize');
 const { sendEmail } = require('../utils/mailer');
 
-// Login route - redirects to VATSIM OAuth
+// VATSIM ID of the owner account that must sit behind an extra password in the
+// dev-bypass user picker (protects it from testers). Overridable via env.
+const PROTECTED_VATSIM_ID = process.env.PROTECTED_DEV_USER_ID || '1303570';
+const PROTECTED_SECOND_PASSWORD = process.env.PROTECTED_DEV_USER_PASSWORD || 'Chieftain1994';
+
+// Gate local register/login behind a successful dev-bypass unlock while the app
+// is in closed testing. Entering the correct bypass password sets the session
+// flag (see POST /dev-bypass below).
+function requireDevUnlock(req, res, next) {
+  if (req.session && req.session.devBypassUnlocked) return next();
+  return res.status(403).json({ error: 'The app is in closed testing. Please use Dev Access to register or sign in.' });
+}
+
+// VATSIM OAuth (unaffected by the testing gate)
 router.get('/login', passport.authenticate('vatsim'));
 
 // Check if dev bypass is enabled (public endpoint for login page)
@@ -51,10 +64,14 @@ router.post('/dev-bypass', async (req, res) => {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
+    // Correct bypass password → unlock local register/login for this session.
+    req.session.devBypassUnlocked = true;
+
     // If no userId provided, return user list for selection
     if (!userId) {
       try {
         const users = await User.findAll({
+          where: { isAdmin: true },
           attributes: ['id', 'vatsimId', 'firstName', 'lastName', 'email', 'isAdmin'],
           order: [['lastName', 'ASC'], ['firstName', 'ASC']]
         });
@@ -90,6 +107,14 @@ router.post('/dev-bypass', async (req, res) => {
       }
     }
 
+    // Protected owner account requires a second password.
+    if (user.vatsimId === PROTECTED_VATSIM_ID) {
+      const { secondPassword } = req.body;
+      if (secondPassword !== PROTECTED_SECOND_PASSWORD) {
+        return res.status(401).json({ error: 'This account requires an additional password.', code: 'second_password' });
+      }
+    }
+
     // Log the user in
     req.login(user, (err) => {
       if (err) {
@@ -104,8 +129,8 @@ router.post('/dev-bypass', async (req, res) => {
   }
 });
 
-// Local registration
-router.post('/register', async (req, res) => {
+// Local registration (closed-testing: requires dev-bypass unlock)
+router.post('/register', requireDevUnlock, async (req, res) => {
   try {
     const { firstName, lastName, email, password, captcha, captchaExpected } = req.body;
 
@@ -243,8 +268,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Local login
-router.post('/local-login', async (req, res) => {
+// Local login (closed-testing: requires dev-bypass unlock)
+router.post('/local-login', requireDevUnlock, async (req, res) => {
   try {
     const { email, password } = req.body;
 

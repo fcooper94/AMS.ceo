@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register · AMS.ceo</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 2rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+    .auth-brand { text-align: center; margin-bottom: 1.5rem; }
+    .auth-brand .logo { font-size: 1.8rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
+    .auth-brand .logo span { color: var(--accent-color); font-size: 0.6em; font-weight: 400; }
+    .auth-brand .sub { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 0.25rem; }
+    .auth-title { font-size: 1.1rem; color: var(--text-primary); font-weight: 600; margin-bottom: 1.25rem; text-align: center; }
+    .field { margin-bottom: 0.9rem; }
+    .field label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; }
+    .field-row { display: flex; gap: 0.75rem; }
+    .field-row .field { flex: 1; }
+    .lp-input {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+    .lp-input:focus { outline: none; border-color: var(--accent-color); }
+    .lp-input::placeholder { color: var(--text-muted); }
+    .lp-btn {
+      display: block;
+      width: 100%;
+      padding: 0.7rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      box-sizing: border-box;
+      letter-spacing: 0.3px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .lp-btn-primary { background: var(--primary-color); border: 1px solid var(--primary-color); color: #fff; }
+    .lp-btn-primary:hover { background: var(--accent-color); border-color: var(--accent-color); }
+    .lp-error {
+      display: none;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(220, 38, 38, 0.15);
+      border: 1px solid rgba(220, 38, 38, 0.4);
+      border-radius: 4px;
+      color: #fca5a5;
+      font-size: 0.8rem;
+    }
+    .captcha-box {
+      background: var(--surface);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 0.85rem;
+      margin-bottom: 0.9rem;
+    }
+    .captcha-box .label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+    .captcha-row { display: flex; align-items: center; gap: 0.75rem; }
+    .captcha-problem { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+    .captcha-row .lp-input { flex: 1; }
+    .auth-links { margin-top: 1.25rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary); }
+    .auth-links a { color: var(--accent-color); text-decoration: none; }
+    .auth-links a:hover { text-decoration: underline; }
+    .auth-links .row { margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="logo">AMS<span>.ceo</span></div>
+      <div class="sub">Airline Management Sim</div>
+    </div>
+    <div class="auth-title">Create Account</div>
+
+    <div id="registerError" class="lp-error"></div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="regFirstName">First name</label>
+        <input type="text" id="regFirstName" class="lp-input" placeholder="First" autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label for="regLastName">Last name</label>
+        <input type="text" id="regLastName" class="lp-input" placeholder="Last" autocomplete="family-name">
+      </div>
+    </div>
+    <div class="field">
+      <label for="regEmail">Email</label>
+      <input type="email" id="regEmail" class="lp-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label for="regPassword">Password</label>
+      <input type="password" id="regPassword" class="lp-input" placeholder="At least 6 characters" autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label for="regConfirmPassword">Confirm password</label>
+      <input type="password" id="regConfirmPassword" class="lp-input" placeholder="Re-enter password" autocomplete="new-password">
+    </div>
+
+    <div class="captcha-box">
+      <div class="label">Human verification</div>
+      <div class="captcha-row">
+        <span class="captcha-problem" id="regMathProblem">? + ?</span>
+        <input type="text" id="regCaptchaAnswer" class="lp-input" placeholder="Answer" inputmode="numeric" autocomplete="off">
+        <input type="hidden" id="regCaptchaExpected">
+      </div>
+    </div>
+
+    <button class="lp-btn lp-btn-primary" onclick="localRegister()">Create Account</button>
+
+    <div class="auth-links">
+      <div>Already have an account? <a href="/login">Sign in</a></div>
+      <div class="row"><a href="/">&larr; Back</a></div>
+    </div>
+  </div>
+
+  <script>
+    function generateRegCaptcha() {
+      const num1 = Math.floor(Math.random() * 10) + 1;
+      const num2 = Math.floor(Math.random() * 10) + 1;
+      const operators = ['+', '-', '×'];
+      const opIdx = Math.floor(Math.random() * operators.length);
+      let a = num1, b = num2, answer;
+
+      if (opIdx === 0) { answer = a + b; }
+      else if (opIdx === 1) { if (a < b) { a = num2; b = num1; } answer = a - b; }
+      else { answer = a * b; }
+
+      document.getElementById('regMathProblem').textContent = `${a} ${operators[opIdx]} ${b}`;
+      document.getElementById('regCaptchaExpected').value = answer;
+      document.getElementById('regCaptchaAnswer').value = '';
+    }
+    generateRegCaptcha();
+
+    function localRegister() {
+      const firstName = document.getElementById('regFirstName').value.trim();
+      const lastName = document.getElementById('regLastName').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirmPassword = document.getElementById('regConfirmPassword').value;
+      const errorDiv = document.getElementById('registerError');
+      errorDiv.style.display = 'none';
+
+      if (!firstName || !lastName || !email || !password) {
+        errorDiv.textContent = 'All fields are required';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (password.length < 6) {
+        errorDiv.textContent = 'Password must be at least 6 characters';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (password !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      const captchaAnswer = document.getElementById('regCaptchaAnswer').value.trim();
+      const captchaExpected = document.getElementById('regCaptchaExpected').value;
+      if (!captchaAnswer) {
+        errorDiv.textContent = "Please solve the math problem to verify you're human";
+        errorDiv.style.display = 'block';
+        return;
+      }
+      if (captchaAnswer !== captchaExpected) {
+        errorDiv.textContent = 'Incorrect answer. Please try again.';
+        errorDiv.style.display = 'block';
+        generateRegCaptcha();
+        return;
+      }
+
+      fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, email, password, captcha: captchaAnswer, captchaExpected })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else {
+            errorDiv.textContent = data.error || 'Registration failed';
+            errorDiv.style.display = 'block';
+            generateRegCaptcha();
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Registration failed: ' + err.message;
+          errorDiv.style.display = 'block';
+          generateRegCaptcha();
+        });
+    }
+
+    document.getElementById('regConfirmPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') localRegister();
+    });
+  </script>
+</body>
+</html>

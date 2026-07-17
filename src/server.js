@@ -334,6 +334,20 @@ app.get('/', redirectIfAuth, (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
+// Standalone Login / Register pages — gated behind a dev-bypass unlock while the
+// app is in closed testing. Already-authenticated users skip to world selection.
+app.get('/login', (req, res) => {
+  if (req.isAuthenticated && req.isAuthenticated()) return res.redirect('/world-selection');
+  if (!req.session || !req.session.devBypassUnlocked) return res.redirect('/');
+  res.sendFile(path.join(__dirname, '../public/login.html'));
+});
+
+app.get('/register', (req, res) => {
+  if (req.isAuthenticated && req.isAuthenticated()) return res.redirect('/world-selection');
+  if (!req.session || !req.session.devBypassUnlocked) return res.redirect('/');
+  res.sendFile(path.join(__dirname, '../public/register.html'));
+});
+
 app.get('/world-selection', requireAuth, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/world-selection.html'), '/world-selection');

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In · AMS.ceo</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 2rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+    .auth-brand {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .auth-brand .logo {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+    .auth-brand .logo span { color: var(--accent-color); font-size: 0.6em; font-weight: 400; }
+    .auth-brand .sub {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-top: 0.25rem;
+    }
+    .auth-title { font-size: 1.1rem; color: var(--text-primary); font-weight: 600; margin-bottom: 1.25rem; text-align: center; }
+    .field { margin-bottom: 0.9rem; }
+    .field label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; }
+    .lp-input {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      transition: border-color 0.15s;
+    }
+    .lp-input:focus { outline: none; border-color: var(--accent-color); }
+    .lp-input::placeholder { color: var(--text-muted); }
+    .lp-btn {
+      display: block;
+      width: 100%;
+      padding: 0.7rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-sizing: border-box;
+      letter-spacing: 0.3px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .lp-btn-primary { background: var(--primary-color); border: 1px solid var(--primary-color); color: #fff; }
+    .lp-btn-primary:hover { background: var(--accent-color); border-color: var(--accent-color); }
+    .lp-error {
+      display: none;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(220, 38, 38, 0.15);
+      border: 1px solid rgba(220, 38, 38, 0.4);
+      border-radius: 4px;
+      color: #fca5a5;
+      font-size: 0.8rem;
+    }
+    .lp-success {
+      display: none;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(5, 150, 105, 0.15);
+      border: 1px solid rgba(5, 150, 105, 0.4);
+      border-radius: 4px;
+      color: #6ee7b7;
+      font-size: 0.8rem;
+    }
+    .auth-links { margin-top: 1.25rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary); }
+    .auth-links a { color: var(--accent-color); text-decoration: none; }
+    .auth-links a:hover { text-decoration: underline; }
+    .auth-links .row { margin-top: 0.5rem; }
+    .link-btn { background: none; border: none; color: var(--accent-color); cursor: pointer; font-size: 0.82rem; padding: 0; }
+    .link-btn:hover { text-decoration: underline; }
+    #forgotBlock { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="logo">AMS<span>.ceo</span></div>
+      <div class="sub">Airline Management Sim</div>
+    </div>
+    <div class="auth-title">Sign In</div>
+
+    <div id="signinError" class="lp-error"></div>
+
+    <div class="field">
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" class="lp-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" class="lp-input" placeholder="Password" autocomplete="current-password">
+    </div>
+    <button class="lp-btn lp-btn-primary" onclick="localLogin()">Sign In</button>
+
+    <div class="auth-links">
+      <div><button type="button" class="link-btn" onclick="toggleForgot()">Forgot password?</button></div>
+      <div class="row">Don't have an account? <a href="/register">Register</a></div>
+      <div class="row"><a href="/">&larr; Back</a></div>
+    </div>
+
+    <div id="forgotBlock">
+      <div id="forgotError" class="lp-error"></div>
+      <div id="forgotSuccess" class="lp-success"></div>
+      <div class="field">
+        <label for="forgotEmail">Reset link — enter your email</label>
+        <input type="email" id="forgotEmail" class="lp-input" placeholder="you@example.com">
+      </div>
+      <button id="forgotBtn" class="lp-btn lp-btn-primary" onclick="requestPasswordReset()">Send Reset Link</button>
+    </div>
+  </div>
+
+  <script>
+    function localLogin() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('signinError');
+      errorDiv.style.display = 'none';
+
+      if (!email || !password) {
+        errorDiv.textContent = 'Email and password are required';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      fetch('/auth/local-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else {
+            errorDiv.textContent = data.error || 'Login failed';
+            errorDiv.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          errorDiv.textContent = 'Login failed: ' + err.message;
+          errorDiv.style.display = 'block';
+        });
+    }
+
+    function toggleForgot() {
+      const block = document.getElementById('forgotBlock');
+      const open = block.style.display === 'block';
+      block.style.display = open ? 'none' : 'block';
+      if (!open) document.getElementById('forgotEmail').focus();
+    }
+
+    function requestPasswordReset() {
+      const email = document.getElementById('forgotEmail').value.trim();
+      const errorDiv = document.getElementById('forgotError');
+      const successDiv = document.getElementById('forgotSuccess');
+      const btn = document.getElementById('forgotBtn');
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+
+      if (!email) {
+        errorDiv.textContent = 'Please enter your email address';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      fetch('/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          if (ok) {
+            successDiv.textContent = data.message || 'If an account with that email exists, a reset link has been sent.';
+            successDiv.style.display = 'block';
+            btn.textContent = 'Sent!';
+          } else {
+            errorDiv.textContent = data.error || 'Something went wrong';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Send Reset Link';
+          }
+        })
+        .catch(() => {
+          errorDiv.textContent = 'Network error. Please try again.';
+          errorDiv.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Send Reset Link';
+        });
+    }
+
+    document.getElementById('loginPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') localLogin();
+    });
+  </script>
+</body>
+</html>
