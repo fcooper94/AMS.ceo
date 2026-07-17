@@ -1078,13 +1078,14 @@ class WorldTimeService {
 
       const totalRevenue = ticketRevenue + cargoRevenue;
 
-      // Calculate costs (all scaled by era multipliers)
+      // Calculate costs — all components era-scaled so profitability is consistent across eras.
+      // Base rates are 2024 USD; era multiplier brings them in line with era ticket prices.
       const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
       const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
-      const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier); // $3.50/nm base, round trip
-      const crewCost = Math.round(distance * 2 * 0.8 * eraMultiplier); // ~$0.80/nm crew cost, era-scaled
-      const maintenanceCost = Math.round(distance * 2 * 0.5 * eraMultiplier); // ~$0.50/nm maint, era-scaled
-      const airportFees = Math.round((1500 + paxCapacity * 3) * eraMultiplier); // Landing + handling, era-scaled
+      const fuelCost = Math.round(distance * 2 * 2.5 * fuelMultiplier * eraMultiplier); // $2.50/nm base, era+fuel scaled
+      const crewCost = Math.round(distance * 2 * 0.30 * eraMultiplier); // $0.30/nm crew, era-scaled
+      const maintenanceCost = Math.round(distance * 2 * 0.20 * eraMultiplier); // $0.20/nm maint, era-scaled
+      const airportFees = Math.round((800 + paxCapacity * 2) * eraMultiplier); // Landing + handling, era-scaled
       const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
 
       const profit = totalRevenue - totalCosts;
@@ -2062,7 +2063,7 @@ class WorldTimeService {
    */
   async pruneOldMaintenanceRecords(membershipIds, currentGameTime) {
     if (!membershipIds || membershipIds.length === 0) return;
-    if (!currentGameTime || isNaN(currentGameTime.getTime()) || currentGameTime.getFullYear() < 1980) return;
+    if (!currentGameTime || isNaN(currentGameTime.getTime()) || currentGameTime.getFullYear() < 1950) return;
 
     const sequelize = require('../config/database');
 
@@ -2276,7 +2277,7 @@ class WorldTimeService {
 
       // Don't refresh with an unset/invalid clock — downstream scheduling would
       // otherwise generate epoch-dated (1970) maintenance rows.
-      if (!gameTime || isNaN(gameTime.getTime()) || gameTime.getFullYear() < 1980) {
+      if (!gameTime || isNaN(gameTime.getTime()) || gameTime.getFullYear() < 1950) {
         if (process.env.NODE_ENV === 'development') {
           console.warn(`[MAINT REFRESH] Skipping world ${worldId}: invalid game time (${gameTime ? gameTime.toISOString() : 'null'})`);
         }

@@ -599,7 +599,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
   // Guard against an unset/invalid world clock. A null world.currentTime makes
   // new Date(null) === 1970-01-01, which would schedule hundreds of bogus
   // epoch-dated daily rows per aircraft (orphaned outside the 90-day lookback).
-  if (isNaN(gameNow.getTime()) || gameNow.getFullYear() < 1980) {
+  if (isNaN(gameNow.getTime()) || gameNow.getFullYear() < 1950) {
     console.warn(`[AUTO-SCHEDULE] Skipping ${aircraft.registration}: invalid game time ${isNaN(gameNow.getTime()) ? 'Invalid Date' : gameNow.toISOString()} (world not started?)`);
     return createdRecords;
   }

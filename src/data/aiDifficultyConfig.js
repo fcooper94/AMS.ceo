@@ -5,6 +5,104 @@
  * Difficulty only affects AI behaviour (pricing, aggression, efficiency).
  */
 
+/**
+ * Airline archetypes — define the business model of each AI airline.
+ * Set at spawn time and drive route selection, fleet purchases, and pricing.
+ *
+ * Distribution changes by era:
+ *   1950s-60s: mostly regional/domestic, no cargo-only, minimal long-haul
+ *   1970s-80s: charter and long-haul emerge, cargo grows
+ *   1990s+:    low-cost carriers appear, cargo majors, full spectrum
+ */
+const AIRLINE_ARCHETYPES = {
+  regional: {
+    label: 'Regional',
+    maxRouteDistance: 800,       // nm
+    preferredPaxRange: [20, 80],
+    transportType: 'passenger',
+    canFlyInternational: false,
+    pricingModifier: 1.10,      // Slight premium (fewer alternatives)
+  },
+  domestic: {
+    label: 'Domestic',
+    maxRouteDistance: 1500,
+    preferredPaxRange: [50, 200],
+    transportType: 'passenger',
+    canFlyInternational: false,
+    pricingModifier: 1.0,
+  },
+  shortHaul: {
+    label: 'Short Haul',
+    maxRouteDistance: 2500,
+    preferredPaxRange: [80, 250],
+    transportType: 'both',
+    canFlyInternational: true,
+    pricingModifier: 0.97,      // Competitive pricing
+  },
+  longHaul: {
+    label: 'Long Haul',
+    maxRouteDistance: 99999,
+    minRouteDistance: 1500,      // Won't bother with short routes
+    preferredPaxRange: [150, 500],
+    transportType: 'both',
+    canFlyInternational: true,
+    pricingModifier: 1.0,
+  },
+  cargo: {
+    label: 'Cargo',
+    maxRouteDistance: 99999,
+    preferredPaxRange: [0, 0],  // Cargo only — no pax
+    transportType: 'cargo',
+    canFlyInternational: true,
+    pricingModifier: 1.0,
+  },
+  fullService: {
+    label: 'Full Service',
+    maxRouteDistance: 99999,
+    preferredPaxRange: [50, 500],
+    transportType: 'both',
+    canFlyInternational: true,
+    pricingModifier: 1.05,      // Slight premium for service
+  }
+};
+
+/**
+ * Archetype distribution by era — weights for random selection at spawn time.
+ * Reflects real-world airline industry evolution.
+ */
+const ARCHETYPE_WEIGHTS_BY_ERA = {
+  1950: { regional: 40, domestic: 35, shortHaul: 15, longHaul: 5, cargo: 0, fullService: 5 },
+  1960: { regional: 30, domestic: 30, shortHaul: 20, longHaul: 10, cargo: 2, fullService: 8 },
+  1970: { regional: 20, domestic: 25, shortHaul: 25, longHaul: 15, cargo: 5, fullService: 10 },
+  1980: { regional: 15, domestic: 20, shortHaul: 25, longHaul: 18, cargo: 8, fullService: 14 },
+  1990: { regional: 12, domestic: 18, shortHaul: 22, longHaul: 18, cargo: 10, fullService: 20 },
+  2000: { regional: 10, domestic: 15, shortHaul: 22, longHaul: 18, cargo: 12, fullService: 23 },
+  2010: { regional: 8, domestic: 12, shortHaul: 22, longHaul: 20, cargo: 13, fullService: 25 },
+  2020: { regional: 8, domestic: 12, shortHaul: 22, longHaul: 20, cargo: 13, fullService: 25 },
+};
+
+/**
+ * Pick an airline archetype based on era weights.
+ * @param {number} year - World start year
+ * @returns {string} - Archetype key
+ */
+function pickArchetype(year) {
+  // Find the nearest decade
+  const decades = Object.keys(ARCHETYPE_WEIGHTS_BY_ERA).map(Number).sort((a, b) => a - b);
+  let decade = decades[0];
+  for (const d of decades) {
+    if (year >= d) decade = d;
+  }
+  const weights = ARCHETYPE_WEIGHTS_BY_ERA[decade];
+  const total = Object.values(weights).reduce((s, w) => s + w, 0);
+  let roll = Math.random() * total;
+  for (const [type, weight] of Object.entries(weights)) {
+    roll -= weight;
+    if (roll <= 0) return type;
+  }
+  return 'fullService';
+}
+
 // Shared spawning config — same for all difficulties
 // ~790 airlines: 60×4 + 100×3 + 200×1 = 240+300+200 = 740, plus base airport extras
 const SPAWN_TIERS = [
@@ -204,6 +302,8 @@ function pickPersonality(difficulty) {
 
 module.exports = {
   AI_DIFFICULTY,
+  AIRLINE_ARCHETYPES,
   getAICount,
-  pickPersonality
+  pickPersonality,
+  pickArchetype
 };

@@ -8,7 +8,7 @@ const { Op } = require('sequelize');
 const { WorldMembership, Airport, UserAircraft } = require('../models');
 const crypto = require('crypto');
 const { generateAIAirline } = require('../data/aiAirlineNames');
-const { AI_DIFFICULTY, pickPersonality } = require('../data/aiDifficultyConfig');
+const { AI_DIFFICULTY, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
 
@@ -208,6 +208,7 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
         baseAirportId: humanBaseAirport.id,
         balance: startingBalance,
         reputation: 45 + Math.floor(Math.random() * 15),
+        airlineType: pickArchetype(worldYear),
         isAI: true,
         aiPersonality: personality,
         aiLastDecisionTime: null,
@@ -257,6 +258,7 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
           baseAirportId: airport.id,
           balance: startingBalance,
           reputation: 45 + Math.floor(Math.random() * 15),
+          airlineType: pickArchetype(worldYear),
           isAI: true,
           aiPersonality: personality,
           aiLastDecisionTime: null,

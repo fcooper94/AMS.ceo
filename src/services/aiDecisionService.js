@@ -13,7 +13,7 @@
 
 const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification } = require('../models');
 const { Op } = require('sequelize');
-const { AI_DIFFICULTY, pickPersonality } = require('../data/aiDifficultyConfig');
+const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
 const routeDemandService = require('./routeDemandService');
@@ -227,10 +227,10 @@ function calculateSmartFrequency(demandScore, aircraftCapacity, personality) {
 function calculateOperatingCostPerPax(distance, paxCapacity, worldYear) {
   const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
   const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
-  const fuelCost = Math.round(distance * 2 * 3.5 * fuelMultiplier);
-  const crewCost = Math.round(distance * 2 * 0.8 * eraMultiplier);
-  const maintenanceCost = Math.round(distance * 2 * 0.5 * eraMultiplier);
-  const airportFees = Math.round((1500 + paxCapacity * 3) * eraMultiplier);
+  const fuelCost = Math.round(distance * 2 * 2.5 * fuelMultiplier * eraMultiplier);
+  const crewCost = Math.round(distance * 2 * 0.30 * eraMultiplier);
+  const maintenanceCost = Math.round(distance * 2 * 0.20 * eraMultiplier);
+  const airportFees = Math.round((800 + paxCapacity * 2) * eraMultiplier);
   const totalCost = fuelCost + crewCost + maintenanceCost + airportFees;
   const estimatedPax = Math.round(paxCapacity * 0.75);
   return estimatedPax > 0 ? Math.round(totalCost / estimatedPax) : totalCost;
@@ -566,12 +566,19 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
       if (!destAirport) continue;
     }
 
-    // Proper aircraft range check
+    // Distance calculation
     const distance = calculateDistanceNm(
       parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
       parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
     );
 
+    // Archetype constraints
+    const archetype = AIRLINE_ARCHETYPES[airline.airlineType] || AIRLINE_ARCHETYPES.fullService;
+    if (distance > (archetype.maxRouteDistance || 99999)) continue;
+    if (archetype.minRouteDistance && distance < archetype.minRouteDistance) continue;
+    if (!archetype.canFlyInternational && baseAirport.country !== destAirport.country) continue;
+
+    // Proper aircraft range check
     const rangeNm = aircraft.aircraft?.rangeNm;
     const maxRange = rangeNm || (aircraft.aircraft?.cruiseSpeed || 450) * 12;
     if (distance > maxRange * 0.95) continue; // 5% buffer for winds/routing
@@ -593,7 +600,8 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     existingFlightNums.add(returnNum);
 
     // Calculate pricing
-    const economyPrice = Math.round(eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy') * config.pricingModifier);
+    const archetypePriceMod = archetype.pricingModifier || 1.0;
+    const economyPrice = Math.round(eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy') * config.pricingModifier * archetypePriceMod);
     const businessPrice = Math.round(economyPrice * 2.5);
     const firstPrice = Math.round(economyPrice * 4);
 
@@ -642,7 +650,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         cargoLightRate: Math.round(distance * 0.5),
         cargoStandardRate: Math.round(distance * 0.8),
         cargoHeavyRate: Math.round(distance * 1.2),
-        transportType: 'both',
+        transportType: archetype.transportType || 'both',
         isActive: true
       });
 
@@ -741,7 +749,7 @@ async function scheduleAIFlights(route, aircraft) {
 
 /**
  * Try to buy a new aircraft for the AI airline.
- * Prefers fleet commonality and airport-appropriate sizing.
+ * Considers: route needs (range/capacity), era popularity, fleet commonality, airport size.
  */
 async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, gameTime) {
   const balance = parseFloat(airline.balance) || 0;
@@ -758,8 +766,20 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   if (eraAircraft.length === 0) return;
 
+  // Filter by archetype: cargo airlines want cargo aircraft, others want pax
+  const archetype = AIRLINE_ARCHETYPES[airline.airlineType] || AIRLINE_ARCHETYPES.fullService;
+  let typeFiltered;
+  if (archetype.transportType === 'cargo') {
+    typeFiltered = eraAircraft.filter(ac => ac.type === 'Cargo' || ac.cargoCapacityKg > 10000);
+    if (typeFiltered.length === 0) typeFiltered = eraAircraft.filter(ac => ac.cargoCapacityKg > 5000);
+  } else {
+    typeFiltered = eraAircraft.filter(ac => ac.passengerCapacity > 0);
+  }
+  if (typeFiltered.length === 0) return;
+  const paxAircraft = typeFiltered;
+
   const maxSpend = balance * 0.4;
-  const affordable = eraAircraft.filter(ac => {
+  const affordable = paxAircraft.filter(ac => {
     const price = parseFloat(ac.purchasePrice) || 50000000;
     return price <= maxSpend;
   });
@@ -771,25 +791,84 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   const sizeAppropriate = affordable.filter(ac => ac.passengerCapacity <= maxPax);
   const candidates = sizeAppropriate.length > 0 ? sizeAppropriate : affordable;
 
-  // Fleet commonality
+  // Determine what the airline needs based on archetype, routes, and opportunities
+  const [prefMinPax, prefMaxPax] = archetype.preferredPaxRange || [50, 200];
+  let targetRange = archetype.maxRouteDistance < 99999 ? Math.round(archetype.maxRouteDistance * 0.8) : 1500;
+  let targetCapacity = Math.round((prefMinPax + prefMaxPax) / 2);
+  const routes = await Route.findAll({
+    where: { worldMembershipId: airline.id, isActive: true },
+    attributes: ['distance', 'demand']
+  });
+
+  if (routes.length > 0) {
+    // Buy for the average route profile
+    const avgDistance = routes.reduce((s, r) => s + (parseFloat(r.distance) || 500), 0) / routes.length;
+    const avgDemand = routes.reduce((s, r) => s + (parseInt(r.demand) || 50), 0) / routes.length;
+    targetRange = Math.round(avgDistance * 1.3); // 30% headroom
+    // Higher demand = bigger aircraft
+    if (avgDemand > 60) targetCapacity = 250;
+    else if (avgDemand > 40) targetCapacity = 180;
+    else if (avgDemand > 25) targetCapacity = 120;
+    else targetCapacity = 60;
+  } else {
+    // No routes yet — base on airport type
+    if (baseAirport?.type === 'International Hub') { targetRange = 3000; targetCapacity = 180; }
+    else if (baseAirport?.type === 'Major') { targetRange = 1500; targetCapacity = 120; }
+    else { targetRange = 800; targetCapacity = 50; }
+  }
+
+  // Score each candidate: range fit + capacity fit + era popularity + fleet commonality
   const existingFamilies = new Set();
   for (const ac of currentFleet) {
-    if (ac.aircraft) existingFamilies.add(`${ac.aircraft.manufacturer} ${ac.aircraft.model}`);
+    if (ac.aircraft) existingFamilies.add(`${ac.manufacturer} ${ac.model}`);
   }
 
-  const sameFamily = candidates.filter(ac => existingFamilies.has(`${ac.manufacturer} ${ac.model}`));
-  const useCommonFleet = sameFamily.length > 0 && Math.random() < 0.8;
-  const pool = useCommonFleet ? sameFamily : candidates;
+  const scored = candidates.map(ac => {
+    let score = 0;
 
-  // Pick based on personality
-  let chosen;
-  if (airline.aiPersonality === 'aggressive') {
-    chosen = pool[pool.length - 1];
-  } else if (airline.aiPersonality === 'conservative') {
-    chosen = pool[Math.floor(pool.length * 0.3)];
-  } else {
-    chosen = pool[Math.floor(pool.length * 0.5)];
-  }
+    // Range fit: penalize aircraft that can't reach target, bonus for good match
+    const range = ac.rangeNm || 1500;
+    if (range < targetRange * 0.8) score -= 50; // Too short range
+    else if (range > targetRange * 2.5) score -= 10; // Overkill range (paying for unused capability)
+    else score += 20; // Good range match
+
+    // Capacity fit: prefer aircraft near target capacity
+    const capRatio = ac.passengerCapacity / targetCapacity;
+    if (capRatio >= 0.5 && capRatio <= 1.5) score += 25; // Good fit
+    else if (capRatio < 0.3) score -= 30; // Way too small
+    else if (capRatio > 2.5) score -= 15; // Way too big
+
+    // Era popularity: prefer aircraft introduced recently (within 15 years)
+    // and penalize aircraft near end of life. This naturally selects era-appropriate types.
+    const yearsInService = worldYear - ac.availableFrom;
+    if (yearsInService <= 5) score += 15; // Brand new type — popular
+    else if (yearsInService <= 15) score += 10; // Established, still popular
+    else if (yearsInService <= 25) score += 0; // Aging but available
+    else score -= 10; // Very old design
+
+    // Penalize aircraft about to be discontinued (within 5 years of availableUntil)
+    if (ac.availableUntil && ac.availableUntil - worldYear < 5) score -= 20;
+
+    // Fleet commonality bonus
+    if (existingFamilies.has(`${ac.manufacturer} ${ac.model}`)) score += 20;
+
+    // Minimum viable size: penalize tiny aircraft (< 20 pax) unless at small airport
+    if (ac.passengerCapacity < 20 && baseAirport?.type !== 'Small Regional') score -= 25;
+
+    // Personality modifier
+    if (airline.aiPersonality === 'aggressive') {
+      score += ac.passengerCapacity > targetCapacity ? 5 : -5; // Prefers bigger
+    } else if (airline.aiPersonality === 'conservative') {
+      score += ac.passengerCapacity <= targetCapacity ? 5 : -5; // Prefers right-sized or smaller
+    }
+
+    return { aircraft: ac, score };
+  });
+
+  // Sort by score descending, pick from top candidates with some randomness
+  scored.sort((a, b) => b.score - a.score);
+  const topN = scored.slice(0, Math.min(5, scored.length));
+  const chosen = topN[Math.floor(Math.random() * topN.length)].aircraft;
 
   const purchasePrice = parseFloat(chosen.purchasePrice) || 50000000;
 
@@ -1216,6 +1295,7 @@ async function spawnOneAIAirline(world, difficulty, humanBaseAirport) {
     balance: startingBalance,
     reputation: 40 + Math.floor(Math.random() * 10),
     isAI: true,
+    airlineType: pickArchetype(worldYear),
     aiPersonality: personality,
     aiLastDecisionTime: new Date(),
     cleaningContractor: pickAIContractorTier(),
