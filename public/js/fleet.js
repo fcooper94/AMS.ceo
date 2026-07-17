@@ -690,6 +690,9 @@ function buildActionButtons(ua) {
   }
   if (status === 'scrapping') {
     html += `<span style="flex:1; padding: 0.5rem; font-size: 0.85rem; color: #f87171; text-align: center; font-weight: 600;">Ferrying to scrapyard...</span>`;
+    if (ua.scrapAirportCode) {
+      html += `<button class="btn" onclick="event.stopPropagation(); viewScrapOnMap('${ua.currentAirport || ''}', '${ua.scrapAirportCode}', '${ua.registration}')" style="flex:0.5; padding: 0.5rem; font-size: 0.8rem; cursor: pointer; background: #7f1d1d; border-color: #991b1b; color: #fca5a5;">VIEW ON MAP</button>`;
+    }
   }
   if (status === 'active') {
     html += `<button class="btn" onclick="event.stopPropagation(); confirmPutInStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #64748b; border-color: #64748b; color: #fff;">STORE</button>`;
@@ -1153,6 +1156,10 @@ async function showScrapDialog(aircraftId, registration) {
           });
           const result = await scrapRes.json();
           if (!scrapRes.ok) throw new Error(result.error);
+          // Show contract signing animation
+          const ua = fleetData.find(a => a.id === window._scrapAircraftId);
+          const acName = ua ? `${ua.aircraft?.manufacturer || ''} ${ua.aircraft?.model || ''} ${ua.aircraft?.variant || ''}`.trim() : 'Aircraft';
+          await showScrapContractAnimation(acName, registration, offer.price, offer.companyName, offer.airportCode);
           document.getElementById('aircraftDetailOverlay')?.remove();
           loadFleet();
         } catch (err) {
@@ -1175,6 +1182,286 @@ function selectScrapOffer(el, offerId) {
   el.classList.add('selected');
   el.style.borderColor = 'var(--accent-color)';
   el.style.background = 'var(--surface-elevated)';
+}
+
+/**
+ * View scrapping aircraft ferry route on a mini-map popup.
+ */
+async function viewScrapOnMap(fromIcao, toIcao, registration) {
+  // Fetch airport coordinates
+  try {
+    const r = await fetch('/api/world/airports');
+    const airports = await r.json();
+    {
+      const from = airports.find(a => a.icaoCode === fromIcao);
+      const to = airports.find(a => a.icaoCode === toIcao);
+      if (!from && !to) return;
+
+      // Create modal with map
+      const backdrop = document.createElement('div');
+      backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:var(--surface);border-radius:8px;width:700px;max-width:90%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'padding:0.75rem 1rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-color);';
+      header.innerHTML = `
+        <div>
+          <span style="font-weight:700;color:#f87171;">&#9992; ${registration}</span>
+          <span style="color:var(--text-muted);font-size:0.85rem;"> — Ferrying to scrapyard</span>
+        </div>
+        <span style="font-size:0.8rem;color:var(--text-secondary);">${fromIcao || '?'} &#10132; ${toIcao}</span>
+      `;
+
+      const mapDiv = document.createElement('div');
+      mapDiv.id = 'scrapFerryMap';
+      mapDiv.style.cssText = 'height:400px;width:100%;';
+
+      modal.appendChild(header);
+      modal.appendChild(mapDiv);
+      backdrop.appendChild(modal);
+      document.body.appendChild(backdrop);
+
+      // Lazy-load Leaflet if not already available
+      if (typeof L === 'undefined') {
+        await new Promise((res) => {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          document.head.appendChild(link);
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          script.onload = res;
+          document.head.appendChild(script);
+        });
+      }
+
+      const map = L.map('scrapFerryMap', { zoomControl: true });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '',
+        maxZoom: 18
+      }).addTo(map);
+
+      const points = [];
+      if (from) points.push([parseFloat(from.latitude), parseFloat(from.longitude)]);
+      if (to) points.push([parseFloat(to.latitude), parseFloat(to.longitude)]);
+
+      // Draw ferry route line (dashed red)
+      if (points.length === 2) {
+        L.polyline(points, { color: '#dc2626', weight: 2, dashArray: '8, 6', opacity: 0.7 }).addTo(map);
+
+        // Origin marker (blue)
+        L.circleMarker(points[0], { radius: 6, fillColor: '#3b82f6', fillOpacity: 0.9, color: '#fff', weight: 1 })
+          .bindPopup(`<b>${fromIcao}</b><br>${from.name || 'Origin'}`)
+          .addTo(map);
+
+        // Scrapyard marker (red with scissors)
+        L.marker(points[1], {
+          icon: L.divIcon({
+            className: '',
+            html: '<div style="font-size:1.5rem;text-shadow:0 0 4px rgba(0,0,0,0.8);">&#9986;</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          })
+        }).bindPopup(`<b>${toIcao}</b><br>Scrapyard`).addTo(map);
+
+        // Plane icon at midpoint (red, moving toward scrapyard)
+        const midLat = (points[0][0] + points[1][0]) / 2;
+        const midLon = (points[0][1] + points[1][1]) / 2;
+        const angle = Math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0]) * 180 / Math.PI;
+        L.marker([midLat, midLon], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="font-size:1.3rem;color:#f87171;transform:rotate(${-angle + 90}deg);text-shadow:0 0 4px rgba(0,0,0,0.8);">&#9992;</div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          })
+        }).bindPopup(`<b>${registration}</b><br>In transit to scrapyard`).addTo(map);
+
+        map.fitBounds(points, { padding: [40, 40] });
+      } else if (points.length === 1) {
+        map.setView(points[0], 6);
+      }
+    }
+  } catch (err) {
+    console.error('Error loading scrap map:', err);
+  }
+}
+
+/**
+ * Scrap contract signing animation — shows disposal agreement with pen signature and stamp.
+ */
+function showScrapContractAnimation(aircraftName, registration, price, companyName, airportCode) {
+  return new Promise((resolve) => {
+    const ceoName = document.getElementById('userName')?.textContent?.trim() || 'Chief Executive';
+    const airlineName = document.getElementById('airlineName')?.textContent?.trim() || 'Airline';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'scrapContractOverlay';
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(10, 15, 26, 0.95);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 10000; opacity: 0; transition: opacity 0.3s ease;
+    `;
+
+    const formattedPrice = new Intl.NumberFormat('en-US', {
+      style: 'currency', currency: 'USD', maximumFractionDigits: 0
+    }).format(price);
+
+    const today = new Date().toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    });
+
+    overlay.innerHTML = `
+      <div class="contract-container" style="
+        background: #f5f0e6;
+        background-image: linear-gradient(to bottom, #f5f0e6, #e8e0d0);
+        width: 500px; max-width: 90%; padding: 2.5rem;
+        filter: invert(1); mix-blend-mode: screen;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 0 100px rgba(0,0,0,0.05);
+        font-family: 'Times New Roman', serif; color: #2c2c2c;
+        position: relative; transform: scale(0.9); opacity: 0;
+        transition: all 0.4s ease;
+      ">
+        <div style="position: absolute; top: 12px; left: 12px; right: 12px; bottom: 12px; border: 2px solid #8b4444; pointer-events: none;"></div>
+
+        <div style="text-align: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #8b4444;">
+          <div style="font-size: 0.7rem; letter-spacing: 3px; color: #666; margin-bottom: 0.3rem;">OFFICIAL DOCUMENT</div>
+          <h2 style="font-size: 1.3rem; font-weight: bold; margin: 0; letter-spacing: 1px;">AIRCRAFT DISPOSAL AGREEMENT</h2>
+        </div>
+
+        <div style="font-size: 0.9rem; line-height: 1.8; text-align: justify;">
+          <p style="margin-bottom: 1rem;">
+            This agreement, executed on <strong>${today}</strong>, hereby confirms the transfer of ownership and disposal of the following aircraft:
+          </p>
+
+          <div style="background: rgba(139, 68, 68, 0.1); padding: 1rem; margin: 1rem 0; border-left: 3px solid #8b4444;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Aircraft:</span>
+              <strong>${aircraftName}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Registration:</span>
+              <strong>${registration}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Scrap Value:</span>
+              <strong>${formattedPrice}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>Receiving Party:</span>
+              <strong>${companyName}</strong>
+            </div>
+          </div>
+
+          <p style="font-size: 0.8rem; color: #666; margin-top: 1rem;">
+            The undersigned transfers full ownership of the above aircraft, including all airframe components, engines, avionics, and associated parts to the receiving party for dismantling and recycling. The aircraft is hereby removed from the Air Operator's Certificate of ${airlineName}.
+          </p>
+        </div>
+
+        <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #8b4444;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div style="flex: 1;">
+              <div style="font-size: 0.75rem; color: #666; margin-bottom: 0.5rem;">AUTHORIZED SIGNATURE</div>
+              <div id="scrapSignatureArea" style="position: relative; height: 60px; border-bottom: 1px solid #2c2c2c; margin-right: 2rem; overflow: hidden;">
+                <div id="scrapSignatureText" style="
+                  position: absolute; bottom: 16px; left: 8px;
+                  font-family: 'Segoe Script', 'Apple Chancery', 'Brush Script MT', cursive;
+                  font-size: 1.55rem; color: #1a3a6e; white-space: nowrap;
+                  clip-path: inset(0 100% 0 0);
+                ">${ceoName}</div>
+                <div id="scrapSignatureTitle" style="
+                  position: absolute; bottom: 1px; left: 10px;
+                  font-family: 'Times New Roman', serif; font-size: 0.6rem;
+                  color: #555; letter-spacing: 0.5px; opacity: 0; transition: opacity 0.4s ease;
+                ">CEO &mdash; ${airlineName}</div>
+                <div id="scrapPenCursor" style="
+                  position: absolute; bottom: 16px; left: 0;
+                  font-size: 1.2rem; opacity: 0; transform: rotate(-30deg) scaleX(-1);
+                  pointer-events: none; z-index: 2;
+                ">&#9999;&#65039;</div>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.75rem; color: #666;">DATE</div>
+              <div style="font-size: 0.9rem; font-weight: bold;">${today}</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="scrapDisposedStamp" style="
+          position: absolute; top: 50%; left: 50%;
+          transform: translate(-50%, -50%) rotate(-15deg) scale(0);
+          width: 160px; height: 160px;
+          border: 4px solid #dc2626; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 1.1rem; font-weight: bold; color: #dc2626;
+          text-transform: uppercase; letter-spacing: 2px;
+          opacity: 0;
+        ">
+          <div style="text-align: center;">
+            <div style="font-size: 1.5rem;">&#9986;</div>
+            <div>DISPOSED</div>
+            <div style="font-size: 0.6rem; letter-spacing: 1px; margin-top: 2px;">${airportCode}</div>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        @keyframes scrapStampAppear {
+          0% { transform: translate(-50%, -50%) rotate(-15deg) scale(0); opacity: 0; }
+          50% { transform: translate(-50%, -50%) rotate(-15deg) scale(1.2); opacity: 0.8; }
+          100% { transform: translate(-50%, -50%) rotate(-15deg) scale(1); opacity: 0.9; }
+        }
+      </style>
+    `;
+
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+      overlay.style.opacity = '1';
+      const container = overlay.querySelector('.contract-container');
+      container.style.transform = 'scale(1)';
+      container.style.opacity = '1';
+
+      setTimeout(() => {
+        const pen = document.getElementById('scrapPenCursor');
+        const sigText = document.getElementById('scrapSignatureText');
+        const sigTitle = document.getElementById('scrapSignatureTitle');
+        const writeDuration = 1.5;
+        const textWidth = sigText.scrollWidth;
+        const penEndX = Math.min(textWidth + 8, 280);
+
+        pen.style.opacity = '1';
+        pen.style.transition = `left ${writeDuration}s ease-in-out`;
+        sigText.style.transition = `clip-path ${writeDuration}s ease-in-out`;
+
+        requestAnimationFrame(() => {
+          sigText.style.clipPath = 'inset(0 0 0 0)';
+          pen.style.left = penEndX + 'px';
+        });
+
+        setTimeout(() => {
+          pen.style.transition = 'opacity 0.3s ease';
+          pen.style.opacity = '0';
+          sigTitle.style.opacity = '1';
+
+          setTimeout(() => {
+            const stamp = document.getElementById('scrapDisposedStamp');
+            stamp.style.animation = 'scrapStampAppear 0.4s ease-out forwards';
+
+            setTimeout(() => {
+              overlay.style.opacity = '0';
+              setTimeout(() => { overlay.remove(); resolve(); }, 300);
+            }, 3000);
+          }, 400);
+        }, (writeDuration * 1000) + 100);
+      }, 500);
+    });
+  });
 }
 
 // Put aircraft into storage - with airport selection
