@@ -499,7 +499,8 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     const deficit = Math.abs(balance);
 
     if (routes.length > 0 && deficit > startingCapital * 0.5) {
-      await tryContractNetwork(airline, routes, config, world, gameTime);
+      // Desperate: allow cutting the worst route even if only marginally bad.
+      await tryContractNetwork(airline, routes, config, world, gameTime, { force: true });
     }
 
     if (balance < -startingCapital * 1.5 || (routes.length === 0 && fleet.length === 0)) {
@@ -1067,14 +1068,25 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 /**
  * Contract the network by cancelling the least profitable route
  */
-async function tryContractNetwork(airline, routes, config, world, gameTime) {
+async function tryContractNetwork(airline, routes, config, world, gameTime, options = {}) {
+  // Patience gates: don't cut routes too early or that aren't genuinely failing.
+  //   - MIN_FLIGHTS: a route must have flown enough to have matured (LF ramps over
+  //     ~8-12 game-weeks) before its numbers are judged.
+  //   - CANCEL_RATIO: only cancel a route covering less than this share of its costs;
+  //     a marginal or still-ramping route is left alone.
+  //   - force (bankruptcy only): drop the guards so a desperate airline can shed its
+  //     worst route to survive.
+  const force = options.force === true;
+  const MIN_FLIGHTS = force ? 3 : 8;
+  const CANCEL_RATIO = force ? Infinity : 0.80;
+
   // Find worst-performing route (by revenue/cost ratio, not absolute profit)
   let worstRoute = null;
   let worstRatio = Infinity;
 
   for (const route of routes) {
     const flights = parseInt(route.totalFlights) || 0;
-    if (flights < 3) continue; // Give new routes time to mature
+    if (flights < MIN_FLIGHTS) continue; // Give new routes time to mature
     const revenue = parseFloat(route.totalRevenue) || 0;
     const costs = parseFloat(route.totalCosts) || 0;
     const ratio = costs > 0 ? revenue / costs : 1;
@@ -1084,7 +1096,8 @@ async function tryContractNetwork(airline, routes, config, world, gameTime) {
     }
   }
 
-  if (!worstRoute) return;
+  // Nothing eligible, or the worst route is still healthy enough to keep running.
+  if (!worstRoute || worstRatio >= CANCEL_RATIO) return;
 
   try {
     worstRoute.isActive = false;

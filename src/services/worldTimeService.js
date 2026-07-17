@@ -784,6 +784,7 @@ class WorldTimeService {
         }
 
         // Apply marketing boost from active campaigns (cached per cycle)
+        let routeMarketingBoostPct = 0;
         try {
           const membershipId = route.worldMembershipId;
           if (!this.marketingBoostCache.has(membershipId)) {
@@ -793,20 +794,15 @@ class WorldTimeService {
             });
             this.marketingBoostCache.set(membershipId, totalBoost || 0);
           }
-          const marketingBoostPct = this.marketingBoostCache.get(membershipId) || 0;
-          if (marketingBoostPct > 0) {
-            demandFactor *= (1 + marketingBoostPct / 100);
+          routeMarketingBoostPct = this.marketingBoostCache.get(membershipId) || 0;
+          if (routeMarketingBoostPct > 0) {
+            demandFactor *= (1 + routeMarketingBoostPct / 100);
           }
         } catch (_) { /* non-critical — skip if error */ }
 
-        // 3. Route maturity factor: new routes ramp up over game-weeks (0.55–1.00)
-        // Exponential ramp: ~0.68 at 2wk, ~0.82 at 4wk, ~0.95 at 8wk, ~1.0 at 12wk
+        // 3. Route maturity factor: computed AFTER competition is known (see below),
+        //    since how fast a new route fills depends on demand and rivals.
         let maturityFactor = 1.0;
-        if (route.createdAt) {
-          const routeAgeMs = currentGameTime.getTime() - new Date(route.createdAt).getTime();
-          const routeAgeWeeks = routeAgeMs / (7 * 24 * 60 * 60 * 1000);
-          maturityFactor = Math.min(1.0, 0.55 + 0.45 * (1 - Math.exp(-routeAgeWeeks / 3)));
-        }
 
         // 4. Aircraft prestige factor: newer/right-sized aircraft attract more passengers
         let prestigeFactor = 1.0;
@@ -975,6 +971,35 @@ class WorldTimeService {
           competitionFactor = Math.max(0.30, Math.min(1.60, myShare / fairShare));
         }
         // No competitors → competitionFactor stays 1.0 (monopoly)
+
+        // 6b. Route maturity ramp — how fast a NEW route fills its seats.
+        // A route builds its customer base over ~8-12 game-weeks. The speed depends
+        // on the market it enters:
+        //   • Uncontested + strong demand → fills almost immediately (little ramp)
+        //   • Against established rivals   → starts lower and climbs as it establishes
+        // Marketing lifts the starting point. This replaces the old flat 0.55 start so
+        // a high-demand monopoly route no longer opens with an unrealistically low LF,
+        // while a route fighting for share starts modest (never zero) and grows.
+        if (route.createdAt) {
+          const routeAgeWeeks = (currentGameTime.getTime() - new Date(route.createdAt).getTime()) / (7 * 24 * 60 * 60 * 1000);
+          const ramp = 1 - Math.exp(-Math.max(0, routeAgeWeeks) / 3); // 0 → ~1 over 8-12wk
+          const competitorCount = competingRoutesList.length;
+          const demandStrength = Math.max(0, Math.min(1, routeDemandValue / 100));
+
+          let startShare;
+          if (competitorCount === 0) {
+            // Monopoly: unmet demand fills quickly; stronger demand → higher immediate LF
+            startShare = 0.80 + 0.15 * demandStrength; // 0.80–0.95
+          } else {
+            // Competitive: a new entrant starts lower; more rivals → lower start
+            startShare = Math.max(0.40, 0.62 - 0.07 * competitorCount);
+          }
+          // Marketing accelerates establishment (raises the starting share)
+          if (routeMarketingBoostPct > 0) {
+            startShare = Math.min(0.95, startShare + Math.min(0.15, (routeMarketingBoostPct / 100) * 0.5));
+          }
+          maturityFactor = Math.min(1.0, startShare + (1 - startShare) * ramp);
+        }
 
         // 7. Time-of-day factor: antisocial departure times reduce load factor
         //    Estimate local hour from departure airport longitude (15° per hour)
