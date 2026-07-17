@@ -1543,7 +1543,7 @@ function showOrderRegistrationDialog() {
   function buildRegInputs() {
     if (qty === 1) {
       return `
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="regContainer0">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);" id="regContainer0">
           <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input type="text" id="regSuffix0"
             placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -1558,7 +1558,7 @@ function showOrderRegistrationDialog() {
         <tr>
           <td style="padding: 0.4rem 0.5rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">${i + 1}</td>
           <td style="padding: 0.4rem 0.5rem;">
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
               <div style="padding: 0.4rem 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="regSuffix${i}"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -2320,7 +2320,7 @@ function showConfirmationDialog(title, aircraftName, condition, price, actionTyp
 
       <div style="margin-bottom: 1.5rem;">
         <label style="display: block; margin-bottom: 0.5rem; color: var(--text-primary); font-weight: 600;">Aircraft Registration</label>
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);">
           <div id="registrationPrefix" style="padding: 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 1rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input
             type="text"
@@ -2948,7 +2948,7 @@ function showLeaseRegistrationDialog() {
   function buildRegInputs() {
     if (qty === 1) {
       return `
-        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer0">
+        <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer0">
           <div style="padding: 0.6rem 0.75rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
           <input type="text" id="leaseRegSuffix0"
             placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -2963,7 +2963,7 @@ function showLeaseRegistrationDialog() {
         <tr>
           <td style="padding: 0.3rem; color: var(--text-muted); font-size: 0.8rem; text-align: center;">${i + 1}</td>
           <td style="padding: 0.3rem;">
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer${i}">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);" id="leaseRegContainer${i}">
               <div style="padding: 0.35rem 0.4rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="leaseRegSuffix${i}"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
@@ -3408,7 +3408,7 @@ function showLeaseConfirmationDialogUsed() {
         <div>
           <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 600; font-size: 0.85rem;">Aircraft Registration</label>
-            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); filter: invert(1); mix-blend-mode: screen; overflow: hidden; background: var(--surface-elevated);">
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);">
               <div id="leaseRegistrationPrefix" style="padding: 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="leaseRegistrationSuffix"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"

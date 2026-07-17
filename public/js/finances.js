@@ -348,7 +348,7 @@ function renderRoutes(routes) {
       <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--warning-color);">$${fmtNum(r.totalCosts)}</td>
       <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${pc};">${r.profit<0?'-':''}$${fmtNum(Math.abs(r.profit))}</td>
       <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${mc};">${r.profitMargin}%</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${r.averageLoadFactor}%</td>
+      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${Math.round((r.averageLoadFactor || 0) * 100)}%</td>
       <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">$${fmtNum(r.revenuePerFlight)}</td>
     </tr>`;
   }

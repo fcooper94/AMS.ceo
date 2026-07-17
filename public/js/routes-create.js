@@ -748,15 +748,29 @@ function updatePassengerClassAvailability(aircraftData) {
   const businessField    = document.getElementById('businessPrice');
   const firstField       = document.getElementById('firstPrice');
 
+  // Class availability. The per-aircraft has* flags default to false and aren't
+  // populated in seed data, so derive from aircraft type/capacity (respecting an
+  // explicit `true` flag if one is ever set). Cabin config and revenue already
+  // use the aircraft's configured seats, not these flags — this only ungated the
+  // pricing inputs.
+  const cap    = aircraftData?.passengerCapacity || 0;
+  const isWide = (aircraftData?.type || '') === 'Widebody';
+  const avail = {
+    economy:     aircraftData ? aircraftData.hasEconomy !== false : true,
+    economyPlus: aircraftData ? (aircraftData.hasEconomyPlus === true || isWide || cap >= 150) : true,
+    business:    aircraftData ? (aircraftData.hasBusiness === true || cap >= 50) : true,
+    first:       aircraftData ? (aircraftData.hasFirst === true || isWide || cap >= 250) : true
+  };
+
   // ── Economy (always available, not era-gated) ──────────────────────────
   if (economyField) {
-    const ok = aircraftData ? aircraftData.hasEconomy !== false : true;
+    const ok = avail.economy;
     _setFieldAvail(economyField, ok, ok ? null : '(not available on this aircraft)');
   }
 
   // ── Premium Economy (era-gated: 1992+) ────────────────────────────────
   if (economyPlusField) {
-    const hasIt = aircraftData ? aircraftData.hasEconomyPlus === true : true;
+    const hasIt = avail.economyPlus;
     const ok    = hasIt && eraAllowsPremEco;
     const note  = !eraAllowsPremEco ? `(available from 1992)`
                 : !hasIt            ? '(not available on this aircraft)' : null;
@@ -765,7 +779,7 @@ function updatePassengerClassAvailability(aircraftData) {
 
   // ── Business class (era-gated: 1978+) ─────────────────────────────────
   if (businessField) {
-    const hasIt = aircraftData ? aircraftData.hasBusiness === true : true;
+    const hasIt = avail.business;
     const ok    = hasIt && eraAllowsBusiness;
     const note  = !eraAllowsBusiness ? `(available from 1978)`
                 : !hasIt             ? '(not available on this aircraft)' : null;
@@ -774,7 +788,7 @@ function updatePassengerClassAvailability(aircraftData) {
 
   // ── First class (not era-gated — existed since early commercial aviation) ──
   if (firstField) {
-    const ok = aircraftData ? aircraftData.hasFirst === true : true;
+    const ok = avail.first;
     _setFieldAvail(firstField, ok, ok ? null : '(not available on this aircraft)');
   }
 

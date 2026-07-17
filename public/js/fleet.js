@@ -576,6 +576,12 @@ async function showAircraftDetails(userAircraftId) {
         const c = lp.profit >= 0 ? 'var(--warning-color)' : 'var(--danger-color)';
         rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.15rem;padding-top:0.2rem;"><span style="color:${c};font-weight:600;">${lp.origin}-${lp.destination}</span><span style="color:${c};">$${formatCurrency(lp.profit)}</span></div>`;
       }
+      // Overall profit across all this aircraft's routes (bottom right)
+      if (typeof details.totalProfit === 'number') {
+        const tc = details.totalProfit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const sign = details.totalProfit < 0 ? '-' : '';
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.2rem 0 0;border-top:1px solid var(--border-color);margin-top:0.25rem;"><span style="color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:0.65rem;letter-spacing:0.5px;">Total</span><span style="color:${tc};font-weight:700;">${sign}$${formatCurrency(Math.abs(details.totalProfit))}</span></div>`;
+      }
       routeInfoEl.innerHTML = rh || '<span>No route data</span>';
     } else {
       routeInfoEl.innerHTML = '<span>No routes assigned</span>';

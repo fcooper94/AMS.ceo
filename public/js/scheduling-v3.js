@@ -702,6 +702,51 @@ function showClearChoiceModal(title, flightCount, maintCount) {
   });
 }
 
+// Choice modal shown when a multi-day (e.g. daily) route is dragged onto the
+// schedule: schedule every operating day, or only the day it was dropped on.
+// Resolves to 'all' | 'single' | null (cancel).
+function showScheduleChoiceModal(route, aircraft, dayName, dayCount, timeStr) {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('scheduleChoiceModal');
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+    modal.id = 'scheduleChoiceModal';
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 460px;">
+        <div class="modal-header">
+          <h2>Confirm Schedule</h2>
+        </div>
+        <div class="modal-body">
+          <p style="color: var(--text-primary); line-height: 1.6; margin: 0 0 0.5rem 0;">
+            <strong>${route.routeNumber} / ${route.returnRouteNumber}</strong> on ${aircraft.registration} at ${timeStr}.
+          </p>
+          <p style="color: var(--text-secondary); margin: 0;">
+            This route operates on ${dayCount} days. Schedule it on all of them, or just ${dayName}?
+          </p>
+        </div>
+        <div class="modal-footer" style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end;">
+          <button class="btn btn-secondary" data-choice="cancel">Cancel</button>
+          <button class="btn btn-secondary" data-choice="single">${dayName} only</button>
+          <button class="btn btn-primary" data-choice="all">Schedule all ${dayCount} days</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) { modal.remove(); resolve(null); return; }
+      const btn = e.target.closest('[data-choice]');
+      if (!btn) return;
+      modal.remove();
+      resolve(btn.dataset.choice === 'cancel' ? null : btn.dataset.choice);
+    });
+
+    document.body.appendChild(modal);
+  });
+}
+
 // Loading Modal for batch operations
 function showLoadingModal(title, message) {
   // Create loading modal if it doesn't exist
@@ -5754,6 +5799,7 @@ function renderDailySchedule() {
   html += '</tbody></table>';
 
   container.innerHTML = html;
+  requestAnimationFrame(fitSegmentFlightNumbers);
 
   // Start or update the red timeline
   updateTimeline();
@@ -5843,9 +5889,30 @@ function renderWeeklySchedule() {
   html += '</tbody></table>';
 
   container.innerHTML = html;
+  requestAnimationFrame(fitSegmentFlightNumbers);
 
   // Start timeline updates for weekly view too
   updateTimeline();
+}
+
+// If a flight number is too wide for its timeline block, fall back to just its
+// last two digits (e.g. "KL1003" → "03") instead of an ugly mid-word clip.
+function fitSegmentFlightNumbers() {
+  document.querySelectorAll('.flight-segment').forEach(seg => {
+    const numEl = seg.querySelector('.segment-flight-num');
+    if (!numEl) return;
+    let full = numEl.getAttribute('data-full');
+    if (full === null) {
+      full = numEl.textContent;
+      numEl.setAttribute('data-full', full);
+    } else {
+      numEl.textContent = full; // reset before re-measuring
+    }
+    const avail = seg.clientWidth - 8; // subtract horizontal padding
+    if (avail > 0 && numEl.scrollWidth > avail) {
+      numEl.textContent = full.replace(/\s+/g, '').slice(-2);
+    }
+  });
 }
 
 // Go to daily view for a specific day
@@ -7463,6 +7530,17 @@ async function showDaySelectionForRoute(routeId) {
 
   const depTime = route.scheduledDepartureTime ? route.scheduledDepartureTime.substring(0, 5) : '--:--';
 
+  // Offer a one-click "add every operating day" when the route runs on more than
+  // one day (e.g. a daily route), instead of forcing a click per day.
+  const operatingCount = availableDays.length === 7 ? 7 : dayOrder.filter(d => availableDays.includes(d)).length;
+  const bulkButtonHtml = operatingCount > 1 ? `
+    <button
+      onclick="scheduleRouteForAllDays('${routeId}')"
+      style="width: 100%; padding: 0.75rem; background: var(--accent-color); border: 1px solid var(--accent-color); border-radius: 4px; color: white; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-bottom: 1rem;"
+    >+ Add all ${operatingCount} operating days</button>
+    <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1rem;">— or pick a single day —</div>
+  ` : '';
+
   modalContent.innerHTML = `
     <h2 style="margin: 0 0 1rem 0; color: var(--text-primary); font-size: 1.1rem;">SCHEDULE ROUTE</h2>
     <p style="margin: 0 0 0.5rem 0; color: var(--accent-color); font-weight: 600;">
@@ -7474,7 +7552,8 @@ async function showDaySelectionForRoute(routeId) {
     <p style="margin: 0 0 1rem 0; color: var(--text-muted); font-size: 0.85rem;">
       Departure: <span style="color: var(--success-color); font-weight: 600;">${depTime}</span> • Aircraft: <span style="color: var(--text-primary);">${aircraft.registration}</span>
     </p>
-    <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem;">Select day to schedule:</p>
+    ${bulkButtonHtml}
+    ${operatingCount > 1 ? '' : '<p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.9rem;">Select day to schedule:</p>'}
     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;">
       ${dayButtonsHtml}
     </div>
@@ -7581,6 +7660,77 @@ async function scheduleRouteForDay(routeId, dayOfWeek) {
     closeLoadingModal();
     console.error('Error scheduling flight:', error);
     await showAlertModal('Error', 'Failed to schedule flight. Please try again.');
+  }
+}
+
+// Schedule the route on every day it operates (called from day selection modal)
+async function scheduleRouteForAllDays(routeId) {
+  closeDaySelectionModal();
+
+  const route = routes.find(r => r.id === routeId);
+  if (!route || !currentAircraftId) return;
+
+  const aircraftId = currentAircraftId;
+  const aircraft = userFleet.find(a => a.id === aircraftId);
+  if (!aircraft) return;
+
+  const departureTime = route.scheduledDepartureTime || '00:00:00';
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon–Sun
+  const rawDays = route.daysOfWeek || [];
+  const operatingDays = dayOrder.filter(d => rawDays.includes(d) || rawDays.length === 7);
+  if (operatingDays.length === 0) {
+    await showAlertModal('No Schedule', 'This route has no operating days configured.');
+    return;
+  }
+
+  let added = 0;
+  const skipped = [];
+
+  try {
+    showLoadingModal('Scheduling Flights', `Adding ${operatingDays.length} flights...`);
+
+    for (const dayOfWeek of operatingDays) {
+      try {
+        const response = await fetch('/api/schedule/flight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ routeId: route.id, aircraftId, dayOfWeek, departureTime })
+        });
+        if (response.ok) {
+          added++;
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          skipped.push(`${dayNames[dayOfWeek]}: ${errorData.error || 'conflict'}`);
+        }
+      } catch (e) {
+        skipped.push(`${dayNames[dayOfWeek]}: network error`);
+      }
+    }
+
+    // Refresh auto-maintenance once after the batch
+    if (aircraftId && added > 0) {
+      try {
+        await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' });
+      } catch (e) {
+        console.error('Error refreshing maintenance:', e);
+      }
+    }
+
+    await loadSchedule();
+    closeLoadingModal();
+    closeAddRouteModal();
+
+    if (skipped.length > 0) {
+      await showAlertModal(
+        'Scheduled with conflicts',
+        `Added ${added} of ${operatingDays.length} days.\n\nSkipped:\n${skipped.join('\n')}`
+      );
+    }
+  } catch (error) {
+    closeLoadingModal();
+    console.error('Error scheduling flights:', error);
+    await showAlertModal('Error', 'Failed to schedule flights. Please try again.');
   }
 }
 
@@ -9465,17 +9615,69 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
   const dayName = dayNames[dayOfWeek];
   const timeStr = departureTime.substring(0, 5);
 
-  // Confirm scheduling
-  const confirmed = await showConfirmModal(
-    'Confirm Schedule',
-    `Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} for ${dayName} at ${timeStr}?`
-  );
+  // A multi-day (e.g. daily) route can be scheduled on every operating day or just
+  // the day it was dropped on. Single-day routes keep the simple confirm.
+  const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const rawDays = draggedRoute.daysOfWeek || [];
+  const operatingDays = dayOrder.filter(d => rawDays.includes(d) || rawDays.length === 7);
 
-  if (!confirmed) {
+  let mode = 'single';
+  if (operatingDays.length > 1) {
+    const choice = await showScheduleChoiceModal(draggedRoute, aircraft, dayName, operatingDays.length, timeStr);
+    if (!choice) { draggedRoute = null; return; }
+    mode = choice; // 'all' | 'single'
+  } else {
+    const confirmed = await showConfirmModal(
+      'Confirm Schedule',
+      `Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} for ${dayName} at ${timeStr}?`
+    );
+    if (!confirmed) { draggedRoute = null; return; }
+  }
+
+  const routeId = draggedRoute.id;
+
+  if (mode === 'all') {
+    // Schedule every operating day, skipping conflicts and summarising.
+    try {
+      showLoadingModal('Scheduling Flights', `Adding ${operatingDays.length} flights...`);
+      let added = 0;
+      const skipped = [];
+      for (const d of operatingDays) {
+        try {
+          const response = await fetch('/api/schedule/flight', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ routeId, aircraftId, dayOfWeek: d, departureTime })
+          });
+          if (response.ok) {
+            added++;
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            skipped.push(`${dayNames[d]}: ${errorData.error || 'conflict'}`);
+          }
+        } catch (e) {
+          skipped.push(`${dayNames[d]}: network error`);
+        }
+      }
+      if (added > 0) {
+        try { await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' }); } catch (e) { /* ignore */ }
+      }
+      await loadSchedule();
+      closeLoadingModal();
+      closeAddRouteModal();
+      if (skipped.length > 0) {
+        await showAlertModal('Scheduled with conflicts', `Added ${added} of ${operatingDays.length} days.\n\nSkipped:\n${skipped.join('\n')}`);
+      }
+    } catch (error) {
+      closeLoadingModal();
+      console.error('Error scheduling flights:', error);
+      await showAlertModal('Error', 'Failed to schedule flights. Please try again.');
+    }
     draggedRoute = null;
     return;
   }
 
+  // Single day (keeps the detailed conflict modal)
   try {
     showLoadingModal('Scheduling Flight', `Adding flight for ${dayName}...`);
 

@@ -56,17 +56,16 @@ function calculateFlightMinutes(distanceNm, cruiseSpeed, depLng, arrLng, depLat,
 function calculateCateringDuration(paxCapacity, acType) {
   if (acType === 'Cargo' || paxCapacity < 50) return 0;
   if (paxCapacity < 100) return 5;
-  if (paxCapacity < 200) return 10;
-  return 15;
+  return 10;
 }
 
 function calculateBoardingDuration(paxCapacity, acType) {
   if (acType === 'Cargo') return 0;
   if (paxCapacity < 50) return 10;
   if (paxCapacity < 100) return 15;
-  if (paxCapacity < 200) return 20;
-  if (paxCapacity < 300) return 25;
-  return 35;
+  if (paxCapacity < 200) return 15;
+  if (paxCapacity < 300) return 20;
+  return 25;
 }
 
 function calculateFuellingDuration(distanceNM) {
@@ -79,18 +78,18 @@ function calculateFuellingDuration(distanceNM) {
 function calculateDeboardingDuration(paxCapacity, acType) {
   if (acType === 'Cargo') return 0;
   if (paxCapacity < 50) return 5;
-  if (paxCapacity < 100) return 8;
-  if (paxCapacity < 200) return 12;
-  if (paxCapacity < 300) return 15;
-  return 20;
+  if (paxCapacity < 100) return 5;
+  if (paxCapacity < 200) return 10;
+  if (paxCapacity < 300) return 10;
+  return 15;
 }
 
 function calculateCleaningDuration(paxCapacity) {
   if (paxCapacity < 50) return 5;
   if (paxCapacity < 100) return 10;
-  if (paxCapacity < 200) return 15;
-  if (paxCapacity < 300) return 20;
-  return 25;
+  if (paxCapacity < 200) return 10;
+  if (paxCapacity < 300) return 15;
+  return 20;
 }
 
 // === COMPOSITE CALCULATIONS ===
@@ -121,9 +120,10 @@ function calculateTurnaroundBreakdown(distanceNM, paxCapacity, acType) {
   const sequentialPath = deboarding + parallelCateringCleaning + boarding;
   const groundOps = Math.max(fuelling, sequentialPath);
 
-  // Always include daily check in minimum turnaround so timings
-  // are consistent whether a daily check is needed or not
-  const total = groundOps + DAILY_CHECK_DURATION;
+  // Daily check runs in parallel with ground ops (it's a walk-around that
+  // overlaps servicing), so it only extends the turnaround if it's longer than
+  // the ground-ops path — it no longer adds a flat 30 min on top.
+  const total = Math.max(groundOps, DAILY_CHECK_DURATION);
 
   return {
     fuelling, deboarding, catering, cleaning, boarding,
@@ -157,7 +157,7 @@ function applyContractorModifiers(breakdown, modifiers) {
   const sequentialPath = deboarding + parallelCateringCleaning + boarding;
   // Ground ops = max of (fuelling, sequential path)
   const groundOps = Math.max(fuelling, sequentialPath);
-  const total = groundOps + breakdown.dailyCheck;
+  const total = Math.max(groundOps, breakdown.dailyCheck);
 
   return {
     fuelling, deboarding, catering, cleaning, boarding,

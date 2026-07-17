@@ -1749,6 +1749,20 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Per-aircraft profit = sum of (revenue - costs) across its assigned routes.
+    if (aircraftIds.length > 0) {
+      const routeProfits = await Route.findAll({
+        where: { worldMembershipId: membership.id, assignedAircraftId: { [Op.in]: aircraftIds } },
+        attributes: ['assignedAircraftId', 'totalRevenue', 'totalCosts']
+      });
+      const profitByAircraft = {};
+      for (const r of routeProfits) {
+        const p = (parseFloat(r.totalRevenue) || 0) - (parseFloat(r.totalCosts) || 0);
+        profitByAircraft[r.assignedAircraftId] = (profitByAircraft[r.assignedAircraftId] || 0) + p;
+      }
+      fleetWithMaintenance.forEach(ac => { ac.profit = Math.round(profitByAircraft[ac.id] || 0); });
+    }
+
     // Get world year for era scaling on the frontend
     const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
     const worldYear = world ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
@@ -2003,6 +2017,9 @@ router.get('/:aircraftId/details', async (req, res) => {
     const mostProfitable = sortedByProfit.length > 0 ? sortedByProfit[0] : null;
     const leastProfitable = sortedByProfit.length > 0 ? sortedByProfit[sortedByProfit.length - 1] : null;
 
+    // Overall profit across all of this aircraft's routes
+    const totalProfit = routesWithProfit.reduce((sum, r) => sum + r.profit, 0);
+
     // Calculate next C and D check dates
     const lastCCheck = aircraft.lastCCheckDate ? new Date(aircraft.lastCCheckDate) : null;
     const lastDCheck = aircraft.lastDCheckDate ? new Date(aircraft.lastDCheckDate) : null;
@@ -2028,6 +2045,7 @@ router.get('/:aircraftId/details', async (req, res) => {
       activeRouteCount: activeRoutes.length,
       mostProfitable,
       leastProfitable,
+      totalProfit,
       maintenance: {
         lastCCheck: aircraft.lastCCheckDate,
         lastDCheck: aircraft.lastDCheckDate,

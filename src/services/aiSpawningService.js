@@ -256,6 +256,7 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
           airlineName: airline.name,
           airlineCode: airline.icaoCode,
           iataCode: airline.iataCode,
+          ...pickAirlineBranding(airline.name),
           region: airport.country,
           baseAirportId: airport.id,
           balance: startingBalance,
