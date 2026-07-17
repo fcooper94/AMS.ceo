@@ -115,6 +115,30 @@ up on this machine for offline dev:
 - **Don't run `npm run db:sync` without the user's explicit go-ahead.** It's a
   heavy op; check the *actual* exit/output (don't let `| tail` mask failures).
 
+## Demand data file — gzip, not LFS (2026-07)
+
+Demand is served **entirely from an in-memory cache** built at boot by
+`demandCacheService.initialize()` from a static file (routeDemandService does
+**zero DB queries** — `airport_route_demands` is not read at runtime). So if the
+file doesn't load, **every route returns `demand: 0` (`no_data`)** — flights
+still fly at the LF floor but demand is flat/broken.
+
+The raw `src/data/demandData.json` is ~172 MB. It **used to be Git LFS**, but
+Railway doesn't pull LFS on deploy, so the server saw only the LFS pointer and
+crash-looped on `JSON.parse`. **Fixed by shipping a gzip instead:**
+
+- **`src/data/demandData.json.gz` (~18 MB) is committed as a normal Git file**
+  (no LFS — deploys everywhere incl. Railway). The plain `.json` is now
+  **git-ignored** and untracked; `.gitattributes` marks `*.gz binary` and the
+  LFS rule is gone.
+- `demandCacheService` loads the `.gz` first (`zlib.gunzipSync`), falling back
+  to the plain `.json` for local dev, with guards for LFS-pointer / parse
+  errors (degrade, don't crash). ~18 MB decompresses in ~1s.
+- **Regenerate with `node src/scripts/generateDemandData.js`** — it writes both
+  the `.json` and the committed `.gz`.
+- Heads-up: the `npm warn config production Use --omit=dev` line on Railway is a
+  harmless deprecation warning (an npm `production=true` config), not an error.
+
 ## Fragile subsystems to be careful around
 
 - **Maintenance engine** (`fleet.js` `createAutoScheduledMaintenance`,
@@ -138,6 +162,12 @@ up on this machine for offline dev:
   near-instant on normal restarts.
 - Seeding/migrations: `npm run db:*` scripts (see `package.json`).
 - SQL logging goes to `logs/sql.log` in development, not the console.
+- **Startup prompts must be TTY-gated, never `NODE_ENV`-gated.** The "Load
+  demand data?" prompt runs only when `process.stdin.isTTY` (local dev);
+  headless (Railway/CI) auto-loads the demand cache and never blocks on input.
+  Heads-up: **Railway currently has `NODE_ENV=development`**, so anything gated
+  on `NODE_ENV === 'development'` (SQL logging to `logs/sql.log`, verbose admin
+  error logs) is ON in production — prefer setting it to `production` there.
 - No automated tests (`npm test` is a stub). Verify JS with `node -c <file>`
   and, for logic, a quick `node -e` harness.
 
@@ -204,6 +234,62 @@ the global div, inherits its `style.minWidth`, then positions via
 `requestAnimationFrame` + `getBoundingClientRect`. Inline `.indicator-tooltip`
 divs are `display:none !important` — their HTML is read by JS only.
 
+## Airline branding & logos (added 2026-07)
+
+Every airline (player **and** AI) has a procedural SVG **logo** + a 3-colour
+scheme stored on `WorldMembership`: `backgroundColor`, `primaryColor`,
+`secondaryColor`, `logoTemplate`, `logoSvg` (nullable; hex colours / an inline
+`<svg>` string). No schema change is needed to add more — the columns exist.
+
+- **Generator:** `public/js/airline-logo.js` — **dual-environment** (browser
+  globals + `module.exports` for Node). `generateAirlineLogos(name, bg,
+  primary, secondary, seed)` returns 8 "livery card" wordmark logos (the name
+  on a primary-colour background — no white box) drawn from a 10-template pool;
+  `seed` reshuffles (stable while typing, changes on "Fresh designs").
+  `pickAirlineBranding(name)` returns a full deterministic branding set
+  (palette + one logo) — used server-side for AI + backfill. Two-letter mark =
+  first letter of each of two words ("British Airways"→BA), else first two
+  letters. Name is HTML-escaped into the SVG (`_esc`).
+- **Setup:** branding is its **own wizard step** (SP step 3, MP/rejoin step 2)
+  in `public/world-selection.html` + `world-selection.js`: colour wells + an
+  8-logo grid + shuffle. The chosen logo is submitted with the create/join
+  payload.
+- **AI logos:** `aiSpawningService.js` calls `pickAirlineBranding` at spawn;
+  `src/scripts/backfillAirlineLogos.js` fills any airline missing a logo
+  (idempotent, deterministic by name). All existing airlines were backfilled on
+  Railway 2026-07 (3720/3720).
+- **Display:** sidebar (`layout.js`), competitors page (`competition.js`;
+  `/api/world/competition` list+detail return `logoSvg`), and the world-map
+  "Other Airline" panel (`world-map.js`; the map flights endpoint in
+  `scheduling.js` returns `logoSvg`).
+- **Security:** client-submitted SVG is **sanitised server-side**
+  (`worldSelection.js` `sanitizeLogoSvg`: SVG-only, no `<script>`/event
+  handlers/external refs) because logos are injected as HTML and shown to other
+  players. Colours validated as hex; template id `[a-z]{1,20}`. AI/backfill SVG
+  is self-generated so it's trusted.
+
+## Airline name filter (added 2026-07)
+
+`public/js/name-filter.js` — dual-environment. `checkAirlineName(name)` →
+`{ ok, reason }`. Blocks **profanity/slurs** (whole-word match + a curated
+substring set that deliberately avoids Scunthorpe-type false positives — e.g.
+`ass`/`cock`/`dick` are whole-word only, not substrings) and **real-world
+airline names** (~250, normalised exact match). Enforced in the setup "Next"
+gate (`world-selection.js`) **and** all three create/join endpoints
+(`worldSelection.js`). Extend either list in one place; both layers pick it up.
+
+**IATA codes are 2 *alphanumeric* chars** (`U2`, `3K`, `BA`) — validated
+`/^[A-Z0-9]{2}$/`. ICAO stays 3 letters (`/^[A-Z]{3}$/`).
+
+## Setup wizard validation (2026-07)
+
+The create/join wizards validate the **airline step on "Next"** (name, name
+filter, ICAO, IATA, base airport) via `advanceModalStep`/`validateModalStep`
+in `world-selection.js`, not only at final submit. Steps are shown by
+`showModalStep(prefix, N)`; `MODAL_STEP_CONFIG` holds the step count per prefix
+(sp/mp/rejoin). If you insert/reorder steps, renumber the `{prefix}Step{N}` /
+`{prefix}StepInd{N}` ids **and** the branding-init/contractor-start offsets.
+
 ## How the user wants Claude to work
 
 - **Be direct and honest. Correct mistakes, don't agree to be agreeable.** When
@@ -220,7 +306,12 @@ divs are `display:none !important` — their HTML is read by JS only.
 - **Confirm before app-wide or production-DB-sensitive changes** (boot
   behaviour, prod schema, anything hard to reverse). Investigate the real code
   before advising — don't answer DB/architecture questions from assumptions.
-- **Don't commit or push unless asked.** Leave changes staged; offer to commit.
+- **Commit/push only when explicitly asked** ("commit and push" / "push").
+  Then commit on `main` and `git push origin main` — **no feature branches**
+  (his stated workflow: push to main to stay in sync). Split into logical
+  commits; **keep `.claude/settings.local.json` (has secrets) and
+  `package-lock.json` out**. Don't proactively commit/push after a fix — he
+  reviews in the running app first.
 - **Syntax-check after edits** (`node -c`), and sanity-test logic with a small
   harness when behaviour matters (e.g. the LHR–GVA ski litmus test).
 - **Track multi-step work with TodoWrite.** Keep one item in progress.
