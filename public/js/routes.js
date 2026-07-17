@@ -118,6 +118,7 @@ function displayAllRoutes(routes) {
         ${routes.map(route => {
           const profit = route.profit || 0;
           const profitColor = profit >= 0 ? 'var(--success-color)' : 'var(--warning-color)';
+          const hasAircraft = !!(route.assignedAircraft && route.assignedAircraft.aircraft);
           const statusColor = route.isActive ? 'var(--success-color)' : 'var(--text-muted)';
           const statusText = route.isActive ? 'ACTIVE' : 'INACTIVE';
           const isSelected = selectedRouteIds.has(route.id);
@@ -148,9 +149,10 @@ function displayAllRoutes(routes) {
                 ${(route.averageLoadFactor * 100).toFixed(1)}%
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
-                <span style="color: ${statusColor}; font-weight: 600; font-size: 0.8rem;">
-                  ${statusText}
-                </span>
+                ${hasAircraft
+                  ? `<span style="color: ${statusColor}; font-weight: 600; font-size: 0.8rem;">${statusText}</span>`
+                  : `<span title="This route has no aircraft type assigned — edit the route to assign one" style="color: var(--warning-color); font-weight: 600; font-size: 0.8rem;">⚠ NO AIRCRAFT</span>`
+                }
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
                 <div style="display: flex; gap: 0.25rem; justify-content: center;">

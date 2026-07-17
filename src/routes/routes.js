@@ -96,6 +96,17 @@ router.get('/', async (req, res) => {
         frequency: route.frequency,
         daysOfWeek: route.daysOfWeek,
         ticketPrice: parseFloat(route.ticketPrice),
+        // Class-based pricing (needed by the edit form)
+        economyPrice: parseFloat(route.economyPrice) || 0,
+        economyPlusPrice: parseFloat(route.economyPlusPrice) || 0,
+        businessPrice: parseFloat(route.businessPrice) || 0,
+        firstPrice: parseFloat(route.firstPrice) || 0,
+        // Cargo rates
+        cargoLightRate: parseFloat(route.cargoLightRate) || 0,
+        cargoStandardRate: parseFloat(route.cargoStandardRate) || 0,
+        cargoHeavyRate: parseFloat(route.cargoHeavyRate) || 0,
+        cargoRates: route.cargoRates || null,
+        transportType: route.transportType,
         demand: route.demand,
         isActive: route.isActive,
         // Performance metrics

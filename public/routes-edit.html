@@ -1,6 +1,6 @@
 <!-- TITLE: Edit Route - AMS.ceo -->
 <!-- SUBTITLE: Edit Route -->
-<!-- SCRIPTS: /js/routes-edit.js -->
+<!-- SCRIPTS: /js/cargo-types.js, /js/flight-timing.js, /js/routes-edit.js -->
 
 <style>
   .day-button:hover {
@@ -8,6 +8,110 @@
   }
   .day-button:active {
     transform: scale(0.95);
+  }
+
+  /* ── Route map preview + custom ATC (ported from routes-create.html) ── */
+  .btn-custom-atc {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted, #8b949e);
+    background: none;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    transition: all 0.15s;
+  }
+  .btn-custom-atc:hover {
+    color: var(--accent-color, #58a6ff);
+    border-color: var(--accent-color, #58a6ff);
+    background: rgba(88, 166, 255, 0.08);
+  }
+  .btn-expand-map {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: none;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 4px;
+    color: var(--text-muted, #8b949e);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-expand-map:hover {
+    color: var(--accent-color, #58a6ff);
+    border-color: var(--accent-color, #58a6ff);
+    background: rgba(88, 166, 255, 0.08);
+  }
+  .leaflet-interactive:focus {
+    outline: none !important;
+  }
+  .fir-tooltip {
+    background: rgba(22, 27, 34, 0.95) !important;
+    border: 1px solid var(--border-color, #30363d) !important;
+    color: var(--text-primary, #e6edf3) !important;
+    font-size: 0.75rem !important;
+    font-family: 'Courier New', monospace !important;
+    padding: 0.3rem 0.5rem !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  .fir-tooltip::before {
+    border-top-color: rgba(22, 27, 34, 0.95) !important;
+  }
+  .atc-stat-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .atc-stat-badge.resolved {
+    background: rgba(63, 185, 80, 0.1);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+  }
+  .atc-stat-badge.unresolved {
+    background: rgba(227, 179, 65, 0.1);
+    color: #e3b341;
+    border: 1px solid rgba(227, 179, 65, 0.3);
+  }
+  .atc-stat-badge.airway {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-color, #58a6ff);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+  }
+  .atc-waypoint-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #30363d);
+    font-family: 'Courier New', monospace;
+  }
+  .atc-waypoint-row:last-child { border-bottom: none; }
+  .atc-waypoint-row .wp-name { font-weight: 700; color: var(--text-primary); }
+  .atc-waypoint-row .wp-coords { font-size: 0.7rem; color: var(--text-muted); }
+  .atc-waypoint-row .wp-index { font-size: 0.65rem; color: var(--text-muted); margin-right: 0.5rem; min-width: 20px; }
+  .nat-preview-label {
+    background: none;
+    border: none;
+  }
+  .nat-preview-label span {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #4ade80;
+    text-shadow: 0 0 3px rgba(0,0,0,0.8);
+    white-space: nowrap;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.5px;
   }
 </style>
 
@@ -324,8 +428,49 @@
             </div>
           </div>
 
-          <!-- Flight Timing Display -->
-          <div id="flightTimingDisplay" style="margin-top: 2rem; display: none;"></div>
+          <!-- Flight Timing and Route Map - Side by Side -->
+          <div id="flightTimingMapContainer" style="display: none; margin-top: 2rem; gap: 1rem; grid-template-columns: 1fr 1fr; align-items: stretch;">
+            <!-- Flight Timing Display (Left) -->
+            <div id="flightTimingDisplay" style="min-width: 0; height: 100%;"></div>
+
+            <!-- Route Map Preview (Right) -->
+            <div id="routeMapSection" style="min-width: 0; display: flex; flex-direction: column;">
+              <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <h3 style="color: var(--text-primary); font-weight: 600; font-size: 0.85rem; margin: 0;">ROUTE MAP</h3>
+                  <button type="button" onclick="openExpandedRouteMap()" class="btn-expand-map" title="Expand map">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <polyline points="9 21 3 21 3 15"></polyline>
+                      <line x1="21" y1="3" x2="14" y2="10"></line>
+                      <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                  </button>
+                </div>
+                <button type="button" id="customAtcBtn" onclick="openCustomAtcModal()" class="btn-custom-atc">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.3rem;">
+                    <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                  </svg>
+                  Set Custom ATC Route
+                </button>
+              </div>
+              <div id="routePreviewMap" style="width: 100%; flex: 1; min-height: 200px; border-radius: 6px; border: 1px solid var(--border-color); background: #0d1117;"></div>
+              <!-- Auto ATC route info -->
+              <div id="autoAtcInfo" style="display: none; margin-top: 0.5rem; padding: 0.4rem 0.75rem; background: rgba(34, 211, 238, 0.06); border: 1px solid rgba(34, 211, 238, 0.2); border-radius: 4px; font-size: 0.72rem; color: var(--text-secondary);">
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"></path></svg>
+                  <span id="autoAtcInfoText" style="color: #22d3ee;">ATC Route</span>
+                </div>
+                <div id="autoAtcAvoidInfo" style="display: none; margin-top: 0.25rem; color: #f87171; font-size: 0.68rem;"></div>
+              </div>
+              <!-- Custom ATC route indicator -->
+              <div id="customAtcIndicator" style="display: none; margin-top: 0.5rem; padding: 0.4rem 0.75rem; background: rgba(63, 185, 80, 0.08); border: 1px solid rgba(63, 185, 80, 0.3); border-radius: 4px; font-size: 0.75rem; color: #3fb950; align-items: center; gap: 0.4rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span id="customAtcIndicatorText">Custom ATC route set</span>
+                <button onclick="clearCustomAtcRoute()" style="margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.7rem; text-decoration: underline;">Clear</button>
+              </div>
+            </div>
+          </div>
 
           <!-- Pricing Configuration -->
           <div id="pricingConfigSection" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
@@ -438,61 +583,8 @@
             <!-- Cargo Pricing -->
             <div id="cargoPricingSection">
               <h4 style="color: var(--text-secondary); font-size: 0.8rem; margin: 1rem 0 0.75rem 0; font-weight: 600;">CARGO RATES (per ton)</h4>
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem;">
-                <div>
-                  <label style="display: block; margin-bottom: 0.35rem; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem;">Light Cargo ($/tn) *</label>
-                  <input
-                    type="number"
-                    id="cargoLightRate"
-                    placeholder="2470"
-                    min="0"
-                    step="10"
-                    style="width: 100%; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 1rem;"
-                  />
-                  <div style="display: flex; gap: 0.25rem; margin-top: 0.5rem;">
-                    <button onclick="adjustPrice('cargoLightRate', -10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-10%</button>
-                    <button onclick="adjustPrice('cargoLightRate', -5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-5%</button>
-                    <button onclick="adjustPrice('cargoLightRate', 5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+5%</button>
-                    <button onclick="adjustPrice('cargoLightRate', 10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+10%</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label style="display: block; margin-bottom: 0.35rem; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem;">Standard Cargo ($/tn) *</label>
-                  <input
-                    type="number"
-                    id="cargoStandardRate"
-                    placeholder="2860"
-                    min="0"
-                    step="10"
-                    style="width: 100%; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 1rem;"
-                  />
-                  <div style="display: flex; gap: 0.25rem; margin-top: 0.5rem;">
-                    <button onclick="adjustPrice('cargoStandardRate', -10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-10%</button>
-                    <button onclick="adjustPrice('cargoStandardRate', -5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-5%</button>
-                    <button onclick="adjustPrice('cargoStandardRate', 5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+5%</button>
-                    <button onclick="adjustPrice('cargoStandardRate', 10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+10%</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label style="display: block; margin-bottom: 0.35rem; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem;">Heavy Cargo ($/tn) *</label>
-                  <input
-                    type="number"
-                    id="cargoHeavyRate"
-                    placeholder="3210"
-                    min="0"
-                    step="10"
-                    style="width: 100%; padding: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 1rem;"
-                  />
-                  <div style="display: flex; gap: 0.25rem; margin-top: 0.5rem;">
-                    <button onclick="adjustPrice('cargoHeavyRate', -10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-10%</button>
-                    <button onclick="adjustPrice('cargoHeavyRate', -5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">-5%</button>
-                    <button onclick="adjustPrice('cargoHeavyRate', 5)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+5%</button>
-                    <button onclick="adjustPrice('cargoHeavyRate', 10)" style="flex: 1; padding: 0.25rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 3px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">+10%</button>
-                  </div>
-                </div>
-              </div>
+              <!-- Cargo rate fields are rendered dynamically from CARGO_TYPES by routes-edit.js -->
+              <div id="cargoRatesContainer" style="margin-bottom: 1rem;"></div>
               <div>
                 <button onclick="adjustAllCargoRates(-10)" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; margin-right: 0.35rem;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">All Cargo -10%</button>
                 <button onclick="adjustAllCargoRates(-5)" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; margin-right: 0.35rem;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">All Cargo -5%</button>
@@ -716,6 +808,114 @@
         <button class="btn btn-secondary" onclick="closeConfirmationModal()">CANCEL</button>
         <button class="btn btn-primary" onclick="confirmRouteUpdate()">CONFIRM & SAVE CHANGES</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Custom ATC Route Modal -->
+  <div id="customAtcModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9000; align-items: center; justify-content: center;">
+    <div style="background: var(--surface, #0d1117); border: 1px solid var(--border-color, #30363d); border-radius: 8px; width: 90%; max-width: 580px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #30363d);">
+        <div>
+          <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-primary);">Custom ATC Route</h2>
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; display: block;">Paste a raw ATC route to override the auto-generated waypoints</span>
+        </div>
+        <button onclick="closeCustomAtcModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 0.25rem; line-height: 1;">&times;</button>
+      </div>
+      <div style="padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1;">
+        <!-- Input -->
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">ATC Route String</label>
+          <textarea
+            id="atcRouteInput"
+            rows="3"
+            placeholder="e.g. KEA UN132 LAPSO GUDIS KAVOS EVORA LAKTO L560 SERMA L550 KARIK B411 DEESA Y415 TAMRO N318 HAYYA"
+            style="width: 100%; padding: 0.6rem 0.75rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); border-radius: 6px; color: var(--text-primary); font-family: 'Courier New', monospace; font-size: 0.85rem; resize: vertical; box-sizing: border-box; line-height: 1.5;"
+          ></textarea>
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.35rem 0 0 0;">Waypoints and airway identifiers separated by spaces. Airways (e.g. UN132, L560) will be noted but only fix coordinates are used.</p>
+        </div>
+
+        <!-- Resolve button -->
+        <button type="button" id="resolveAtcBtn" onclick="resolveCustomAtcRoute()" style="padding: 0.45rem 1rem; background: var(--accent-color, #58a6ff); color: #000; border: none; border-radius: 4px; font-weight: 700; font-size: 0.8rem; cursor: pointer; text-transform: uppercase; letter-spacing: 0.3px;">
+          Resolve Route
+        </button>
+
+        <!-- Results (hidden until resolved) -->
+        <div id="atcResolveResults" style="display: none; margin-top: 1.25rem;">
+          <!-- Summary -->
+          <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+            <div id="atcResolvedCount" class="atc-stat-badge resolved">0 resolved</div>
+            <div id="atcUnresolvedCount" class="atc-stat-badge unresolved" style="display: none;">0 unresolved</div>
+            <div id="atcAirwayCount" class="atc-stat-badge airway">0 airways</div>
+          </div>
+
+          <!-- Unresolved warnings -->
+          <div id="atcUnresolvedSection" style="display: none; margin-bottom: 1rem; padding: 0.6rem 0.75rem; background: rgba(227, 179, 65, 0.08); border: 1px solid rgba(227, 179, 65, 0.25); border-radius: 6px;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #e3b341; margin-bottom: 0.3rem;">Unresolved Fixes</div>
+            <div id="atcUnresolvedList" style="font-size: 0.8rem; color: #e3b341; font-family: 'Courier New', monospace;"></div>
+            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0 0;">These fixes were not found in the navigation database and will be skipped.</p>
+          </div>
+
+          <!-- Airspace restriction warnings -->
+          <div id="atcRestrictionSection" style="display: none; margin-bottom: 1rem; padding: 0.6rem 0.75rem; background: rgba(248, 81, 73, 0.08); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 6px;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #f85149; margin-bottom: 0.3rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 0.3rem; vertical-align: -1px;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              Route Crosses Restricted Airspace
+            </div>
+            <div id="atcRestrictionList" style="font-size: 0.8rem; color: #f85149;"></div>
+            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0 0;">This route will be created as suspended if you proceed.</p>
+          </div>
+
+          <!-- Waypoint list -->
+          <div style="margin-bottom: 0.5rem;">
+            <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Resolved Waypoints</label>
+            <div id="atcWaypointList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color, #30363d); border-radius: 6px; font-size: 0.8rem;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #30363d); display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button onclick="closeCustomAtcModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">Cancel</button>
+        <button id="applyAtcBtn" onclick="applyCustomAtcRoute()" disabled style="padding: 0.5rem 1rem; background: #3fb950; border: 1px solid #3fb950; color: #000; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; opacity: 0.5;">Apply Route</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Previous Custom Route Modal -->
+  <div id="previousCustomRouteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9001; align-items: center; justify-content: center;">
+    <div style="background: var(--surface, #0d1117); border: 1px solid var(--border-color, #30363d); border-radius: 8px; width: 90%; max-width: 460px; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #30363d);">
+        <div>
+          <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-primary);">Previous Custom Route</h2>
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; display: block;">You previously used a custom ATC route for this airport pair</span>
+        </div>
+        <button onclick="closePreviousCustomRouteModal()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 0.25rem; line-height: 1;">&times;</button>
+      </div>
+      <!-- Content -->
+      <div style="padding: 1.25rem 1.5rem;">
+        <label style="display: block; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem;">Route String</label>
+        <div id="previousRouteStringDisplay" style="padding: 0.6rem 0.75rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); border-radius: 6px; color: #e3b341; font-family: 'Courier New', monospace; font-size: 0.85rem; line-height: 1.5; word-break: break-word;"></div>
+        <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.5rem 0 0 0;">Would you like to use this route again or use the AMS.ceo generated route?</p>
+      </div>
+      <!-- Footer -->
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #30363d); display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button onclick="closePreviousCustomRouteModal()" style="padding: 0.5rem 1rem; background: var(--surface-elevated, #161b22); border: 1px solid var(--border-color, #30363d); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">Use Generated</button>
+        <button id="usePreviousRouteBtn" onclick="usePreviousCustomRoute()" style="padding: 0.5rem 1rem; background: #e3b341; border: 1px solid #e3b341; color: #000; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">Use Previous Route</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expanded Route Map Modal -->
+  <div id="expandedMapModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; align-items:center; justify-content:center;">
+    <div style="width:92%; height:88%; background:var(--surface, #0d1117); border:1px solid var(--border-color, #30363d); border-radius:8px; display:flex; flex-direction:column; overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:0.75rem 1rem; border-bottom:1px solid var(--border-color, #30363d);">
+        <h3 id="expandedMapTitle" style="margin:0; font-size:0.85rem; font-weight:600; color:var(--text-primary);">ROUTE MAP</h3>
+        <button onclick="closeExpandedRouteMap()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer; padding:0 0.25rem; line-height:1;">&times;</button>
+      </div>
+      <div id="expandedMapContainer" style="flex:1; min-height:0;"></div>
     </div>
   </div>
 </div>
