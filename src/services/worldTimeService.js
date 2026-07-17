@@ -2565,6 +2565,55 @@ class WorldTimeService {
       const membershipIds = memberships.map(m => m.id);
       const membershipMap = new Map(memberships.map(m => [m.id, m]));
 
+      // --- Process scrapping completions ---
+      const scrappingAircraft = await UserAircraft.findAll({
+        where: {
+          worldMembershipId: { [Op.in]: membershipIds },
+          status: 'scrapping',
+          scrapAvailableAt: { [Op.lte]: currentGameTime }
+        },
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      });
+
+      for (const ac of scrappingAircraft) {
+        try {
+          const scrapPrice = parseFloat(ac.scrapPrice) || 0;
+          const membership = membershipMap.get(ac.worldMembershipId);
+          if (membership) {
+            membership.balance = (parseFloat(membership.balance) || 0) + scrapPrice;
+            await membership.save();
+          }
+
+          const acName = ac.aircraft ? `${ac.aircraft.manufacturer} ${ac.aircraft.model}` : ac.registration;
+
+          // Clean up related records
+          await ScheduledFlight.destroy({ where: { aircraftId: ac.id } });
+          await RecurringMaintenance.destroy({ where: { aircraftId: ac.id } });
+          await Route.update(
+            { assignedAircraftId: null, isActive: false },
+            { where: { assignedAircraftId: ac.id } }
+          );
+
+          // Notify
+          await Notification.create({
+            worldMembershipId: ac.worldMembershipId,
+            type: 'aircraft_sold',
+            icon: 'plane',
+            title: `Aircraft Scrapped — ${ac.registration}`,
+            message: `${acName} (${ac.registration}) has been dismantled at ${ac.scrapCompanyName || ac.scrapAirportCode}. $${Math.round(scrapPrice).toLocaleString()} credited to your account.`,
+            link: '/fleet',
+            priority: 3,
+            gameTime: currentGameTime
+          });
+
+          // Remove aircraft from game
+          await ac.destroy();
+          console.log(`[SCRAP] ${ac.registration} scrapped at ${ac.scrapAirportCode}, $${Math.round(scrapPrice)} credited`);
+        } catch (scrapErr) {
+          console.error(`[SCRAP] Error completing scrap for ${ac.registration}:`, scrapErr.message);
+        }
+      }
+
       // --- Process listed aircraft (NPC interest) ---
       const listedAircraft = await UserAircraft.findAll({
         where: {

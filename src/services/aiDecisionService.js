@@ -467,7 +467,12 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     }
   }
 
-  // 6. Competitive response (medium/hard only)
+  // 6. Fleet upgrades — replace obsolete aircraft
+  if (fleet.length > 0 && Math.random() < 0.15) { // 15% chance per cycle to consider upgrades
+    await tryUpgradeFleet(airline, world, config, fleet, routes, worldYear, gameTime);
+  }
+
+  // 7. Competitive response (medium/hard only)
   if (routes.length > 0 && config.competitiveResponseChance > 0) {
     await checkCompetitiveResponse(airline, routes, config, world, gameTime, worldYear);
   }
@@ -1250,6 +1255,181 @@ async function checkCompetitiveResponse(airline, routes, config, world, gameTime
       );
     } catch (err) {
       // Non-critical
+    }
+  }
+}
+
+// ─── Fleet upgrades ──────────────────────────────────────────────────
+
+/**
+ * Try to upgrade obsolete aircraft in the fleet.
+ * Triggers when an aircraft type is near end of availability or very old.
+ * Process: buy/lease replacement first, then dispose of old aircraft.
+ */
+async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear, gameTime) {
+  // Find aircraft that need upgrading
+  for (const ua of fleet) {
+    const acType = ua.aircraft;
+    if (!acType) continue;
+
+    const yearsUntilEnd = acType.availableUntil ? acType.availableUntil - worldYear : 999;
+    const acAge = parseFloat(ua.ageYears) || 0;
+
+    // Upgrade triggers:
+    // - Aircraft type discontinued within 3 years
+    // - Aircraft is very old (25+ years) and newer alternatives exist
+    const needsUpgrade = yearsUntilEnd <= 3 || (acAge >= 25 && yearsUntilEnd < 20);
+    if (!needsUpgrade) continue;
+
+    // Check if this aircraft has routes — need to find a suitable replacement
+    const acRoutes = routes.filter(r => r.assignedAircraftId === ua.id);
+    const maxRouteDistance = acRoutes.length > 0
+      ? Math.max(...acRoutes.map(r => parseFloat(r.distance) || 500))
+      : (acType.rangeNm || 1500) * 0.7;
+
+    // Find replacement candidates
+    const archetype = AIRLINE_ARCHETYPES[airline.airlineType] || AIRLINE_ARCHETYPES.fullService;
+    const replacements = await Aircraft.findAll({
+      where: {
+        availableFrom: { [Op.lte]: worldYear },
+        passengerCapacity: { [Op.gt]: 0 }
+      },
+      order: [['passengerCapacity', 'ASC']]
+    });
+
+    const viable = replacements.filter(ac => {
+      if (ac.availableUntil && ac.availableUntil < worldYear) return false;
+      if (ac.availableUntil && ac.availableUntil - worldYear < 10) return false; // Don't buy something also about to retire
+      if ((ac.rangeNm || 0) < maxRouteDistance * 0.95) return false; // Must cover existing routes
+      if (ac.id === acType.id) return false; // Not the same type
+      // Match archetype size preferences
+      const [minPax, maxPax] = archetype.preferredPaxRange || [0, 999];
+      if (archetype.transportType !== 'cargo' && (ac.passengerCapacity < minPax * 0.5 || ac.passengerCapacity > maxPax * 2)) return false;
+      return true;
+    });
+
+    if (viable.length === 0) continue;
+
+    // Score replacements (prefer similar capacity, newer, affordable)
+    const balance = parseFloat(airline.balance) || 0;
+    const scored = viable.map(ac => {
+      let score = 0;
+      const capDiff = Math.abs(ac.passengerCapacity - acType.passengerCapacity);
+      score -= capDiff * 0.1; // Prefer similar size
+      const yearsNew = worldYear - ac.availableFrom;
+      if (yearsNew <= 5) score += 10; // Brand new type
+      else if (yearsNew <= 15) score += 5;
+      const price = parseFloat(ac.purchasePrice) || 50000000;
+      if (price <= balance * 0.4) score += 5; // Can afford to buy
+      return { aircraft: ac, score, price };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const replacement = scored[0];
+    if (!replacement) continue;
+
+    // Can we afford this? (buy or lease)
+    const canBuy = replacement.price <= balance * 0.4;
+    const leaseWeekly = Math.round(replacement.price * 0.01);
+    const canLease = balance >= leaseWeekly * 8;
+
+    if (!canBuy && !canLease) continue;
+
+    // Acquire replacement (reuse tryBuyAircraft logic is complex, do inline)
+    const prefix = { 'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-' }[airline.region] || 'XX-';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let reg = prefix;
+    const suffLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
+    for (let j = 0; j < suffLen; j++) reg += chars[Math.floor(Math.random() * 26)];
+
+    const now = new Date(gameTime);
+    try {
+      if (canBuy) {
+        await UserAircraft.create({
+          worldMembershipId: airline.id,
+          aircraftId: replacement.aircraft.id,
+          registration: reg,
+          acquisitionType: 'purchase',
+          purchasePrice: replacement.price,
+          status: 'active',
+          totalFlightHours: 0,
+          autoScheduleDaily: true, autoScheduleWeekly: true,
+          lastDailyCheckDate: now, lastWeeklyCheckDate: now,
+          lastACheckDate: now, lastACheckHours: 0,
+          lastCCheckDate: now, lastDCheckDate: now
+        });
+        airline.balance = balance - replacement.price;
+        await airline.save();
+      } else {
+        const leaseEnd = new Date(now);
+        leaseEnd.setMonth(leaseEnd.getMonth() + 36);
+        await UserAircraft.create({
+          worldMembershipId: airline.id,
+          aircraftId: replacement.aircraft.id,
+          registration: reg,
+          acquisitionType: 'lease',
+          leaseWeeklyPayment: leaseWeekly,
+          leaseDurationMonths: 36,
+          leaseStartDate: now, leaseEndDate: leaseEnd,
+          status: 'active',
+          totalFlightHours: 0,
+          autoScheduleDaily: true, autoScheduleWeekly: true,
+          lastDailyCheckDate: now, lastWeeklyCheckDate: now,
+          lastACheckDate: now, lastACheckHours: 0,
+          lastCCheckDate: now, lastDCheckDate: now
+        });
+        airline.balance = balance - leaseWeekly;
+        await airline.save();
+      }
+
+      // Reassign routes from old aircraft to new one
+      // (The new aircraft ID will be the most recently created one)
+      const newAc = await UserAircraft.findOne({
+        where: { worldMembershipId: airline.id, registration: reg },
+        attributes: ['id']
+      });
+      if (newAc && acRoutes.length > 0) {
+        for (const route of acRoutes) {
+          await route.update({ assignedAircraftId: newAc.id });
+          // Update scheduled flights
+          await ScheduledFlight.update(
+            { aircraftId: newAc.id },
+            { where: { routeId: route.id, aircraftId: ua.id } }
+          );
+        }
+      }
+
+      // Dispose of old aircraft — scrap if very old, sell if decent
+      const condition = parseFloat(ua.conditionPercentage) || 50;
+      if (acAge >= 20 || condition < 40) {
+        // Scrap — instant removal for AI (no ferry delay)
+        const scrapValue = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.15 * (condition / 100));
+        airline.balance = (parseFloat(airline.balance) || 0) + scrapValue;
+        await airline.save();
+        await ScheduledFlight.destroy({ where: { aircraftId: ua.id } });
+        await RecurringMaintenance.destroy({ where: { aircraftId: ua.id } });
+        await ua.destroy();
+        console.log(`[AI-DECISION] ${airline.airlineName} scrapped ${acType.manufacturer} ${acType.model} (${ua.registration}), got $${Math.round(scrapValue).toLocaleString()}`);
+      } else {
+        // List for sale
+        const salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.5 * (condition / 100));
+        await ua.update({ status: 'listed_sale', listingPrice: salePrice, listedAt: now });
+        console.log(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
+      }
+
+      const acqLabel = canBuy ? 'purchased' : 'leased';
+      console.log(`[AI-DECISION] ${airline.airlineName} upgraded: ${acType.manufacturer} ${acType.model} → ${replacement.aircraft.manufacturer} ${replacement.aircraft.model} (${acqLabel})`);
+
+      await notifyPlayer(world.id,
+        `${airline.airlineName} Fleet Upgrade`,
+        `${airline.airlineName} replaced their ${acType.manufacturer} ${acType.model} with a ${replacement.aircraft.manufacturer} ${replacement.aircraft.model} (${reg}).`,
+        gameTime,
+        { type: 'operations', icon: 'plane', priority: 4, link: '/competition' }
+      );
+
+      break; // Only upgrade one aircraft per cycle
+    } catch (err) {
+      console.error(`[AI-DECISION] ${airline.airlineName} upgrade failed: ${err.message}`);
     }
   }
 }

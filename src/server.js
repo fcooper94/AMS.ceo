@@ -618,6 +618,15 @@ server.listen(PORT, () => {
     } catch (_) { /* routes table may not exist yet — sync will create it */ }
     try {
       await sequelize.query(`
+        ALTER TABLE user_aircraft
+          ADD COLUMN IF NOT EXISTS scrap_price DECIMAL(15,2),
+          ADD COLUMN IF NOT EXISTS scrap_airport_code VARCHAR(4),
+          ADD COLUMN IF NOT EXISTS scrap_company_name VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS scrap_available_at TIMESTAMP WITH TIME ZONE
+      `);
+    } catch (_) { /* user_aircraft table may not exist yet */ }
+    try {
+      await sequelize.query(`
         CREATE INDEX IF NOT EXISTS idx_recurring_maintenance_status_sched
           ON recurring_maintenance (status, scheduled_date)
       `);

@@ -255,6 +255,7 @@ function displayFleet() {
       else if (userAircraft.status === 'maintenance') { badgeText = 'Maint'; badgeClass = 'status-maintenance'; }
       else if (userAircraft.status === 'cabin_refit') { badgeText = 'Refit'; badgeClass = 'status-maintenance'; }
       else if (userAircraft.status === 'on_order') { badgeText = 'Order'; badgeClass = 'status-on-order'; }
+      else if (userAircraft.status === 'scrapping') { badgeText = 'Scrap'; badgeClass = 'status-scrapping'; }
       else { badgeText = isOwned ? 'Own' : 'Lse'; badgeClass = isOwned ? 'status-owned' : 'status-leased'; }
 
       html += `
@@ -685,6 +686,10 @@ function buildActionButtons(ua) {
   if (isOwned && ['active', 'storage'].includes(status)) {
     html += `<button class="btn" onclick="event.stopPropagation(); showSellDialog('${ua.id}', '${ua.registration}', ${ua.purchasePrice || 0})" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #d29922; border-color: #d29922; color: #fff;">SELL</button>`;
     html += `<button class="btn btn-primary" onclick="event.stopPropagation(); showLeaseOutDialog('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer;">LEASE OUT</button>`;
+    html += `<button class="btn" onclick="event.stopPropagation(); showScrapDialog('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #dc2626; border-color: #dc2626; color: #fff;">SCRAP</button>`;
+  }
+  if (status === 'scrapping') {
+    html += `<span style="flex:1; padding: 0.5rem; font-size: 0.85rem; color: #f87171; text-align: center; font-weight: 600;">Ferrying to scrapyard...</span>`;
   }
   if (status === 'active') {
     html += `<button class="btn" onclick="event.stopPropagation(); confirmPutInStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #64748b; border-color: #64748b; color: #fff;">STORE</button>`;
@@ -1069,6 +1074,107 @@ function calculateStorageWeeklyCost(userAircraft) {
     if (sa) return Math.round(purchasePrice * sa.weeklyRatePercent / 100);
   }
   return Math.round(purchasePrice * 0.005);
+}
+
+// Scrap airframe dialog — fetches offers from scrapyard companies
+async function showScrapDialog(aircraftId, registration) {
+  // Show loading modal
+  showFleetModal({
+    icon: '&#9986;',
+    iconClass: 'danger',
+    title: 'Scrap Airframe',
+    registration,
+    bodyHtml: '<p><span class="spinner-dots">Fetching scrapyard offers</span></p>',
+    confirmLabel: 'Cancel',
+    confirmClass: 'btn-confirm-primary',
+    onConfirm: () => {}
+  });
+
+  try {
+    const res = await fetch(`/api/fleet/${aircraftId}/scrap-offers`);
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to fetch offers');
+    const data = await res.json();
+
+    // Remove loading modal
+    document.querySelector('.fleet-modal-backdrop')?.remove();
+
+    // Build offers HTML
+    let offersHtml = `
+      <p style="margin-bottom: 0.5rem;">Aircraft: <strong>${data.aircraft.type}</strong> — Condition: ${data.aircraft.condition}%, Age: ${data.aircraft.ageYears}yrs, Hours: ${data.aircraft.flightHours.toLocaleString()}</p>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select a scrapyard to send your aircraft for dismantling. Payment is received after ferry.</p>
+      <div id="scrapOffers" style="display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    for (const offer of data.offers) {
+      offersHtml += `
+        <div class="scrap-offer" data-offer-id="${offer.id}" onclick="selectScrapOffer(this, ${offer.id})"
+             style="padding: 0.6rem 0.75rem; border: 2px solid var(--border-color); border-radius: 6px; cursor: pointer; transition: border-color 0.2s, background 0.2s;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong style="font-size: 0.9rem;">${offer.companyName}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">${offer.airportCode} — ${offer.city}, ${offer.country}</div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">${offer.specialty}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 1.1rem; font-weight: 700; color: var(--success-color);">$${offer.price.toLocaleString()}</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);">${offer.reason}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    offersHtml += '</div>';
+
+    // Store offers data for the confirm handler
+    window._scrapOffers = data.offers;
+    window._scrapAircraftId = aircraftId;
+
+    showFleetModal({
+      icon: '&#9986;',
+      iconClass: 'danger',
+      title: 'Scrap Airframe',
+      registration,
+      bodyHtml: offersHtml,
+      confirmLabel: 'Accept Selected Offer',
+      confirmClass: 'btn-confirm-danger',
+      onConfirm: async () => {
+        const selected = document.querySelector('.scrap-offer.selected');
+        if (!selected) {
+          showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: '<p>Please select a scrapyard offer first.</p>', confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+          return;
+        }
+        const offerId = parseInt(selected.dataset.offerId);
+        const offer = window._scrapOffers[offerId];
+        try {
+          const scrapRes = await fetch(`/api/fleet/${window._scrapAircraftId}/scrap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offerId, price: offer.price, companyName: offer.companyName, airportCode: offer.airportCode })
+          });
+          const result = await scrapRes.json();
+          if (!scrapRes.ok) throw new Error(result.error);
+          document.getElementById('aircraftDetailOverlay')?.remove();
+          loadFleet();
+        } catch (err) {
+          showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+        }
+      }
+    });
+  } catch (err) {
+    document.querySelector('.fleet-modal-backdrop')?.remove();
+    showFleetModal({ icon: '&#10060;', iconClass: 'danger', title: 'Error', bodyHtml: `<p>${err.message}</p>`, confirmLabel: 'OK', confirmClass: 'btn-confirm-primary', onConfirm: () => {} });
+  }
+}
+
+function selectScrapOffer(el, offerId) {
+  document.querySelectorAll('.scrap-offer').forEach(o => {
+    o.classList.remove('selected');
+    o.style.borderColor = 'var(--border-color)';
+    o.style.background = '';
+  });
+  el.classList.add('selected');
+  el.style.borderColor = 'var(--accent-color)';
+  el.style.background = 'var(--surface-elevated)';
 }
 
 // Put aircraft into storage - with airport selection

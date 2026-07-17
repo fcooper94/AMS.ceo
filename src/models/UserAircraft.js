@@ -128,6 +128,30 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'recall_available_at',
     comment: 'Game-time when recalling aircraft will become active after ferry'
   },
+  // Scrapping
+  scrapPrice: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true,
+    field: 'scrap_price',
+    comment: 'Agreed scrap payment amount'
+  },
+  scrapAirportCode: {
+    type: DataTypes.STRING(4),
+    allowNull: true,
+    field: 'scrap_airport_code',
+    comment: 'ICAO code of the scrapyard'
+  },
+  scrapCompanyName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'scrap_company_name'
+  },
+  scrapAvailableAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'scrap_available_at',
+    comment: 'Game-time when ferry to scrapyard completes and payment is made'
+  },
   // Player-to-player lease linking
   playerLessorAircraftId: {
     type: DataTypes.UUID,
@@ -160,7 +184,7 @@ const UserAircraft = sequelize.define('UserAircraft', {
   },
   // Status
   status: {
-    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out', 'on_order', 'cabin_refit'),
+    type: DataTypes.ENUM('active', 'maintenance', 'storage', 'recalling', 'sold', 'listed_sale', 'listed_lease', 'leased_out', 'on_order', 'cabin_refit', 'scrapping'),
     defaultValue: 'active'
   },
   cabinRefitEndDate: {
