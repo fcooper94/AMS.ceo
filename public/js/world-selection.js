@@ -1676,6 +1676,8 @@ function openCreateSPModal() {
   document.getElementById('spEra').value = '2010';
   document.getElementById('spSpeed').value = '60';
   document.querySelector('input[name="spDifficulty"][value="medium"]').checked = true;
+  const pauseRun = document.querySelector('input[name="spPauseOnLeave"][value="run"]');
+  if (pauseRun) pauseRun.checked = true;
   document.getElementById('spBaseAirport').value = '';
   document.getElementById('spBaseAirportType').value = '';
   document.getElementById('spAirportSearch').value = '';
@@ -2078,6 +2080,7 @@ async function createSinglePlayerWorld() {
   const era = document.getElementById('spEra').value;
   const timeAcceleration = document.getElementById('spSpeed').value;
   const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value;
+  const pauseOnSessionEnd = document.querySelector('input[name="spPauseOnLeave"]:checked')?.value === 'pause';
   const airlineName = document.getElementById('spAirlineName').value.trim();
   const airlineCode = document.getElementById('spAirlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('spIataCode').value.trim().toUpperCase();
@@ -2165,7 +2168,7 @@ async function createSinglePlayerWorld() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name, era, timeAcceleration, difficulty,
+        name, era, timeAcceleration, difficulty, pauseOnSessionEnd,
         baseAirportId, airlineName, airlineCode, iataCode,
         cleaningContractor, groundContractor, engineeringContractor,
         ...getBranding('sp')

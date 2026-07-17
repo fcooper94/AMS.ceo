@@ -301,6 +301,17 @@ async function loadUserInfo() {
 }
 
 // Apply world info data to the UI (shared by initial load and periodic refresh)
+// Singleplayer session heartbeat: ping the server every 30s so it knows the owner
+// is still around. When these pings stop (tab/browser closed, crash, sleep), the
+// server auto-pauses the world if "pause when I leave" is enabled.
+let sessionHeartbeatInterval = null;
+function startSessionHeartbeat() {
+  if (sessionHeartbeatInterval) return; // already running for this page
+  const ping = () => { fetch('/api/world/heartbeat', { method: 'POST' }).catch(() => {}); };
+  ping();
+  sessionHeartbeatInterval = setInterval(ping, 30000);
+}
+
 function applyWorldInfo(worldInfo) {
   // Store current world ID for filtering Socket.IO events
   currentWorldId = worldInfo.id;
@@ -1435,6 +1446,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeLayout();
   initSidebarToggle();
   initWorldInfoExpand();
+  // Keep the session alive on every app page; the server only acts on the
+  // owner's singleplayer world (auto-pause when these pings stop).
+  startSessionHeartbeat();
 
   // Measure and set navbar height for fixed sidebar positioning
   const navbar = document.querySelector('.navbar');

@@ -1331,7 +1331,10 @@ function showFlightInfo(flight) {
   // Route info
   const distance = Math.round(parseFloat(flight.route.distance) || 0);
   const turnaroundTime = flight.route.turnaroundTime || 45;
-  const loadFactor = flight.route.averageLoadFactor || 0;
+  // Prefer the live sector LF (exact load for this flight) over the route average.
+  const loadFactor = (flight.route.currentLoadFactor != null)
+    ? flight.route.currentLoadFactor
+    : (flight.route.averageLoadFactor || 0);
 
   // Airport coordinates
   const depLat = parseFloat(flight.departureAirport.latitude);

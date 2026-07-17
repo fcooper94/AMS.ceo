@@ -181,6 +181,25 @@
                 <option value="240">240x (Very Fast)</option>
               </select>
             </div>
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label>WHEN I LEAVE</label>
+              <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.25rem;">
+                <label class="difficulty-option">
+                  <input type="radio" name="spPauseOnLeave" value="run" checked>
+                  <div>
+                    <div style="font-weight: 600; color: var(--text-primary);">Let the world run</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Time keeps advancing while you're away.</div>
+                  </div>
+                </label>
+                <label class="difficulty-option">
+                  <input type="radio" name="spPauseOnLeave" value="pause">
+                  <div>
+                    <div style="font-weight: 600; color: var(--text-primary);">Pause when I leave</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Auto-pauses when you close the site or log out. You can change this later in World Controls.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
             <div class="form-info" style="margin-top: 0;">
               <p id="spStartingCapital">Starting Capital: Loading...</p>
               <p>Starting Reputation: 50/100</p>

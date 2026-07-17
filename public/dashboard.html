@@ -123,6 +123,10 @@
             <option value="240">240x</option>
           </select>
         </div>
+        <label title="Automatically pause this world when you close the site or log out" style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; white-space: nowrap;">
+          <input type="checkbox" id="spPauseOnSessionEnd" onchange="setPauseOnSessionEnd(this.checked)" style="cursor: pointer;">
+          Pause when I leave
+        </label>
         <div style="margin-left: auto; font-size: 0.75rem; color: var(--text-muted);" id="spWorldStatus">
           Running
         </div>

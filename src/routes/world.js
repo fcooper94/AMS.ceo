@@ -128,6 +128,7 @@ router.get('/info', async (req, res) => {
       reputation: membership?.reputation || 0,
       reputationBreakdown: membership?.reputationBreakdown || null,
       worldType: world.worldType || 'multiplayer',
+      pauseOnSessionEnd: !!world.pauseOnSessionEnd,
       difficulty: world.difficulty || null,
       endDate: world.endDate || null,
       freeWeeks: world.freeWeeks || 0,
@@ -291,6 +292,51 @@ router.post('/acceleration', async (req, res) => {
       console.error('Error setting acceleration:', error);
     }
     res.status(500).json({ error: 'Failed to set time acceleration' });
+  }
+});
+
+/**
+ * Keep-alive heartbeat — records the owner's last activity so the auto-pause
+ * sweep can pause a singleplayer world once the session goes quiet. Intentionally
+ * lightweight and never errors out to the client.
+ */
+router.post('/heartbeat', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (activeWorldId) {
+      // Only singleplayer worlds use the auto-pause heartbeat — skip the DB write
+      // for multiplayer to avoid churn on a shared row.
+      const isSP = worldTimeService.recordActivity(activeWorldId);
+      if (isSP) {
+        await World.update({ lastActiveAt: new Date() }, { where: { id: activeWorldId } });
+      }
+    }
+  } catch (_) { /* ignore — a failed heartbeat must not disrupt the user */ }
+  res.status(204).end();
+});
+
+/**
+ * Toggle "pause my world when my session ends" for the active (singleplayer) world.
+ */
+router.post('/pause-on-session-end', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) {
+      return res.status(400).json({ error: 'No active world selected' });
+    }
+    const enabled = !!req.body?.enabled;
+    // Stamp lastActiveAt when enabling so it isn't immediately considered stale.
+    await World.update(
+      { pauseOnSessionEnd: enabled, lastActiveAt: new Date() },
+      { where: { id: activeWorldId } }
+    );
+    worldTimeService.setPauseOnSessionEnd(activeWorldId, enabled); // in-memory
+    res.json({ success: true, enabled });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error setting pause-on-session-end:', error);
+    }
+    res.status(500).json({ error: 'Failed to update setting' });
   }
 });
 

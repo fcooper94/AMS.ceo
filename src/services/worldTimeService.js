@@ -259,6 +259,18 @@ class WorldTimeService {
         return;
       }
 
+      // Auto-pause a singleplayer world once the owner's session has gone quiet
+      // (no client heartbeat within the timeout). Opt-in via pauseOnSessionEnd.
+      if (world.pauseOnSessionEnd && world.worldType === 'singleplayer' && world.status === 'active' && world.lastActiveAt) {
+        const SESSION_PAUSE_TIMEOUT_MS = 90 * 1000;
+        const idleMs = Date.now() - new Date(world.lastActiveAt).getTime();
+        if (idleMs > SESSION_PAUSE_TIMEOUT_MS) {
+          console.log(`[AUTO-PAUSE] "${world.name}" idle ${Math.round(idleMs / 1000)}s — pausing (session ended).`);
+          await this.pauseWorld(worldId);
+          return;
+        }
+      }
+
       const now = new Date();
       const realElapsedSeconds = (now.getTime() - lastTickAt.getTime()) / 1000;
 
@@ -749,10 +761,25 @@ class WorldTimeService {
    * Process revenue for a completed flight
    * Calculates passengers, revenue, costs, and updates route stats + airline balance
    */
-  async processFlightRevenue(flight, worldId, currentGameTime) {
+  // Deterministic per-flight daily variance in [0,1) — replaces Math.random() so
+  // the load factor previewed on the world map (as a flight departs) is exactly
+  // the value recorded when its round-trip completes on the same game day.
+  _lfSeed(flightId, gameTime) {
+    const key = `${flightId}:${gameTime.toISOString().split('T')[0]}`;
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return ((h >>> 0) % 100000) / 100000;
+  }
+
+  // When previewOnly is true, computes and returns the sector load factor WITHOUT
+  // recording any revenue/stats (used by the world map for airborne flights).
+  async processFlightRevenue(flight, worldId, currentGameTime, previewOnly = false) {
     try {
       const route = flight.route;
-      if (!route) return;
+      if (!route) return previewOnly ? 0.7 : undefined;
 
       const eraEconomicService = require('./eraEconomicService');
       const aircraft = flight.aircraft;
@@ -1025,8 +1052,8 @@ class WorldTimeService {
           // Time calculation failed, use default
         }
 
-        // 8. Random daily variance ±10%
-        const variance = 0.9 + Math.random() * 0.2;
+        // 8. Deterministic daily variance ±10% (seeded per flight + game day)
+        const variance = 0.9 + this._lfSeed(flight.id, currentGameTime) * 0.2;
 
         // 9. Reputation is now baked into the competitive score (factor 6), no separate multiplier
 
@@ -1039,6 +1066,9 @@ class WorldTimeService {
       } catch (err) {
         // Load factor calculation failed, use default
       }
+
+      // Preview mode (world map): return the sector LF without recording revenue.
+      if (previewOnly) return loadFactor;
 
       // Calculate passengers and revenue based on actual cabin configuration
       const passengers = Math.round(paxCapacity * loadFactor);
@@ -2456,6 +2486,29 @@ class WorldTimeService {
       );
     }
     console.log(`⏸ World paused: ${worldId}${freezeTime ? ' at ' + freezeTime.toISOString() : ''}`);
+  }
+
+  /**
+   * Record owner activity (client heartbeat) on the in-memory world so the
+   * auto-pause sweep sees the session is still alive. The DB copy is updated by
+   * the heartbeat route (for restart robustness).
+   */
+  recordActivity(worldId) {
+    const ws = this.worlds.get(worldId);
+    if (!ws || !ws.world) return false;
+    ws.world.lastActiveAt = new Date();
+    return ws.world.worldType === 'singleplayer';
+  }
+
+  /**
+   * Sync the pause-on-session-end flag into the in-memory world.
+   */
+  setPauseOnSessionEnd(worldId, enabled) {
+    const ws = this.worlds.get(worldId);
+    if (ws && ws.world) {
+      ws.world.pauseOnSessionEnd = !!enabled;
+      if (enabled) ws.world.lastActiveAt = new Date();
+    }
   }
 
   /**

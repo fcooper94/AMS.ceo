@@ -634,6 +634,8 @@ router.post('/create-singleplayer', async (req, res) => {
       freeWeeks: 4,
       worldType: 'singleplayer',
       difficulty,
+      pauseOnSessionEnd: !!req.body.pauseOnSessionEnd,
+      lastActiveAt: new Date(),
       ownerUserId: user.id
     });
 

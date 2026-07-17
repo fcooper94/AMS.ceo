@@ -53,6 +53,19 @@ const World = sequelize.define('World', {
     defaultValue: false,
     field: 'is_paused'
   },
+  // Singleplayer: auto-pause the world when the owner's session ends (detected
+  // via a client heartbeat going stale). See worldTimeService auto-pause sweep.
+  pauseOnSessionEnd: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'pause_on_session_end'
+  },
+  lastActiveAt: {
+    type: DataTypes.DATE,
+    comment: 'Real-time of the owner\'s last client heartbeat (for auto-pause)',
+    field: 'last_active_at'
+  },
   // Last update tracking
   lastTickAt: {
     type: DataTypes.DATE,

@@ -432,6 +432,22 @@ function applySPControls(world) {
   // Set pause/resume state
   worldIsPaused = !!world.isPaused;
   updatePauseResumeUI();
+
+  // Load "pause when I leave" setting
+  const pauseOnLeave = document.getElementById('spPauseOnSessionEnd');
+  if (pauseOnLeave) pauseOnLeave.checked = !!world.pauseOnSessionEnd;
+}
+
+async function setPauseOnSessionEnd(enabled) {
+  try {
+    await fetch('/api/world/pause-on-session-end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !!enabled })
+    });
+  } catch (err) {
+    console.error('Failed to update pause-on-session-end:', err);
+  }
 }
 
 function updatePauseResumeUI() {

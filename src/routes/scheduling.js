@@ -2009,7 +2009,9 @@ async function findActiveTemplates(worldTime, membershipFilter) {
         required: true,
         where: membershipFilter,
         attributes: ['id', 'routeNumber', 'returnRouteNumber', 'distance', 'turnaroundTime',
-                     'demand', 'averageLoadFactor', 'waypoints', 'worldMembershipId'],
+                     'demand', 'averageLoadFactor', 'waypoints', 'worldMembershipId',
+                     // extra fields the load-factor model reads (for live sector LF)
+                     'economyPrice', 'departureAirportId', 'arrivalAirportId', 'createdAt', 'scheduledDepartureTime'],
         include: [
           {
             model: Airport,
@@ -2031,7 +2033,7 @@ async function findActiveTemplates(worldTime, membershipFilter) {
       {
         model: UserAircraft,
         as: 'aircraft',
-        attributes: ['id', 'registration'],
+        attributes: ['id', 'registration', 'ageYears', 'conditionPercentage'],
         include: [
           {
             model: Aircraft,
@@ -2099,6 +2101,18 @@ router.get('/active', async (req, res) => {
       worldMembershipId: membership.id
     });
 
+    // Live sector load factor for each airborne flight (preview mode — records no
+    // revenue). Deterministic, so it equals the value recorded when the round-trip
+    // completes today; lets the map show the real LF instead of the route average.
+    const lfByTemplate = {};
+    await Promise.all(activeTemplates.map(async (t) => {
+      try {
+        lfByTemplate[t.id] = await worldTimeService.processFlightRevenue(t, activeWorldId, worldTime, true);
+      } catch (e) {
+        lfByTemplate[t.id] = null;
+      }
+    }));
+
     // Transform data for the map - compute virtual dates for compatibility
     // Deduplicate waypoints: send once per route instead of per flight
     const routeWaypoints = {};
@@ -2126,7 +2140,8 @@ router.get('/active', async (req, res) => {
           turnaroundTime: template.route.turnaroundTime || 45,
           techStopAirport: template.route.techStopAirport || null,
           demand: template.route.demand || 0,
-          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0
+          averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
+          currentLoadFactor: (typeof lfByTemplate[template.id] === 'number') ? lfByTemplate[template.id] : null
         },
         departureAirport: template.route.departureAirport,
         arrivalAirport: template.route.arrivalAirport,
