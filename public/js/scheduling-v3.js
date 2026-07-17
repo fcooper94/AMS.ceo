@@ -3778,6 +3778,77 @@ function closeTurnaroundModal() {
   if (modal) modal.remove();
 }
 
+// Show cumulative financial performance for the flight's route.
+async function showRouteFinancials(flightId) {
+  const flight = scheduledFlights.find(f => f.id === flightId);
+  if (!flight || !flight.route) {
+    showAlertModal('Financial Stats', 'Route data is unavailable for this flight.');
+    return;
+  }
+  const routeId = flight.route.id;
+
+  // Prefer the routes cache (loaded from /api/routes with financials); if it lacks
+  // the financial fields (some load paths omit them), fetch a fresh copy.
+  let r = routes.find(x => x.id === routeId);
+  if (!r || r.totalRevenue === undefined) {
+    try {
+      const resp = await fetch('/api/routes');
+      if (resp.ok) {
+        const all = await resp.json();
+        r = all.find(x => x.id === routeId) || r;
+      }
+    } catch (e) { /* fall back to whatever we have */ }
+  }
+  r = r || flight.route;
+
+  const num = v => parseFloat(v) || 0;
+  const flights  = num(r.totalFlights);
+  const revenue  = num(r.totalRevenue);
+  const costs    = num(r.totalCosts);
+  const profit   = (r.profit !== undefined && r.profit !== null) ? num(r.profit) : (revenue - costs);
+  const pax      = num(r.totalPassengers);
+  const loadPct  = num(r.averageLoadFactor) * 100;
+  const margin   = revenue > 0 ? (profit / revenue) * 100 : 0;
+  const avgRev   = flights > 0 ? revenue / flights : 0;
+  const avgProf  = flights > 0 ? profit / flights : 0;
+
+  const routeLabel = `${r.routeNumber || flight.route.routeNumber}${r.returnRouteNumber ? ' / ' + r.returnRouteNumber : ''}`;
+  const dep = flight.route.departureAirport?.icaoCode || flight.route.departureAirport?.iataCode || '';
+  const arr = flight.route.arrivalAirport?.icaoCode || flight.route.arrivalAirport?.iataCode || '';
+
+  const money = v => `${v < 0 ? '-' : ''}$${formatCurrencyValue(Math.abs(v))}`;
+  const profitColor = profit >= 0 ? '#3fb950' : '#f85149';
+  const row = (label, value, color) => `
+    <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid #21262d;">
+      <span style="color:#8b949e;">${label}</span>
+      <span style="color:${color || '#f0f6fc'};font-weight:600;">${value}</span>
+    </div>`;
+
+  let content;
+  if (flights === 0) {
+    content = `
+      <div style="margin-bottom:0.5rem;color:#58a6ff;font-weight:600;">${dep} ↔ ${arr}</div>
+      <div style="color:#8b949e;font-size:0.9rem;line-height:1.5;">
+        This route hasn't completed any flights yet, so there's no financial history to show.
+        Stats will appear here once it has flown.
+      </div>`;
+  } else {
+    content = `
+      <div style="margin-bottom:0.75rem;color:#58a6ff;font-weight:600;">${dep} ↔ ${arr}</div>
+      ${row('Flights flown', flights.toLocaleString())}
+      ${row('Total revenue', money(revenue), '#3fb950')}
+      ${row('Total costs', money(costs), '#f0b429')}
+      ${row('Net profit', money(profit), profitColor)}
+      ${row('Profit margin', margin.toFixed(1) + '%', profitColor)}
+      ${row('Avg revenue / flight', money(avgRev))}
+      ${row('Avg profit / flight', money(avgProf), profitColor)}
+      ${row('Total passengers', pax.toLocaleString())}
+      ${row('Avg load factor', loadPct.toFixed(1) + '%')}`;
+  }
+
+  showTurnaroundModal(`Financial Stats — ${routeLabel}`, content);
+}
+
 // View flight details - redirect to the detailed weekly modal
 async function viewFlightDetails(flightId) {
   return viewFlightDetailsWeekly(flightId);
@@ -4039,7 +4110,7 @@ async function viewFlightDetailsLegacy(flightId) {
           ${availableHtml}
         </div>
         <div style="padding: 1rem 1.5rem; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
-          <button onclick="window.location.href='#'" style="
+          <button onclick="showRouteFinancials('${flightId}')" style="
             padding: 0.5rem 1rem;
             background: #238636;
             border: 1px solid #2ea043;
@@ -4716,7 +4787,7 @@ async function viewFlightDetailsWeekly(flightId) {
           ${maintenanceHtml}
         </div>
         <div style="padding: 1rem 1.5rem; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
-          <button onclick="window.location.href='#'" style="
+          <button onclick="showRouteFinancials('${flightId}')" style="
             padding: 0.5rem 1rem;
             background: #238636;
             border: 1px solid #2ea043;
