@@ -745,6 +745,18 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         }
       } catch (wpErr) { /* non-critical */ }
 
+      // Configure the aircraft's cabin + cargo to match this route (set once, at
+      // assignment). Without this the aircraft flies all-economy and earns no
+      // premium/cargo revenue. Non-critical — never block route creation on it.
+      try {
+        const aiFleetConfigService = require('./aiFleetConfigService');
+        await aiFleetConfigService.applyRouteConfig(route, aircraft, {
+          baseAirport, destAirport, distanceNm: distance, worldYear, archetype: airline.airlineType
+        });
+      } catch (cfgErr) {
+        console.warn(`[AI-DECISION] Cabin/cargo config failed for ${airline.airlineName}: ${cfgErr.message}`);
+      }
+
       await scheduleAIFlights(route, aircraft);
 
       const freqLabel = smartDays.length === 7 ? 'daily' : `${smartDays.length}x/week`;
