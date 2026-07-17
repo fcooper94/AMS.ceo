@@ -294,6 +294,9 @@
     padding: 2px 4px;
     box-sizing: border-box;
     gap: 1px;
+    /* Hairline divider so back-to-back sectors are visually separated even when
+       there's no idle gap between them (box-sizing keeps it inset, not wider). */
+    border-right: 2px solid rgba(0, 0, 0, 0.4);
   }
 
   .flight-segment .segment-flight-num {

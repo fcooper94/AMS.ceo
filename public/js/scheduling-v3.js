@@ -807,6 +807,18 @@ function showLoadingModal(title, message) {
   modal.style.display = 'flex';
 }
 
+// Show/update the loading modal's progress bar (e.g. "3 / 7") for batch actions.
+function updateLoadingModalProgress(current, total) {
+  const wrap = document.getElementById('loadingModalProgress');
+  if (!wrap) return;
+  wrap.style.display = 'block';
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const bar = document.getElementById('loadingModalProgressBar');
+  if (bar) bar.style.width = pct + '%';
+  const text = document.getElementById('loadingModalProgressText');
+  if (text) text.textContent = `${current} / ${total}`;
+}
+
 function updateLoadingProgress(current, total, message) {
   const progressDiv = document.getElementById('loadingModalProgress');
   const progressBar = document.getElementById('loadingModalProgressBar');
@@ -7690,7 +7702,9 @@ async function scheduleRouteForAllDays(routeId) {
   try {
     showLoadingModal('Scheduling Flights', `Adding ${operatingDays.length} flights...`);
 
+    let done = 0;
     for (const dayOfWeek of operatingDays) {
+      updateLoadingModalProgress(done, operatingDays.length);
       try {
         const response = await fetch('/api/schedule/flight', {
           method: 'POST',
@@ -7706,6 +7720,8 @@ async function scheduleRouteForAllDays(routeId) {
       } catch (e) {
         skipped.push(`${dayNames[dayOfWeek]}: network error`);
       }
+      done++;
+      updateLoadingModalProgress(done, operatingDays.length);
     }
 
     // Refresh auto-maintenance once after the batch
@@ -9641,8 +9657,10 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
     try {
       showLoadingModal('Scheduling Flights', `Adding ${operatingDays.length} flights...`);
       let added = 0;
+      let done = 0;
       const skipped = [];
       for (const d of operatingDays) {
+        updateLoadingModalProgress(done, operatingDays.length);
         try {
           const response = await fetch('/api/schedule/flight', {
             method: 'POST',
@@ -9658,6 +9676,8 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
         } catch (e) {
           skipped.push(`${dayNames[d]}: network error`);
         }
+        done++;
+        updateLoadingModalProgress(done, operatingDays.length);
       }
       if (added > 0) {
         try { await fetch(`/api/fleet/${aircraftId}/refresh-maintenance`, { method: 'POST' }); } catch (e) { /* ignore */ }
