@@ -6,6 +6,24 @@ const eraEconomicService = require('../services/eraEconomicService');
 const { getAICount } = require('../data/aiDifficultyConfig');
 const { getBank, calculateOfferRate, calculateFixedPayment } = require('../data/bankConfig');
 
+// ── Branding input sanitisers ──
+// Logos are submitted by the client and later injected as HTML, so accept only
+// simple, self-generated SVG markup — reject scripts, event handlers and external
+// references to prevent stored XSS (e.g. if competitor logos are shown to others).
+function sanitizeLogoSvg(svg) {
+  if (!svg || typeof svg !== 'string') return null;
+  const s = svg.trim();
+  if (!s.startsWith('<svg') || !s.endsWith('</svg>') || s.length > 8000) return null;
+  if (/<script|<foreignObject|<iframe|<image\b|on\w+\s*=|javascript:|xlink:href|href\s*=|<!--/i.test(s)) return null;
+  return s;
+}
+function safeHexColor(c) {
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) ? c : null;
+}
+function safeLogoTemplate(t) {
+  return (typeof t === 'string' && /^[a-z]{1,20}$/i.test(t)) ? t : null;
+}
+
 /**
  * Get all available worlds for user to join
  */
@@ -107,7 +125,7 @@ router.post('/join', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor, backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg } = req.body;
     const validTiers = ['budget', 'standard', 'premium'];
     const mpCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
     const mpGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
@@ -222,6 +240,11 @@ router.post('/join', async (req, res) => {
       airlineName,
       airlineCode,
       iataCode,
+      backgroundColor: safeHexColor(backgroundColor),
+      primaryColor: safeHexColor(primaryColor),
+      secondaryColor: safeHexColor(secondaryColor),
+      logoTemplate: safeLogoTemplate(logoTemplate),
+      logoSvg: sanitizeLogoSvg(logoSvg),
       region,
       baseAirportId,
       balance: startingBalance,
@@ -521,7 +544,7 @@ router.post('/create-singleplayer', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode, cleaningContractor, groundContractor, engineeringContractor, backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg } = req.body;
     const validTiers = ['budget', 'standard', 'premium'];
     const spCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
     const spGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
@@ -613,6 +636,11 @@ router.post('/create-singleplayer', async (req, res) => {
       airlineName,
       airlineCode,
       iataCode,
+      backgroundColor: safeHexColor(backgroundColor),
+      primaryColor: safeHexColor(primaryColor),
+      secondaryColor: safeHexColor(secondaryColor),
+      logoTemplate: safeLogoTemplate(logoTemplate),
+      logoSvg: sanitizeLogoSvg(logoSvg),
       region: airport.country,
       baseAirportId,
       balance: startingBalance,
@@ -756,7 +784,7 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor } = req.body;
+    const { worldId, airlineName, airlineCode, iataCode, baseAirportId, cleaningContractor, groundContractor, engineeringContractor, backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg } = req.body;
     const validTiers = ['budget', 'standard', 'premium'];
     const rejCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
     const rejGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
@@ -841,6 +869,11 @@ router.post('/rejoin-sp', async (req, res) => {
       airlineName,
       airlineCode,
       iataCode,
+      backgroundColor: safeHexColor(backgroundColor),
+      primaryColor: safeHexColor(primaryColor),
+      secondaryColor: safeHexColor(secondaryColor),
+      logoTemplate: safeLogoTemplate(logoTemplate),
+      logoSvg: sanitizeLogoSvg(logoSvg),
       region: airport.country,
       baseAirportId,
       balance: startingBalance,

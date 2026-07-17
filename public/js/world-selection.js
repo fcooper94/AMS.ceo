@@ -1008,7 +1008,8 @@ async function confirmJoin() {
         baseAirportId,
         cleaningContractor,
         groundContractor,
-        engineeringContractor
+        engineeringContractor,
+        ...getBranding('mp')
       })
     });
 
@@ -1258,7 +1259,8 @@ async function confirmRejoin() {
         baseAirportId: rejoinAirportId,
         cleaningContractor,
         groundContractor,
-        engineeringContractor
+        engineeringContractor,
+        ...getBranding('rejoin')
       })
     });
 
@@ -1791,6 +1793,88 @@ function updateRejoinContractorPreview() {
 
 // ── Wizard Step Navigation ──────────────────────────────────────────
 
+// ─── Airline branding picker (procedural SVG logos) ──────────────────────
+// One reusable picker drives all three setup forms (prefixes: sp / mp / rejoin).
+const DEFAULT_BRAND = { background: '#0b2545', primary: '#ffffff', secondary: '#e01e2b' };
+const brandingState = {}; // { <prefix>: { background, primary, secondary, seed, template, svg, _logos } }
+
+function _newLogoSeed() { return Math.floor(Math.random() * 1e9) + 1; }
+
+function initBrandingPicker(prefix, nameInputId) {
+  if (typeof generateAirlineLogos !== 'function') return; // generator script not loaded
+  if (!brandingState[prefix]) {
+    brandingState[prefix] = {
+      background: DEFAULT_BRAND.background, primary: DEFAULT_BRAND.primary, secondary: DEFAULT_BRAND.secondary,
+      seed: _newLogoSeed(), template: null, svg: null, _logos: {}
+    };
+    const setVal = (suffix, val) => { const el = document.getElementById(prefix + suffix); if (el) el.value = val; };
+    setVal('BackgroundColor', DEFAULT_BRAND.background);
+    setVal('PrimaryColor', DEFAULT_BRAND.primary);
+    setVal('SecondaryColor', DEFAULT_BRAND.secondary);
+    // Live-refresh the logos as the name is typed (keeps the same designs/seed)
+    const nameInput = document.getElementById(nameInputId);
+    if (nameInput && !nameInput._brandingBound) {
+      nameInput.addEventListener('input', () => regenerateLogos(prefix, nameInputId));
+      nameInput._brandingBound = true;
+    }
+  }
+  regenerateLogos(prefix, nameInputId);
+}
+
+function regenerateLogos(prefix, nameInputId) {
+  const st = brandingState[prefix];
+  const grid = document.getElementById(prefix + 'LogoGrid');
+  if (!st || !grid) return;
+  const name = (document.getElementById(nameInputId)?.value || '').trim() || 'Airline';
+  const logos = generateAirlineLogos(name, st.background, st.primary, st.secondary, st.seed);
+  st._logos = {};
+  logos.forEach(l => { st._logos[l.id] = l.svg; });
+  // Preserve the current selection if still valid, else default to the first
+  if (!st.template || !st._logos[st.template]) st.template = logos[0].id;
+  st.svg = st._logos[st.template];
+  grid.innerHTML = logos.map(l => `
+    <button type="button" class="logo-option${st.template === l.id ? ' selected' : ''}" data-id="${l.id}" onclick="selectLogo('${prefix}','${l.id}')" title="${l.label}">
+      <span class="logo-svg">${l.svg}</span>
+    </button>`).join('');
+}
+
+// "Refresh Logos" — pick a new seed so a fresh set of six designs appears.
+function shuffleLogos(prefix, nameInputId) {
+  const st = brandingState[prefix];
+  if (!st) return;
+  st.seed = _newLogoSeed();
+  st.template = null; // adopt the new first design as the default selection
+  regenerateLogos(prefix, nameInputId);
+}
+
+function selectLogo(prefix, id) {
+  const st = brandingState[prefix];
+  if (!st || !st._logos) return;
+  st.template = id;
+  st.svg = st._logos[id];
+  document.querySelectorAll('#' + prefix + 'LogoGrid .logo-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+}
+
+function setBrandColor(prefix, which, value, nameInputId) {
+  if (!brandingState[prefix]) return;
+  brandingState[prefix][which] = value; // which = background | primary | secondary
+  regenerateLogos(prefix, nameInputId);
+}
+
+// Returns the branding fields to include in a create/join payload.
+function getBranding(prefix) {
+  const st = brandingState[prefix] || {};
+  return {
+    backgroundColor: st.background || DEFAULT_BRAND.background,
+    primaryColor: st.primary || DEFAULT_BRAND.primary,
+    secondaryColor: st.secondary || DEFAULT_BRAND.secondary,
+    logoTemplate: st.template || null,
+    logoSvg: st.svg || null
+  };
+}
+
 const MODAL_STEP_CONFIG = {
   sp:     { steps: 5, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
   mp:     { steps: 4, closeFunc: 'closeJoinModal',     finalLabel: 'Join World',   finalFunc: 'confirmJoin' },
@@ -1806,6 +1890,13 @@ function showModalStep(prefix, step) {
   }
   updateModalStepIndicators(prefix, step);
   updateModalFooterButtons(prefix, step);
+  // Initialize the branding/logo picker when the airline-details step is shown
+  // (SP: step 2, MP/rejoin: step 1)
+  const airlineStep = (prefix === 'sp') ? 2 : 1;
+  if (step === airlineStep) {
+    const nameInput = prefix === 'sp' ? 'spAirlineName' : (prefix === 'mp' ? 'airlineName' : 'rejoinAirlineName');
+    initBrandingPicker(prefix, nameInput);
+  }
   // Trigger contractor cost update when entering contractor steps
   // SP: steps 3-5 are contractors; MP/rejoin: steps 2-4 are contractors
   const contractorStart = (prefix === 'sp') ? 3 : 2;
@@ -2034,7 +2125,8 @@ async function createSinglePlayerWorld() {
       body: JSON.stringify({
         name, era, timeAcceleration, difficulty,
         baseAirportId, airlineName, airlineCode, iataCode,
-        cleaningContractor, groundContractor, engineeringContractor
+        cleaningContractor, groundContractor, engineeringContractor,
+        ...getBranding('sp')
       })
     });
 

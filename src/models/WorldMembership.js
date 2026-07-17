@@ -45,6 +45,31 @@ const WorldMembership = sequelize.define('WorldMembership', {
     comment: 'IATA airline code (2 letters) - used for flight number prefix',
     field: 'iata_code'
   },
+  backgroundColor: {
+    type: DataTypes.STRING(9),
+    field: 'background_color',
+    comment: 'Airline logo background/card colour (hex)'
+  },
+  primaryColor: {
+    type: DataTypes.STRING(9),
+    field: 'primary_color',
+    comment: 'Airline brand primary/wordmark colour (hex)'
+  },
+  secondaryColor: {
+    type: DataTypes.STRING(9),
+    field: 'secondary_color',
+    comment: 'Airline brand secondary colour (hex)'
+  },
+  logoTemplate: {
+    type: DataTypes.STRING,
+    field: 'logo_template',
+    comment: 'Chosen procedural logo template id'
+  },
+  logoSvg: {
+    type: DataTypes.TEXT,
+    field: 'logo_svg',
+    comment: 'Chosen airline logo as inline SVG markup'
+  },
   region: {
     type: DataTypes.STRING,
     comment: 'Starting region (Africa, Asia, Europe, North America, Oceania, South America)',

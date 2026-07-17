@@ -345,6 +345,31 @@ function applyWorldInfo(worldInfo) {
       airlineNameEl.textContent = worldInfo.airlineName;
     }
 
+    // Airline logo (sanitised wordmark SVG stored at setup). The wordmark sits on a
+    // white chip, so frame it in the airline's own accent colour and lift it off the
+    // dark sidebar — makes the chosen palette read as intentional branding. The
+    // wordmark already shows the name, so hide the text name when a logo is present.
+    const airlineLogoEl = document.getElementById('airlineLogo');
+    if (airlineLogoEl) {
+      if (worldInfo.logoSvg) {
+        airlineLogoEl.innerHTML = worldInfo.logoSvg;
+        const svg = airlineLogoEl.querySelector('svg');
+        if (svg) { svg.removeAttribute('width'); svg.removeAttribute('height'); svg.style.width = '100%'; svg.style.height = 'auto'; svg.style.display = 'block'; }
+        // The logo is a self-coloured livery card, so no white frame — just clean
+        // rounded corners and a soft shadow to give it depth on the sidebar.
+        airlineLogoEl.style.display = 'block';
+        airlineLogoEl.style.borderRadius = '10px';
+        airlineLogoEl.style.overflow = 'hidden';
+        airlineLogoEl.style.lineHeight = '0';
+        airlineLogoEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)';
+        if (airlineNameEl) airlineNameEl.style.display = 'none';
+      } else {
+        airlineLogoEl.style.display = 'none';
+        airlineLogoEl.style.boxShadow = '';
+        if (airlineNameEl) airlineNameEl.style.display = '';
+      }
+    }
+
     if (airlineCodeEl) {
       const codes = [];
       if (worldInfo.iataCode) codes.push(worldInfo.iataCode);

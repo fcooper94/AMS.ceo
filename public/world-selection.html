@@ -1,6 +1,22 @@
 <!-- TITLE: World Selection - AMS.ceo -->
 <!-- SUBTITLE: Operations Center -->
-<!-- SCRIPTS: /js/world-selection.js -->
+<!-- SCRIPTS: /js/airline-logo.js, /js/world-selection.js -->
+
+<style>
+  .branding-group { margin-top: 0.85rem; }
+  .branding-colors { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.55rem; flex-wrap: wrap; }
+  .color-pick { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .color-pick input[type="color"] { width: 34px; height: 28px; padding: 0; border: 1px solid var(--border-color); border-radius: 4px; background: none; cursor: pointer; }
+  .branding-refresh { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; background: var(--surface-elevated); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 0.25rem 0.55rem; height: 28px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
+  .branding-refresh:hover { color: var(--accent-color); border-color: var(--accent-color); }
+  .logo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+  .logo-option { background: var(--surface-elevated); border: 2px solid var(--border-color); border-radius: 8px; padding: 0.35rem; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; display: flex; align-items: center; justify-content: center; }
+  .logo-option:hover { border-color: var(--text-secondary); }
+  .logo-option.selected { border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color); }
+  .logo-option .logo-svg { display: block; width: 100%; }
+  .logo-option .logo-svg svg { width: 100%; height: auto; display: block; }
+  .branding-hint { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.4rem; }
+</style>
 
 <div class="dashboard-container">
   <main class="main-content">
@@ -231,6 +247,18 @@
                 AI Competitors: Select airport to calculate
               </p>
             </div>
+
+            <div class="form-group branding-group">
+              <label>AIRLINE BRANDING</label>
+              <div class="branding-colors">
+                <label class="color-pick">Background <input type="color" id="spBackgroundColor" value="#0b2545" oninput="setBrandColor('sp','background',this.value,'spAirlineName')"></label>
+                <label class="color-pick">Primary <input type="color" id="spPrimaryColor" value="#ffffff" oninput="setBrandColor('sp','primary',this.value,'spAirlineName')"></label>
+                <label class="color-pick">Secondary <input type="color" id="spSecondaryColor" value="#e01e2b" oninput="setBrandColor('sp','secondary',this.value,'spAirlineName')"></label>
+                <button type="button" class="branding-refresh" onclick="shuffleLogos('sp','spAirlineName')" title="Fresh designs">&#8635; Logos</button>
+              </div>
+              <div id="spLogoGrid" class="logo-grid"></div>
+              <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
+            </div>
           </div>
 
           <div class="join-modal-col">
@@ -451,6 +479,18 @@
                 <span id="userCredits" style="margin-left: 0.5rem; color: var(--text-secondary);">(Loading...)</span>
               </p>
               <p id="weeklyMembershipCost" style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week to maintain membership</p>
+            </div>
+
+            <div class="form-group branding-group">
+              <label>AIRLINE BRANDING</label>
+              <div class="branding-colors">
+                <label class="color-pick">Background <input type="color" id="mpBackgroundColor" value="#0b2545" oninput="setBrandColor('mp','background',this.value,'airlineName')"></label>
+                <label class="color-pick">Primary <input type="color" id="mpPrimaryColor" value="#ffffff" oninput="setBrandColor('mp','primary',this.value,'airlineName')"></label>
+                <label class="color-pick">Secondary <input type="color" id="mpSecondaryColor" value="#e01e2b" oninput="setBrandColor('mp','secondary',this.value,'airlineName')"></label>
+                <button type="button" class="branding-refresh" onclick="shuffleLogos('mp','airlineName')" title="Fresh designs">&#8635; Logos</button>
+              </div>
+              <div id="mpLogoGrid" class="logo-grid"></div>
+              <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
             </div>
           </div>
 
@@ -725,6 +765,18 @@
           <input type="text" id="rejoinAirportSearch" placeholder="Search by name, ICAO, or city..." autocomplete="off">
           <div id="rejoinAirportResults" style="display: none; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.25rem;"></div>
           <div id="rejoinSelectedAirport" style="display: none; padding: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; margin-top: 0.25rem;"></div>
+        </div>
+
+        <div class="form-group branding-group">
+          <label>AIRLINE BRANDING</label>
+          <div class="branding-colors">
+            <label class="color-pick">Background <input type="color" id="rejoinBackgroundColor" value="#0b2545" oninput="setBrandColor('rejoin','background',this.value,'rejoinAirlineName')"></label>
+            <label class="color-pick">Primary <input type="color" id="rejoinPrimaryColor" value="#ffffff" oninput="setBrandColor('rejoin','primary',this.value,'rejoinAirlineName')"></label>
+            <label class="color-pick">Secondary <input type="color" id="rejoinSecondaryColor" value="#e01e2b" oninput="setBrandColor('rejoin','secondary',this.value,'rejoinAirlineName')"></label>
+            <button type="button" class="branding-refresh" onclick="shuffleLogos('rejoin','rejoinAirlineName')" title="Fresh designs">&#8635; Logos</button>
+          </div>
+          <div id="rejoinLogoGrid" class="logo-grid"></div>
+          <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
         </div>
       </div>
 
