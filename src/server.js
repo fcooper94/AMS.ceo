@@ -617,6 +617,9 @@ server.listen(PORT, () => {
       `);
     } catch (_) { /* routes table may not exist yet — sync will create it */ }
     try {
+      await sequelize.query(`ALTER TYPE enum_user_aircraft_status ADD VALUE IF NOT EXISTS 'scrapping'`);
+    } catch (_) { /* enum may not exist yet */ }
+    try {
       await sequelize.query(`
         ALTER TABLE user_aircraft
           ADD COLUMN IF NOT EXISTS scrap_price DECIMAL(15,2),
