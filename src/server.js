@@ -151,7 +151,7 @@ app.set('io', io);
 global.io = io;
 
 // Import middleware
-const { requireAuth, redirectIfAuth, requireWorld } = require('./middleware/auth');
+const { requireAuth, redirectIfAuth, requireAdmin, requireWorld } = require('./middleware/auth');
 const { SystemSettings } = require('./models');
 
 // Import routes
@@ -321,7 +321,7 @@ app.use('/api/finances', requireWorld, financesRoutes);
 app.use('/api/routes', requireWorld, routesRoutes);
 app.use('/api/schedule', requireWorld, schedulingRoutes);
 app.use('/api/pricing', requireWorld, pricingRoutes);
-app.use('/api/admin', requireAuth, adminRoutes);
+app.use('/api/admin', requireAdmin, adminRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', requireWorld, dashboardRoutes);
 app.use('/api/staff', requireWorld, staffRoutes);
@@ -630,6 +630,13 @@ server.listen(PORT, () => {
         ALTER TABLE routes ADD COLUMN IF NOT EXISTS custom_route_string TEXT
       `);
     } catch (_) { /* routes table may not exist yet — sync will create it */ }
+    try {
+      await sequelize.query(`
+        ALTER TABLE worlds
+          ADD COLUMN IF NOT EXISTS pause_on_session_end BOOLEAN NOT NULL DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE
+      `);
+    } catch (_) { /* worlds table may not exist yet — sync will create it */ }
     try {
       await sequelize.query(`ALTER TYPE enum_user_aircraft_status ADD VALUE IF NOT EXISTS 'scrapping'`);
     } catch (_) { /* enum may not exist yet */ }

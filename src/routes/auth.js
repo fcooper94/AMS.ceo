@@ -3,7 +3,7 @@ const router = express.Router();
 const passport = require('../config/passport');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { User, SystemSettings } = require('../models');
+const { User, SystemSettings, World } = require('../models');
 const { Op } = require('sequelize');
 const { sendEmail } = require('../utils/mailer');
 
@@ -330,7 +330,20 @@ router.get('/vatsim/callback',
 );
 
 // Logout route
-router.get('/logout', (req, res) => {
+router.get('/logout', async (req, res) => {
+  // Auto-pause the active singleplayer world on logout if the owner opted in.
+  const activeWorldId = req.session?.activeWorldId;
+  if (activeWorldId) {
+    try {
+      const world = await World.findByPk(activeWorldId, {
+        attributes: ['id', 'worldType', 'pauseOnSessionEnd', 'isPaused', 'status']
+      });
+      if (world && world.worldType === 'singleplayer' && world.pauseOnSessionEnd
+          && world.status === 'active' && !world.isPaused) {
+        await require('../services/worldTimeService').pauseWorld(activeWorldId);
+      }
+    } catch (e) { /* never block logout on this */ }
+  }
   req.logout((err) => {
     if (err) {
       console.error('Logout error:', err);
@@ -351,6 +364,7 @@ router.get('/status', async (req, res) => {
 
       res.json({
         authenticated: true,
+        impersonating: !!req.session?.impersonatorUserId,
         user: {
           vatsimId: req.user.vatsimId,
           name: `${req.user.firstName} ${req.user.lastName}`,

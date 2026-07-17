@@ -260,6 +260,8 @@ function renderUserActions(user) {
   }
 
   items += `<div style="border-top: 1px solid var(--border-color); margin: 0.25rem 0;"></div>`;
+  items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); loginAsUser(${uj})'>Login as User</button>`;
+  items += `<div style="border-top: 1px solid var(--border-color); margin: 0.25rem 0;"></div>`;
   items += `<button style="${itemStyle} color: #fca5a5;" onmouseenter="this.style.background='rgba(220,38,38,0.15)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openDeleteUserModal(${uj})'>Delete User</button>`;
 
   return `
@@ -338,6 +340,26 @@ async function confirmSetCid() {
 }
 
 // ==================== SEND PASSWORD RESET ====================
+
+async function loginAsUser(user) {
+  if (!confirm(`Log in as ${user.firstName} ${user.lastName}? You'll be able to return to your admin account via the banner at the top.`)) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/admin/users/${user.id}/login-as`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    if (data.success) {
+      window.location.href = data.redirect;
+    } else {
+      alert('Error: ' + (data.error || 'Failed to log in as user'));
+    }
+  } catch (error) {
+    alert('Network error. Please try again.');
+  }
+}
 
 async function sendPasswordReset(user) {
   if (!confirm(`Send a password reset email to ${user.firstName} ${user.lastName} (${user.email})?`)) {

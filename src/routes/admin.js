@@ -306,6 +306,67 @@ router.post('/users/:userId/send-password-reset', async (req, res) => {
 });
 
 /**
+ * Admin: log in as another user (impersonation). Admin-only.
+ * Remembers the admin so they can switch back via /stop-impersonation.
+ */
+router.post('/users/:userId/login-as', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+
+    // Verify the requester is an admin (the session user may not carry isAdmin).
+    const me = await User.findOne({
+      where: req.user.id ? { id: req.user.id } : { vatsimId: req.user.vatsimId }
+    });
+    if (!me || !me.isAdmin) return res.status(403).json({ error: 'Admin access required' });
+
+    const target = await User.findByPk(req.params.userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    const adminId = me.id;
+    req.login(target, (err) => {
+      if (err) {
+        console.error('login-as req.login failed:', err);
+        return res.status(500).json({ error: 'Failed to switch user' });
+      }
+      // Remember who we really are so the admin can return, and drop the admin's
+      // world context so the impersonated user picks their own.
+      req.session.impersonatorUserId = adminId;
+      delete req.session.activeWorldId;
+      res.json({ success: true, redirect: '/world-selection' });
+    });
+  } catch (error) {
+    console.error('Error in login-as:', error);
+    res.status(500).json({ error: 'Failed to log in as user' });
+  }
+});
+
+/**
+ * Return to the admin account after impersonating a user.
+ */
+router.post('/stop-impersonation', async (req, res) => {
+  try {
+    const adminId = req.session?.impersonatorUserId;
+    if (!adminId) return res.status(400).json({ error: 'Not currently impersonating' });
+
+    const admin = await User.findByPk(adminId);
+    if (!admin) return res.status(404).json({ error: 'Admin account not found' });
+
+    req.login(admin, (err) => {
+      if (err) {
+        console.error('stop-impersonation req.login failed:', err);
+        return res.status(500).json({ error: 'Failed to return to admin' });
+      }
+      delete req.session.impersonatorUserId;
+      delete req.session.activeWorldId;
+      res.json({ success: true, redirect: '/admin' });
+    });
+  } catch (error) {
+    console.error('Error in stop-impersonation:', error);
+    res.status(500).json({ error: 'Failed to return to admin' });
+  }
+});
+
+/**
  * Delete user and all associated data
  */
 router.delete('/users/:userId', async (req, res) => {

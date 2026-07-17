@@ -40,6 +40,29 @@
       }
     })();
   </script>
+  <!-- Admin impersonation banner (only shown while an admin is viewing as another user) -->
+  <div id="impersonationBanner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:#d97706; color:#1a1a1a; text-align:center; padding:0.4rem 1rem; font-size:0.85rem; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    &#128373; Viewing as <span id="impersonationName">user</span>
+    <button onclick="stopImpersonation()" style="background:#1a1a1a; color:#fff; border:none; padding:0.25rem 0.7rem; border-radius:3px; cursor:pointer; font-size:0.8rem; font-weight:600; margin-left:0.75rem;">Return to admin</button>
+  </div>
+  <script>
+    (function(){
+      fetch('/auth/status').then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.authenticated && d.impersonating) {
+          var n = document.getElementById('impersonationName');
+          if (n) n.textContent = (d.user && d.user.name) ? d.user.name : 'user';
+          var b = document.getElementById('impersonationBanner');
+          if (b) { b.style.display = 'block'; document.body.style.paddingTop = b.offsetHeight + 'px'; }
+        }
+      }).catch(function(){});
+    })();
+    function stopImpersonation(){
+      fetch('/api/admin/stop-impersonation', { method:'POST', headers:{'Content-Type':'application/json'} })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.success) { window.location.href = d.redirect; } else { alert((d && d.error) || 'Failed to return to admin'); } })
+        .catch(function(){ alert('Network error'); });
+    }
+  </script>
   <nav class="navbar">
     <div class="nav-container">
       <div class="nav-left">
