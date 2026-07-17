@@ -997,7 +997,7 @@ router.get('/competition', async (req, res) => {
     // Gets fleet count & route stats via subqueries instead of N+1
     const [allRanked] = await sequelize.query(`
       SELECT wm.id, wm.airline_name, wm.airline_code, wm.iata_code, wm.is_ai,
-             wm.balance, wm.reputation, wm.base_airport_id,
+             wm.balance, wm.reputation, wm.base_airport_id, wm.logo_svg,
              a.icao_code AS base_icao, a.name AS base_name, a.city AS base_city, a.country AS base_country,
              COALESCE(fc.cnt, 0) AS fleet_count,
              COALESCE(rs.route_count, 0) AS route_count,
@@ -1175,6 +1175,7 @@ router.get('/competition/:airlineId', async (req, res) => {
       airlineCode: airline.airlineCode,
       iataCode: airline.iataCode,
       isAI: airline.isAI,
+      logoSvg: airline.logoSvg || null,
       reputation: airline.reputation || 0,
       balance: parseFloat(airline.balance) || 0,
       baseAirport: airline.baseAirport ? {
@@ -1212,6 +1213,7 @@ function formatRankedAirline(row) {
     airlineCode: row.airline_code,
     iataCode: row.iata_code,
     isAI: row.is_ai,
+    logoSvg: row.logo_svg || null,
     baseAirport: { icaoCode: row.base_icao, name: row.base_name, city: row.base_city, country: row.base_country },
     balance: parseFloat(row.balance) || 0,
     reputation: row.reputation,

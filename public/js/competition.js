@@ -94,11 +94,16 @@ function renderLeaderboard(airlines, playerAirlineId, playerRank, totalAirlines)
           ${rank}
         </td>
         <td style="padding: 0.75rem;">
-          <div style="font-weight: 600; color: var(--text-primary);">
-            ${airline.airlineName}
-            ${isPlayer ? '<span style="color: var(--primary-color); font-size: 0.75rem; margin-left: 0.25rem;">(YOU)</span>' : ''}
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            ${airlineLogoHtml(airline.logoSvg, 30)}
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary);">
+                ${airline.airlineName}
+                ${isPlayer ? '<span style="color: var(--primary-color); font-size: 0.75rem; margin-left: 0.25rem;">(YOU)</span>' : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); font-family: monospace;">${airline.airlineCode} / ${airline.iataCode}</div>
+            </div>
           </div>
-          <div style="font-size: 0.75rem; color: var(--text-secondary); font-family: monospace;">${airline.airlineCode} / ${airline.iataCode}</div>
         </td>
         <td style="padding: 0.75rem; color: var(--text-secondary);">${airline.baseAirport?.icaoCode || '--'}</td>
         <td style="padding: 0.75rem; text-align: right; color: var(--text-primary);">${airline.fleetCount}</td>
@@ -111,6 +116,14 @@ function renderLeaderboard(airlines, playerAirlineId, playerRank, totalAirlines)
 
   html += '</tbody></table>';
   container.innerHTML = html;
+}
+
+// Render an airline's stored logo as a small inline chip scaled to `height` px.
+function airlineLogoHtml(logoSvg, height) {
+  if (!logoSvg) return '';
+  const h = height || 28;
+  const svg = String(logoSvg).replace('<svg ', '<svg style="height:100%;width:auto;display:block" ');
+  return `<span style="display:inline-flex; align-items:center; height:${h}px; border-radius:5px; overflow:hidden; line-height:0; box-shadow:0 1px 3px rgba(0,0,0,0.3); flex-shrink:0; vertical-align:middle;">${svg}</span>`;
 }
 
 function renderBaseAirportAirlines(airlines, playerBaseAirport) {
@@ -139,9 +152,12 @@ function renderBaseAirportAirlines(airlines, playerBaseAirport) {
         transition: border-color 0.15s;
       " onmouseover="this.style.borderColor='var(--accent-color)'" onmouseout="this.style.borderColor='var(--border-color)'">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-          <div>
-            <span style="font-weight: 700; color: var(--text-primary);">${airline.airlineName}</span>
-            <span style="font-size: 0.75rem; color: var(--text-secondary); font-family: monospace; margin-left: 0.35rem;">${airline.airlineCode}</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${airlineLogoHtml(airline.logoSvg, 26)}
+            <div>
+              <span style="font-weight: 700; color: var(--text-primary);">${airline.airlineName}</span>
+              <span style="font-size: 0.75rem; color: var(--text-secondary); font-family: monospace; margin-left: 0.35rem;">${airline.airlineCode}</span>
+            </div>
           </div>
           <span style="font-size: 0.75rem; color: var(--text-muted);">#${airline.rank}</span>
         </div>
@@ -254,7 +270,9 @@ function renderAirlineModal(data) {
   const isPlayer = data.id === _playerAirlineId;
 
   // Header
-  nameEl.innerHTML = data.airlineName +
+  nameEl.innerHTML =
+    airlineLogoHtml(data.logoSvg, 34) +
+    '<span style="vertical-align: middle; margin-left: 0.55rem;">' + data.airlineName + '</span>' +
     (isPlayer ? '<span class="airline-header-badge" style="background: rgba(59,130,246,0.15); color: var(--accent-color);">YOU</span>' : '') +
     (data.isAI ? '<span class="airline-header-badge" style="background: rgba(200,210,225,0.08); color: var(--text-muted);">AI</span>' : '');
 

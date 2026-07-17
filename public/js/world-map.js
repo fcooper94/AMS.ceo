@@ -1622,8 +1622,9 @@ function showFlightInfo(flight) {
     <div class="flight-detail-panel">
       ${isOtherAirline ? `
       <!-- Airline Info for other airlines -->
-      <div class="airline-header" style="background: rgba(249, 115, 22, 0.15); border: 1px solid #f97316; border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; text-align: center;">
-        <div style="font-size: 0.7rem; color: #f97316; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Other Airline</div>
+      <div class="airline-header" style="padding: 0.25rem 0 0.85rem; margin-bottom: 0.6rem; text-align: center; border-bottom: 1px solid var(--border-color);">
+        <div style="font-size: 0.7rem; color: #f97316; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 0.55rem;">Other Airline</div>
+        ${flight.logoSvg ? `<div style="display: flex; justify-content: center; margin-bottom: 0.55rem;"><span style="display: inline-flex; height: 60px; border-radius: 10px; overflow: hidden; line-height: 0; box-shadow: 0 3px 10px rgba(0,0,0,0.45);">${String(flight.logoSvg).replace('<svg ', '<svg style="height:100%;width:auto;display:block" ')}</span></div>` : ''}
         <div style="font-size: 1rem; font-weight: 700; color: #f97316;">${airlineName}</div>
         ${airlineCode ? `<div style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'Courier New', monospace;">${airlineCode}</div>` : ''}
       </div>

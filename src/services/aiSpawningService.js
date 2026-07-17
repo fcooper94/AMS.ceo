@@ -11,6 +11,7 @@ const { generateAIAirline } = require('../data/aiAirlineNames');
 const { AI_DIFFICULTY, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
+const { pickAirlineBranding } = require('../../public/js/airline-logo.js');
 
 /**
  * Map a country to a broad region for name generation
@@ -204,6 +205,7 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
         airlineName: airline.name,
         airlineCode: airline.icaoCode,
         iataCode: airline.iataCode,
+        ...pickAirlineBranding(airline.name),
         region: humanBaseAirport.country,
         baseAirportId: humanBaseAirport.id,
         balance: startingBalance,

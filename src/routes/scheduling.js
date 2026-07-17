@@ -2186,11 +2186,11 @@ router.get('/active-all', async (req, res) => {
     // Get all memberships in this world
     const allMemberships = await WorldMembership.findAll({
       where: { worldId: activeWorldId },
-      attributes: ['id', 'airlineName', 'airlineCode']
+      attributes: ['id', 'airlineName', 'airlineCode', 'logoSvg']
     });
 
     const membershipIds = allMemberships.map(m => m.id);
-    const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode }]));
+    const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode, logoSvg: m.logoSvg }]));
 
     const worldTimeService = require('../services/worldTimeService');
     const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
@@ -2223,6 +2223,7 @@ router.get('/active-all', async (req, res) => {
         isOwnFlight: isOwnFlight,
         airlineName: airlineInfo.airlineName || 'Unknown Airline',
         airlineCode: airlineInfo.airlineCode || '??',
+        logoSvg: airlineInfo.logoSvg || null,
         route: {
           id: routeId,
           routeNumber: template.route.routeNumber,
@@ -2292,11 +2293,11 @@ router.get('/active-hq', async (req, res) => {
     // Get all memberships in this world (need all airlines since any could fly to/from HQ)
     const allMemberships = await WorldMembership.findAll({
       where: { worldId: activeWorldId },
-      attributes: ['id', 'airlineName', 'airlineCode']
+      attributes: ['id', 'airlineName', 'airlineCode', 'logoSvg']
     });
 
     const membershipIds = allMemberships.map(m => m.id);
-    const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode }]));
+    const membershipMap = new Map(allMemberships.map(m => [m.id, { airlineName: m.airlineName, airlineCode: m.airlineCode, logoSvg: m.logoSvg }]));
 
     const worldTimeService = require('../services/worldTimeService');
     const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
@@ -2332,6 +2333,7 @@ router.get('/active-hq', async (req, res) => {
         isOwnFlight: isOwnFlight,
         airlineName: airlineInfo.airlineName || 'Unknown Airline',
         airlineCode: airlineInfo.airlineCode || '??',
+        logoSvg: airlineInfo.logoSvg || null,
         route: {
           id: routeId,
           routeNumber: template.route.routeNumber,
