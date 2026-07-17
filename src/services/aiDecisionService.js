@@ -19,6 +19,10 @@ const eraEconomicService = require('./eraEconomicService');
 const routeDemandService = require('./routeDemandService');
 const airportSlotService = require('./airportSlotService');
 
+// AI archetypes use their own transport vocabulary ('passenger'/'cargo'/'both');
+// the Route model enum expects 'passengers_only'/'cargo_only'/'both'.
+const ROUTE_TRANSPORT_TYPE = { passenger: 'passengers_only', cargo: 'cargo_only', both: 'both' };
+
 // ─── Helper functions ────────────────────────────────────────────────
 
 /**
@@ -53,6 +57,61 @@ async function notifyPlayer(worldId, title, message, gameTime, opts = {}) {
   } catch (err) {
     // Non-critical
   }
+}
+
+/**
+ * Estimate the average used-market sale price for an aircraft type.
+ * Mirrors the market-averages logic in routes/fleet.js: it samples the
+ * depreciation curve across the plausible age/condition spread for the type
+ * and averages the results, scaled by the era multiplier. This keeps AI sale
+ * listings in line with "the average price of other aircraft of the same type"
+ * rather than a flat fraction of the (undepreciated) new price.
+ * Returns { avg, refCondition } (avg rounded, refCondition = mean condition
+ * of the sampled fleet so callers can adjust for a specific unit's wear),
+ * or null if the type has no base price.
+ */
+function estimateTypeAverageSalePrice(acType, worldYear) {
+  const newPrice = parseFloat(acType.purchasePrice) || 0;
+  if (!newPrice) return null;
+
+  const eraMultiplier = worldYear ? eraEconomicService.getEraMultiplier(worldYear) : 1.0;
+
+  // Age range this type could plausibly appear at on the used market
+  let maxAge = 25;
+  if (acType.availableFrom) maxAge = Math.min(25, worldYear - acType.availableFrom);
+  if (maxAge < 0) maxAge = 0;
+
+  const sampleAges = [];
+  for (let age = 0; age <= maxAge; age += Math.max(1, Math.floor(maxAge / 8))) sampleAges.push(age);
+  if (maxAge > 0 && !sampleAges.includes(maxAge)) sampleAges.push(maxAge);
+
+  const salePrices = [];
+  const conditions = [];
+  for (const age of sampleAges) {
+    // Representative condition for this age bracket (same brackets as fleet.js)
+    let condMin, condMax;
+    if (age <= 5) { condMin = 85; condMax = 100; }
+    else if (age <= 10) { condMin = 60; condMax = 95; }
+    else if (age <= 15) { condMin = 40; condMax = 70; }
+    else { condMin = 20; condMax = 50; }
+    const condMid = (condMin + condMax) / 2;
+    conditions.push(condMid);
+
+    // Depreciation factor (same formula as generateUsedAircraft in aircraft.js)
+    let depFactor;
+    if (age <= 5) depFactor = 0.70 - (age * 0.05);
+    else if (age <= 10) depFactor = 0.45 - ((age - 5) * 0.04);
+    else if (age <= 15) depFactor = 0.25 - ((age - 10) * 0.03);
+    else depFactor = 0.10 - Math.min((age - 15) * 0.01, 0.05);
+
+    depFactor = Math.max(depFactor * (condMid / 100) * 0.95, 0.03); // ~0.95 for check validity
+    salePrices.push(newPrice * depFactor * eraMultiplier);
+  }
+
+  if (salePrices.length === 0) return null;
+  const avg = Math.round(salePrices.reduce((s, v) => s + v, 0) / salePrices.length);
+  const refCondition = conditions.reduce((s, v) => s + v, 0) / conditions.length;
+  return { avg, refCondition };
 }
 
 /**
@@ -668,7 +727,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         cargoLightRate: Math.round(distance * 0.5),
         cargoStandardRate: Math.round(distance * 0.8),
         cargoHeavyRate: Math.round(distance * 1.2),
-        transportType: archetype.transportType || 'both',
+        transportType: ROUTE_TRANSPORT_TYPE[archetype.transportType] || 'both',
         isActive: true
       });
 
@@ -1411,8 +1470,20 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
         await ua.destroy();
         console.log(`[AI-DECISION] ${airline.airlineName} scrapped ${acType.manufacturer} ${acType.model} (${ua.registration}), got $${Math.round(scrapValue).toLocaleString()}`);
       } else {
-        // List for sale
-        const salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.5 * (condition / 100));
+        // List for sale at the average used-market price for this type, adjusted
+        // for this specific aircraft's wear: a better-than-average unit lists above
+        // the type average, a worn one below it. Anchored on the type average so it
+        // stays consistent with other aircraft of the same type (not a flat % of new).
+        const typeAvg = estimateTypeAverageSalePrice(acType, worldYear);
+        let salePrice;
+        if (typeAvg) {
+          // Scale by condition relative to the sampled fleet's average condition,
+          // clamped so extremes stay sensible.
+          const wearRatio = Math.max(0.4, Math.min(1.5, condition / typeAvg.refCondition));
+          salePrice = Math.round(typeAvg.avg * wearRatio);
+        } else {
+          salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.5 * (condition / 100));
+        }
         await ua.update({ status: 'listed_sale', listingPrice: salePrice, listedAt: now });
         console.log(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
       }
@@ -1598,5 +1669,6 @@ function getRegionFromCountry(country) {
 }
 
 module.exports = {
-  processAIDecisions
+  processAIDecisions,
+  estimateTypeAverageSalePrice
 };
