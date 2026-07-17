@@ -1,6 +1,5 @@
 # Set default behavior to automatically normalize line endings
 * text=auto
-
 # Force specific line endings for certain file types
 *.js text eol=lf
 *.json text eol=lf
@@ -8,7 +7,7 @@
 *.css text eol=lf
 *.md text eol=lf
 *.txt text eol=lf
-
 # Handle Windows-specific files
 *.bat text eol=crlf
 *.cmd text eol=crlf
+src/data/demandData.json filter=lfs diff=lfs merge=lfs -text
