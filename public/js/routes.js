@@ -1,5 +1,24 @@
 let allRoutes = [];
 let filteredRoutes = [];
+let routeSortColumn = null; // 'profit' | 'load' | 'status'
+let routeSortDir = -1;      // 1 asc, -1 desc
+
+// Sort-arrow indicator for a sortable column header
+function sortIndicator(col) {
+  if (routeSortColumn !== col) return '<span style="opacity:0.35;">↕</span>';
+  return routeSortDir < 0 ? '▼' : '▲';
+}
+
+// Toggle/apply sorting by a column and re-render
+function sortRoutesBy(col) {
+  if (routeSortColumn === col) {
+    routeSortDir = -routeSortDir;
+  } else {
+    routeSortColumn = col;
+    routeSortDir = col === 'status' ? 1 : -1; // profit/load default high→low, status active-first
+  }
+  displayAllRoutes(filteredRoutes);
+}
 let selectedRouteIds = new Set();
 
 // Format days of week for display
@@ -77,6 +96,21 @@ function populateAircraftTypeFilter(routes) {
 // Display all routes in a table
 function displayAllRoutes(routes) {
   const container = document.getElementById('routesTable');
+
+  // Apply the active column sort (if any)
+  if (routeSortColumn) {
+    const keyFns = {
+      profit: r => (r.profit || 0),
+      load: r => (r.averageLoadFactor || 0),
+      status: r => {
+        const hasAc = !!(r.assignedAircraft && r.assignedAircraft.aircraft);
+        return hasAc ? (r.isActive ? 0 : 1) : 2; // active, inactive, unassigned
+      }
+    };
+    const keyFn = keyFns[routeSortColumn];
+    if (keyFn) routes = [...routes].sort((a, b) => (keyFn(a) - keyFn(b)) * routeSortDir);
+  }
+
   filteredRoutes = routes;
 
   // Clear selections that are no longer in the filtered list
@@ -108,9 +142,9 @@ function displayAllRoutes(routes) {
           <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">ROUTE</th>
           <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; white-space: nowrap;">FROM → TO</th>
           <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">OPERATING DAYS</th>
-          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">PROFIT</th>
-          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">LOAD %</th>
-          <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">STATUS</th>
+          <th onclick="sortRoutesBy('profit')" title="Sort by profit" style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; cursor: pointer; user-select: none; white-space: nowrap;">PROFIT ${sortIndicator('profit')}</th>
+          <th onclick="sortRoutesBy('load')" title="Sort by load factor" style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; cursor: pointer; user-select: none; white-space: nowrap;">LOAD % ${sortIndicator('load')}</th>
+          <th onclick="sortRoutesBy('status')" title="Sort by status" style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; cursor: pointer; user-select: none; white-space: nowrap;">STATUS ${sortIndicator('status')}</th>
           <th style="padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;">ACTIONS</th>
         </tr>
       </thead>
@@ -151,7 +185,7 @@ function displayAllRoutes(routes) {
               <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
                 ${hasAircraft
                   ? `<span style="color: ${statusColor}; font-weight: 600; font-size: 0.8rem;">${statusText}</span>`
-                  : `<span title="This route has no aircraft type assigned — edit the route to assign one" style="color: var(--warning-color); font-weight: 600; font-size: 0.8rem;">⚠ NO AIRCRAFT</span>`
+                  : `<span title="This route isn't assigned to an aircraft — edit the route to assign one" style="color: var(--text-muted); font-weight: 600; font-size: 0.8rem;">UNASSIGNED</span>`
                 }
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
