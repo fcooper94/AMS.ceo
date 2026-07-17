@@ -988,8 +988,8 @@ async function confirmJoin() {
     return;
   }
 
-  if (!/^[A-Z]{2}$/.test(iataCode)) {
-    errorDiv.textContent = 'IATA code must be exactly 2 uppercase letters';
+  if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+    errorDiv.textContent = 'IATA code must be exactly 2 characters (letters or numbers)';
     errorDiv.style.display = 'block';
     return;
   }
@@ -1241,8 +1241,8 @@ async function confirmRejoin() {
     return;
   }
 
-  if (iataCode.length !== 2) {
-    errorDiv.textContent = 'IATA code must be exactly 2 characters.';
+  if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+    errorDiv.textContent = 'IATA code must be exactly 2 characters (letters or numbers).';
     errorDiv.style.display = 'block';
     return;
   }
@@ -1876,9 +1876,9 @@ function getBranding(prefix) {
 }
 
 const MODAL_STEP_CONFIG = {
-  sp:     { steps: 5, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
-  mp:     { steps: 4, closeFunc: 'closeJoinModal',     finalLabel: 'Join World',   finalFunc: 'confirmJoin' },
-  rejoin: { steps: 4, closeFunc: 'closeRejoinModal',   finalLabel: 'Create Airline', finalFunc: 'confirmRejoin' }
+  sp:     { steps: 6, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
+  mp:     { steps: 5, closeFunc: 'closeJoinModal',     finalLabel: 'Join World',   finalFunc: 'confirmJoin' },
+  rejoin: { steps: 5, closeFunc: 'closeRejoinModal',   finalLabel: 'Create Airline', finalFunc: 'confirmRejoin' }
 };
 
 function showModalStep(prefix, step) {
@@ -1890,16 +1890,16 @@ function showModalStep(prefix, step) {
   }
   updateModalStepIndicators(prefix, step);
   updateModalFooterButtons(prefix, step);
-  // Initialize the branding/logo picker when the airline-details step is shown
-  // (SP: step 2, MP/rejoin: step 1)
-  const airlineStep = (prefix === 'sp') ? 2 : 1;
-  if (step === airlineStep) {
+  // Initialize the branding/logo picker when the branding step is shown
+  // (SP: step 3, MP/rejoin: step 2)
+  const brandingStep = (prefix === 'sp') ? 3 : 2;
+  if (step === brandingStep) {
     const nameInput = prefix === 'sp' ? 'spAirlineName' : (prefix === 'mp' ? 'airlineName' : 'rejoinAirlineName');
     initBrandingPicker(prefix, nameInput);
   }
   // Trigger contractor cost update when entering contractor steps
-  // SP: steps 3-5 are contractors; MP/rejoin: steps 2-4 are contractors
-  const contractorStart = (prefix === 'sp') ? 3 : 2;
+  // SP: steps 4-6 are contractors; MP/rejoin: steps 3-5 are contractors
+  const contractorStart = (prefix === 'sp') ? 4 : 3;
   if (step >= contractorStart) {
     if (prefix === 'sp') updateSPContractorPreview();
     else if (prefix === 'mp') updateMPContractorPreview();
@@ -1941,12 +1941,12 @@ function updateModalFooterButtons(prefix, step) {
   if (step === 1) {
     footer.innerHTML = `
       <button class="btn btn-secondary" onclick="${config.closeFunc}()">Cancel</button>
-      <button class="btn btn-primary" onclick="showModalStep('${prefix}', 2)">Next</button>
+      <button class="btn btn-primary" onclick="advanceModalStep('${prefix}', 1)">Next</button>
     `;
   } else if (step < config.steps) {
     footer.innerHTML = `
       <button class="btn btn-secondary" onclick="showModalStep('${prefix}', ${step - 1})">Back</button>
-      <button class="btn btn-primary" onclick="showModalStep('${prefix}', ${step + 1})">Next</button>
+      <button class="btn btn-primary" onclick="advanceModalStep('${prefix}', ${step})">Next</button>
     `;
   } else {
     footer.innerHTML = `
@@ -1954,6 +1954,48 @@ function updateModalFooterButtons(prefix, step) {
       <button class="btn btn-primary" onclick="${config.finalFunc}()">${config.finalLabel}</button>
     `;
   }
+}
+
+// The airline-details step per wizard, and where to read/report its fields.
+const AIRLINE_STEP_FIELDS = {
+  sp:     { step: 2, name: 'spAirlineName',     code: 'spAirlineCode',     iata: 'spIataCode',     error: 'spCreateError', base: () => document.getElementById('spBaseAirport')?.value },
+  mp:     { step: 1, name: 'airlineName',       code: 'airlineCode',       iata: 'iataCode',       error: 'joinError',     base: () => document.getElementById('baseAirport')?.value },
+  rejoin: { step: 1, name: 'rejoinAirlineName', code: 'rejoinAirlineCode', iata: 'rejoinIataCode', error: 'rejoinError',   base: () => (typeof rejoinAirportId !== 'undefined' ? rejoinAirportId : null) }
+};
+
+// Validate a step before advancing. Only the airline-details step has required
+// fields; every other step has sane defaults, so it passes straight through.
+function validateModalStep(prefix, step) {
+  const cfg = AIRLINE_STEP_FIELDS[prefix];
+  if (!cfg || step !== cfg.step) return true;
+
+  const errEl = document.getElementById(cfg.error);
+  const fail = (msg, focusId) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+    if (focusId) document.getElementById(focusId)?.focus();
+    return false;
+  };
+
+  const name = (document.getElementById(cfg.name)?.value || '').trim();
+  const code = (document.getElementById(cfg.code)?.value || '').trim().toUpperCase();
+  const iata = (document.getElementById(cfg.iata)?.value || '').trim().toUpperCase();
+  const base = cfg.base();
+
+  if (!name) return fail('Please enter an airline name', cfg.name);
+  const nameCheck = (typeof checkAirlineName === 'function') ? checkAirlineName(name) : { ok: true };
+  if (!nameCheck.ok) return fail(nameCheck.reason, cfg.name);
+  if (!/^[A-Z]{3}$/.test(code)) return fail('ICAO code must be exactly 3 uppercase letters', cfg.code);
+  if (!/^[A-Z0-9]{2}$/.test(iata)) return fail('IATA code must be exactly 2 characters (letters or numbers)', cfg.iata);
+  if (!base) return fail('Please select a base airport');
+
+  if (errEl) errEl.style.display = 'none';
+  return true;
+}
+
+// "Next" — validate the current step, then advance only if it passes.
+function advanceModalStep(prefix, fromStep) {
+  if (!validateModalStep(prefix, fromStep)) return;
+  showModalStep(prefix, fromStep + 1);
 }
 
 // SP Airport search
@@ -2069,8 +2111,8 @@ async function createSinglePlayerWorld() {
     errorDiv.style.display = 'block';
     return;
   }
-  if (!/^[A-Z]{2}$/.test(iataCode)) {
-    errorDiv.textContent = 'IATA code must be exactly 2 uppercase letters';
+  if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+    errorDiv.textContent = 'IATA code must be exactly 2 characters (letters or numbers)';
     errorDiv.style.display = 'block';
     return;
   }

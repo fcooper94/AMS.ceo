@@ -1,6 +1,6 @@
 <!-- TITLE: World Selection - AMS.ceo -->
 <!-- SUBTITLE: Operations Center -->
-<!-- SCRIPTS: /js/airline-logo.js, /js/world-selection.js -->
+<!-- SCRIPTS: /js/name-filter.js, /js/airline-logo.js, /js/world-selection.js -->
 
 <style>
   .branding-group { margin-top: 0.85rem; }
@@ -145,11 +145,13 @@
         <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
         <div id="spStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">2. AIRLINE</div>
         <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">3. CABIN SERVICES</div>
+        <div id="spStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">3. BRANDING</div>
         <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">4. GROUND</div>
+        <div id="spStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">4. CABIN SERVICES</div>
         <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">5. ENGINEERING</div>
+        <div id="spStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">5. GROUND</div>
+        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd6" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">6. ENGINEERING</div>
       </div>
 
       <!-- STEP 1: World Setup -->
@@ -247,18 +249,6 @@
                 AI Competitors: Select airport to calculate
               </p>
             </div>
-
-            <div class="form-group branding-group">
-              <label>AIRLINE BRANDING</label>
-              <div class="branding-colors">
-                <label class="color-pick">Background <input type="color" id="spBackgroundColor" value="#0b2545" oninput="setBrandColor('sp','background',this.value,'spAirlineName')"></label>
-                <label class="color-pick">Primary <input type="color" id="spPrimaryColor" value="#ffffff" oninput="setBrandColor('sp','primary',this.value,'spAirlineName')"></label>
-                <label class="color-pick">Secondary <input type="color" id="spSecondaryColor" value="#e01e2b" oninput="setBrandColor('sp','secondary',this.value,'spAirlineName')"></label>
-                <button type="button" class="branding-refresh" onclick="shuffleLogos('sp','spAirlineName')" title="Fresh designs">&#8635; Logos</button>
-              </div>
-              <div id="spLogoGrid" class="logo-grid"></div>
-              <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
-            </div>
           </div>
 
           <div class="join-modal-col">
@@ -288,8 +278,24 @@
         </div>
       </div>
 
-      <!-- STEP 3: Cabin Services -->
+      <!-- STEP 3: Airline Branding -->
       <div id="spStep3" style="display: none;">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Give your airline a look &mdash; pick your colours and a logo.</p>
+        <div class="form-group branding-group">
+          <label>AIRLINE BRANDING</label>
+          <div class="branding-colors">
+            <label class="color-pick">Background <input type="color" id="spBackgroundColor" value="#0b2545" oninput="setBrandColor('sp','background',this.value,'spAirlineName')"></label>
+            <label class="color-pick">Primary <input type="color" id="spPrimaryColor" value="#ffffff" oninput="setBrandColor('sp','primary',this.value,'spAirlineName')"></label>
+            <label class="color-pick">Secondary <input type="color" id="spSecondaryColor" value="#e01e2b" oninput="setBrandColor('sp','secondary',this.value,'spAirlineName')"></label>
+            <button type="button" class="branding-refresh" onclick="shuffleLogos('sp','spAirlineName')" title="Fresh designs">&#8635; Logos</button>
+          </div>
+          <div id="spLogoGrid" class="logo-grid"></div>
+          <div class="branding-hint">Based on your airline name &mdash; pick colours and a logo.</div>
+        </div>
+      </div>
+
+      <!-- STEP 4: Cabin Services -->
+      <div id="spStep4" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
           <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
@@ -332,8 +338,8 @@
         </div>
       </div>
 
-      <!-- STEP 4: Ground Handling -->
-      <div id="spStep4" style="display: none;">
+      <!-- STEP 5: Ground Handling -->
+      <div id="spStep5" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
           <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
@@ -376,8 +382,8 @@
         </div>
       </div>
 
-      <!-- STEP 5: Engineering -->
-      <div id="spStep5" style="display: none;">
+      <!-- STEP 6: Engineering -->
+      <div id="spStep6" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
           <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
@@ -441,11 +447,13 @@
       <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
         <div id="mpStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">1. YOUR AIRLINE</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="mpStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. CABIN SERVICES</div>
+        <div id="mpStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. BRANDING</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="mpStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. GROUND HANDLING</div>
+        <div id="mpStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. CABIN SERVICES</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="mpStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. ENGINEERING</div>
+        <div id="mpStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. GROUND HANDLING</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="mpStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">5. ENGINEERING</div>
       </div>
 
       <!-- STEP 1: Your Airline -->
@@ -480,18 +488,6 @@
               </p>
               <p id="weeklyMembershipCost" style="font-size: 0.8rem; color: var(--text-secondary);">+ 1 credit per game week to maintain membership</p>
             </div>
-
-            <div class="form-group branding-group">
-              <label>AIRLINE BRANDING</label>
-              <div class="branding-colors">
-                <label class="color-pick">Background <input type="color" id="mpBackgroundColor" value="#0b2545" oninput="setBrandColor('mp','background',this.value,'airlineName')"></label>
-                <label class="color-pick">Primary <input type="color" id="mpPrimaryColor" value="#ffffff" oninput="setBrandColor('mp','primary',this.value,'airlineName')"></label>
-                <label class="color-pick">Secondary <input type="color" id="mpSecondaryColor" value="#e01e2b" oninput="setBrandColor('mp','secondary',this.value,'airlineName')"></label>
-                <button type="button" class="branding-refresh" onclick="shuffleLogos('mp','airlineName')" title="Fresh designs">&#8635; Logos</button>
-              </div>
-              <div id="mpLogoGrid" class="logo-grid"></div>
-              <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
-            </div>
           </div>
 
           <div class="join-modal-col">
@@ -520,8 +516,24 @@
         </div>
       </div>
 
-      <!-- STEP 2: Cabin Services -->
+      <!-- STEP 2: Airline Branding -->
       <div id="mpStep2" style="display: none;">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Give your airline a look &mdash; pick your colours and a logo.</p>
+        <div class="form-group branding-group">
+          <label>AIRLINE BRANDING</label>
+          <div class="branding-colors">
+            <label class="color-pick">Background <input type="color" id="mpBackgroundColor" value="#0b2545" oninput="setBrandColor('mp','background',this.value,'airlineName')"></label>
+            <label class="color-pick">Primary <input type="color" id="mpPrimaryColor" value="#ffffff" oninput="setBrandColor('mp','primary',this.value,'airlineName')"></label>
+            <label class="color-pick">Secondary <input type="color" id="mpSecondaryColor" value="#e01e2b" oninput="setBrandColor('mp','secondary',this.value,'airlineName')"></label>
+            <button type="button" class="branding-refresh" onclick="shuffleLogos('mp','airlineName')" title="Fresh designs">&#8635; Logos</button>
+          </div>
+          <div id="mpLogoGrid" class="logo-grid"></div>
+          <div class="branding-hint">Based on your airline name &mdash; pick colours and a logo.</div>
+        </div>
+      </div>
+
+      <!-- STEP 3: Cabin Services -->
+      <div id="mpStep3" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
           <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
@@ -564,8 +576,8 @@
         </div>
       </div>
 
-      <!-- STEP 3: Ground Handling -->
-      <div id="mpStep3" style="display: none;">
+      <!-- STEP 4: Ground Handling -->
+      <div id="mpStep4" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
           <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
@@ -608,8 +620,8 @@
         </div>
       </div>
 
-      <!-- STEP 4: Engineering -->
-      <div id="mpStep4" style="display: none;">
+      <!-- STEP 5: Engineering -->
+      <div id="mpStep5" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
           <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
@@ -729,11 +741,13 @@
       <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center;">
         <div id="rejoinStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">1. YOUR AIRLINE</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="rejoinStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. CABIN SERVICES</div>
+        <div id="rejoinStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">2. BRANDING</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="rejoinStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. GROUND HANDLING</div>
+        <div id="rejoinStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">3. CABIN SERVICES</div>
         <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
-        <div id="rejoinStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. ENGINEERING</div>
+        <div id="rejoinStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">4. GROUND HANDLING</div>
+        <div style="width: 1rem; height: 2px; background: var(--border-color);"></div>
+        <div id="rejoinStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; transition: all 0.3s;">5. ENGINEERING</div>
       </div>
 
       <!-- STEP 1: Your Airline -->
@@ -766,7 +780,11 @@
           <div id="rejoinAirportResults" style="display: none; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 0.25rem;"></div>
           <div id="rejoinSelectedAirport" style="display: none; padding: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; margin-top: 0.25rem;"></div>
         </div>
+      </div>
 
+      <!-- STEP 2: Airline Branding -->
+      <div id="rejoinStep2" style="display: none;">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Give your airline a look &mdash; pick your colours and a logo.</p>
         <div class="form-group branding-group">
           <label>AIRLINE BRANDING</label>
           <div class="branding-colors">
@@ -776,12 +794,12 @@
             <button type="button" class="branding-refresh" onclick="shuffleLogos('rejoin','rejoinAirlineName')" title="Fresh designs">&#8635; Logos</button>
           </div>
           <div id="rejoinLogoGrid" class="logo-grid"></div>
-          <div class="branding-hint">Pick your colours, then choose a logo &mdash; it updates as you type your airline name.</div>
+          <div class="branding-hint">Based on your airline name &mdash; pick colours and a logo.</div>
         </div>
       </div>
 
-      <!-- STEP 2: Cabin Services -->
-      <div id="rejoinStep2" style="display: none;">
+      <!-- STEP 3: Cabin Services -->
+      <div id="rejoinStep3" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
           <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
@@ -824,8 +842,8 @@
         </div>
       </div>
 
-      <!-- STEP 3: Ground Handling -->
-      <div id="rejoinStep3" style="display: none;">
+      <!-- STEP 4: Ground Handling -->
+      <div id="rejoinStep4" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
           <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
@@ -868,8 +886,8 @@
         </div>
       </div>
 
-      <!-- STEP 4: Engineering -->
-      <div id="rejoinStep4" style="display: none;">
+      <!-- STEP 5: Engineering -->
+      <div id="rejoinStep5" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
           <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>

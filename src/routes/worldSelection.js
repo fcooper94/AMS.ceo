@@ -5,6 +5,7 @@ const { World, WorldMembership, User, Airport, UserAircraft, Route, Loan, Notifi
 const eraEconomicService = require('../services/eraEconomicService');
 const { getAICount } = require('../data/aiDifficultyConfig');
 const { getBank, calculateOfferRate, calculateFixedPayment } = require('../data/bankConfig');
+const { checkAirlineName } = require('../../public/js/name-filter.js');
 
 // ── Branding input sanitisers ──
 // Logos are submitted by the client and later injected as HTML, so accept only
@@ -141,8 +142,14 @@ router.post('/join', async (req, res) => {
     }
 
     // Validate IATA code format (2 letters)
-    if (!/^[A-Z]{2}$/.test(iataCode)) {
-      return res.status(400).json({ error: 'IATA code must be 2 uppercase letters' });
+    if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+      return res.status(400).json({ error: 'IATA code must be 2 characters (letters or numbers)' });
+    }
+
+    // Block profanity and real-world airline names
+    const nameCheck = checkAirlineName(airlineName);
+    if (!nameCheck.ok) {
+      return res.status(400).json({ error: nameCheck.reason });
     }
 
     // Verify airport exists and get region from airport
@@ -558,8 +565,14 @@ router.post('/create-singleplayer', async (req, res) => {
     if (!/^[A-Z]{3}$/.test(airlineCode)) {
       return res.status(400).json({ error: 'ICAO code must be 3 uppercase letters' });
     }
-    if (!/^[A-Z]{2}$/.test(iataCode)) {
-      return res.status(400).json({ error: 'IATA code must be 2 uppercase letters' });
+    if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+      return res.status(400).json({ error: 'IATA code must be 2 characters (letters or numbers)' });
+    }
+
+    // Block profanity and real-world airline names
+    const nameCheck = checkAirlineName(airlineName);
+    if (!nameCheck.ok) {
+      return res.status(400).json({ error: nameCheck.reason });
     }
     if (!['easy', 'medium', 'hard'].includes(difficulty)) {
       return res.status(400).json({ error: 'Difficulty must be easy, medium, or hard' });
@@ -798,8 +811,14 @@ router.post('/rejoin-sp', async (req, res) => {
       return res.status(400).json({ error: 'ICAO code must be 3 uppercase letters' });
     }
 
-    if (!/^[A-Z]{2}$/.test(iataCode)) {
-      return res.status(400).json({ error: 'IATA code must be 2 uppercase letters' });
+    if (!/^[A-Z0-9]{2}$/.test(iataCode)) {
+      return res.status(400).json({ error: 'IATA code must be 2 characters (letters or numbers)' });
+    }
+
+    // Block profanity and real-world airline names
+    const nameCheck = checkAirlineName(airlineName);
+    if (!nameCheck.ok) {
+      return res.status(400).json({ error: nameCheck.reason });
     }
 
     const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });

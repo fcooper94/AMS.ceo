@@ -142,8 +142,8 @@ const _POOL = [
   { id: 'monoblock', label: 'Monogram', fn: _monoblock },
 ];
 
-// Build six logo options for the given name + 3 colours. `seed` selects which
-// six designs appear and their small variations (change it to reshuffle).
+// Build eight logo options for the given name + 3 colours. `seed` selects which
+// designs appear and their small variations (change it to reshuffle).
 function generateAirlineLogos(name, background, primary, secondary, seed) {
   const bg = background || '#0b2545';
   const txt = primary || '#ffffff';
@@ -151,10 +151,47 @@ function generateAirlineLogos(name, background, primary, secondary, seed) {
   const nm = (name || 'Airline').trim() || 'Airline';
   const ini = airlineInitials(nm);
   const rnd = _rng(seed);
-  const picked = _shuffle(_POOL, rnd).slice(0, 6);
+  const picked = _shuffle(_POOL, rnd).slice(0, 8);
   return picked.map(t => ({
     id: t.id,
     label: t.label,
     svg: t.fn(ini, nm, bg, txt, acc, rnd).replace(/\s{2,}/g, ' ').trim()
   }));
+}
+
+// ── Auto-branding (for AI airlines / backfill) ──
+// A curated set of nice [background, primary, secondary] airline palettes.
+const _AI_PALETTES = [
+  ['#0b2545', '#ffffff', '#e01e2b'], ['#0a3d2e', '#ffffff', '#e0c46c'],
+  ['#7a1420', '#f7efe6', '#e8b04b'], ['#101820', '#ffffff', '#ff5a3c'],
+  ['#12233f', '#7ec8e3', '#ffffff'], ['#2d1b46', '#ffffff', '#f2b705'],
+  ['#0e4d64', '#ffffff', '#f4a259'], ['#b31217', '#ffffff', '#1c1c1c'],
+  ['#1b4332', '#ffffff', '#95d5b2'], ['#003049', '#ffffff', '#fcbf49'],
+  ['#5f0f40', '#ffffff', '#fb8b24'], ['#22223b', '#f2e9e4', '#c9ada7'],
+];
+
+// Deterministic numeric seed from a string (so an airline always gets the same logo).
+function _hashName(s) {
+  let h = 0; s = s || '';
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) >>> 0;
+  return h || 1;
+}
+
+// Pick a full branding set for an airline (deterministic by name unless `seed` given).
+// Returns { backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg }.
+function pickAirlineBranding(name, seed) {
+  const s = seed || _hashName(name);
+  const rnd = _rng(s);
+  const pal = _AI_PALETTES[Math.floor(rnd() * _AI_PALETTES.length)] || _AI_PALETTES[0];
+  const logos = generateAirlineLogos(name, pal[0], pal[1], pal[2], s);
+  const pick = logos[Math.floor(rnd() * logos.length)] || logos[0];
+  return {
+    backgroundColor: pal[0], primaryColor: pal[1], secondaryColor: pal[2],
+    logoTemplate: pick.id, logoSvg: pick.svg
+  };
+}
+
+// Export for Node (server-side generation/backfill); stays global in the browser.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { generateAirlineLogos, airlineInitials, pickAirlineBranding };
 }
