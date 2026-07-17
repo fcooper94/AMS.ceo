@@ -10,7 +10,9 @@ const envContent = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
 const dbLine = envContent.split('\n').find(l => l.startsWith('DATABASE_URL=') && !l.startsWith('#'));
 const currentMode = dbLine && dbLine.includes('localhost') ? 'local' : 'railway';
 
-const LOCAL_DB_URL = 'postgresql://postgres:Chieftain1994@localhost:5432/airline_control';
+// Local DB URL comes from .env (LOCAL_DATABASE_URL) — never hard-code credentials.
+const localLine = envContent.split('\n').find(l => l.startsWith('LOCAL_DATABASE_URL=') && !l.startsWith('#'));
+const LOCAL_DB_URL = localLine ? localLine.replace(/^LOCAL_DATABASE_URL=/, '').trim() : null;
 
 console.log('');
 console.log('  AMS — Airline Management Simulation');
@@ -32,6 +34,10 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
   let modeName;
 
   if (choice === '2' || (choice === '' && currentMode === 'local')) {
+    if (!LOCAL_DB_URL) {
+      console.error('\n  LOCAL_DATABASE_URL is not set in .env — cannot start in local mode.\n');
+      process.exit(1);
+    }
     dbUrl = LOCAL_DB_URL;
     modeName = 'Local (Offline)';
   } else {

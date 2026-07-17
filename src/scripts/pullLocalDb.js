@@ -1,31 +1,51 @@
 #!/usr/bin/env node
 /**
- * db:pull — Refresh local airline_control DB from Railway.
+ * db:pull — Refresh the local DB from Railway.
  * Keeps demand data for EGLL only, financials from 2023 onwards.
  * Run this when on good WiFi before going offline.
+ *
+ * Credentials come from .env (never hard-code them here):
+ *   RAILWAY_DATABASE_URL — source Railway Postgres
+ *   LOCAL_DATABASE_URL   — target local Postgres (dropped & recreated)
+ * Optional path overrides: PSQL_PATH, PGDUMP_PATH
  */
 
+require('dotenv').config();
 const { execSync } = require('child_process');
 
-const RAILWAY = 'postgresql://postgres:jDRZMptMpBRUAxwWIpMKrhJixYnTJbyU@nozomi.proxy.rlwy.net:22768/railway';
-const LOCAL   = 'postgresql://postgres:Chieftain1994@localhost:5432/airline_control';
+const RAILWAY = process.env.RAILWAY_DATABASE_URL;
+const LOCAL   = process.env.LOCAL_DATABASE_URL;
 
-const PSQL   = '"C:/Program Files/PostgreSQL/18/bin/psql"';
-const PGDUMP = '"C:/Program Files/PostgreSQL/18/bin/pg_dump"';
-
-function run(cmd) {
-  console.log(`  → ${cmd.slice(0, 80)}...`);
-  execSync(cmd, { stdio: 'inherit', shell: true });
+if (!RAILWAY || !LOCAL) {
+  console.error('Missing RAILWAY_DATABASE_URL and/or LOCAL_DATABASE_URL in .env');
+  process.exit(1);
 }
 
-function psql(url, sql) {
-  return `PGPASSWORD=${urlPassword(url)} ${PSQL} ${urlArgs(url)} -c "${sql}"`;
-}
+const PSQL   = process.env.PSQL_PATH   || '"C:/Program Files/PostgreSQL/18/bin/psql"';
+const PGDUMP = process.env.PGDUMP_PATH || '"C:/Program Files/PostgreSQL/18/bin/pg_dump"';
 
 function urlPassword(url) { return new URL(url).password; }
 function urlArgs(url) {
   const u = new URL(url);
   return `-h ${u.hostname} -p ${u.port} -U ${u.username} -d ${u.pathname.slice(1)}`;
+}
+
+// Derive local connection params from LOCAL_DATABASE_URL
+const L = new URL(LOCAL);
+const LOCAL_PW   = L.password;
+const LOCAL_HOST = L.hostname;
+const LOCAL_PORT = L.port || '5432';
+const LOCAL_USER = L.username;
+const LOCAL_DB   = L.pathname.slice(1);
+
+// psql pointed at the local target DB
+const localPsql  = `PGPASSWORD=${LOCAL_PW} ${PSQL} -h ${LOCAL_HOST} -p ${LOCAL_PORT} -U ${LOCAL_USER} -d ${LOCAL_DB}`;
+// psql pointed at the maintenance DB (so we can drop/create the target)
+const localAdmin = `PGPASSWORD=${LOCAL_PW} ${PSQL} -h ${LOCAL_HOST} -p ${LOCAL_PORT} -U ${LOCAL_USER} -d postgres`;
+
+function run(cmd) {
+  console.log(`  → ${cmd.slice(0, 80)}...`);
+  execSync(cmd, { stdio: 'inherit', shell: true });
 }
 
 console.log('');
@@ -34,16 +54,16 @@ console.log('  ─────────────────────�
 console.log('');
 
 // 1. Drop & recreate local DB
-console.log('  [1/4] Recreating local database...');
-execSync(`PGPASSWORD=Chieftain1994 ${PSQL} -h localhost -U postgres -c "DROP DATABASE IF EXISTS airline_control;"`, { stdio: 'inherit', shell: true });
-execSync(`PGPASSWORD=Chieftain1994 ${PSQL} -h localhost -U postgres -c "CREATE DATABASE airline_control;"`, { stdio: 'inherit', shell: true });
+console.log(`  [1/4] Recreating local database "${LOCAL_DB}"...`);
+execSync(`${localAdmin} -c "DROP DATABASE IF EXISTS ${LOCAL_DB};"`, { stdio: 'inherit', shell: true });
+execSync(`${localAdmin} -c "CREATE DATABASE ${LOCAL_DB};"`, { stdio: 'inherit', shell: true });
 
 // 2. Dump schema + all data except large tables
 console.log('  [2/4] Dumping schema and small tables from Railway...');
 run(
-  `PGPASSWORD=${urlPassword(RAILWAY)} ${PGDUMP} ${urlArgs(RAILWAY).replace('-d railway', '')} -d railway ` +
+  `PGPASSWORD=${urlPassword(RAILWAY)} ${PGDUMP} ${urlArgs(RAILWAY)} ` +
   `--exclude-table-data=airport_route_demands --exclude-table-data=weekly_financials ` +
-  `| PGPASSWORD=Chieftain1994 ${PSQL} -h localhost -U postgres -d airline_control`
+  `| ${localPsql}`
 );
 
 // 3. Stream EGLL demand rows
@@ -51,8 +71,7 @@ console.log('  [3/4] Copying EGLL demand data...');
 run(
   `PGPASSWORD=${urlPassword(RAILWAY)} ${PSQL} ${urlArgs(RAILWAY)} ` +
   `-c "\\copy (SELECT * FROM airport_route_demands WHERE from_airport_id = (SELECT id FROM airports WHERE icao_code = 'EGLL') OR to_airport_id = (SELECT id FROM airports WHERE icao_code = 'EGLL')) TO STDOUT" ` +
-  `| PGPASSWORD=Chieftain1994 ${PSQL} -h localhost -U postgres -d airline_control ` +
-  `-c "\\copy airport_route_demands FROM STDIN"`
+  `| ${localPsql} -c "\\copy airport_route_demands FROM STDIN"`
 );
 
 // 4. Stream recent financials (2023+)
@@ -60,8 +79,7 @@ console.log('  [4/4] Copying financials (2023+)...');
 run(
   `PGPASSWORD=${urlPassword(RAILWAY)} ${PSQL} ${urlArgs(RAILWAY)} ` +
   `-c "\\copy (SELECT * FROM weekly_financials WHERE week_start >= '2023-01-01') TO STDOUT" ` +
-  `| PGPASSWORD=Chieftain1994 ${PSQL} -h localhost -U postgres -d airline_control ` +
-  `-c "\\copy weekly_financials FROM STDIN"`
+  `| ${localPsql} -c "\\copy weekly_financials FROM STDIN"`
 );
 
 console.log('');

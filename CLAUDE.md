@@ -73,8 +73,8 @@ networks (VATSIM).
 The user flies on plane WiFi frequently. A local PostgreSQL 18 instance is set
 up on this machine for offline dev:
 
-- **Local DB:** `airline_control` on `localhost:5432`, user `postgres`,
-  password `Chieftain1994`.
+- **Local DB:** local PostgreSQL on `localhost:5432`, user `postgres`.
+  Connection string is in `.env` as `LOCAL_DATABASE_URL` (not committed).
 - **Switching:** `npm run go` — interactive prompt picks Railway (prod) or
   Local (offline). Rewrites `DATABASE_URL` in `.env` and starts nodemon.
 - **Refreshing local data:** `npm run db:pull` (`src/scripts/pullLocalDb.js`)
