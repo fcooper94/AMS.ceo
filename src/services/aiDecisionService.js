@@ -440,14 +440,24 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     ]
   });
 
-  // Count routes per aircraft
-  const routesPerAircraft = {};
+  // Days already flown per aircraft (so we can pack several routes onto one
+  // aircraft across the week) and whether it already runs a long-haul route.
+  const usedDaysByAircraft = {};
+  const hasLongHaulByAircraft = {};
   for (const route of routes) {
-    if (route.assignedAircraftId) {
-      routesPerAircraft[route.assignedAircraftId] = (routesPerAircraft[route.assignedAircraftId] || 0) + 1;
-    }
+    if (!route.assignedAircraftId) continue;
+    const set = usedDaysByAircraft[route.assignedAircraftId] || (usedDaysByAircraft[route.assignedAircraftId] = new Set());
+    (route.daysOfWeek || []).forEach(d => set.add(d));
+    if ((parseFloat(route.distance) || 0) >= 2500) hasLongHaulByAircraft[route.assignedAircraftId] = true;
   }
-  const unassignedAircraft = fleet.filter(ac => !routesPerAircraft[ac.id]);
+  // Aircraft that can take (more) routes: none yet, or a short/medium airframe with
+  // spare days left in its week. Long-haul aircraft keep a single (multi-day) route.
+  const unassignedAircraft = fleet.filter(ac => {
+    const used = usedDaysByAircraft[ac.id];
+    if (!used || used.size === 0) return true;
+    if (hasLongHaulByAircraft[ac.id]) return false;
+    return used.size <= 4;
+  });
 
   // Assess financial health
   const totalRevenue = routes.reduce((sum, r) => sum + (parseFloat(r.totalRevenue) || 0), 0);
@@ -459,20 +469,44 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     ? (totalRevenue - totalCosts) / routes.length
     : 0;
 
-  // 1. Create routes for unassigned aircraft
+  // 1. Create routes for aircraft that still have spare capacity in their week
   if (unassignedAircraft.length > 0) {
-    await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear);
+    await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear, usedDaysByAircraft);
   }
 
-  // 2. Expand if profitable AND average route profitability is positive
+  // 2. Expand. New routes look unprofitable while they mature (~8-12 weeks), so
+  //    don't require existing routes to already be in profit — expand while the
+  //    airline is financially healthy, and only hold back if it's actually
+  //    bleeding cash.
   const startingCapital = eraEconomicService.getStartingCapital(worldYear);
   const expansionThreshold = startingCapital * 0.3;
   const isFreshStart = fleet.length === 0 && routes.length === 0;
-  const shouldExpand = isProfitable && avgProfitPerRoute >= 0;
+  const bleedingBadly = avgProfitPerRoute < 0 && balance < startingCapital * 0.5;
+  const canExpand = balance > expansionThreshold && fleet.length < config.maxFleetSize && !bleedingBadly;
 
-  if (shouldExpand && balance > expansionThreshold && fleet.length < config.maxFleetSize) {
-    if (isFreshStart || Math.random() < 0.3) {
-      await tryBuyAircraft(airline, world, config, fleet, worldYear, gameTime);
+  if (canExpand) {
+    // Quick-start: AI grows fast for the first ~6 game weeks to keep the early game
+    // lively and competitive, then eases into a realistic pace. earlyBoost fades
+    // 1 → 0 across that window.
+    const worldAgeDays = world.startDate
+      ? Math.max(0, (gameTime.getTime() - new Date(world.startDate).getTime()) / 86400000)
+      : 999;
+    const earlyBoost = Math.max(0, 1 - worldAgeDays / 42);
+
+    // Base ramp by fleet size (the realistic later-game pace), lifted during the
+    // quick-start window so new AI airlines get established quickly.
+    let expandChance = fleet.length < 3 ? 0.9 : fleet.length < 6 ? 0.6 : 0.35;
+    expandChance = Math.min(1, expandChance + earlyBoost * 0.5);
+
+    // In the strong early phase a small airline can pick up two aircraft in one
+    // cycle, so the map fills out fast at the start.
+    const maxBuys = (earlyBoost > 0.6 && fleet.length < 4) ? 2 : 1;
+    for (let i = 0; i < maxBuys; i++) {
+      if (isFreshStart || Math.random() < expandChance) {
+        await tryBuyAircraft(airline, world, config, fleet, worldYear, gameTime);
+      } else {
+        break;
+      }
     }
   }
 
@@ -559,7 +593,7 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
  * Try to create routes for aircraft that have none.
  * Includes player targeting, smart frequency, smart departure times, proper range check.
  */
-async function tryCreateRoutes(airline, world, config, unassignedAircraft, existingRoutes, gameTime, worldYear) {
+async function tryCreateRoutes(airline, world, config, unassignedAircraft, existingRoutes, gameTime, worldYear, usedDaysByAircraft = {}) {
   if (!airline.baseAirportId) return;
 
   // Get top destination opportunities by demand
@@ -706,6 +740,19 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
       demandScore, paxCapacity, airline.aiPersonality
     );
 
+    // Pack this route onto the aircraft's FREE days so one aircraft can run several
+    // routes across the week without clashing with its existing flights.
+    const used = usedDaysByAircraft[aircraft.id] || new Set();
+    const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+    const freeDays = dayOrder.filter(d => !used.has(d));
+    if (freeDays.length === 0) continue; // aircraft's week is already full
+    // Don't stack a long-haul (multi-day) route on top of existing routes.
+    if (used.size > 0 && distance >= 2500) continue;
+    let routeDays = smartDays.filter(d => freeDays.includes(d));
+    if (routeDays.length === 0) {
+      routeDays = freeDays.slice(0, Math.max(1, Math.min(freeDays.length, smartDays.length)));
+    }
+
     try {
       const route = await Route.create({
         worldMembershipId: airline.id,
@@ -717,8 +764,8 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         distance,
         scheduledDepartureTime: departureTime,
         turnaroundTime,
-        frequency: smartFreq,
-        daysOfWeek: smartDays,
+        frequency: routeDays.length,
+        daysOfWeek: routeDays,
         demand: demandScore,
         ticketPrice: economyPrice,
         economyPrice,
