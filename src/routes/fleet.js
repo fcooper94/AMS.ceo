@@ -5718,10 +5718,10 @@ router.post('/:aircraftId/scrap', async (req, res) => {
     // Calculate ferry time (same pattern as storage recall)
     const world = await World.findByPk(activeWorldId);
     const gameNow = world ? new Date(world.currentTime) : new Date();
-    const baseFerryDays = 3;
-    // Could calculate actual distance-based ferry, but keep it simple: 3-7 days
-    const ferryDays = baseFerryDays + Math.floor(Math.random() * 5);
-    const availableAt = new Date(gameNow.getTime() + ferryDays * 24 * 60 * 60 * 1000);
+    // Ferry time in hours based on rough distance (shorter flights = quicker ferry)
+    const baseFerryHours = 6;
+    const ferryHours = baseFerryHours + Math.floor(Math.random() * 18); // 6-24 hours
+    const availableAt = new Date(gameNow.getTime() + ferryHours * 60 * 60 * 1000);
 
     // Cancel any routes assigned to this aircraft
     const assignedRoutes = await Route.findAll({
@@ -5737,13 +5737,14 @@ router.post('/:aircraftId/scrap', async (req, res) => {
     // Clear maintenance
     await RecurringMaintenance.destroy({ where: { aircraftId: aircraft.id, status: 'active' } });
 
-    // Update aircraft status
+    // Update aircraft status (storedAt reused to track ferry start time for progress)
     await aircraft.update({
       status: 'scrapping',
       scrapPrice: price,
       scrapAirportCode: airportCode,
       scrapCompanyName: companyName,
-      scrapAvailableAt: availableAt
+      scrapAvailableAt: availableAt,
+      storedAt: gameNow
     });
 
     // Notify
@@ -5753,7 +5754,7 @@ router.post('/:aircraftId/scrap', async (req, res) => {
       type: 'operations',
       icon: 'plane',
       title: `Aircraft Sent for Scrapping — ${aircraft.registration}`,
-      message: `${aircraft.registration} is being ferried to ${companyName} (${airportCode}) for dismantling. Payment of $${Math.round(price).toLocaleString()} will be received in ~${ferryDays} days.`,
+      message: `${aircraft.registration} is being ferried to ${companyName} (${airportCode}) for dismantling. Payment of $${Math.round(price).toLocaleString()} will be received in ~${ferryHours} hours.`,
       link: '/fleet',
       priority: 3,
       gameTime: gameNow
@@ -5764,7 +5765,7 @@ router.post('/:aircraftId/scrap', async (req, res) => {
     res.json({
       success: true,
       message: `${aircraft.registration} sent for scrapping`,
-      ferryDays,
+      ferryHours,
       payment: price,
       scrapyard: companyName
     });

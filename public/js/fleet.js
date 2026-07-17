@@ -689,9 +689,50 @@ function buildActionButtons(ua) {
     html += `<button class="btn" onclick="event.stopPropagation(); showScrapDialog('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #dc2626; border-color: #dc2626; color: #fff;">SCRAP</button>`;
   }
   if (status === 'scrapping') {
-    html += `<span style="flex:1; padding: 0.5rem; font-size: 0.85rem; color: #f87171; text-align: center; font-weight: 600;">Ferrying to scrapyard...</span>`;
+    // Calculate ferry progress using game time
+    let progressPct = 0;
+    let progressLabel = 'Ferrying to scrapyard...';
+    if (ua.scrapAvailableAt) {
+      // Get current game time
+      let gameNow = 0;
+      try {
+        const wt = typeof calculateCurrentWorldTime === 'function' ? calculateCurrentWorldTime() : null;
+        if (wt) gameNow = wt.getTime();
+      } catch (_) {}
+      if (!gameNow) {
+        // Fall back: parse from the header clock (dd/mm/yyyy + HH:MM)
+        const dateEl = document.getElementById('worldDate');
+        const timeEl = document.getElementById('worldTime');
+        if (dateEl && timeEl) {
+          const parts = dateEl.textContent.split('/');
+          if (parts.length === 3) {
+            const iso = parts[2] + '-' + parts[1] + '-' + parts[0] + 'T' + timeEl.textContent + ':00';
+            const parsed = new Date(iso);
+            if (!isNaN(parsed)) gameNow = parsed.getTime();
+          }
+        }
+      }
+      const end = new Date(ua.scrapAvailableAt).getTime();
+      // Ferry start stored in storedAt when scrapping began
+      const start = ua.storedAt ? new Date(ua.storedAt).getTime() : end - (12 * 60 * 60 * 1000);
+      if (gameNow > 0 && end > start) {
+        progressPct = Math.max(0, Math.min(100, Math.round((gameNow - start) / (end - start) * 100)));
+      }
+      progressLabel = `Ferrying to ${ua.scrapCompanyName || ua.scrapAirportCode || 'scrapyard'}`;
+    }
+    html += `
+      <div style="flex:1; padding: 0.4rem 0.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+          <span style="font-size:0.8rem; color:#f87171; font-weight:600;">${progressLabel}</span>
+          <span style="font-size:0.75rem; color:#fca5a5; font-weight:700;">${progressPct}%</span>
+        </div>
+        <div style="height:6px; background:rgba(220,38,38,0.15); border-radius:3px; overflow:hidden;">
+          <div style="height:100%; width:${progressPct}%; background:#dc2626; border-radius:3px; transition:width 1s ease;"></div>
+        </div>
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.2rem;">${ua.currentAirport || '?'} &#10132; ${ua.scrapAirportCode || '?'}</div>
+      </div>`;
     if (ua.scrapAirportCode) {
-      html += `<button class="btn" onclick="event.stopPropagation(); viewScrapOnMap('${ua.currentAirport || ''}', '${ua.scrapAirportCode}', '${ua.registration}')" style="flex:0.5; padding: 0.5rem; font-size: 0.8rem; cursor: pointer; background: #7f1d1d; border-color: #991b1b; color: #fca5a5;">VIEW ON MAP</button>`;
+      html += `<button class="btn" onclick="event.stopPropagation(); viewScrapOnMap('${ua.currentAirport || ''}', '${ua.scrapAirportCode}', '${ua.registration}')" style="flex:0 0 auto; padding: 0.5rem 0.75rem; font-size: 0.8rem; cursor: pointer; background: #7f1d1d; border-color: #991b1b; color: #fca5a5;">MAP</button>`;
     }
   }
   if (status === 'active') {
@@ -1280,39 +1321,95 @@ async function viewScrapOnMap(fromIcao, toIcao, registration) {
       if (from) points.push([parseFloat(from.latitude), parseFloat(from.longitude)]);
       if (to) points.push([parseFloat(to.latitude), parseFloat(to.longitude)]);
 
-      // Draw ferry route line (dashed red)
       if (points.length === 2) {
-        L.polyline(points, { color: '#dc2626', weight: 2, dashArray: '8, 6', opacity: 0.7 }).addTo(map);
+        // Generate great circle arc (interpolate ~80 points along the curve)
+        const toRad = d => d * Math.PI / 180;
+        const toDeg = r => r * 180 / Math.PI;
+        const gcPoints = [];
+        const lat1 = toRad(points[0][0]), lon1 = toRad(points[0][1]);
+        const lat2 = toRad(points[1][0]), lon2 = toRad(points[1][1]);
+        const d = 2 * Math.asin(Math.sqrt(
+          Math.sin((lat2 - lat1) / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
+        ));
+        const numPoints = 80;
+        for (let i = 0; i <= numPoints; i++) {
+          const f = i / numPoints;
+          const A = Math.sin((1 - f) * d) / Math.sin(d);
+          const B = Math.sin(f * d) / Math.sin(d);
+          const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+          const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+          const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+          gcPoints.push([toDeg(Math.atan2(z, Math.sqrt(x * x + y * y))), toDeg(Math.atan2(y, x))]);
+        }
 
-        // Origin marker (blue)
-        L.circleMarker(points[0], { radius: 6, fillColor: '#3b82f6', fillOpacity: 0.9, color: '#fff', weight: 1 })
+        // Draw great circle route (dashed red)
+        L.polyline(gcPoints, { color: '#dc2626', weight: 2, dashArray: '8, 6', opacity: 0.7 }).addTo(map);
+
+        // Origin airport dot + ICAO label
+        L.circleMarker(points[0], { radius: 5, fillColor: '#3b82f6', fillOpacity: 0.9, color: '#fff', weight: 1 })
           .bindPopup(`<b>${fromIcao}</b><br>${from.name || 'Origin'}`)
           .addTo(map);
+        L.marker(points[0], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="font-size:0.7rem;font-weight:700;color:#93c5fd;text-shadow:0 0 3px rgba(0,0,0,0.9);white-space:nowrap;margin-left:10px;">${fromIcao}</div>`,
+            iconSize: [50, 16], iconAnchor: [0, 8]
+          })
+        }).addTo(map);
 
-        // Scrapyard marker (red with scissors)
+        // Scrapyard airport dot + ICAO label
+        L.circleMarker(points[1], { radius: 5, fillColor: '#f87171', fillOpacity: 0.9, color: '#fff', weight: 1 })
+          .bindPopup(`<b>${toIcao}</b><br>${to.name || 'Scrapyard'}`)
+          .addTo(map);
         L.marker(points[1], {
           icon: L.divIcon({
             className: '',
-            html: '<div style="font-size:1.5rem;text-shadow:0 0 4px rgba(0,0,0,0.8);">&#9986;</div>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            html: `<div style="font-size:0.7rem;font-weight:700;color:#fca5a5;text-shadow:0 0 3px rgba(0,0,0,0.9);white-space:nowrap;margin-left:10px;">${toIcao}</div>`,
+            iconSize: [50, 16], iconAnchor: [0, 8]
           })
-        }).bindPopup(`<b>${toIcao}</b><br>Scrapyard`).addTo(map);
+        }).addTo(map);
 
-        // Plane icon at midpoint (red, moving toward scrapyard)
-        const midLat = (points[0][0] + points[1][0]) / 2;
-        const midLon = (points[0][1] + points[1][1]) / 2;
-        const angle = Math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0]) * 180 / Math.PI;
-        L.marker([midLat, midLon], {
+        // Calculate plane position based on ferry progress (game time)
+        const ua = fleetData.find(a => a.registration === registration);
+        let progress = 0.5;
+        try {
+          if (ua && ua.scrapAvailableAt) {
+            let gameNow = 0;
+            const wt = typeof calculateCurrentWorldTime === 'function' ? calculateCurrentWorldTime() : null;
+            if (wt) gameNow = wt.getTime();
+            const arrivalAt = new Date(ua.scrapAvailableAt).getTime();
+            const ferryDurationMs = 12 * 60 * 60 * 1000; // fallback 12h
+            const startAt = arrivalAt - ferryDurationMs;
+            if (gameNow > 0 && arrivalAt > startAt) {
+              progress = Math.max(0.05, Math.min(0.95, (gameNow - startAt) / (arrivalAt - startAt)));
+            }
+          }
+        } catch (_) {}
+
+        // Position plane along great circle at progress point
+        const planeIdx = Math.round(progress * numPoints);
+        const planePos = gcPoints[Math.min(planeIdx, gcPoints.length - 1)];
+
+        // Calculate true bearing using adjacent great circle points
+        const nextIdx = Math.min(planeIdx + 2, gcPoints.length - 1);
+        const prevIdx = Math.max(planeIdx - 2, 0);
+        const dLat = gcPoints[nextIdx][0] - gcPoints[prevIdx][0];
+        const dLon = gcPoints[nextIdx][1] - gcPoints[prevIdx][1];
+        // Convert to proper bearing (0 = north, clockwise)
+        const bearingRad = Math.atan2(dLon * Math.cos(toRad(planePos[0])), dLat);
+        const bearingDeg = toDeg(bearingRad);
+
+        // ✈ character points right (east) by default, so rotate: bearing - 90
+        L.marker(planePos, {
           icon: L.divIcon({
             className: '',
-            html: `<div style="font-size:1.3rem;color:#f87171;transform:rotate(${-angle + 90}deg);text-shadow:0 0 4px rgba(0,0,0,0.8);">&#9992;</div>`,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
+            html: `<div style="font-size:1.6rem;color:#f87171;transform:rotate(${bearingDeg - 90}deg);text-shadow:0 0 6px rgba(0,0,0,0.9);line-height:1;">&#9992;</div>`,
+            iconSize: [28, 28], iconAnchor: [14, 14]
           })
-        }).bindPopup(`<b>${registration}</b><br>In transit to scrapyard`).addTo(map);
+        }).bindPopup(`<b>${registration}</b><br>In transit — ${Math.round(progress * 100)}% complete`).addTo(map);
 
-        setTimeout(() => map.fitBounds(points, { padding: [40, 40] }), 150);
+        setTimeout(() => map.fitBounds(points, { padding: [50, 50] }), 150);
       } else if (points.length === 1) {
         setTimeout(() => map.setView(points[0], 6), 150);
       }
