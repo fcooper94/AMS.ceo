@@ -341,10 +341,61 @@ async function confirmSetCid() {
 
 // ==================== SEND PASSWORD RESET ====================
 
+// Escape user-supplied text before injecting into modal HTML.
+function _escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Reusable promise-based confirmation modal (replaces the native confirm()).
+// Resolves true on confirm, false on cancel / Escape / click-outside.
+// `message` may contain trusted HTML; escape any user data before passing it in.
+function showConfirmDialog({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', tone = 'primary', icon = '' } = {}) {
+  return new Promise((resolve) => {
+    const danger = tone === 'danger';
+    const accent = danger ? '#dc2626' : 'var(--accent-color)';
+    const accentBg = danger ? 'rgba(220,38,38,0.15)' : 'rgba(59,130,246,0.15)';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `
+      <div role="dialog" aria-modal="true" style="background:var(--surface);border:1px solid var(--border-color);border-radius:12px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="padding:1.1rem 1.25rem 0.75rem;display:flex;align-items:center;gap:0.8rem;">
+          <div style="width:42px;height:42px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${accentBg};color:${accent};">${icon}</div>
+          <h3 style="margin:0;font-size:1.05rem;color:var(--text-primary);font-weight:600;">${title}</h3>
+        </div>
+        <div style="padding:0 1.25rem 1.15rem;color:var(--text-secondary);font-size:0.9rem;line-height:1.5;">${message}</div>
+        <div style="padding:0.85rem 1.25rem;border-top:1px solid var(--border-color);display:flex;gap:0.6rem;justify-content:flex-end;background:var(--surface-elevated);">
+          <button data-act="cancel" class="btn btn-secondary" style="padding:0.5rem 1.1rem;font-size:0.85rem;">${cancelText}</button>
+          <button data-act="ok" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-size:0.85rem;${danger ? 'background:#dc2626;border-color:#dc2626;' : ''}">${confirmText}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const okBtn = overlay.querySelector('[data-act="ok"]');
+    okBtn.focus();
+
+    function cleanup() { document.removeEventListener('keydown', onKey); overlay.remove(); }
+    function done(val) { cleanup(); resolve(val); }
+    function onKey(e) { if (e.key === 'Escape') done(false); else if (e.key === 'Enter') done(true); }
+
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) done(false); });
+    overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
+    okBtn.addEventListener('click', () => done(true));
+  });
+}
+
 async function loginAsUser(user) {
-  if (!confirm(`Log in as ${user.firstName} ${user.lastName}? You'll be able to return to your admin account via the banner at the top.`)) {
-    return;
-  }
+  const name = `${_escHtml(user.firstName)} ${_escHtml(user.lastName)}`.trim();
+  const ok = await showConfirmDialog({
+    title: 'Log in as user',
+    message: `Log in as <strong style="color:var(--text-primary);">${name}</strong>? You'll be signed into their account — you can return to your admin account at any time via the banner at the top.`,
+    confirmText: 'Log in as User',
+    tone: 'primary',
+    icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+  });
+  if (!ok) return;
   try {
     const response = await fetch(`/api/admin/users/${user.id}/login-as`, {
       method: 'POST',

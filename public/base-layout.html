@@ -41,9 +41,17 @@
     })();
   </script>
   <!-- Admin impersonation banner (only shown while an admin is viewing as another user) -->
-  <div id="impersonationBanner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:#d97706; color:#1a1a1a; text-align:center; padding:0.4rem 1rem; font-size:0.85rem; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
-    &#128373; Viewing as <span id="impersonationName">user</span>
-    <button onclick="stopImpersonation()" style="background:#1a1a1a; color:#fff; border:none; padding:0.25rem 0.7rem; border-radius:3px; cursor:pointer; font-size:0.8rem; font-weight:600; margin-left:0.75rem;">Return to admin</button>
+  <div id="impersonationBanner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:linear-gradient(180deg,#f59e0b,#d97706); border-bottom:1px solid rgba(0,0,0,0.22); box-shadow:0 2px 12px rgba(0,0,0,0.35); font-family:system-ui,-apple-system,sans-serif;">
+    <div style="max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:center; gap:0.8rem; padding:0.5rem 1rem;">
+      <span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:rgba(0,0,0,0.16); flex-shrink:0;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3a2600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </span>
+      <span style="font-size:0.85rem; font-weight:500; color:rgba(26,18,0,0.72);">Viewing as <strong id="impersonationName" style="font-weight:700; color:#1a1200;">user</strong></span>
+      <button onclick="stopImpersonation()" style="margin-left:0.3rem; background:#1a1200; color:#fde9c8; border:none; padding:0.35rem 0.85rem; border-radius:999px; cursor:pointer; font-size:0.78rem; font-weight:600; display:inline-flex; align-items:center; gap:0.35rem; transition:background 0.15s ease;" onmouseover="this.style.background='#000'" onmouseout="this.style.background='#1a1200'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v3"/></svg>
+        Return to admin
+      </button>
+    </div>
   </div>
   <script>
     (function(){
