@@ -290,6 +290,89 @@ in `world-selection.js`, not only at final submit. Steps are shown by
 (sp/mp/rejoin). If you insert/reorder steps, renumber the `{prefix}Step{N}` /
 `{prefix}StepInd{N}` ids **and** the branding-init/contractor-start offsets.
 
+## Cabin & cargo configurators — per-ICAO datasets (2026-07)
+
+`public/js/cabin-configurator.js` (seat map) and `public/js/cargo-configurator.js`
+(hold map) are loaded on the marketplace, fleet and scheduling pages.
+
+- **Seat abreast** is real per-airframe data in **`AIRCRAFT_CABIN`** (keyed by
+  ICAO = fuselage cross-section; ~200 entries). Twin-aisle widebodies carry
+  explicit premium cabins; single-aisle/regional **derive** premium (one fewer
+  per side). Resolver `getIcaoCabin`; precedence: **airship → per-ICAO →
+  capacity-bucket fallback → widebody override → type default**. Fuselage width
+  derives from total abreast (one source of truth).
+- **Airships** (type `Airship`) use `getAirshipCabin` (capacity-scaled gondola,
+  1-1/2-1/2-2) and a **cylindrical capsule** fuselage — no cockpit — via the
+  `shape='capsule'` param on `renderFuselage`. Airships have no real ICAO type
+  code, so any per-ICAO map keys them out.
+- **Cargo belly holds** are per-ICAO in **`AIRCRAFT_HOLDS`** (Fwd/Aft/Bulk
+  templates by fuselage size). **Bulk hold carries GENERAL cargo only** — special
+  types go in Fwd/Aft (visual only; allocation is still by type). The belly
+  diagram **scales to aircraft size** (`_bellySizeClass` sm/md/lg → grid cols,
+  pallet size, fuselage width, display cap); airships use the capsule shape here
+  too. `window.aircraftNoImage()` (defined in cabin-configurator.js, the shared
+  dependency) is the branded no-photo placeholder used by all three pages.
+- Watch out for a stray **`filter: invert(1); mix-blend-mode: screen;`** in
+  `aircraft-marketplace.js` — it's only correct on the aircraft `<img>` and the
+  parchment contract document; it was copy-pasted onto ~30 UI elements and
+  inverted their dark-theme colours (cleaned up 2026-07).
+
+## Sightseeing Tours (new feature, 2026-07)
+
+A **scenic pleasure flight** that loops from/to one base airport over
+map-clicked scenic waypoints. **Deliberately its own model, NOT a Route** — the
+user chose clean separation over the (recommended, lower-effort)
+`Route`-discriminator approach.
+
+- **Model** `src/models/SightseeingTour.js`: `baseAirportId` + JSON `waypoints`
+  `[{lat,lng,name}]` + `distanceNm`/`durationMin` + `ticketPrice` +
+  `assignedAircraftId` + `daysOfWeek` + `scheduledDepartureTime` + `isActive` +
+  metrics. Table created **non-destructively** via
+  `src/scripts/createSightseeingToursTable.js` (`Model.sync()` = CREATE IF NOT
+  EXISTS) — already run on Railway.
+- **API** `src/routes/sightseeing.js` at **`/api/sightseeing-tours`** (CRUD).
+  Server computes round-trip distance + duration from aircraft cruise speed and
+  validates range/waypoints.
+- **Builder** `/sightseeing/create` (`sightseeing-create.html` + `.js`) — an
+  interactive Leaflet map; click to drop waypoints. **`?id=<tourId>` = edit
+  mode** (only price + aircraft editable, everything else locked). Aircraft is
+  assigned **by TYPE** (dropdown grouped by type; stores a representative
+  `UserAircraft`), matching how routes work.
+- **Revenue** `worldTimeService.processSightseeingTours` — runs once per
+  operating day off the tour's own `daysOfWeek` + time (**NOT** `ScheduledFlight`).
+  **Flat, price-driven load** (0.9 baseline, softened above a duration-based
+  suggested price of ~$3/scenic-min × `eraMultiplier`); era-scaled costs;
+  grounded aircraft don't fly. `eraMultiplier` is now exposed via
+  `/api/world/info` for consistent client pricing.
+- **Scheduling integration is "Option B" — client-side only, no
+  `ScheduledFlight`** (the whole server scheduling layer is Route-mandatory).
+  Tours render on the grid as **synthesized pseudo-flights**
+  (`buildTourPseudoFlights` → merged in `getFlightsForDay`; weekly + daily
+  renderers both have tour branches). The drag panel lists tours; drop sets the
+  tour's days/time/aircraft via **PUT**. **Conflict prevention is client-side
+  and bidirectional** (tour-vs-routes+tours, route-vs-tours) using time windows.
+  **"Remove from schedule" pauses (`isActive:false`, keeps the aircraft
+  allocation)** — it does NOT unassign; re-dragging reactivates. Paused tours are
+  skipped by both the grid and the conflict checks.
+- **List**: a separate "Sightseeing Tours" table on the routes page
+  (`routes.js`) with Edit (✎) + Delete.
+- **⚠ The large `scheduling-v3.js` integration is not fully browser-verified.**
+  It was built + `node -c`-checked but iterated via user screenshots; several
+  drag/render bugs were only found once running (e.g. `dragover` must call
+  `preventDefault()` for tour drags or the drop is refused). Expect more edge
+  cases here — test in the browser.
+
+## AI aircraft financing variety (2026-07)
+
+AI airlines now vary how they pay for aircraft instead of always leasing:
+**cash / deposit+loan (financed) / lease**, weighted by personality and
+affordability (`decideAIAcquisition`, `buildAIFinancePlan`, `createAIFleetLoan`
+in `aiDecisionService.js`). Reuses the existing `Loan` machinery —
+`processLoanPayments` already deducts AI loan repayments (no `isAI` filter).
+Guardrails: leverage caps, deposit+runway check, one loan per bank, ≤3 loans,
+assumed AI credit score. Also added real postwar **Goodyear L-class + K-class
+airships** (available 1950) via `addPostwarAirships.js`.
+
 ## How the user wants Claude to work
 
 - **Be direct and honest. Correct mistakes, don't agree to be agreeable.** When
