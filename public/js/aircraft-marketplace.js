@@ -68,8 +68,12 @@ let registrationPrefix = 'N-'; // Default prefix, will be updated from world inf
 let baseCountry = null;
 let isSinglePlayer = false; // SP worlds cache inventory in sessionStorage
 let purchaseQuantity = 1; // Quantity for bulk new aircraft purchases
-let selectedCabinConfig = null; // Cabin class configuration
-let selectedCargoConfig = null; // Cargo type allocation
+let selectedCabinConfig = null; // Cabin class configuration (combined)
+let selectedCabinConfigUpper = null; // Double-deck: upper deck cabin config
+let selectedCabinConfigMain = null;  // Double-deck: main/lower deck cabin config
+let selectedCargoConfig = null; // Cargo type allocation (combined)
+let selectedCargoConfigMainDeck = null; // Combi: main-deck freight section
+let selectedCargoConfigHold = null;     // Combi: belly hold section
 
 // Contract signing animation
 function showContractSigningAnimation(type, aircraftName, registration, price) {
@@ -681,9 +685,17 @@ function showAircraftDetails(aircraftId) {
   selectedAircraft = aircraft;
   purchaseQuantity = 1; // Reset quantity on each detail view
   selectedCabinConfig = null; // Reset cabin config
+  selectedCabinConfigUpper = null;
+  selectedCabinConfigMain = null;
   selectedCargoConfig = null; // Reset cargo config
+  selectedCargoConfigMainDeck = null;
+  selectedCargoConfigHold = null;
   window.selectedCabinConfig = null;
+  window.selectedCabinConfigUpper = null;
+  window.selectedCabinConfigMain = null;
   window.selectedCargoConfig = null;
+  window.selectedCargoConfigMainDeck = null;
+  window.selectedCargoConfigHold = null;
   selectedFinancingMethod = 'cash'; // Reset financing state
   selectedBankId = null;
   selectedLoanTermWeeks = 156;
@@ -815,27 +827,12 @@ function showAircraftDetails(aircraftId) {
     <div style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.3rem;">REQUIRED BEFORE PURCHASE</div>
     ` : ''}
 
-    ${aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? `
-    <div id="cabinConfigBtn" onclick="openCabinConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCabinConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCabinConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
-      <div id="cabinConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); filter: invert(1); mix-blend-mode: screen; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
-      <div style="flex: 1;">
-        <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cabin</div>
-        <div id="cabinConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set seat layout</div>
-      </div>
-      <div style="color: rgba(239, 68, 68, 0.6); font-size: 0.9rem;">&#9654;</div>
-    </div>
-    ` : ''}
+    ${aircraft.type !== 'Cargo' && aircraft.passengerCapacity > 0 ? cabinConfigRowsHtml(aircraft) : ''}
 
-    ${aircraft.cargoCapacityKg > 0 ? `
-    <div id="cargoConfigBtn" onclick="openCargoConfigurator()" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=window.selectedCargoConfig;this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=window.selectedCargoConfig;this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
-      <div id="cargoConfigCheck" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); filter: invert(1); mix-blend-mode: screen; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
-      <div style="flex: 1;">
-        <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">Configure Cargo</div>
-        <div id="cargoConfigSummary" style="color: var(--text-muted); font-size: 0.55rem;">Required — set cargo allocation</div>
-      </div>
-      <div style="color: rgba(239, 68, 68, 0.6); font-size: 0.9rem;">&#9654;</div>
-    </div>
-    ` : ''}
+    ${aircraft.cargoCapacityKg > 0 ? cargoConfigRowsHtml(aircraft) : ''}
+
+    <!-- Live configuration summary (populated as sections are configured) -->
+    <div id="configSummary" style="display: none; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.5rem;"></div>
 
     <!-- Bottom: Purchase & Lease side by side -->
     ${isNew && !aircraft.isPlayerListing ? `
@@ -1849,6 +1846,241 @@ function showOrderRegistrationDialog() {
 }
 
 // Open cabin configurator for the selected aircraft
+// True if the aircraft has two passenger decks (747/A380) and should be
+// configured one deck at a time.
+function isDoubleDeckAircraft(aircraft) {
+  return typeof getDoubleDeckConfig === 'function' && !!getDoubleDeckConfig(aircraft);
+}
+
+// Build one "Configure …" checklist row.
+function _cabinConfigRowHtml({ btnId, checkId, summaryId, label, onclick, stateVar, summary }) {
+  summary = summary || 'Required — set seat layout';
+  return `
+    <div id="${btnId}" onclick="${onclick}" style="background: rgba(239, 68, 68, 0.06); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 0.5rem 0.7rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;" onmouseover="var d=${stateVar};this.style.borderColor=d?'#10B981':'#EF4444';this.style.background=d?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.1)'" onmouseout="var d=${stateVar};this.style.borderColor=d?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)';this.style.background=d?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'">
+      <div id="${checkId}" style="width: 20px; height: 20px; border: 2px solid rgba(239, 68, 68, 0.5); filter: invert(1); mix-blend-mode: screen; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.7rem;"></div>
+      <div style="flex: 1;">
+        <div style="color: #EF4444; font-weight: 700; font-size: 0.75rem;">${label}</div>
+        <div id="${summaryId}" style="color: var(--text-muted); font-size: 0.55rem;">${summary}</div>
+      </div>
+      <div style="color: rgba(239, 68, 68, 0.6); font-size: 0.9rem;">&#9654;</div>
+    </div>`;
+}
+
+// One cabin row for single-deck aircraft; two (upper + lower) for double-deck.
+function cabinConfigRowsHtml(aircraft) {
+  if (isDoubleDeckAircraft(aircraft)) {
+    return _cabinConfigRowHtml({ btnId: 'cabinConfigBtnUpper', checkId: 'cabinConfigCheckUpper', summaryId: 'cabinConfigSummaryUpper', label: 'Configure Upper Deck Cabin', onclick: "openDeckCabinConfigurator('upper')", stateVar: 'window.selectedCabinConfigUpper' })
+         + _cabinConfigRowHtml({ btnId: 'cabinConfigBtnMain', checkId: 'cabinConfigCheckMain', summaryId: 'cabinConfigSummaryMain', label: 'Configure Lower Deck Cabin', onclick: "openDeckCabinConfigurator('main')", stateVar: 'window.selectedCabinConfigMain' });
+  }
+  // Combi (single-deck): the cabin sits on the main deck alongside freight.
+  const cabinLabel = aircraft.isCombi ? 'Configure Cabin Main Deck' : 'Configure Cabin';
+  return _cabinConfigRowHtml({ btnId: 'cabinConfigBtn', checkId: 'cabinConfigCheck', summaryId: 'cabinConfigSummary', label: cabinLabel, onclick: 'openCabinConfigurator()', stateVar: 'window.selectedCabinConfig' });
+}
+
+// Cargo rows: one "Configure Cargo" for normal aircraft; a combi splits into
+// "Configure Cargo Main Deck" + "Configure Cargo Hold".
+function isCombiCargoAircraft(aircraft) {
+  return !!aircraft && aircraft.isCombi && aircraft.cargoCapacityKg > 0;
+}
+
+function cargoConfigRowsHtml(aircraft) {
+  const cargoSummary = 'Required — set cargo allocation';
+  if (isCombiCargoAircraft(aircraft)) {
+    return _cabinConfigRowHtml({ btnId: 'cargoConfigBtnMainDeck', checkId: 'cargoConfigCheckMainDeck', summaryId: 'cargoConfigSummaryMainDeck', label: 'Configure Cargo Main Deck', onclick: "openCargoSection('mainDeck')", stateVar: 'window.selectedCargoConfigMainDeck', summary: cargoSummary })
+         + _cabinConfigRowHtml({ btnId: 'cargoConfigBtnHold', checkId: 'cargoConfigCheckHold', summaryId: 'cargoConfigSummaryHold', label: 'Configure Cargo Hold', onclick: "openCargoSection('hold')", stateVar: 'window.selectedCargoConfigHold', summary: cargoSummary });
+  }
+  return _cabinConfigRowHtml({ btnId: 'cargoConfigBtn', checkId: 'cargoConfigCheck', summaryId: 'cargoConfigSummary', label: 'Configure Cargo', onclick: 'openCargoConfigurator()', stateVar: 'window.selectedCargoConfig', summary: cargoSummary });
+}
+
+// Open one combi cargo section (main deck / belly hold).
+function openCargoSection(section) {
+  if (!selectedAircraft || typeof showCargoConfigurator !== 'function' || typeof getCombiCargoSplit !== 'function') return;
+  const split = getCombiCargoSplit(selectedAircraft);
+  const isMain = section === 'mainDeck';
+  const opts = {
+    sectionCapacity: isMain ? split.mainDeck : split.hold,
+    sectionLabel: isMain ? 'Main Deck' : 'Cargo Hold',
+    paxBlockPct: isMain ? undefined : 0  // main deck shows the pax cabin block; hold doesn't
+  };
+  const existing = isMain ? selectedCargoConfigMainDeck : selectedCargoConfigHold;
+  showCargoConfigurator(selectedAircraft, (config) => {
+    if (isMain) {
+      selectedCargoConfigMainDeck = config; window.selectedCargoConfigMainDeck = config;
+      _markCargoRowConfigured('cargoConfigBtnMainDeck', 'cargoConfigCheckMainDeck', 'cargoConfigSummaryMainDeck', config);
+    } else {
+      selectedCargoConfigHold = config; window.selectedCargoConfigHold = config;
+      _markCargoRowConfigured('cargoConfigBtnHold', 'cargoConfigCheckHold', 'cargoConfigSummaryHold', config);
+    }
+    recomputeCombinedCargo();
+  }, existing, opts);
+}
+
+// Turn a cargo row green + show its summary.
+function _markCargoRowConfigured(btnId, checkId, summaryId, config) {
+  const summaryEl = document.getElementById(summaryId);
+  const btnEl = document.getElementById(btnId);
+  const checkEl = document.getElementById(checkId);
+  if (summaryEl && config) {
+    summaryEl.innerHTML = (typeof cargoConfigSummary === 'function' ? cargoConfigSummary(config) : 'Configured');
+    summaryEl.style.color = 'var(--text-secondary)';
+  }
+  if (checkEl) {
+    checkEl.innerHTML = '&#10003;';
+    checkEl.style.borderColor = '#10B981';
+    checkEl.style.color = '#10B981';
+    checkEl.style.background = 'rgba(16, 185, 129, 0.1)';
+  }
+  if (btnEl) {
+    btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    btnEl.style.background = 'rgba(16, 185, 129, 0.06)';
+    const arrow = btnEl.querySelector('div:last-child');
+    if (arrow) arrow.style.color = 'rgba(16, 185, 129, 0.6)';
+    const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
+    if (labelEl) labelEl.style.color = '#10B981';
+  }
+}
+
+// Combine the two combi cargo sections into the payload shape the backend
+// already expects (total + per-section). Null until both are set.
+function recomputeCombinedCargo() {
+  if (selectedCargoConfigMainDeck && selectedCargoConfigHold) {
+    const md = selectedCargoConfigMainDeck.cargoConfig || {};
+    const ch = selectedCargoConfigHold.cargoConfig || {};
+    const keys = (typeof CARGO_TYPE_KEYS !== 'undefined' && CARGO_TYPE_KEYS) || Object.keys({ ...md, ...ch });
+    const total = {};
+    keys.forEach(t => { total[t] = (md[t] || 0) + (ch[t] || 0); });
+    selectedCargoConfig = { cargoConfig: total, mainDeckCargoConfig: md, cargoHoldCargoConfig: ch };
+  } else {
+    selectedCargoConfig = null;
+  }
+  window.selectedCargoConfig = selectedCargoConfig;
+  updateConfigSummary();
+}
+
+// ── Live configuration summary shown below the checklist ──────────────────────
+function _seatTotal(cfg) {
+  if (!cfg) return 0;
+  return (cfg.firstSeats || 0) + (cfg.businessSeats || 0) + (cfg.economyPlusSeats || 0) + (cfg.economySeats || 0);
+}
+function _cargoTotalKg(cargoCfg) {
+  if (!cargoCfg) return 0;
+  return Object.keys(cargoCfg).reduce((s, k) => s + (Number(cargoCfg[k]) || 0), 0);
+}
+function _fmtCargoKg(kg) {
+  return kg >= 1000 ? (kg / 1000).toFixed(1) + 't' : Math.round(kg) + 'kg';
+}
+function _configSummaryRow(label, total, detail) {
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.75rem;font-size:0.66rem;margin-top:0.12rem;">
+    <span style="color:var(--text-primary);font-weight:600;white-space:nowrap;">${label}: <span style="color:#10B981;">${total}</span></span>
+    <span style="color:var(--text-secondary);font-size:0.6rem;text-align:right;">${detail || ''}</span>
+  </div>`;
+}
+
+// Rebuild the summary card from whatever's configured so far (partial is fine).
+function updateConfigSummary() {
+  const el = document.getElementById('configSummary');
+  if (!el || !selectedAircraft) return;
+  const rows = [];
+  const cabinSum = (c) => (typeof cabinConfigSummary === 'function' ? (cabinConfigSummary(c) || '') : '');
+
+  // Cabin
+  if (selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0) {
+    if (isDoubleDeckAircraft(selectedAircraft)) {
+      if (selectedCabinConfigUpper || selectedCabinConfigMain) {
+        const parts = [];
+        if (selectedCabinConfigUpper) parts.push('Upper ' + cabinSum(selectedCabinConfigUpper));
+        if (selectedCabinConfigMain) parts.push('Main ' + cabinSum(selectedCabinConfigMain));
+        const seats = _seatTotal(selectedCabinConfigUpper) + _seatTotal(selectedCabinConfigMain);
+        rows.push(_configSummaryRow('Cabin', seats + ' seats', parts.join('  ·  ')));
+      }
+    } else if (selectedCabinConfig) {
+      rows.push(_configSummaryRow('Cabin', _seatTotal(selectedCabinConfig) + ' seats', cabinSum(selectedCabinConfig)));
+    }
+  }
+
+  // Cargo
+  if (selectedAircraft.cargoCapacityKg > 0) {
+    if (isCombiCargoAircraft(selectedAircraft)) {
+      if (selectedCargoConfigMainDeck || selectedCargoConfigHold) {
+        const mdKg = _cargoTotalKg(selectedCargoConfigMainDeck && selectedCargoConfigMainDeck.cargoConfig);
+        const chKg = _cargoTotalKg(selectedCargoConfigHold && selectedCargoConfigHold.cargoConfig);
+        const parts = [];
+        if (selectedCargoConfigMainDeck) parts.push('Main Deck ' + _fmtCargoKg(mdKg));
+        if (selectedCargoConfigHold) parts.push('Hold ' + _fmtCargoKg(chKg));
+        rows.push(_configSummaryRow('Cargo', _fmtCargoKg(mdKg + chKg), parts.join('  ·  ')));
+      }
+    } else if (selectedCargoConfig) {
+      rows.push(_configSummaryRow('Cargo', _fmtCargoKg(_cargoTotalKg(selectedCargoConfig.cargoConfig)), ''));
+    }
+  }
+
+  if (rows.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = `<div style="font-size:0.58rem;font-weight:700;color:#10B981;letter-spacing:0.05em;margin-bottom:0.15rem;">CONFIGURATION SUMMARY</div>${rows.join('')}`;
+}
+
+// Turn a config row green + show its seat summary once configured.
+function _markCabinRowConfigured(btnId, checkId, summaryId, config) {
+  const summaryEl = document.getElementById(summaryId);
+  const btnEl = document.getElementById(btnId);
+  const checkEl = document.getElementById(checkId);
+  if (summaryEl && config) {
+    summaryEl.innerHTML = (typeof cabinConfigSummary === 'function' ? cabinConfigSummary(config) : 'Configured');
+    summaryEl.style.color = 'var(--text-secondary)';
+  }
+  if (checkEl) {
+    checkEl.innerHTML = '&#10003;';
+    checkEl.style.borderColor = '#10B981';
+    checkEl.style.color = '#10B981';
+    checkEl.style.background = 'rgba(16, 185, 129, 0.1)';
+  }
+  if (btnEl) {
+    btnEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    btnEl.style.background = 'rgba(16, 185, 129, 0.06)';
+    const arrow = btnEl.querySelector('div:last-child');
+    if (arrow) arrow.style.color = 'rgba(16, 185, 129, 0.6)';
+    const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
+    if (labelEl) labelEl.style.color = '#10B981';
+  }
+}
+
+// Open the single-deck configurator for one deck of a double-deck aircraft.
+function openDeckCabinConfigurator(deck) {
+  if (!selectedAircraft || typeof showCabinConfigurator !== 'function') return;
+  const deckSpec = (typeof getDeckSpec === 'function') ? getDeckSpec(selectedAircraft, deck) : null;
+  if (!deckSpec) return;
+  const existing = deck === 'upper' ? selectedCabinConfigUpper : selectedCabinConfigMain;
+  showCabinConfigurator(selectedAircraft, (config) => {
+    if (deck === 'upper') {
+      selectedCabinConfigUpper = config; window.selectedCabinConfigUpper = config;
+      _markCabinRowConfigured('cabinConfigBtnUpper', 'cabinConfigCheckUpper', 'cabinConfigSummaryUpper', config);
+    } else {
+      selectedCabinConfigMain = config; window.selectedCabinConfigMain = config;
+      _markCabinRowConfigured('cabinConfigBtnMain', 'cabinConfigCheckMain', 'cabinConfigSummaryMain', config);
+    }
+    recomputeCombinedCabin();
+  }, existing, { deckSpec });
+}
+
+// Combine per-deck configs into the single selectedCabinConfig used at purchase.
+// Stays null until BOTH decks are configured, so the purchase gate holds.
+function recomputeCombinedCabin() {
+  if (selectedCabinConfigUpper && selectedCabinConfigMain) {
+    const u = selectedCabinConfigUpper, m = selectedCabinConfigMain;
+    selectedCabinConfig = {
+      firstSeats: (u.firstSeats || 0) + (m.firstSeats || 0),
+      businessSeats: (u.businessSeats || 0) + (m.businessSeats || 0),
+      economyPlusSeats: (u.economyPlusSeats || 0) + (m.economyPlusSeats || 0),
+      economySeats: (u.economySeats || 0) + (m.economySeats || 0),
+      toilets: (u.toilets || 0) + (m.toilets || 0)
+    };
+  } else {
+    selectedCabinConfig = null;
+  }
+  window.selectedCabinConfig = selectedCabinConfig;
+  updateConfigSummary();
+}
+
 function openCabinConfigurator() {
   if (!selectedAircraft || typeof showCabinConfigurator !== 'function') return;
   showCabinConfigurator(selectedAircraft, (config) => {
@@ -1875,6 +2107,7 @@ function openCabinConfigurator() {
       const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
       if (labelEl) labelEl.style.color = '#10B981';
     }
+    updateConfigSummary();
   }, selectedCabinConfig);
 }
 
@@ -1905,6 +2138,7 @@ function openCargoConfigurator() {
       const labelEl = btnEl.querySelector('div[style*="font-weight: 700"]');
       if (labelEl) labelEl.style.color = '#10B981';
     }
+    updateConfigSummary();
   }, selectedCargoConfig);
 }
 
@@ -1914,8 +2148,20 @@ function getMissingConfigs() {
   const parts = [];
   const needsCabin = selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0;
   const needsCargo = selectedAircraft.cargoCapacityKg > 0;
-  if (needsCabin && !selectedCabinConfig) parts.push('cabin layout');
-  if (needsCargo && !selectedCargoConfig) parts.push('cargo allocation');
+  if (needsCabin) {
+    if (isDoubleDeckAircraft(selectedAircraft)) {
+      if (!selectedCabinConfigUpper || !selectedCabinConfigMain) parts.push('both cabin decks');
+    } else if (!selectedCabinConfig) {
+      parts.push('cabin layout');
+    }
+  }
+  if (needsCargo) {
+    if (isCombiCargoAircraft(selectedAircraft)) {
+      if (!selectedCargoConfigMainDeck || !selectedCargoConfigHold) parts.push('both cargo sections');
+    } else if (!selectedCargoConfig) {
+      parts.push('cargo allocation');
+    }
+  }
   if (parts.length === 0) return null;
   return `Please configure ${parts.join(' and ')} before proceeding`;
 }
@@ -1925,8 +2171,22 @@ function flashMissingConfigs() {
   const needsCabin = selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0;
   const needsCargo = selectedAircraft.cargoCapacityKg > 0;
   const btns = [];
-  if (needsCabin && !selectedCabinConfig) btns.push(document.getElementById('cabinConfigBtn'));
-  if (needsCargo && !selectedCargoConfig) btns.push(document.getElementById('cargoConfigBtn'));
+  if (needsCabin) {
+    if (isDoubleDeckAircraft(selectedAircraft)) {
+      if (!selectedCabinConfigUpper) btns.push(document.getElementById('cabinConfigBtnUpper'));
+      if (!selectedCabinConfigMain) btns.push(document.getElementById('cabinConfigBtnMain'));
+    } else if (!selectedCabinConfig) {
+      btns.push(document.getElementById('cabinConfigBtn'));
+    }
+  }
+  if (needsCargo) {
+    if (isCombiCargoAircraft(selectedAircraft)) {
+      if (!selectedCargoConfigMainDeck) btns.push(document.getElementById('cargoConfigBtnMainDeck'));
+      if (!selectedCargoConfigHold) btns.push(document.getElementById('cargoConfigBtnHold'));
+    } else if (!selectedCargoConfig) {
+      btns.push(document.getElementById('cargoConfigBtn'));
+    }
+  }
   for (const btn of btns) {
     if (!btn) continue;
     btn.style.borderColor = '#EF4444';

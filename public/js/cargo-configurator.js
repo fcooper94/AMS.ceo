@@ -125,34 +125,65 @@ function _attachTooltips(container) {
  * Each cargo type's allocation maps to a proportional number of coloured pallets
  * arranged in a 2-column grid inside the fuselage, clipped to its outline.
  */
-function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0) {
+function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0, landscape = false) {
   const sfx = idSuffix || '';
   const activeTypes = types.filter(t => config[t] > 0);
   const W = 200;
   const H = holdHeight || 360;
   const cx = W / 2;
 
-  // ── Fuselage path ──
-  const noseY = 6;
-  const bodyTop = Math.round(H * 0.12);
-  const bodyBot = Math.round(H * 0.88);
-  const tailY = H - 6;
-  const bL = 16;
-  const bR = W - 16;
+  // Landscape: the hold is drawn in portrait coords then rotated -90° so the
+  // nose points LEFT (matching the cabin diagram). Text is counter-rotated +90°
+  // around its anchor so it stays upright.
+  const _tr = landscape ? (x, y) => ` transform="rotate(90,${x},${y})"` : () => '';
 
-  const fuselage = [
-    `M ${cx} ${noseY}`,
-    `C ${cx + 46} ${noseY}, ${bR} ${bodyTop * 0.6}, ${bR} ${bodyTop}`,
-    `L ${bR} ${bodyBot}`,
-    `C ${bR} ${bodyBot + (tailY - bodyBot) * 0.65}, ${cx + 55} ${tailY}, ${cx} ${tailY}`,
-    `C ${cx - 55} ${tailY}, ${bL} ${bodyBot + (tailY - bodyBot) * 0.65}, ${bL} ${bodyBot}`,
-    `L ${bL} ${bodyTop}`,
-    `C ${bL} ${bodyTop * 0.6}, ${cx - 46} ${noseY}, ${cx} ${noseY}`,
-    'Z'
-  ].join(' ');
+  // ── Fuselage silhouette ──
+  // Landscape (single passenger/combi hold): a full aircraft shape matching the
+  // cabin diagram — pointed nose + tapered tail + cockpit. Portrait (freighter
+  // dual-hold view): the original capsule, since two holds sit side by side.
+  const bL = landscape ? 20 : 16;
+  const bR = W - (landscape ? 20 : 16);
+  const bodyW = bR - bL;
+  const noseH = Math.round(bodyW * 0.55);   // landscape pointed-nose region
+  const tailH = Math.round(bodyW * 0.25);   // landscape rounded tail
+  let bodyTop, bodyBot, fuselage;
+  if (landscape) {
+    bodyTop = noseH;                         // straight body starts after the nose
+    bodyBot = H - tailH;                     // straight body ends before the tail
+    fuselage = [
+      `M ${bL} ${noseH}`,
+      `C ${bL} ${noseH * 0.45}, ${cx - 2} ${noseH * 0.04}, ${cx} 2`,
+      `C ${cx + 2} ${noseH * 0.04}, ${bR} ${noseH * 0.45}, ${bR} ${noseH}`,
+      `L ${bR} ${bodyBot}`,
+      `Q ${bR} ${bodyBot + tailH * 0.85}, ${cx} ${H - 1}`,
+      `Q ${bL} ${bodyBot + tailH * 0.85}, ${bL} ${bodyBot}`,
+      'Z'
+    ].join(' ');
+  } else {
+    const noseY = 6;
+    const tailY = H - 6;
+    bodyTop = Math.round(H * 0.12);
+    bodyBot = Math.round(H * 0.88);
+    fuselage = [
+      `M ${cx} ${noseY}`,
+      `C ${cx + 46} ${noseY}, ${bR} ${bodyTop * 0.6}, ${bR} ${bodyTop}`,
+      `L ${bR} ${bodyBot}`,
+      `C ${bR} ${bodyBot + (tailY - bodyBot) * 0.65}, ${cx + 55} ${tailY}, ${cx} ${tailY}`,
+      `C ${cx - 55} ${tailY}, ${bL} ${bodyBot + (tailY - bodyBot) * 0.65}, ${bL} ${bodyBot}`,
+      `L ${bL} ${bodyTop}`,
+      `C ${bL} ${bodyTop * 0.6}, ${cx - 46} ${noseY}, ${cx} ${noseY}`,
+      'Z'
+    ].join(' ');
+  }
 
-  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"
-    style="width:100%;height:100%;max-height:100%;display:block;margin:0 auto;"
+  const vbW = landscape ? H : W;
+  const vbH = landscape ? W : H;
+  const svgStyle = landscape
+    ? 'width:100%;height:auto;display:block;margin:0 auto;'
+    : 'width:100%;height:100%;max-height:100%;display:block;margin:0 auto;';
+
+  let svg = `<svg viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet"
+    style="${svgStyle}"
     xmlns="http://www.w3.org/2000/svg">
     <defs>
       <clipPath id="fc${sfx}"><path d="${fuselage}"/></clipPath>
@@ -162,17 +193,23 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
         <stop offset="100%" stop-color="rgba(100,116,139,0.15)"/>
       </linearGradient>
     </defs>
+    ${landscape ? `<g transform="translate(0,${W}) rotate(-90)">` : ''}
 
     <!-- Fuselage outline -->
-    <path d="${fuselage}" fill="url(#fg${sfx})" stroke="rgba(100,116,139,0.35)" stroke-width="1.5"/>
+    <path d="${fuselage}" fill="url(#fg${sfx})" stroke="rgba(100,116,139,0.35)" stroke-width="1.2"/>
+    ${landscape ? `
+    <!-- Cockpit — darkened nose + label + bulkhead line (matches cabin) -->
+    <path d="M${bL + 1},${noseH} C${bL},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},2 C${cx + 2},${noseH * 0.04} ${bR},${noseH * 0.45} ${bR - 1},${noseH} Z"
+          fill="rgba(15,23,42,0.45)" stroke="none"/>
+    <line x1="${bL + 2}" y1="${noseH}" x2="${bR - 2}" y2="${noseH}" stroke="rgba(100,116,139,0.4)" stroke-width="0.8"/>
+    <text x="${cx}" y="${noseH * 0.6}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="8" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1.5"${_tr(cx, noseH * 0.6)}>COCKPIT</text>
+    ` : `
     <!-- Center line -->
-    <line x1="${cx}" y1="${bodyTop + 4}" x2="${cx}" y2="${bodyBot - 4}"
-          stroke="rgba(100,116,139,0.07)" stroke-width="0.5" stroke-dasharray="3,3"/>
+    <line x1="${cx}" y1="${bodyTop + 4}" x2="${cx}" y2="${bodyBot - 4}" stroke="rgba(100,116,139,0.07)" stroke-width="0.5" stroke-dasharray="3,3"/>
     <!-- Wing stubs -->
-    <line x1="1" y1="${Math.round(H * 0.34)}" x2="${bL - 2}" y2="${Math.round(H * 0.34)}"
-          stroke="rgba(100,116,139,0.22)" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="${bR + 2}" y1="${Math.round(H * 0.34)}" x2="${W - 1}" y2="${Math.round(H * 0.34)}"
-          stroke="rgba(100,116,139,0.22)" stroke-width="2.5" stroke-linecap="round"/>`;
+    <line x1="1" y1="${Math.round(H * 0.34)}" x2="${bL - 2}" y2="${Math.round(H * 0.34)}" stroke="rgba(100,116,139,0.22)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="${bR + 2}" y1="${Math.round(H * 0.34)}" x2="${W - 1}" y2="${Math.round(H * 0.34)}" stroke="rgba(100,116,139,0.22)" stroke-width="2.5" stroke-linecap="round"/>
+    `}`;
 
   if (activeTypes.length === 0) {
     // Combi: still show pax cabin block even when cargo hold is empty
@@ -185,21 +222,24 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       const plY = paxY + paxHoldH / 2;
       svg += `<g clip-path="url(#fc${sfx})">`;
       svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
-      svg += `<text x="${cx}" y="${plY - 3}" text-anchor="middle" fill="rgba(59,130,246,0.85)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">PAX CABIN</text>`;
-      svg += `<text x="${cx}" y="${plY + 7}" text-anchor="middle" fill="rgba(59,130,246,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Passengers</text>`;
+      svg += `<text x="${cx}" y="${plY}" text-anchor="middle" dominant-baseline="central" fill="rgba(59,130,246,0.9)" font-size="9" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, plY)}>PAX CABIN</text>`;
       svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
-      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.8)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, paxY + paxHoldH + PAX_BULKHEAD_H/2)}>BULKHEAD</text>`;
       svg += `</g>`;
     }
     svg += `<text x="${cx}" y="${H / 2}" text-anchor="middle" dominant-baseline="central"
-              fill="rgba(100,116,139,0.35)" font-size="10" font-family="system-ui, sans-serif">Empty</text>`;
+              fill="rgba(100,116,139,0.35)" font-size="10" font-family="system-ui, sans-serif"${_tr(cx, H / 2)}>Empty</text>`;
   } else {
     // ── Pallet grid setup ──
-    const palletW = 72;
-    const palletH = 24;
-    const gapX = 6;
-    const gapY = 4;
-    const cols = 2;
+    // Landscape: a 3-wide grid of square pallets — more of them to show how the
+    // load is shared, while staying square and centred. Portrait keeps the
+    // compact 2-wide layout used by the freighter view.
+    const cols = landscape ? 3 : 2;
+    const palletW = landscape ? 44 : 72;
+    const palletH = landscape ? 44 : 24;
+    const gapX = landscape ? 7 : 6;
+    const gapY = landscape ? 7 : 4;
+    const palletFont = landscape ? 13 : 9.5;
     const rowH = palletH + gapY;
     const gridW = cols * palletW + (cols - 1) * gapX;
     const gridX = (W - gridW) / 2;
@@ -239,11 +279,10 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       const paxY = holdUsableTop;
       const plY = paxY + paxHoldH / 2;
       svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
-      svg += `<text x="${cx}" y="${plY - 3}" text-anchor="middle" fill="rgba(59,130,246,0.85)" font-size="8" font-weight="700" font-family="system-ui, sans-serif">PAX CABIN</text>`;
-      svg += `<text x="${cx}" y="${plY + 7}" text-anchor="middle" fill="rgba(59,130,246,0.6)" font-size="6" font-family="system-ui, sans-serif">Main Deck · Passengers</text>`;
+      svg += `<text x="${cx}" y="${plY}" text-anchor="middle" dominant-baseline="central" fill="rgba(59,130,246,0.9)" font-size="9" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, plY)}>PAX CABIN</text>`;
       // Bulkhead bar
       svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
-      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif">BULKHEAD</text>`;
+      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.8)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, paxY + paxHoldH + PAX_BULKHEAD_H/2)}>BULKHEAD</text>`;
     }
 
     // Background zones — light tint behind each type group
@@ -283,28 +322,37 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       // Bottom shadow
       svg += `<rect x="${px + 2}" y="${py + palletH - 2}" width="${palletW - 4}" height="2" rx="1" ry="1"
                 fill="rgba(0,0,0,0.12)"/>`;
-      // Label (outlined text for readability)
-      svg += `<text x="${px + palletW / 2}" y="${py + palletH / 2 + 4}" text-anchor="middle"
-                fill="white" font-size="9.5" font-weight="600" letter-spacing="0.5"
+      // Label (outlined text for readability) — centred on the pallet
+      svg += `<text x="${px + palletW / 2}" y="${py + palletH / 2}" text-anchor="middle" dominant-baseline="central"
+                fill="white" font-size="${palletFont}" font-weight="600" letter-spacing="0.5"
                 font-family="system-ui, sans-serif"
-                stroke="rgba(0,0,0,0.35)" stroke-width="2" paint-order="stroke">${ct.code}</text>`;
+                stroke="rgba(0,0,0,0.35)" stroke-width="2" paint-order="stroke"${_tr(px + palletW / 2, py + palletH / 2)}>${ct.code}</text>`;
     }
 
     svg += `</g>`;
   }
 
-  // Nose highlight
-  svg += `<ellipse cx="${cx}" cy="${noseY + 3}" rx="3.5" ry="1.8" fill="rgba(100,116,139,0.25)"/>`;
+  if (landscape) svg += `</g>`;
   svg += `</svg>`;
   return svg;
 }
 
-function showCargoConfigurator(aircraft, onApply, existingConfig) {
+function showCargoConfigurator(aircraft, onApply, existingConfig, options) {
   if (!aircraft || !aircraft.cargoCapacityKg || aircraft.cargoCapacityKg <= 0) return;
   const isCargo = aircraft.type === 'Cargo';
   const hasDualDeck = isCargo && aircraft.mainDeckCapacityKg > 0 && aircraft.cargoHoldCapacityKg > 0;
-  if (hasDualDeck) return _showDualDeckConfigurator(aircraft, onApply, existingConfig);
-  return _showSingleConfigurator(aircraft, onApply, existingConfig);
+  // options.sectionCapacity → configure a single named section (a combi's main
+  // deck or belly hold) rather than the whole aircraft.
+  if (hasDualDeck && !options?.sectionCapacity) return _showDualDeckConfigurator(aircraft, onApply, existingConfig);
+  return _showSingleConfigurator(aircraft, onApply, existingConfig, options);
+}
+
+// Split a combi's total cargo capacity into a main-deck section (the primary
+// freight area) and a smaller belly hold. Runtime-derived — no schema change.
+function getCombiCargoSplit(aircraft) {
+  const total = aircraft.cargoCapacityKg || 0;
+  const mainDeck = Math.round(total * 0.7);
+  return { mainDeck, hold: total - mainDeck };
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -368,9 +416,11 @@ function _resolveExistingDeckConfig(existingConfig, field, oldFields, totalConfi
 
 /* ── Single-deck configurator ──────────────────────────────────────── */
 
-function _showSingleConfigurator(aircraft, onApply, existingConfig) {
-  const totalCapacity = aircraft.cargoCapacityKg;
-  const types = getAvailableCargoTypes(aircraft.type);
+function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
+  // Section mode (combi main deck / belly hold): override capacity, label, types.
+  const totalCapacity = options?.sectionCapacity || aircraft.cargoCapacityKg;
+  const sectionLabel = options?.sectionLabel || null;
+  const types = options?.types || getAvailableCargoTypes(aircraft.type);
   if (types.length === 0) return;
 
   const autoFillType = 'general';
@@ -403,15 +453,15 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
     const ct = CARGO_TYPES[type];
     const isAuto = (type === autoFillType);
     return `
-      <div data-cargo-tip="${type}" style="padding:0.28rem 0.5rem;background:var(--surface-elevated);border-radius:5px;border-left:3px solid ${ct.color};cursor:default;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:0.7rem;font-weight:600;color:${ct.color};">${ct.label.toUpperCase()}</span>
+      <div data-cargo-tip="${type}" style="padding:0.3rem 0.5rem;background:var(--surface-elevated);border-radius:5px;border-left:3px solid ${ct.color};cursor:default;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex:0 1 auto;white-space:nowrap;">
+        <span style="font-size:0.7rem;font-weight:600;color:${ct.color};white-space:nowrap;">${ct.label.toUpperCase().replace(/ CARGO$| GOODS$/, '')}</span>
         ${isAuto ? `
-          <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);">${_formatKg(config[type])}</span>
+          <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);display:inline-block;width:3rem;text-align:center;">${_formatKg(config[type])}</span>
         ` : `
           <div style="display:flex;align-items:center;gap:0.3rem;">
             <button class="cargo-adj-btn" data-type="${type}" data-delta="-1"
               style="width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;padding:0;">\u2212</button>
-            <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);min-width:2.8rem;text-align:center;">${_formatKg(config[type])}</span>
+            <span id="cargoCount_${type}" style="font-weight:700;font-size:0.85rem;color:var(--text-primary);display:inline-block;width:3rem;text-align:center;">${_formatKg(config[type])}</span>
             <button class="cargo-adj-btn" data-type="${type}" data-delta="1"
               style="width:22px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:var(--surface);color:var(--text-primary);cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;padding:0;">+</button>
           </div>
@@ -438,45 +488,51 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig) {
   }
 
   overlay.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;display:flex;max-width:860px;width:100%;max-height:96vh;overflow:hidden;">
-      <div style="width:320px;min-width:320px;padding:1rem;display:flex;flex-direction:column;border-right:1px solid var(--border-color);overflow-y:auto;">
-        <h2 style="margin:0 0 0.2rem 0;color:var(--text-primary);font-size:1rem;">CARGO CONFIGURATION</h2>
-        <div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:0.6rem;">
-          ${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} \u00B7 ${_formatKg(totalCapacity)} capacity
-        </div>
-        <div style="margin-bottom:0.6rem;padding:0.4rem 0.6rem;background:var(--surface-elevated);border-radius:6px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem;">
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;display:flex;flex-direction:column;max-width:1500px;width:96%;max-height:94vh;overflow:hidden;">
+      <!-- Top controls bar -->
+      <div style="padding:0.85rem 1.1rem;border-bottom:1px solid var(--border-color);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.6rem;flex-wrap:wrap;">
+          <div style="flex-shrink:0;">
+            <h2 style="margin:0 0 0.1rem 0;color:var(--text-primary);font-size:1rem;">CARGO CONFIGURATION${sectionLabel ? ' \u2014 ' + sectionLabel.toUpperCase() : ''}</h2>
+            <div style="color:var(--text-muted);font-size:0.65rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} \u00B7 ${_formatKg(totalCapacity)} capacity</div>
+          </div>
+          <div style="padding:0.4rem 0.75rem;background:var(--surface-elevated);border-radius:6px;display:flex;align-items:center;gap:0.6rem;flex-shrink:0;">
             <span style="font-size:0.7rem;color:var(--text-secondary);">Allocated</span>
-            <span id="cargoTotalLabel" style="font-size:0.85rem;font-weight:700;color:var(--text-primary);">${_formatKg(totalAllocated())} / ${_formatKg(totalCapacity)}</span>
+            <span id="cargoTotalLabel" style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">${_formatKg(totalAllocated())} / ${_formatKg(totalCapacity)}</span>
+            <div style="width:90px;height:6px;background:var(--surface);border-radius:3px;overflow:hidden;display:flex;">
+              <div id="cargoBarSegments" style="display:flex;width:100%;height:100%;border-radius:3px;overflow:hidden;">${buildBarSegments()}</div>
+            </div>
           </div>
-          <div style="height:5px;background:var(--surface);border-radius:4px;overflow:hidden;display:flex;">
-            <div id="cargoBarSegments" style="display:flex;width:100%;height:100%;border-radius:4px;overflow:hidden;">${buildBarSegments()}</div>
+          <div style="display:flex;gap:0.4rem;align-items:center;margin-left:auto;">
+            <button id="cargoApplyBtn" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-size:0.8rem;">Apply</button>
+            <button id="cargoCancelBtn" class="btn btn-secondary" style="padding:0.5rem 1.25rem;font-size:0.8rem;">Cancel</button>
           </div>
         </div>
-        <div id="cargoTypeControls" style="display:flex;flex-direction:column;gap:0.25rem;flex:1;">
-          ${buildCategoryGroup('Core', CORE_TYPE_KEYS)}
-          ${buildCategoryGroup('Special', SPECIAL_TYPE_KEYS)}
-        </div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
-          <button id="cargoApplyBtn" class="btn btn-primary" style="flex:1;padding:0.5rem;font-size:0.85rem;">Apply</button>
-          <button id="cargoCancelBtn" class="btn btn-secondary" style="flex:1;padding:0.5rem;font-size:0.85rem;">Cancel</button>
+        <div id="cargoTypeControls" style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:stretch;">
+          ${types.map(t => buildTypeCtrl(t)).join('')}
         </div>
       </div>
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:stretch;align-items:stretch;padding:1rem;background:rgba(0,0,0,0.2);">
-        <div id="cargoDiagramContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"></div>
+
+      <!-- Landscape hold diagram -->
+      <div id="cargoDiagramScroll" style="flex:1;min-height:0;background:rgba(0,0,0,0.2);overflow:auto;padding:0.6rem 0.9rem;">
+        <div id="cargoDiagramContainer" style="width:100%;display:flex;align-items:flex-start;justify-content:center;"></div>
       </div>
     </div>`;
 
   document.body.appendChild(overlay);
   _attachTooltips(overlay);
 
-  const paxBlockPct = aircraft.isCombi && aircraft.passengerCapacity > 0
-    ? Math.min(0.5, (aircraft.passengerCapacity * 100) / (aircraft.cargoCapacityKg + aircraft.passengerCapacity * 100))
-    : 0;
+  // Pax cabin block: shown on a combi's main-deck cargo section (freight sits
+  // behind the passenger cabin). Callers can override (e.g. 0 for the belly hold).
+  const paxBlockPct = options?.paxBlockPct != null
+    ? options.paxBlockPct
+    : (aircraft.isCombi && aircraft.passengerCapacity > 0
+        ? Math.min(0.5, (aircraft.passengerCapacity * 100) / (aircraft.cargoCapacityKg + aircraft.passengerCapacity * 100))
+        : 0);
 
   function renderDiagram() {
     const c = document.getElementById('cargoDiagramContainer');
-    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, 480, '_single', paxBlockPct);
+    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, 560, '_single', paxBlockPct, true);
   }
 
   function updateUI() {

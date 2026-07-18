@@ -369,6 +369,29 @@ function getDoubleDeckConfig(aircraft) {
   return null;
 }
 
+// Build the deckSpec for one deck ('upper' | 'main') of a double-deck aircraft,
+// used to render a single-deck configurator for just that deck. Returns null if
+// the aircraft isn't double-deck.
+function getDeckSpec(aircraft, deck) {
+  const dd = getDoubleDeckConfig(aircraft);
+  if (!dd) return null;
+  const total = aircraft.passengerCapacity || 0;
+  const upperCapacity = Math.round(total * dd.upperRatio);
+  const mainCapacity = total - upperCapacity;
+  if (deck === 'upper') {
+    return {
+      deck: 'upper', label: 'Upper Deck', layout: dd.upperLayout,
+      capacity: upperCapacity, fuselageWidth: dd.upperWidth,
+      showCockpit: dd.cockpitDeck === 'upper', minToilets: dd.minToiletsUpper || 2
+    };
+  }
+  return {
+    deck: 'main', label: 'Main Deck', layout: dd.mainLayout,
+    capacity: mainCapacity, fuselageWidth: dd.mainWidth,
+    showCockpit: dd.cockpitDeck === 'main', minToilets: dd.minToiletsMain || 4
+  };
+}
+
 function seatsPerRow(aircraftType, cabinClass) {
   const layout = SEAT_LAYOUTS[aircraftType];
   if (!layout || !layout[cabinClass]) return 0;
@@ -434,10 +457,12 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   }
   if (seatContentH === 0) seatContentH = 40;
 
-  // Combi: cargo deck block at front + bulkhead divider
+  // Combi: cargo deck block at front + bulkhead divider. On the CABIN diagram the
+  // cargo deck is decorative (freight is set in the cargo configurator), so keep
+  // it compact rather than proportional — otherwise it wastes most of the cabin.
   const BULKHEAD_H = cargoDeckPct > 0 ? 9 : 0;
   const cargoBlockH = cargoDeckPct > 0
-    ? Math.max(60, Math.round(seatContentH * cargoDeckPct / Math.max(0.05, 1 - cargoDeckPct)))
+    ? Math.max(70, Math.round(seatContentH * 0.32))
     : 0;
   const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
@@ -856,8 +881,13 @@ function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, resul
 function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   if (!aircraft || !SEAT_LAYOUTS[aircraft.type]) return;
 
+  // deckSpec: render a SINGLE deck of a double-deck aircraft (upper or main)
+  // rather than the combined two-deck view. Provided by the marketplace's
+  // per-deck "Configure Upper/Lower Deck Cabin" buttons.
+  const deckSpec = options && options.deckSpec;
+
   const ddConfig = getDoubleDeckConfig(aircraft);
-  if (ddConfig) {
+  if (ddConfig && !deckSpec) {
     showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig, options);
     return;
   }
@@ -866,15 +896,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   // Check for per-aircraft layout override (e.g. 777 = 10-abreast, 767 = 7-abreast)
   const acStr = `${aircraft.manufacturer || ''} ${aircraft.model || ''} ${aircraft.icaoCode || ''}`;
-  const wbOverride = acType === 'Widebody' ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
-  const layouts = wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType];
+  const wbOverride = (!deckSpec && acType === 'Widebody') ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
+  const layouts = deckSpec ? deckSpec.layout : (wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType]);
 
   function classPerRow(cls) {
     return layouts[cls] ? layouts[cls].reduce((s, g) => s + g, 0) : 0;
   }
 
   const econPerRow = classPerRow('economy');
-  const totalSpace = aircraft.passengerCapacity / econPerRow;
+  // For a single deck, budget by that deck's capacity rather than the whole aircraft.
+  const deckCapacity = deckSpec ? deckSpec.capacity : aircraft.passengerCapacity;
+  const totalSpace = deckCapacity / econPerRow;
 
   // Round existing seats down to full rows so we never start with partial rows
   function roundToRow(seats, cls) {
@@ -888,8 +920,13 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     economy:     0
   };
 
-  // Toilet state
-  const toiletInfo = _toiletDefaults(aircraft.passengerCapacity);
+  // Toilet state (scoped to the deck's own capacity + minimum when single-deck)
+  const toiletInfo = _toiletDefaults(deckCapacity);
+  if (deckSpec && deckSpec.minToilets != null) {
+    toiletInfo.min = Math.max(0, deckSpec.minToilets);
+    if (toiletInfo.default < toiletInfo.min) toiletInfo.default = toiletInfo.min;
+    if (toiletInfo.max < toiletInfo.min) toiletInfo.max = toiletInfo.min;
+  }
   let toilets = existingConfig?.toilets != null ? existingConfig.toilets : toiletInfo.default;
   toilets = Math.max(toiletInfo.min, Math.min(toiletInfo.max, toilets));
 
@@ -967,17 +1004,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     padding: 1rem;
   `;
 
-  const fuselageWidth = (wbOverride && wbOverride.fuselageWidth) || FUSELAGE_WIDTHS[acType] || 190;
+  const fuselageWidth = deckSpec ? deckSpec.fuselageWidth : ((wbOverride && wbOverride.fuselageWidth) || FUSELAGE_WIDTHS[acType] || 190);
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
-                display: flex; flex-direction: column; max-width: 1100px; width: 100%; max-height: 90vh; overflow: hidden;">
+                display: flex; flex-direction: column; max-width: 1600px; width: 96%; max-height: 94vh; overflow: hidden;">
       <!-- Top controls bar -->
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); overflow-y: auto; flex-shrink: 0;">
         <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
           <div style="flex-shrink: 0;">
             <h2 style="margin: 0 0 0.15rem 0; color: var(--text-primary); font-size: 1rem;">CABIN CONFIGURATION</h2>
-            <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} · ${acType}</div>
+            <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} · ${acType}${deckSpec ? ' · ' + deckSpec.label : ''}</div>
           </div>
           <div style="padding: 0.4rem 0.75rem; background: var(--surface-elevated); border-radius: 6px; display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0;">
             <span style="font-size: 0.7rem; color: var(--text-secondary);">Total</span>
@@ -1108,10 +1145,15 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   function renderDiagram() {
     const container = document.getElementById('cabinDiagramContainer');
     if (!container) return;
-    const cdp = aircraft.isCombi && aircraft.cargoCapacityKg > 0
+    // Combi cargo block (with bulkhead): shown on a single-deck combi and on the
+    // MAIN deck of a double-deck combi (that's where the freight rides — the upper
+    // deck is all-passenger). Freight is still allocated in the cargo configurator.
+    const combiHasCargoHere = aircraft.isCombi && aircraft.cargoCapacityKg > 0 && (!deckSpec || deckSpec.deck === 'main');
+    const cdp = combiHasCargoHere
       ? Math.min(0.75, aircraft.cargoCapacityKg / (aircraft.cargoCapacityKg + (aircraft.passengerCapacity || 1) * 100))
       : 0;
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', true, toilets, cdp, true, midPositions) + renderLegend();
+    const showCockpit = deckSpec ? !!deckSpec.showCockpit : true;
+    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions) + renderLegend();
   }
 
   // Drag handling for mid-cabin service areas
@@ -1462,7 +1504,7 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
-                display: flex; flex-direction: column; max-width: 1000px; width: 100%; max-height: 90vh; overflow: hidden;">
+                display: flex; flex-direction: column; max-width: 1500px; width: 96%; max-height: 94vh; overflow: hidden;">
 
       <!-- Header -->
       <div style="padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
