@@ -849,7 +849,9 @@
 .main-content {
   flex: 1;
   margin-left: 240px;
-  padding: 1.25rem 1.5rem;
+  /* Extra bottom padding so the fixed global footer (theme toggle + policy
+     links, bottom-right) never overlaps the last of the page content. */
+  padding: 1.25rem 1.5rem 3.75rem;
   overflow-y: auto;
   background: var(--background);
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
