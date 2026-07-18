@@ -13,6 +13,12 @@ let pendingAircraftSelect = null; // Aircraft registration to auto-select after 
 let flightsListOpen = false; // Hidden by default, user can toggle open
 let waypointMarkers = []; // Waypoint dot markers for selected flight
 
+// Sightseeing tours (scenic loops) — rendered alongside flights on the map
+let activeTours = []; // Store active tour data
+let tourMarkers = new Map(); // tour ID -> aircraft marker
+let tourLoopLines = new Map(); // tour ID -> loop polyline
+let selectedTourId = null; // Tour whose loop is currently shown
+
 // FIR boundary overlay state
 let firLayerGroup = null;    // L.layerGroup holding FIR polygons
 let firLabelGroup = null;    // L.layerGroup holding FIR code labels
@@ -83,6 +89,9 @@ function syncUpdateAllPositions() {
     }
     updateFlightInfoProgress();
   }
+
+  // Move sightseeing tour markers along their loops
+  syncUpdateTourPositions();
 
   // Refresh flights list (only if open)
   if (flightsListOpen) updateFlightsListPositions();
@@ -543,6 +552,7 @@ document.getElementById('airlineFilter')?.addEventListener('change', handleAirli
 
 // Load active flights from API
 async function loadActiveFlights() {
+  loadActiveTours(); // refresh sightseeing tours on the same cadence (parallel)
   try {
     const endpoint = airlineFilterMode === 'all' ? '/api/schedule/active-all'
       : airlineFilterMode === 'hq' ? '/api/schedule/active-hq'
@@ -644,6 +654,146 @@ function updateFlightsOnMap(flights) {
 
     createFlightMarker(flight, position);
   });
+}
+
+// ===== Sightseeing tours on the map =====
+
+// Load tours currently mid-flight and render them. Respects the airline filter:
+// 'mine' shows only your tours; 'all'/'hq' show every airline's.
+async function loadActiveTours() {
+  try {
+    const res = await fetch('/api/sightseeing-tours/active');
+    if (!res.ok) return;
+    const data = await res.json();
+    let tours = Array.isArray(data.tours) ? data.tours : [];
+    if (airlineFilterMode === 'mine') tours = tours.filter(t => t.isOwnFlight);
+    activeTours = tours;
+    updateToursOnMap(tours);
+  } catch (e) {
+    console.error('[WorldMap] Error loading active tours:', e);
+  }
+}
+
+// Delta update: drop markers/loops for tours no longer active, add new ones.
+function updateToursOnMap(tours) {
+  const ids = new Set(tours.map(t => t.id));
+  for (const [id, marker] of tourMarkers) {
+    if (!ids.has(id)) {
+      map.removeLayer(marker);
+      tourMarkers.delete(id);
+      const line = tourLoopLines.get(id);
+      if (line) { map.removeLayer(line); tourLoopLines.delete(id); }
+      if (id === selectedTourId) selectedTourId = null;
+    }
+  }
+  tours.forEach(tour => {
+    if (tourMarkers.has(tour.id)) return; // existing markers move via syncUpdateAllPositions
+    const pos = calculateTourPosition(tour);
+    if (!pos || !isFinite(pos.lat) || !isFinite(pos.lng)) return;
+    createTourMarker(tour, pos);
+  });
+  // Keep the selected tour's loop drawn across refreshes (if it's still active)
+  if (selectedTourId && !tourLoopLines.has(selectedTourId)) {
+    const sel = tours.find(t => t.id === selectedTourId);
+    if (sel) drawTourLoop(sel); else selectedTourId = null;
+  }
+}
+
+// Click a tour marker to reveal its scenic loop (only one shown at a time).
+function selectTour(tourId) {
+  tourLoopLines.forEach(line => map.removeLayer(line));
+  tourLoopLines.clear();
+  selectedTourId = tourId;
+  const tour = activeTours.find(t => t.id === tourId);
+  if (tour) drawTourLoop(tour);
+}
+
+// Fraction along the loop from how far through the tour's flight window we are.
+function calculateTourPosition(tour) {
+  const currentTime = window.getGlobalWorldTime ? window.getGlobalWorldTime() : new Date();
+  const loop = tour.loop;
+  if (!Array.isArray(loop) || loop.length < 2) return null;
+  if (!currentTime) return { lat: loop[0].lat, lng: loop[0].lng, destLat: loop[1].lat, destLng: loop[1].lng };
+  if (!tour._depDateTime) tour._depDateTime = new Date(`${tour.scheduledDate}T${tour.departureTime}`);
+  const durationMs = (tour.durationMin || 30) * 60 * 1000;
+  const fraction = Math.max(0, Math.min(1, (currentTime - tour._depDateTime) / durationMs));
+  return interpolateAlongWaypoints(loop, fraction);
+}
+
+// Aircraft marker for a tour — same icon system as flights, teal-tagged label.
+function createTourMarker(tour, position) {
+  const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
+  const registration = tour.aircraft?.registration || '';
+  const isOther = tour.isOwnFlight === false;
+  const markerClass = isOther ? 'aircraft-marker-inner other-airline' : 'aircraft-marker-inner';
+  const iconDef = AIRCRAFT_ICONS[classifyAircraftIcon(tour.aircraft?.aircraftType)] || AIRCRAFT_ICONS.shorthaul;
+  const px = iconDef.px;
+  const innerStyle = `transform: rotate(${bearing}deg); width: ${px}px; height: ${px}px`;
+  const label = isOther ? '' : `<div class="aircraft-label">
+        <div class="flight-number-label tour-label">${tour.name || 'Sightseeing Tour'}</div>
+        ${registration ? `<div>${registration}</div>` : ''}
+      </div>`;
+
+  const icon = L.divIcon({
+    className: 'aircraft-marker tour-marker',
+    html: `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="${innerStyle}">${iconDef.svg}</div>${label}</div>`,
+    iconSize: [px, px],
+    iconAnchor: [px / 2, px / 2]
+  });
+
+  const marker = L.marker([position.lat, position.lng], { icon }).addTo(map);
+  marker.bindTooltip(
+    `<strong>${tour.name || 'Sightseeing Tour'}</strong><br>${tour.airlineName || ''}${registration ? ' · ' + registration : ''}<br>Scenic loop from ${tour.baseAirport?.icaoCode || ''}`,
+    { direction: 'top', offset: [0, -px / 2], className: 'waypoint-tooltip' }
+  );
+  marker.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    selectTour(tour.id);
+  });
+  tourMarkers.set(tour.id, marker);
+}
+
+// Dashed loop path (teal for own tours, faint for other airlines').
+function drawTourLoop(tour) {
+  const loop = tour.loop;
+  if (!Array.isArray(loop) || loop.length < 2) return;
+  const line = L.polyline(loop.map(p => [p.lat, p.lng]), {
+    color: tour.isOwnFlight === false ? 'rgba(255,255,255,0.28)' : 'rgba(45,212,191,0.65)',
+    weight: 1.5,
+    dashArray: '5,5',
+    interactive: false
+  }).addTo(map);
+  tourLoopLines.set(tour.id, line);
+}
+
+// Move active tour markers each tick (mirrors syncUpdateAllPositions for flights).
+function syncUpdateTourPositions() {
+  activeTours.forEach(tour => {
+    const marker = tourMarkers.get(tour.id);
+    if (!marker) return;
+    const pos = calculateTourPosition(tour);
+    if (!pos || !isFinite(pos.lat) || !isFinite(pos.lng)) return;
+    marker.setLatLng([pos.lat, pos.lng]);
+    const bearing = calculateBearing(pos.lat, pos.lng, pos.destLat, pos.destLng);
+    if (Math.abs(bearing - (tour._lastBearing || 0)) > 2) {
+      tour._lastBearing = bearing;
+      const el = marker.getElement();
+      if (el) {
+        const inner = el.querySelector('.aircraft-marker-inner');
+        if (inner) inner.style.transform = `rotate(${bearing}deg)`;
+      }
+    }
+  });
+}
+
+// Remove all tour markers + loop lines.
+function clearTours() {
+  tourMarkers.forEach(marker => map.removeLayer(marker));
+  tourMarkers.clear();
+  tourLoopLines.forEach(line => map.removeLayer(line));
+  tourLoopLines.clear();
+  activeTours = [];
+  selectedTourId = null;
 }
 
 // Calculate total path distance along waypoints (in nautical miles)
@@ -1915,6 +2065,7 @@ function deselectFlight() {
 function clearMap() {
   flightMarkers.forEach(marker => map.removeLayer(marker));
   flightMarkers.clear();
+  clearTours();
   clearSelectedFlightElements();
 }
 

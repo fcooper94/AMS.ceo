@@ -898,6 +898,11 @@
   color: var(--gh-muted);
 }
 
+/* Sightseeing tour label — teal to distinguish from scheduled flights */
+.aircraft-label .flight-number-label.tour-label {
+  color: #2dd4bf;
+}
+
 .aircraft-label .airline-name-label {
   font-size: 9px;
   font-weight: 600;

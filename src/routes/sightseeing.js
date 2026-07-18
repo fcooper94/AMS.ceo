@@ -1,4 +1,5 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const router = express.Router();
 const { SightseeingTour, WorldMembership, Airport, UserAircraft, Aircraft, User } = require('../models');
 
@@ -116,6 +117,100 @@ router.get('/', async (req, res) => {
   }
 });
 
+/**
+ * Tours currently mid-flight, for the world map. Returns every airline's
+ * active tour that is inside its flight window right now (today is an
+ * operating day and the game clock is between departure and
+ * departure + duration). Each carries its loop path (base -> waypoints ->
+ * base) and assigned-aircraft type so the client can position + icon it.
+ */
+router.get('/active', async (req, res) => {
+  try {
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId || !req.user) return res.status(401).json({ error: 'Not authenticated' });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const myMembership = await WorldMembership.findOne({ where: { userId: user.id, worldId: activeWorldId } });
+    if (!myMembership) return res.status(404).json({ error: 'Not a member of this world' });
+
+    // All memberships in the world (airline labels + own-flag)
+    const memberships = await WorldMembership.findAll({
+      where: { worldId: activeWorldId },
+      attributes: ['id', 'airlineName', 'airlineCode', 'logoSvg']
+    });
+    const memMap = new Map(memberships.map(m => [m.id, m]));
+    const membershipIds = memberships.map(m => m.id);
+
+    const worldTimeService = require('../services/worldTimeService');
+    const worldTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
+    const gameDow = worldTime.getDay();
+    const nowMin = worldTime.getHours() * 60 + worldTime.getMinutes();
+    const gameDateStr = `${worldTime.getFullYear()}-${String(worldTime.getMonth() + 1).padStart(2, '0')}-${String(worldTime.getDate()).padStart(2, '0')}`;
+
+    const tours = await SightseeingTour.findAll({
+      where: {
+        isActive: true,
+        worldMembershipId: { [Op.in]: membershipIds },
+        daysOfWeek: { [Op.contains]: [gameDow] }
+      },
+      include: [
+        { model: Airport, as: 'baseAirport', attributes: ['id', 'icaoCode', 'name', 'latitude', 'longitude'] },
+        {
+          model: UserAircraft, as: 'assignedAircraft', attributes: ['id', 'registration'],
+          include: [{ model: Aircraft, as: 'aircraft', attributes: ['model', 'variant', 'manufacturer', 'cruiseSpeed', 'passengerCapacity', 'type', 'icaoCode'] }]
+        }
+      ]
+    });
+
+    const out = [];
+    for (const t of tours) {
+      if (!t.baseAirport || !t.assignedAircraft) continue; // needs a base + an aircraft to fly
+      const wps = Array.isArray(t.waypoints) ? t.waypoints : [];
+      if (wps.length < 1) continue;
+
+      const [dh, dm] = (t.scheduledDepartureTime || '09:00').split(':').map(Number);
+      const depMin = (dh || 0) * 60 + (dm || 0);
+      const durationMin = t.durationMin || tourDurationMin(parseFloat(t.distanceNm) || 0, t.assignedAircraft.aircraft?.cruiseSpeed);
+      if (nowMin < depMin || nowMin >= depMin + durationMin) continue; // not airborne now
+
+      const base = t.baseAirport;
+      const baseLL = { lat: parseFloat(base.latitude), lng: parseFloat(base.longitude) };
+      const loop = [baseLL, ...wps.map(w => ({ lat: parseFloat(w.lat), lng: parseFloat(w.lng) })), baseLL];
+
+      const mem = memMap.get(t.worldMembershipId) || {};
+      const ac = t.assignedAircraft;
+      out.push({
+        id: t.id,
+        name: t.name,
+        isTour: true,
+        isOwnFlight: t.worldMembershipId === myMembership.id,
+        airlineName: mem.airlineName || 'Unknown Airline',
+        airlineCode: mem.airlineCode || '??',
+        logoSvg: mem.logoSvg || null,
+        scheduledDate: gameDateStr,
+        departureTime: t.scheduledDepartureTime || '09:00',
+        durationMin,
+        loop,
+        baseAirport: { icaoCode: base.icaoCode, name: base.name },
+        aircraft: {
+          registration: ac.registration,
+          aircraftType: ac.aircraft ? {
+            model: ac.aircraft.model, variant: ac.aircraft.variant, manufacturer: ac.aircraft.manufacturer,
+            cruiseSpeed: ac.aircraft.cruiseSpeed, passengerCapacity: ac.aircraft.passengerCapacity,
+            type: ac.aircraft.type, icaoCode: ac.aircraft.icaoCode
+          } : null
+        }
+      });
+    }
+
+    res.json({ tours: out });
+  } catch (err) {
+    console.error('[sightseeing] active tours failed:', err);
+    res.status(500).json({ error: 'Failed to load active sightseeing tours' });
+  }
+});
+
 /** Create a sightseeing tour. */
 router.post('/', async (req, res) => {
   try {
@@ -168,7 +263,11 @@ router.post('/', async (req, res) => {
       assignedAircraftId: aircraft ? aircraft.id : null,
       scheduledDepartureTime: scheduledDepartureTime || null,
       daysOfWeek: Array.isArray(daysOfWeek) && daysOfWeek.length ? daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
-      isActive: true
+      // Created unscheduled: the tour appears in the scheduling drag panel but is
+      // NOT on the grid or the world map until the player drags it onto the
+      // schedule (which flips isActive true via handleTourDrop). daysOfWeek stays
+      // populated so it remains visible/draggable in the panel.
+      isActive: false
     });
 
     const full = await SightseeingTour.findByPk(tour.id, {
