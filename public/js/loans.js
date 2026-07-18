@@ -84,9 +84,9 @@ function renderActiveLoans(data) {
     rows += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
       <td style="padding:0.45rem 0.6rem;">${l.bankName}</td>
       <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}</td>
-      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$${fmtNum(l.remainingPrincipal)}</td>
+      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${fmtNum(l.remainingPrincipal)}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.interestRate}%</td>
-      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$${fmtNum(l.weeklyPayment)}</td>
+      <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${fmtNum(l.weeklyPayment)}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.weeksRemaining}wk</td>
       <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${strategyLabel}</td>
       <td style="padding:0.45rem 0.6rem;white-space:nowrap;">
@@ -294,9 +294,9 @@ function updateLoanPreview() {
     totalInterest = weekly * term; // Plus balloon principal at end
   }
 
-  document.getElementById('previewWeekly').textContent = '$' + fmtNum(Math.round(weekly));
-  document.getElementById('previewTotalInterest').textContent = '$' + fmtNum(Math.round(totalInterest));
-  document.getElementById('previewTotalCost').textContent = '$' + fmtNum(Math.round(amount + totalInterest));
+  document.getElementById('previewWeekly').textContent = fmtNum(Math.round(weekly));
+  document.getElementById('previewTotalInterest').textContent = fmtNum(Math.round(totalInterest));
+  document.getElementById('previewTotalCost').textContent = fmtNum(Math.round(amount + totalInterest));
 }
 
 async function submitLoanApplication() {
@@ -378,9 +378,9 @@ function updateRepayPreview() {
   const fee = Math.round(amount * (feeRate / 100));
   const total = amount + fee;
 
-  document.getElementById('repayPrincipal').textContent = '$' + fmtNum(Math.round(amount));
-  document.getElementById('repayFee').textContent = '$' + fmtNum(fee);
-  document.getElementById('repayTotal').textContent = '$' + fmtNum(Math.round(total));
+  document.getElementById('repayPrincipal').textContent = fmtNum(Math.round(amount));
+  document.getElementById('repayFee').textContent = fmtNum(fee);
+  document.getElementById('repayTotal').textContent = fmtNum(Math.round(total));
 }
 
 async function submitRepayment() {
@@ -422,12 +422,12 @@ function requestHoliday(loanId) {
   holidayLoanId = loanId;
 
   document.getElementById('holidayBankName').textContent = loan.bankName;
-  document.getElementById('holidayOutstanding').textContent = '$' + fmtNum(loan.remainingPrincipal);
-  document.getElementById('holidayWeekly').textContent = '$' + fmtNum(loan.weeklyPayment);
+  document.getElementById('holidayOutstanding').textContent = fmtNum(loan.remainingPrincipal);
+  document.getElementById('holidayWeekly').textContent = fmtNum(loan.weeklyPayment);
   document.getElementById('holidayRate').textContent = loan.interestRate + '% APR';
 
   const estInterest = Math.round(loan.remainingPrincipal * (loan.interestRate / 100 / 52));
-  document.getElementById('holidayInterestEst').textContent = '+$' + fmtNum(estInterest);
+  document.getElementById('holidayInterestEst').textContent = '+' + fmtNum(estInterest);
   document.getElementById('holidayRemaining').textContent = (loan.paymentHolidaysRemaining - 1) + ' of ' + loan.paymentHolidaysTotal;
 
   document.getElementById('holidayModal').style.display = 'flex';
@@ -466,14 +466,18 @@ async function submitHoliday() {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtMoney(n) {
+  if (typeof formatCurrencyShort === 'function') return formatCurrencyShort(n);
   const v = parseFloat(n) || 0;
   if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
   if (Math.abs(v) >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
   return '$' + Math.round(v).toLocaleString();
 }
 
+// Currency-aware: converts USD → the world's display currency (+ symbol, snapped).
 function fmtNum(n) {
-  return Math.round(Number(n) || 0).toLocaleString('en-US');
+  const sym = (typeof getCurrencySymbol === 'function') ? getCurrencySymbol() : '$';
+  const num = (typeof currencyNumber === 'function') ? currencyNumber(n) : Math.round(Number(n) || 0).toLocaleString('en-US');
+  return sym + num;
 }
 
 function capitalize(s) {

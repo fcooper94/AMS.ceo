@@ -3873,7 +3873,7 @@ async function showRouteFinancials(flightId) {
   const dep = flight.route.departureAirport?.icaoCode || flight.route.departureAirport?.iataCode || '';
   const arr = flight.route.arrivalAirport?.icaoCode || flight.route.arrivalAirport?.iataCode || '';
 
-  const money = v => `${v < 0 ? '-' : ''}$${formatCurrencyValue(Math.abs(v))}`;
+  const money = v => `${v < 0 ? '-' : ''}${formatCurrencyValue(Math.abs(v))}`;
   const profitColor = profit >= 0 ? '#3fb950' : '#f85149';
   const row = (label, value, color) => `
     <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid #21262d;">
@@ -10334,14 +10334,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Format currency helper
-function formatCurrencyValue(amount) {
-  const numAmount = Number(amount) || 0;
-  return numAmount.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  });
-}
+// formatCurrencyValue is provided globally by currency.js (alias of
+// formatCurrency: converts + symbol + snap).
 
 // Aircraft image code lookup for modal hero banner
 function getAircraftImageCodes(aircraft) {
@@ -10433,11 +10427,11 @@ async function showAircraftDetails(userAircraftId) {
   // Ownership line
   let ownershipHtml = '';
   if (ua.status === 'listed_sale') {
-    ownershipHtml = `<span style="color:var(--warning-color)">For Sale</span> &mdash; $${formatCurrencyValue(ua.listingPrice||0)}`;
+    ownershipHtml = `<span style="color:var(--warning-color)">For Sale</span> &mdash; ${formatCurrencyValue(ua.listingPrice||0)}`;
   } else if (ua.status === 'listed_lease') {
-    ownershipHtml = `<span style="color:#a855f7">For Lease</span> &mdash; $${formatCurrencyValue(ua.listingPrice||0)}/wk`;
+    ownershipHtml = `<span style="color:#a855f7">For Lease</span> &mdash; ${formatCurrencyValue(ua.listingPrice||0)}/wk`;
   } else if (ua.status === 'leased_out') {
-    ownershipHtml = `<span style="color:#14b8a6">Leased Out</span> to ${ua.leaseOutTenantName||'NPC'} &mdash; $${formatCurrencyValue(ua.leaseOutWeeklyRate||0)}/wk`;
+    ownershipHtml = `<span style="color:#14b8a6">Leased Out</span> to ${ua.leaseOutTenantName||'NPC'} &mdash; ${formatCurrencyValue(ua.leaseOutWeeklyRate||0)}/wk`;
   } else if (ua.status === 'recalling') {
     const toStorage = ua.currentAirport && ua.storageAirportCode && ua.currentAirport === ua.storageAirportCode;
     ownershipHtml = `<span style="color:#60a5fa">${toStorage ? 'Ferrying to '+ua.storageAirportCode : 'Recalling from '+(ua.storageAirportCode||'Storage')}</span>`;
@@ -10447,11 +10441,11 @@ async function showAircraftDetails(userAircraftId) {
     ownershipHtml = `<span style="color:#a78bfa">Cabin Refit</span> &mdash; until ${ua.cabinRefitEndDate ? new Date(ua.cabinRefitEndDate).toLocaleDateString('en-GB') : 'TBD'}`;
   } else if (ua.status === 'storage') {
     const storageCost = Math.round((parseFloat(ua.purchasePrice) || 0) * 0.005);
-    ownershipHtml = `<span style="color:#94a3b8">Stored</span> at ${ua.storageAirportCode||'N/A'} &mdash; $${formatCurrencyValue(storageCost)}/wk`;
+    ownershipHtml = `<span style="color:#94a3b8">Stored</span> at ${ua.storageAirportCode||'N/A'} &mdash; ${formatCurrencyValue(storageCost)}/wk`;
   } else if (isLeased) {
-    ownershipHtml = `<span style="color:var(--accent-color)">Leased</span> ${ua.leaseDurationMonths}mo @ $${formatCurrencyValue(leaseWk)}/wk &mdash; ends ${new Date(ua.leaseEndDate).toLocaleDateString('en-GB')}`;
+    ownershipHtml = `<span style="color:var(--accent-color)">Leased</span> ${ua.leaseDurationMonths}mo @ ${formatCurrencyValue(leaseWk)}/wk &mdash; ends ${new Date(ua.leaseEndDate).toLocaleDateString('en-GB')}`;
   } else {
-    ownershipHtml = `<span style="color:var(--success-color)">Owned</span> &mdash; purchased $${formatCurrencyValue(ua.purchasePrice||0)} on ${new Date(ua.acquiredAt).toLocaleDateString('en-GB')}`;
+    ownershipHtml = `<span style="color:var(--success-color)">Owned</span> &mdash; purchased ${formatCurrencyValue(ua.purchasePrice||0)} on ${new Date(ua.acquiredAt).toLocaleDateString('en-GB')}`;
   }
 
   const statusLabel = isLeased ? 'LEASED' : ua.status === 'storage' ? 'STORED' : ua.status === 'on_order' ? 'ON ORDER' : ua.status === 'cabin_refit' ? 'IN REFIT' : 'OWNED';
@@ -10522,7 +10516,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Maint</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">$${formatCurrencyValue(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrencyValue(Math.round(maintHr))}<span style="font-size:0.5rem;font-weight:400;">/h</span></div>
               </div>
             </div>
           </div>
@@ -10655,11 +10649,11 @@ async function showAircraftDetails(userAircraftId) {
           <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
             <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Operating Costs</div>
             <div style="font-size:0.8rem;">
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">$${formatCurrencyValue(fuelHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">$${formatCurrencyValue(maintHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Total / hr</span><span style="font-weight:600;color:var(--warning-color);">$${formatCurrencyValue(totalHr)}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${isLeased ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Weekly Estimate</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrencyValue(weeklyOps)}</span></div>
-              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">$${formatCurrencyValue(leaseWk)}/wk</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">${formatCurrencyValue(fuelHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">${formatCurrencyValue(maintHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Total / hr</span><span style="font-weight:600;color:var(--warning-color);">${formatCurrencyValue(totalHr)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.2rem 0;${isLeased ? 'border-bottom:1px solid var(--border-color);' : ''}"><span style="color:var(--text-muted);">Weekly Estimate</span><span style="font-weight:600;color:var(--danger-color);">${formatCurrencyValue(weeklyOps)}</span></div>
+              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">${formatCurrencyValue(leaseWk)}/wk</span></div>` : ''}
             </div>
           </div>
 
@@ -10698,12 +10692,12 @@ async function showAircraftDetails(userAircraftId) {
       let rh = '';
       if (details.mostProfitable) {
         const mp = details.mostProfitable;
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">$${formatCurrencyValue(mp.profit)}</span></div>`;
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">${formatCurrencyValue(mp.profit)}</span></div>`;
       }
       if (details.leastProfitable && details.leastProfitable.id !== details.mostProfitable?.id) {
         const lp = details.leastProfitable;
         const c = lp.profit >= 0 ? 'var(--warning-color)' : 'var(--danger-color)';
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.15rem;padding-top:0.2rem;"><span style="color:${c};font-weight:600;">${lp.origin}-${lp.destination}</span><span style="color:${c};">$${formatCurrencyValue(lp.profit)}</span></div>`;
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.15rem;padding-top:0.2rem;"><span style="color:${c};font-weight:600;">${lp.origin}-${lp.destination}</span><span style="color:${c};">${formatCurrencyValue(lp.profit)}</span></div>`;
       }
       routeInfoEl.innerHTML = rh || '<span>No route data</span>';
     } else {
@@ -10719,20 +10713,20 @@ async function showAircraftDetails(userAircraftId) {
       const cd = new Date(maint.nextCCheck);
       const du = Math.ceil((cd - new Date()) / 86400000);
       const cc = isStored ? '#94a3b8' : du < 30 ? 'var(--danger-color)' : du < 90 ? 'var(--warning-color)' : 'var(--text-primary)';
-      const cCost = maint.cCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">$${formatCurrencyValue(maint.cCheckCost)}</span>` : '';
+      const cCost = maint.cCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">${formatCurrencyValue(maint.cCheckCost)}</span>` : '';
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;"><span style="color:var(--text-muted);">C-Check</span><span><span style="color:${cc};font-weight:600;">${cd.toLocaleDateString('en-GB')}</span>${cCost}</span></div>`;
     } else {
-      const cCost = maint.cCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">$${formatCurrencyValue(maint.cCheckCost)}</span>` : '';
+      const cCost = maint.cCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">${formatCurrencyValue(maint.cCheckCost)}</span>` : '';
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;"><span style="color:var(--text-muted);">C-Check</span><span>N/A${cCost}</span></div>`;
     }
     if (maint.nextDCheck) {
       const dd = new Date(maint.nextDCheck);
       const du = Math.ceil((dd - new Date()) / 86400000);
       const dc = isStored ? '#94a3b8' : du < 90 ? 'var(--danger-color)' : du < 180 ? 'var(--warning-color)' : 'var(--text-primary)';
-      const dCost = maint.dCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">$${formatCurrencyValue(maint.dCheckCost)}</span>` : '';
+      const dCost = maint.dCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">${formatCurrencyValue(maint.dCheckCost)}</span>` : '';
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;"><span style="color:var(--text-muted);">D-Check</span><span><span style="color:${dc};font-weight:600;">${dd.toLocaleDateString('en-GB')}</span>${dCost}</span></div>`;
     } else {
-      const dCost = maint.dCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">$${formatCurrencyValue(maint.dCheckCost)}</span>` : '';
+      const dCost = maint.dCheckCost ? `<span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.4rem;">${formatCurrencyValue(maint.dCheckCost)}</span>` : '';
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;"><span style="color:var(--text-muted);">D-Check</span><span>N/A${dCost}</span></div>`;
     }
     maintInfoEl.innerHTML = mh;

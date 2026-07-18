@@ -177,7 +177,7 @@ function displayAllRoutes(routes) {
                 ${displayDaysOfWeek(route.daysOfWeek)}
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; color: ${profitColor}; font-weight: 600; white-space: nowrap;">
-                ${profit >= 0 ? '+' : ''}$${Math.round(profit).toLocaleString('en-US')}
+                ${profit >= 0 ? '+' : ''}${formatCurrency(profit)}
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
                 ${(route.averageLoadFactor * 100).toFixed(1)}%

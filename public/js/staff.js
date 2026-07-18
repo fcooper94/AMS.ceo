@@ -82,10 +82,12 @@ function generateNames(seed, count, baseSalary) {
 
 // ─── Currency Formatting ─────────────────────────────────────────────────────
 function formatSalary(amount) {
+  if (typeof formatCurrency === 'function') return formatCurrency(amount);
   return '$' + Math.round(amount).toLocaleString('en-US');
 }
 
 function formatSalaryShort(amount) {
+  if (typeof formatCurrencyShort === 'function') return formatCurrencyShort(amount);
   if (amount >= 1000000) return '$' + (amount / 1000000).toFixed(1) + 'M';
   if (amount >= 1000) return '$' + (amount / 1000).toFixed(0) + 'K';
   return '$' + Math.round(amount).toLocaleString('en-US');

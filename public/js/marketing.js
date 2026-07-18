@@ -11,7 +11,7 @@ async function loadMarketingData() {
     if (!res.ok) throw new Error(data.error || 'Failed to load');
 
     marketingData = data;
-    document.getElementById('marketingBalance').textContent = '$' + fmtMoney(data.balance);
+    document.getElementById('marketingBalance').textContent = fmtMoney(data.balance);
     document.getElementById('marketingGameYear').textContent = data.gameYear;
 
     checkEraChange(data.eraMultiplier, data.eraName, data.gameYear);
@@ -61,7 +61,9 @@ function dismissEraToast() {
 }
 
 function fmtMoney(n) {
-  if (n === undefined || n === null) return '0';
+  if (n === undefined || n === null) return (typeof getCurrencySymbol === 'function' ? getCurrencySymbol() : '$') + '0';
+  // Currency-aware compact money (converts + symbol + snapped).
+  if (typeof formatCurrencyShort === 'function') return formatCurrencyShort(n);
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (abs >= 1_000) return Math.round(n).toLocaleString();
@@ -112,7 +114,7 @@ function renderActiveCampaigns(campaigns) {
       <div class="active-campaign-info">
         <div class="active-campaign-channels">${channelNames}</div>
         <div class="active-campaign-meta">
-          <span>$${fmtMoney(c.weeklyBudget)}/wk</span>
+          <span>${fmtMoney(c.weeklyBudget)}/wk</span>
           <span style="color:${boostColor};">+${Number(c.demandBoost).toFixed(1)}% demand</span>
         </div>
       </div>
@@ -151,7 +153,7 @@ function renderChannelGrid(channels, gameYear) {
       <div class="channel-name">${ch.name}</div>
       <div class="channel-desc">${ch.description}</div>
       <div class="channel-meta">
-        <span class="channel-cost">from $${fmtMoney(ch.baseWeeklyCost)}/wk</span>
+        <span class="channel-cost">from ${fmtMoney(ch.baseWeeklyCost)}/wk</span>
         <span class="channel-boost">+${ch.demandBoost}%+</span>
       </div>
     </div>`;
@@ -274,7 +276,7 @@ function renderAudienceStep() {
       return `<button class="audience-level-btn${isActive ? ' audience-level-active' : ''}"
         onclick="selectAudience('${key}', '${lvl}')">
         ${meta.icon || ''} ${meta.label || lvl}
-        <span class="audience-level-cost">$${fmtMoney(cost)}/wk · +${boost}%</span>
+        <span class="audience-level-cost">${fmtMoney(cost)}/wk · +${boost}%</span>
       </button>`;
     }).join('');
 
@@ -344,10 +346,10 @@ function renderModalReview() {
   const cappedBoost = rawBoost <= 20 ? rawBoost : 20 + (rawBoost - 20) * 0.5;
   const durationVal = getSelectedDuration();
   const durationLabel = durationVal > 0 ? `${durationVal} Week${durationVal > 1 ? 's' : ''}` : 'Indefinite';
-  const totalCommitment = durationVal > 0 ? '$' + fmtMoney(totalCost * durationVal) : 'Ongoing';
+  const totalCommitment = durationVal > 0 ? fmtMoney(totalCost * durationVal) : 'Ongoing';
 
   document.getElementById('reviewChannels').innerHTML = channelPills.join('');
-  document.getElementById('reviewWeeklyCost').textContent = '$' + fmtMoney(totalCost) + ' / wk';
+  document.getElementById('reviewWeeklyCost').textContent = fmtMoney(totalCost) + ' / wk';
   document.getElementById('reviewBoost').textContent = '+' + cappedBoost.toFixed(1) + '%';
   document.getElementById('reviewDuration').textContent = durationLabel;
   document.getElementById('reviewTotal').textContent = totalCommitment;

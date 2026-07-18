@@ -242,7 +242,7 @@ function displayFleet() {
       const isOwned = userAircraft.acquisitionType === 'purchase';
       const conditionPercent = userAircraft.conditionPercentage || 100;
       const profit = userAircraft.profit || 0;
-      const profitDisplay = profit !== 0 ? (profit > 0 ? '+' : '') + '$' + formatCurrency(Math.abs(profit)) : '$0';
+      const profitDisplay = profit !== 0 ? (profit > 0 ? '+' : '') + formatCurrency(Math.abs(profit)) : '$0';
       const profitColor = profit >= 0 ? 'var(--success-color)' : 'var(--warning-color)';
 
       // Status-aware badge
@@ -315,22 +315,22 @@ async function showAircraftDetails(userAircraftId) {
   // Ownership line
   let ownershipHtml = '';
   if (ua.status === 'listed_sale') {
-    ownershipHtml = `<span style="color:var(--warning-color)">For Sale</span> &mdash; $${formatCurrency(ua.listingPrice||0)}`;
+    ownershipHtml = `<span style="color:var(--warning-color)">For Sale</span> &mdash; ${formatCurrency(ua.listingPrice||0)}`;
   } else if (ua.status === 'listed_lease') {
-    ownershipHtml = `<span style="color:#a855f7">For Lease</span> &mdash; $${formatCurrency(ua.listingPrice||0)}/wk`;
+    ownershipHtml = `<span style="color:#a855f7">For Lease</span> &mdash; ${formatCurrency(ua.listingPrice||0)}/wk`;
   } else if (ua.status === 'leased_out') {
-    ownershipHtml = `<span style="color:#14b8a6">Leased Out</span> to ${ua.leaseOutTenantName||'NPC'} &mdash; $${formatCurrency(ua.leaseOutWeeklyRate||0)}/wk`;
+    ownershipHtml = `<span style="color:#14b8a6">Leased Out</span> to ${ua.leaseOutTenantName||'NPC'} &mdash; ${formatCurrency(ua.leaseOutWeeklyRate||0)}/wk`;
   } else if (ua.status === 'recalling') {
     const toStorage = ua.currentAirport && ua.storageAirportCode && ua.currentAirport === ua.storageAirportCode;
     ownershipHtml = `<span style="color:#60a5fa">${toStorage ? 'Ferrying to '+ua.storageAirportCode : 'Recalling from '+(ua.storageAirportCode||'Storage')}</span>`;
   } else if (ua.status === 'on_order') {
     ownershipHtml = `<span style="color:#eab308">On Order</span> &mdash; delivery ${ua.expectedDeliveryDate ? new Date(ua.expectedDeliveryDate).toLocaleDateString('en-GB') : 'TBD'}`;
   } else if (ua.status === 'storage') {
-    ownershipHtml = `<span style="color:#94a3b8">Stored</span> at ${ua.storageAirportCode||'N/A'} &mdash; $${formatCurrency(calculateStorageWeeklyCost(ua))}/wk`;
+    ownershipHtml = `<span style="color:#94a3b8">Stored</span> at ${ua.storageAirportCode||'N/A'} &mdash; ${formatCurrency(calculateStorageWeeklyCost(ua))}/wk`;
   } else if (isLeased) {
-    ownershipHtml = `<span style="color:var(--accent-color)">Leased</span> ${ua.leaseDurationMonths}mo @ $${formatCurrency(leaseWk)}/wk &mdash; ends ${new Date(ua.leaseEndDate).toLocaleDateString('en-GB')}`;
+    ownershipHtml = `<span style="color:var(--accent-color)">Leased</span> ${ua.leaseDurationMonths}mo @ ${formatCurrency(leaseWk)}/wk &mdash; ends ${new Date(ua.leaseEndDate).toLocaleDateString('en-GB')}`;
   } else {
-    ownershipHtml = `<span style="color:var(--success-color)">Owned</span> &mdash; purchased $${formatCurrency(ua.purchasePrice||0)} on ${new Date(ua.acquiredAt).toLocaleDateString('en-GB')}`;
+    ownershipHtml = `<span style="color:var(--success-color)">Owned</span> &mdash; purchased ${formatCurrency(ua.purchasePrice||0)} on ${new Date(ua.acquiredAt).toLocaleDateString('en-GB')}`;
   }
 
   const overlay = document.createElement('div');
@@ -398,7 +398,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Maint</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">$${formatCurrency(Math.round(maintHr * 56))}<span style="font-size:0.5rem;font-weight:400;">/wk</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrency(Math.round(maintHr * 56))}<span style="font-size:0.5rem;font-weight:400;">/wk</span></div>
               </div>
             </div>
           </div>
@@ -527,10 +527,10 @@ async function showAircraftDetails(userAircraftId) {
           <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
             <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Operating Costs</div>
             <div style="font-size:0.75rem;">
-              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / wk</span><span style="font-weight:600;">$${formatCurrency(Math.round(fuelHr * 56))}</span></div>
-              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / wk</span><span style="font-weight:600;">$${formatCurrency(Math.round(maintHr * 56))}</span></div>
-              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lease / wk</span><span style="font-weight:600;">$${formatCurrency(leaseWk)}</span></div>` : ''}
-              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;"><span style="color:var(--text-muted);">Total / wk</span><span style="font-weight:600;color:var(--danger-color);">$${formatCurrency(weeklyOps)}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / wk</span><span style="font-weight:600;">${formatCurrency(Math.round(fuelHr * 56))}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / wk</span><span style="font-weight:600;">${formatCurrency(Math.round(maintHr * 56))}</span></div>
+              ${isLeased ? `<div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lease / wk</span><span style="font-weight:600;">${formatCurrency(leaseWk)}</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:0.12rem 0;"><span style="color:var(--text-muted);">Total / wk</span><span style="font-weight:600;color:var(--danger-color);">${formatCurrency(weeklyOps)}</span></div>
             </div>
           </div>
 
@@ -569,18 +569,18 @@ async function showAircraftDetails(userAircraftId) {
       let rh = '';
       if (details.mostProfitable) {
         const mp = details.mostProfitable;
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">$${formatCurrency(mp.profit)}</span></div>`;
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">${formatCurrency(mp.profit)}</span></div>`;
       }
       if (details.leastProfitable && details.leastProfitable.id !== details.mostProfitable?.id) {
         const lp = details.leastProfitable;
         const c = lp.profit >= 0 ? 'var(--warning-color)' : 'var(--danger-color)';
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.15rem;padding-top:0.2rem;"><span style="color:${c};font-weight:600;">${lp.origin}-${lp.destination}</span><span style="color:${c};">$${formatCurrency(lp.profit)}</span></div>`;
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.15rem;padding-top:0.2rem;"><span style="color:${c};font-weight:600;">${lp.origin}-${lp.destination}</span><span style="color:${c};">${formatCurrency(lp.profit)}</span></div>`;
       }
       // Overall profit across all this aircraft's routes (bottom right)
       if (typeof details.totalProfit === 'number') {
         const tc = details.totalProfit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         const sign = details.totalProfit < 0 ? '-' : '';
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.2rem 0 0;border-top:1px solid var(--border-color);margin-top:0.25rem;"><span style="color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:0.65rem;letter-spacing:0.5px;">Total</span><span style="color:${tc};font-weight:700;">${sign}$${formatCurrency(Math.abs(details.totalProfit))}</span></div>`;
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.2rem 0 0;border-top:1px solid var(--border-color);margin-top:0.25rem;"><span style="color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:0.65rem;letter-spacing:0.5px;">Total</span><span style="color:${tc};font-weight:700;">${sign}${formatCurrency(Math.abs(details.totalProfit))}</span></div>`;
       }
       routeInfoEl.innerHTML = rh || '<span>No route data</span>';
     } else {
@@ -599,13 +599,13 @@ async function showAircraftDetails(userAircraftId) {
       mh += `<div style="display:grid;grid-template-columns:1fr auto auto;gap:0.4rem;align-items:baseline;padding:0.15rem 0;">
         <span style="color:var(--text-muted);">C-Check</span>
         <span style="color:${cc};font-weight:600;">${cd.toLocaleDateString('en-GB')}</span>
-        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.cCheckCost ? '$' + formatCurrency(maint.cCheckCost) : ''}</span>
+        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.cCheckCost ? formatCurrency(maint.cCheckCost) : ''}</span>
       </div>`;
     } else {
       mh += `<div style="display:grid;grid-template-columns:1fr auto auto;gap:0.4rem;align-items:baseline;padding:0.15rem 0;">
         <span style="color:var(--text-muted);">C-Check</span>
         <span>N/A</span>
-        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.cCheckCost ? '$' + formatCurrency(maint.cCheckCost) : ''}</span>
+        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.cCheckCost ? formatCurrency(maint.cCheckCost) : ''}</span>
       </div>`;
     }
     if (maint.nextDCheck) {
@@ -615,13 +615,13 @@ async function showAircraftDetails(userAircraftId) {
       mh += `<div style="display:grid;grid-template-columns:1fr auto auto;gap:0.4rem;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;">
         <span style="color:var(--text-muted);">D-Check</span>
         <span style="color:${dc};font-weight:600;">${dd.toLocaleDateString('en-GB')}</span>
-        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.dCheckCost ? '$' + formatCurrency(maint.dCheckCost) : ''}</span>
+        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.dCheckCost ? formatCurrency(maint.dCheckCost) : ''}</span>
       </div>`;
     } else {
       mh += `<div style="display:grid;grid-template-columns:1fr auto auto;gap:0.4rem;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;">
         <span style="color:var(--text-muted);">D-Check</span>
         <span>N/A</span>
-        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.dCheckCost ? '$' + formatCurrency(maint.dCheckCost) : ''}</span>
+        <span style="color:var(--warning-color);font-size:0.75rem;text-align:right;">${maint.dCheckCost ? formatCurrency(maint.dCheckCost) : ''}</span>
       </div>`;
     }
     maintInfoEl.innerHTML = mh;
@@ -865,8 +865,8 @@ function confirmCancelLease(aircraftId, registration, isPlayerLease, weeklyRate)
   const penaltyHtml = isPlayerLease ? `
     <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
       <span style="color: #ef4444; font-weight: 700;">Early Termination Penalty:</span><br>
-      <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(penalty)}</span>
-      <span style="color: var(--text-muted); font-size: 0.8rem;">(12 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
+      <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">${formatCurrency(penalty)}</span>
+      <span style="color: var(--text-muted); font-size: 0.8rem;">(12 weeks &times; ${formatCurrency(weeklyRate)}/wk)</span><br>
       <span style="color: var(--text-muted); font-size: 0.8rem;">This will be deducted from your balance and paid to the aircraft owner.</span>
     </p>
   ` : '';
@@ -881,7 +881,7 @@ function confirmCancelLease(aircraftId, registration, isPlayerLease, weeklyRate)
       ${penaltyHtml}
       <p class="modal-warning">This action cannot be undone.</p>
     `,
-    confirmLabel: isPlayerLease ? `Pay $${formatCurrency(penalty)} & Cancel` : 'Cancel Lease',
+    confirmLabel: isPlayerLease ? `Pay ${formatCurrency(penalty)} & Cancel` : 'Cancel Lease',
     confirmClass: 'btn-confirm-danger',
     onConfirm: async () => {
       try {
@@ -908,12 +908,12 @@ function confirmCancelOrder(aircraftId, registration, depositPaid) {
       <p>Cancel this aircraft order? The aircraft will not be delivered.</p>
       <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
         <span style="color: #ef4444; font-weight: 700;">Deposit Forfeiture:</span><br>
-        <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(depositPaid)}</span><br>
+        <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">${formatCurrency(depositPaid)}</span><br>
         <span style="color: var(--text-muted); font-size: 0.8rem;">Your deposit will not be refunded.</span>
       </p>
       <p class="modal-warning">This action cannot be undone.</p>
     `,
-    confirmLabel: `Forfeit $${formatCurrency(depositPaid)} & Cancel`,
+    confirmLabel: `Forfeit ${formatCurrency(depositPaid)} & Cancel`,
     confirmClass: 'btn-confirm-danger',
     onConfirm: async () => {
       try {
@@ -944,7 +944,7 @@ function showSellDialog(aircraftId, registration, purchasePrice) {
     registration,
     bodyHtml: `
       <p>Set an asking price to list this aircraft on the used market. Scheduled flights and maintenance will be removed.</p>
-      <p style="font-size: 0.8rem; color: var(--text-muted);">Original purchase price: <strong style="color: var(--text-primary);">$${formatCurrency(purchasePrice || 0)}</strong></p>
+      <p style="font-size: 0.8rem; color: var(--text-muted);">Original purchase price: <strong style="color: var(--text-primary);">${formatCurrency(purchasePrice || 0)}</strong></p>
       ${aircraftTypeId ? loadingSpinner : ''}
     `,
     confirmLabel: 'List for Sale',
@@ -980,7 +980,7 @@ function showSellDialog(aircraftId, registration, purchasePrice) {
         const el = document.getElementById('sellMarketData');
         if (!el) return;
         if (market && market.sale.count > 0) {
-          el.innerHTML = `Market avg sale price: <strong style="color: var(--accent-color);">$${formatCurrency(market.sale.avg)}</strong> <span style="opacity: 0.7;">($${formatCurrency(market.sale.min)} – $${formatCurrency(market.sale.max)})</span>`;
+          el.innerHTML = `Market avg sale price: <strong style="color: var(--accent-color);">${formatCurrency(market.sale.avg)}</strong> <span style="opacity: 0.7;">(${formatCurrency(market.sale.min)} – ${formatCurrency(market.sale.max)})</span>`;
         } else {
           el.remove();
         }
@@ -1041,7 +1041,7 @@ function showLeaseOutDialog(aircraftId, registration) {
         const el = document.getElementById('leaseMarketData');
         if (!el) return;
         if (market && market.lease.count > 0) {
-          el.innerHTML = `Market avg lease rate: <strong style="color: var(--accent-color);">$${formatCurrency(market.lease.avg)}/wk</strong> <span style="opacity: 0.7;">($${formatCurrency(market.lease.min)} – $${formatCurrency(market.lease.max)}/wk)</span>`;
+          el.innerHTML = `Market avg lease rate: <strong style="color: var(--accent-color);">${formatCurrency(market.lease.avg)}/wk</strong> <span style="opacity: 0.7;">(${formatCurrency(market.lease.min)} – ${formatCurrency(market.lease.max)}/wk)</span>`;
           // Also update input with suggested rate
           const input = document.getElementById('fleetModalInput');
           if (input && !input.value) {
@@ -1094,13 +1094,13 @@ function confirmRecallAircraft(aircraftId, registration, weeklyRate) {
       <p>Recall this aircraft from the current lessee? Their scheduled flights and maintenance will be removed and the aircraft will return to your fleet.</p>
       <p style="margin-top: 0.5rem; padding: 0.6rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
         <span style="color: #ef4444; font-weight: 700;">Early Recall Compensation:</span><br>
-        <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">$${formatCurrency(compensation)}</span>
-        <span style="color: var(--text-muted); font-size: 0.8rem;">(3 weeks &times; $${formatCurrency(weeklyRate)}/wk)</span><br>
+        <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">${formatCurrency(compensation)}</span>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">(3 weeks &times; ${formatCurrency(weeklyRate)}/wk)</span><br>
         <span style="color: var(--text-muted); font-size: 0.8rem;">This will be deducted from your balance and paid to the lessee as compensation.</span>
       </p>
       <p class="modal-warning">This action cannot be undone.</p>
     `,
-    confirmLabel: `Pay $${formatCurrency(compensation)} & Recall`,
+    confirmLabel: `Pay ${formatCurrency(compensation)} & Recall`,
     confirmClass: 'btn-confirm-danger',
     onConfirm: async () => {
       try {
@@ -1166,7 +1166,7 @@ async function showScrapDialog(aircraftId, registration) {
               <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">${offer.specialty}</div>
             </div>
             <div style="text-align: right;">
-              <div style="font-size: 1.1rem; font-weight: 700; color: var(--success-color);">$${offer.price.toLocaleString()}</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: var(--success-color);">${formatCurrency(offer.price)}</div>
               <div style="font-size: 0.7rem; color: var(--text-muted);">${offer.reason}</div>
             </div>
           </div>
@@ -1667,7 +1667,7 @@ function confirmPutInStorage(aircraftId, registration) {
             <td><input type="radio" name="storageAirport" value="${sa.icao}" ${i === 0 ? 'checked' : ''}></td>
             <td><div class="loc-name">${sa.icao}</div><div class="loc-detail">${sa.city}, ${sa.country}</div></td>
             <td><span class="tier-badge tier-${tierClass(sa.costTier)}">${sa.costTier}</span></td>
-            <td class="num">$${weeklyCost.toLocaleString()}</td>
+            <td class="num">${formatCurrency(weeklyCost)}</td>
             <td class="num">${sa.annualConditionLoss}%/yr</td>
             <td class="num">${sa.recallDays}d</td>
             <td class="num">${sa.distanceNm.toLocaleString()}nm</td>
@@ -1801,13 +1801,7 @@ function confirmTakeOutOfStorage(aircraftId, registration) {
 }
 
 // Format currency
-function formatCurrency(amount) {
-  const numAmount = Number(amount) || 0;
-  return numAmount.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  });
-}
+// formatCurrency is provided globally by currency.js (converts + symbol + snap).
 
 // ── Reconfigure Cargo (instant) ───────────────────────────────────────────────
 function reconfigureCargo(userAircraftId) {

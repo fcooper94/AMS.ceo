@@ -342,7 +342,7 @@ async function fetchWorldInfo() {
     if (!data.error) {
       playerBalance = Number(data.balance) || 0;
       const balance = playerBalance;
-      balanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
+      balanceEl.textContent = formatCurrency(balance);
       if (balance < 0) {
         balanceEl.style.color = 'var(--warning-color)';
       } else if (balance < 100000) {
@@ -550,8 +550,8 @@ function displayAircraft(aircraftArray) {
       }
 
       // Price display: player listings only show their listing type
-      const purchaseDisplay = aircraft.purchasePrice ? `$${formatCurrencyShort(aircraft.purchasePrice)}` : '—';
-      const leaseDisplay = aircraft.leasePrice ? `$${formatCurrencyShort(aircraft.leasePrice)}` : '—';
+      const purchaseDisplay = aircraft.purchasePrice ? `${formatCurrencyShort(aircraft.purchasePrice)}` : '—';
+      const leaseDisplay = aircraft.leasePrice ? `${formatCurrencyShort(aircraft.leasePrice)}` : '—';
       const purchaseColor = aircraft.purchasePrice ? 'var(--success-color)' : 'var(--text-muted)';
       const leaseColor = aircraft.leasePrice ? 'var(--accent-color)' : 'var(--text-muted)';
 
@@ -586,28 +586,9 @@ function displayAircraft(aircraftArray) {
 }
 
 // Format currency short (e.g., 125M, 2.5M, 850K)
-function formatCurrencyShort(amount) {
-  const numAmount = Number(amount) || 0;
-  if (numAmount >= 1000000000) {
-    return (numAmount / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
-  }
-  if (numAmount >= 1000000) {
-    return (numAmount / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  }
-  if (numAmount >= 1000) {
-    return (numAmount / 1000).toFixed(0) + 'K';
-  }
-  return numAmount.toString();
-}
-
-// Format currency for display
-function formatCurrency(amount) {
-  const numAmount = Number(amount) || 0;
-  return numAmount.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  });
-}
+// formatCurrency + formatCurrencyShort are provided globally by currency.js
+// (they convert USD → the world's display currency, snap to clean numbers, and
+// include the currency symbol). Do not redefine them here.
 
 // Populate manufacturer filter dropdown from loaded aircraft data
 function populateManufacturerFilter(aircraft) {
@@ -754,7 +735,7 @@ function showAircraftDetails(aircraftId) {
             </div>
             <div style="padding: 0.25rem; background: var(--surface); border-radius: 3px;">
               <div style="color: var(--text-muted); font-size: 0.5rem; text-transform: uppercase;">Maint</div>
-              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">$${formatCurrencyShort(Math.round((aircraft.maintenanceCostPerMonth || (aircraft.maintenanceCostPerHour || 0) * 56) / 4.33))}<span style="font-size: 0.5rem; font-weight: 400;">/wk</span></div>
+              <div style="color: var(--text-primary); font-weight: 700; font-size: 0.85rem;">${formatCurrencyShort(Math.round((aircraft.maintenanceCostPerMonth || (aircraft.maintenanceCostPerHour || 0) * 56) / 4.33))}<span style="font-size: 0.5rem; font-weight: 400;">/wk</span></div>
             </div>
           </div>
         </div>
@@ -774,12 +755,12 @@ function showAircraftDetails(aircraftId) {
             <div style="padding: 0.25rem; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 3px;">
               <div style="color: #DC2626; font-size: 0.5rem; font-weight: 600;">C CHECK</div>
               <div style="color: ${aircraft.cCheckRemainingDays < 180 ? '#DC2626' : 'var(--text-primary)'}; font-weight: 600; font-size: 0.75rem;">${aircraft.cCheckRemaining || 'Full'}</div>
-              ${aircraft.cCheckCost ? `<div style="color: var(--text-muted); font-size: 0.45rem;">$${formatCurrencyShort(aircraft.cCheckCost)}</div>` : ''}
+              ${aircraft.cCheckCost ? `<div style="color: var(--text-muted); font-size: 0.45rem;">${formatCurrencyShort(aircraft.cCheckCost)}</div>` : ''}
             </div>
             <div style="padding: 0.25rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 3px;">
               <div style="color: #10B981; font-size: 0.5rem; font-weight: 600;">D CHECK</div>
               <div style="color: ${aircraft.dCheckRemainingDays < 365 ? '#FFA500' : 'var(--text-primary)'}; font-weight: 600; font-size: 0.75rem;">${aircraft.dCheckRemaining || 'Full'}</div>
-              ${aircraft.dCheckCost ? `<div style="color: var(--text-muted); font-size: 0.45rem;">$${formatCurrencyShort(aircraft.dCheckCost)}</div>` : ''}
+              ${aircraft.dCheckCost ? `<div style="color: var(--text-muted); font-size: 0.45rem;">${formatCurrencyShort(aircraft.dCheckCost)}</div>` : ''}
             </div>
           </div>
         </div>
@@ -792,23 +773,23 @@ function showAircraftDetails(aircraftId) {
           <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem;">
             <div style="padding: 0.2rem; background: var(--surface); border-radius: 3px; text-align: center;">
               <div style="color: var(--text-muted); font-size: 0.45rem; text-transform: uppercase;">Daily</div>
-              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">$${formatCurrencyShort(aircraft.dailyCheckCost)}</div>
+              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">${formatCurrencyShort(aircraft.dailyCheckCost)}</div>
             </div>
             <div style="padding: 0.2rem; background: var(--surface); border-radius: 3px; text-align: center;">
               <div style="color: var(--text-muted); font-size: 0.45rem; text-transform: uppercase;">Weekly</div>
-              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">$${formatCurrencyShort(aircraft.weeklyCheckCost)}</div>
+              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">${formatCurrencyShort(aircraft.weeklyCheckCost)}</div>
             </div>
             <div style="padding: 0.2rem; background: var(--surface); border-radius: 3px; text-align: center;">
               <div style="color: var(--text-muted); font-size: 0.45rem; text-transform: uppercase;">A Check</div>
-              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">$${formatCurrencyShort(aircraft.aCheckCost)}</div>
+              <div style="color: var(--text-primary); font-weight: 600; font-size: 0.7rem;">${formatCurrencyShort(aircraft.aCheckCost)}</div>
             </div>
             <div style="padding: 0.2rem; background: var(--surface); border-radius: 3px; text-align: center;">
               <div style="color: var(--text-muted); font-size: 0.45rem; text-transform: uppercase;">C Check</div>
-              <div style="color: #DC2626; font-weight: 600; font-size: 0.7rem;">$${formatCurrencyShort(aircraft.cCheckCost)}</div>
+              <div style="color: #DC2626; font-weight: 600; font-size: 0.7rem;">${formatCurrencyShort(aircraft.cCheckCost)}</div>
             </div>
             <div style="padding: 0.2rem; background: var(--surface); border-radius: 3px; text-align: center;">
               <div style="color: var(--text-muted); font-size: 0.45rem; text-transform: uppercase;">D Check</div>
-              <div style="color: #f59e0b; font-weight: 600; font-size: 0.7rem;">$${formatCurrencyShort(aircraft.dCheckCost)}</div>
+              <div style="color: #f59e0b; font-weight: 600; font-size: 0.7rem;">${formatCurrencyShort(aircraft.dCheckCost)}</div>
             </div>
           </div>
         </div>
@@ -847,7 +828,7 @@ function showAircraftDetails(aircraftId) {
             <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Buy from ' + (aircraft.seller?.name || 'player') : 'Own outright'}</div>
             ${aircraft.seller ? `<div style="color: var(--text-muted); font-size: 0.55rem;">From: <strong style="color: var(--text-primary);">${aircraft.seller.shortName}</strong> ${aircraft.seller.country ? `<span style="font-size: 0.5rem;">${aircraft.seller.country}</span>` : ''}</div>` : ''}
           </div>
-          <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.purchasePrice)}</div>
+          <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(aircraft.purchasePrice)}</div>
         </div>
         <div style="font-size: 0.55rem; color: var(--text-secondary);">
           ✓ Full ownership &nbsp; ✓ No weekly fees &nbsp; ✓ Sell anytime
@@ -862,7 +843,7 @@ function showAircraftDetails(aircraftId) {
             <div style="color: #3b82f6; font-weight: 700; font-size: 0.8rem;">LEASE</div>
             <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Lease from ' + (aircraft.lessor?.name || 'player') : '3 year minimum'}</div>
           </div>
-          <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
+          <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
         </div>
         ${aircraft.lessor ? `
         <div style="font-size: 0.55rem; color: var(--text-muted); margin-bottom: 0.2rem;">
@@ -944,7 +925,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
             <div style="color: var(--text-muted); font-size: 0.6rem;">Own outright · Available immediately</div>
           </div>
           <div style="text-align: right;">
-            <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(listPrice)}</div>
+            <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(listPrice)}</div>
             <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
           </div>
         </div>
@@ -962,7 +943,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
             <div style="color: var(--text-muted); font-size: 0.6rem;">3-12 year term · Available now</div>
           </div>
           <div style="text-align: right;">
-            <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
+            <div style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(aircraft.leasePrice)}<span style="font-size: 0.65rem; font-weight: 400;">/wk</span></div>
             <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
           </div>
         </div>
@@ -1035,18 +1016,18 @@ function showOrderDialog() {
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px;">
               <div id="orderListPriceRow" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span style="color: var(--text-muted); font-size: 0.8rem;">List Price</span>
-                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">$${formatCurrencyShort(listPrice)}</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">${formatCurrencyShort(listPrice)}</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span id="orderPriceLabel" style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">Unit Price</span>
                 <div style="text-align: right;">
-                  <span id="orderUnitPrice" style="color: #10b981; font-weight: 700; font-size: 1.3rem;">$${formatCurrencyShort(unitPrice())}</span>
+                  <span id="orderUnitPrice" style="color: #10b981; font-weight: 700; font-size: 1.3rem;">${formatCurrencyShort(unitPrice())}</span>
                   <span id="orderDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: none;"></span>
                 </div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
                 <span style="color: var(--text-secondary); font-size: 0.85rem;">30% Deposit</span>
-                <span id="orderDepositDisplay" style="color: #10b981; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalDeposit())}</span>
+                <span id="orderDepositDisplay" style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(totalDeposit())}</span>
               </div>
             </div>
 
@@ -1099,7 +1080,7 @@ function showOrderDialog() {
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
                 <span style="color: var(--text-primary); font-weight: 700; font-size: 0.95rem;">Deposit Due Now</span>
-                <span id="orderSummaryDeposit" style="color: #10b981; font-weight: 700; font-size: 1.2rem;">$${formatCurrencyShort(totalDeposit())}</span>
+                <span id="orderSummaryDeposit" style="color: #10b981; font-weight: 700; font-size: 1.2rem;">${formatCurrencyShort(totalDeposit())}</span>
               </div>
             </div>
 
@@ -1194,11 +1175,11 @@ function showOrderDialog() {
     const deliveryEl = document.getElementById('orderDeliveryNote');
     const confirmBtn = document.getElementById('orderConfirmBtn');
 
-    if (unitPriceEl) unitPriceEl.textContent = '$' + formatCurrencyShort(unitPrice());
+    if (unitPriceEl) unitPriceEl.textContent = formatCurrencyShort(unitPrice());
     if (listPriceRow) listPriceRow.style.display = hasDiscount ? 'flex' : 'none';
     if (priceLabelEl) priceLabelEl.textContent = hasDiscount ? 'Discounted Unit Price' : 'Unit Price';
     if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.display = hasDiscount ? 'inline' : 'none'; }
-    if (depositEl) depositEl.textContent = '$' + formatCurrencyShort(totalDeposit());
+    if (depositEl) depositEl.textContent = formatCurrencyShort(totalDeposit());
     if (qtyEl) qtyEl.textContent = orderQty;
     if (deliveryEl) deliveryEl.textContent = deliveryNote;
     // Update summary section
@@ -1207,7 +1188,7 @@ function showOrderDialog() {
     const summaryDeposit = document.getElementById('orderSummaryDeposit');
     if (summaryQty) summaryQty.textContent = 'x' + orderQty;
     if (summaryFinancing) summaryFinancing.textContent = orderFinancing === 'loan' ? 'Loan' : 'Cash at Delivery';
-    if (summaryDeposit) summaryDeposit.textContent = '$' + formatCurrencyShort(totalDeposit());
+    if (summaryDeposit) summaryDeposit.textContent = formatCurrencyShort(totalDeposit());
 
     if (orderFinancing === 'loan' && cachedBankOffers) renderBankCards();
     else updateLoanPreviewLocal();
@@ -1242,9 +1223,9 @@ function showOrderDialog() {
       const balEl = document.getElementById('orderPlayerBalance');
       const costEl = document.getElementById('orderTotalCost');
       const shortEl = document.getElementById('orderShortfall');
-      if (balEl) balEl.textContent = '$' + formatCurrencyShort(playerBalance);
-      if (costEl) costEl.textContent = '$' + formatCurrencyShort(amountNeeded);
-      if (shortEl) shortEl.textContent = '$' + formatCurrencyShort(amountNeeded - playerBalance);
+      if (balEl) balEl.textContent = formatCurrencyShort(playerBalance);
+      if (costEl) costEl.textContent = formatCurrencyShort(amountNeeded);
+      if (shortEl) shortEl.textContent = formatCurrencyShort(amountNeeded - playerBalance);
       // Update the label text
       const costLabelEl = costEl?.previousElementSibling;
       if (costLabelEl) costLabelEl.textContent = label + ': ';
@@ -1356,14 +1337,14 @@ function showOrderDialog() {
             <span style="font-weight: 700; font-size: 0.9rem; color: ${disabled ? 'var(--text-muted)' : '#3b82f6'}; font-family: 'Courier New', monospace;">${rate.toFixed(1)}%</span>
           </div>
           <div style="display: flex; gap: 0.7rem; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">
-            <span>Max: <strong style="color: var(--text-primary);">$${formatCurrencyShort(bank.maxLoanAmount)}</strong></span>
+            <span>Max: <strong style="color: var(--text-primary);">${formatCurrencyShort(bank.maxLoanAmount)}</strong></span>
             <span>Early fee: <strong style="color: var(--text-primary);">${bank.earlyRepaymentFee > 0 ? bank.earlyRepaymentFee + '%' : 'None'}</strong></span>
             <span>Holidays: <strong style="color: var(--text-primary);">${bank.paymentHolidays}</strong></span>
           </div>
           <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
             ${(bank.features || []).map(f => `<span style="font-size: 0.55rem; padding: 0.08rem 0.3rem; border-radius: 3px; background: rgba(200,210,225,0.08); color: var(--text-secondary); font-weight: 600;">${f}</span>`).join('')}
           </div>
-          ${exceedsLimit ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: #EF4444; font-weight: 600;">&#9888; Exceeds max loan: $${formatCurrencyShort(bank.maxLoanAmount)} (need $${formatCurrencyShort(totalLoanNeeded)})</div>` : ''}
+          ${exceedsLimit ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: #EF4444; font-weight: 600;">&#9888; Exceeds max loan: ${formatCurrencyShort(bank.maxLoanAmount)} (need ${formatCurrencyShort(totalLoanNeeded)})</div>` : ''}
           ${creditTooLow ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">&#128274; Requires credit score ${bank.minCreditScore}+</div>` : ''}
         </div>`;
     }
@@ -1373,7 +1354,7 @@ function showOrderDialog() {
     // Show/hide the "no bank can cover this" warning
     if (warningEl) {
       warningEl.style.display = anyAvailable ? 'none' : 'block';
-      if (loanNeededEl) loanNeededEl.textContent = '$' + formatCurrencyShort(totalLoanNeeded);
+      if (loanNeededEl) loanNeededEl.textContent = formatCurrencyShort(totalLoanNeeded);
     }
 
     // If current selection is now invalid, auto-select first available
@@ -1476,7 +1457,7 @@ function showOrderDialog() {
         if (earlyFee > 0) detailParts.push(`${earlyFee}% early fee`);
         if (holidays > 0) detailParts.push(`${holidays} payment holiday${holidays > 1 ? 's' : ''}`);
         preview.innerHTML = `
-          <div style="font-size: 0.95rem;">~$${formatCurrencyShort(weeklyPayment)}/wk for ${years} years</div>
+          <div style="font-size: 0.95rem;">~${formatCurrencyShort(weeklyPayment)}/wk for ${years} years</div>
           <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.15rem;">${detailParts.join(' &middot; ')}</div>`;
       }
     }
@@ -1604,7 +1585,7 @@ function showOrderRegistrationDialog() {
       <div style="margin-bottom: 1.25rem; padding: 0.6rem 0.75rem; background: var(--surface-elevated); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.85rem;">
         <span style="color: var(--text-primary); font-weight: 600;">${fullName}${qty > 1 ? ' x' + qty : ''}</span>
         <span style="color: var(--text-muted);">${financingLabel}</span>
-        <span style="color: #10b981; font-weight: 700;">Deposit: $${formatCurrencyShort(deposit)}</span>
+        <span style="color: #10b981; font-weight: 700;">Deposit: ${formatCurrencyShort(deposit)}</span>
       </div>
 
       <div style="display: grid; grid-template-columns: ${qty > 1 ? '1fr 1fr' : '1fr'}; gap: 1.25rem;">
@@ -1634,7 +1615,7 @@ function showOrderRegistrationDialog() {
       <!-- Action Buttons -->
       <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
         <button id="regBackBtn" class="btn btn-secondary" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">Back</button>
-        <button id="regConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Place Order — Deposit $${formatCurrencyShort(deposit)}</button>
+        <button id="regConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Place Order — Deposit ${formatCurrencyShort(deposit)}</button>
       </div>
     </div>
     <style>
@@ -2258,13 +2239,13 @@ function showPurchaseConfirmationModal() {
         ${selectedAircraft.purchasePrice ? `
         <button id="confirmPurchaseBtn" class="btn btn-primary" style="padding: 1.5rem; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;">
           <span>PURCHASE OUTRIGHT</span>
-          <strong style="color: var(--success-color);">$${formatCurrency(selectedAircraft.purchasePrice)}</strong>
+          <strong style="color: var(--success-color);">${formatCurrency(selectedAircraft.purchasePrice)}</strong>
         </button>
         ` : ''}
         ${selectedAircraft.leasePrice ? `
         <button id="confirmLeaseBtn" class="btn btn-secondary" style="padding: 1.5rem; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;">
           <span>LEASE (12 MONTHS)</span>
-          <strong style="color: var(--accent-color);">$${formatCurrency(selectedAircraft.leasePrice)}/wk</strong>
+          <strong style="color: var(--accent-color);">${formatCurrency(selectedAircraft.leasePrice)}/wk</strong>
         </button>
         ` : ''}
       </div>
@@ -2328,7 +2309,7 @@ function processPurchase() {
       'CONFIRM PURCHASE',
       fullName,
       condition,
-      `$${formatCurrency(price)}`,
+      `${formatCurrency(price)}`,
       'Purchase',
       confirmPurchase
     );
@@ -2460,7 +2441,7 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
 
     if (response.ok) {
       if (data.orderType === 'new') {
-        showSuccessMessage(`Aircraft ordered! ${data.aircraft.registration} — Available immediately. Deposit: $${formatCurrency(data.deposit)}`, data.newBalance);
+        showSuccessMessage(`Aircraft ordered! ${data.aircraft.registration} — Available immediately. Deposit: ${formatCurrency(data.deposit)}`, data.newBalance);
       } else {
         showSuccessMessage(`Aircraft purchased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
       }
@@ -2531,7 +2512,7 @@ async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
 
     if (response.ok) {
       const regList = data.aircraft.map(a => a.registration).join(', ');
-      showSuccessMessage(`${qty} aircraft ordered! Deposit: $${formatCurrency(data.totalDeposit)}. Registrations: ${regList}`, data.newBalance);
+      showSuccessMessage(`${qty} aircraft ordered! Deposit: ${formatCurrency(data.totalDeposit)}. Registrations: ${regList}`, data.newBalance);
       clearAircraftCache();
       fetchWorldInfo();
     } else {
@@ -2898,18 +2879,18 @@ function showLeaseOrderDialog() {
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.03) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px;">
               <div id="leaseListPriceRow" style="display: ${discPct() > 0 ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span style="color: var(--text-muted); font-size: 0.8rem;">List Rate</span>
-                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">$${formatCurrencyShort(baseLeasePrice)}/wk</span>
+                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">${formatCurrencyShort(baseLeasePrice)}/wk</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span id="leasePriceLabel" style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">${discPct() > 0 ? 'Discounted Rate' : 'Weekly Rate'}</span>
                 <div style="text-align: right;">
-                  <span id="leaseUnitWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.3rem;">$${formatCurrencyShort(unitWeekly())}/wk</span>
+                  <span id="leaseUnitWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.3rem;">${formatCurrencyShort(unitWeekly())}/wk</span>
                   <span id="leaseDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: ${discPct() > 0 ? 'inline' : 'none'};">${discPct() > 0 ? '-' + discPct() + '%' : ''}</span>
                 </div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
                 <span style="color: var(--text-secondary); font-size: 0.85rem;">Total Weekly (x${orderQty})</span>
-                <span id="leaseTotalWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalWeekly())}/wk</span>
+                <span id="leaseTotalWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(totalWeekly())}/wk</span>
               </div>
             </div>
 
@@ -2980,11 +2961,11 @@ function showLeaseOrderDialog() {
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Weekly Payment</span>
-                <span id="leaseSummaryWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">$${formatCurrencyShort(totalWeekly())}/wk</span>
+                <span id="leaseSummaryWeekly" style="color: #3b82f6; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(totalWeekly())}/wk</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Total Commitment</span>
-                <span id="leaseSummaryTotal" style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;">$${formatCurrencyShort(totalCommitment())}</span>
+                <span id="leaseSummaryTotal" style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;">${formatCurrencyShort(totalCommitment())}</span>
               </div>
             </div>
 
@@ -2992,11 +2973,11 @@ function showLeaseOrderDialog() {
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">First Payment Due Now</span>
-                <span id="leaseFirstPayment" style="color: #3b82f6; font-weight: 700;">$${formatCurrencyShort(totalWeekly())}</span>
+                <span id="leaseFirstPayment" style="color: #3b82f6; font-weight: 700;">${formatCurrencyShort(totalWeekly())}</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Your Balance</span>
-                <span style="color: var(--text-primary); font-weight: 600;">$${formatCurrencyShort(playerBalance)}</span>
+                <span style="color: var(--text-primary); font-weight: 600;">${formatCurrencyShort(playerBalance)}</span>
               </div>
             </div>
 
@@ -3015,7 +2996,7 @@ function showLeaseOrderDialog() {
             <!-- Early Termination Info -->
             <div style="margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 6px;">
               <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                Early termination penalty: <strong style="color: #f59e0b;" id="leaseTerminationFee">$${formatCurrencyShort(unitWeekly() * 12 * orderQty)}</strong>
+                Early termination penalty: <strong style="color: #f59e0b;" id="leaseTerminationFee">${formatCurrencyShort(unitWeekly() * 12 * orderQty)}</strong>
                 <span style="color: var(--text-muted); font-size: 0.75rem;">(12 wks x ${orderQty} aircraft)</span>
               </div>
             </div>
@@ -3062,19 +3043,19 @@ function showLeaseOrderDialog() {
     const summaryDurationEl = document.getElementById('leaseSummaryDuration');
     const terminationFeeEl = document.getElementById('leaseTerminationFee');
 
-    if (unitWeeklyEl) unitWeeklyEl.textContent = '$' + formatCurrencyShort(unitWeekly()) + '/wk';
+    if (unitWeeklyEl) unitWeeklyEl.textContent = formatCurrencyShort(unitWeekly()) + '/wk';
     if (listPriceRow) listPriceRow.style.display = hasDiscount ? 'flex' : 'none';
     if (priceLabelEl) priceLabelEl.textContent = hasDiscount ? 'Discounted Rate' : 'Weekly Rate';
     if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.display = hasDiscount ? 'inline' : 'none'; }
-    if (totalWeeklyEl) totalWeeklyEl.textContent = '$' + formatCurrencyShort(totalWeekly()) + '/wk';
+    if (totalWeeklyEl) totalWeeklyEl.textContent = formatCurrencyShort(totalWeekly()) + '/wk';
     if (qtyEl) qtyEl.textContent = orderQty;
     if (deliveryEl) deliveryEl.textContent = leaseDeliveryNote;
-    if (firstPaymentEl) firstPaymentEl.textContent = '$' + formatCurrencyShort(totalWeekly());
+    if (firstPaymentEl) firstPaymentEl.textContent = formatCurrencyShort(totalWeekly());
     if (summaryQtyEl) summaryQtyEl.textContent = 'x' + orderQty;
-    if (summaryWeeklyEl) summaryWeeklyEl.textContent = '$' + formatCurrencyShort(totalWeekly()) + '/wk';
-    if (summaryTotalEl) summaryTotalEl.textContent = '$' + formatCurrencyShort(totalCommitment());
+    if (summaryWeeklyEl) summaryWeeklyEl.textContent = formatCurrencyShort(totalWeekly()) + '/wk';
+    if (summaryTotalEl) summaryTotalEl.textContent = formatCurrencyShort(totalCommitment());
     if (summaryDurationEl) summaryDurationEl.textContent = getTotalMonths() + ' months';
-    if (terminationFeeEl) terminationFeeEl.textContent = '$' + formatCurrencyShort(unitWeekly() * 12 * orderQty);
+    if (terminationFeeEl) terminationFeeEl.textContent = formatCurrencyShort(unitWeekly() * 12 * orderQty);
 
     // Update the total weekly label
     const totalLabel = totalWeeklyEl?.parentElement?.querySelector('span:first-child');
@@ -3270,7 +3251,7 @@ function showLeaseRegistrationDialog() {
       <div style="margin-bottom: 1.25rem; padding: 0.6rem 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; font-size: 0.85rem;">
         <span style="color: var(--text-primary); font-weight: 600;">${fullName}${qty > 1 ? ' x' + qty : ''}</span>
         <span style="color: var(--text-muted);">${leaseOrderDurationMonths} months</span>
-        <span style="color: #3b82f6; font-weight: 700;">$${formatCurrencyShort(totalWeekly)}/wk</span>
+        <span style="color: #3b82f6; font-weight: 700;">${formatCurrencyShort(totalWeekly)}/wk</span>
       </div>
 
       <div style="display: grid; grid-template-columns: ${qty > 1 ? '1fr 1fr' : '1fr'}; gap: 1.25rem; overflow: hidden;">
@@ -3300,7 +3281,7 @@ function showLeaseRegistrationDialog() {
       <!-- Action Buttons -->
       <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
         <button id="leaseRegBackBtn" class="btn btn-secondary" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">Back</button>
-        <button id="leaseRegConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Sign Lease — $${formatCurrencyShort(totalWeekly)}/wk</button>
+        <button id="leaseRegConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem; opacity: 0.5;" disabled>Sign Lease — ${formatCurrencyShort(totalWeekly)}/wk</button>
       </div>
     </div>
     <style>
@@ -3544,7 +3525,7 @@ async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
 
     if (response.ok) {
       const regList = data.aircraft.map(a => a.registration).join(', ');
-      showSuccessMessage(`${qty} aircraft leased! Weekly: $${formatCurrency(data.totalWeeklyPayment)}. Registrations: ${regList}`, data.newBalance);
+      showSuccessMessage(`${qty} aircraft leased! Weekly: ${formatCurrency(data.totalWeeklyPayment)}. Registrations: ${regList}`, data.newBalance);
       clearAircraftCache();
       fetchWorldInfo();
     } else {
@@ -3656,11 +3637,11 @@ function showLeaseConfirmationDialogUsed() {
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <div style="color: var(--text-muted); font-size: 0.65rem;">Weekly Payment</div>
-                <div style="color: var(--accent-color); font-weight: 700; font-size: 1.2rem;" id="leaseWeeklyDisplay">$${formatCurrency(selectedAircraft.leasePrice || 0)}</div>
+                <div style="color: var(--accent-color); font-weight: 700; font-size: 1.2rem;" id="leaseWeeklyDisplay">${formatCurrency(selectedAircraft.leasePrice || 0)}</div>
               </div>
               <div style="text-align: right;">
                 <div style="color: var(--text-muted); font-size: 0.65rem;">Total Commitment</div>
-                <div style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;" id="leaseTotalDisplay">$${formatCurrency((selectedAircraft.leasePrice || 0) * 36 * 4.33)}</div>
+                <div style="color: var(--text-secondary); font-weight: 600; font-size: 0.95rem;" id="leaseTotalDisplay">${formatCurrency((selectedAircraft.leasePrice || 0) * 36 * 4.33)}</div>
               </div>
             </div>
           </div>
@@ -3736,7 +3717,7 @@ function showLeaseConfirmationDialogUsed() {
             <ul style="margin: 0; padding-left: 1rem; font-size: 0.75rem; color: var(--text-secondary);">
 
               <li>Aircraft must be returned in good condition</li>
-              <li style="color: #f59e0b;">Early termination penalty: <strong>12 weeks</strong> of weekly payments ($${formatCurrency((selectedAircraft.leasePrice || 0) * 12)})</li>
+              <li style="color: #f59e0b;">Early termination penalty: <strong>12 weeks</strong> of weekly payments (${formatCurrency((selectedAircraft.leasePrice || 0) * 12)})</li>
             </ul>
           </div>
 
@@ -3774,7 +3755,7 @@ function showLeaseConfirmationDialogUsed() {
     monthsValueEl.textContent = leaseMonths;
     totalDisplayEl.textContent = `${getTotalMonths()} months`;
     const weeklyPrice = selectedAircraft.leasePrice || 0;
-    totalCommitmentEl.textContent = '$' + formatCurrency(weeklyPrice * getTotalMonths() * 4.33);
+    totalCommitmentEl.textContent = formatCurrency(weeklyPrice * getTotalMonths() * 4.33);
   }
 
   function adjustYears(delta) {
@@ -4000,7 +3981,7 @@ function showSuccessMessage(message, newBalance) {
       <div style="font-size: 3rem; color: var(--success-color); margin-bottom: 1rem;">✓</div>
       <h2 style="margin-bottom: 1rem; color: var(--text-primary);">SUCCESS</h2>
       <p style="margin-bottom: 1.5rem; color: var(--text-secondary);">${message}</p>
-      <p style="margin-bottom: 2rem; color: var(--text-secondary);">New Balance: <strong style="color: var(--success-color);">$${formatCurrency(newBalance)}</strong></p>
+      <p style="margin-bottom: 2rem; color: var(--text-secondary);">New Balance: <strong style="color: var(--success-color);">${formatCurrency(newBalance)}</strong></p>
       <button id="viewFleetBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem;">View My Fleet</button>
       <button id="continueShoppingBtn" class="btn btn-secondary" style="width: 100%;">Purchase / Lease More Aircraft</button>
     </div>

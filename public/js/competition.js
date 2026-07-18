@@ -45,15 +45,11 @@ function renderDifficultyBadge(data) {
   badge.style.display = 'block';
 }
 
+// This page shows compact money; delegate to the global short formatter
+// (converts USD → display currency, snaps, includes symbol).
 function formatCurrency(amount) {
-  if (Math.abs(amount) >= 1000000000) {
-    return `$${(amount / 1000000000).toFixed(1)}B`;
-  } else if (Math.abs(amount) >= 1000000) {
-    return `$${(amount / 1000000).toFixed(1)}M`;
-  } else if (Math.abs(amount) >= 1000) {
-    return `$${(amount / 1000).toFixed(0)}K`;
-  }
-  return `$${amount.toFixed(0)}`;
+  if (typeof formatCurrencyShort === 'function') return formatCurrencyShort(amount);
+  return '$' + (Number(amount) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 function renderLeaderboard(airlines, playerAirlineId, playerRank, totalAirlines) {
@@ -210,7 +206,7 @@ function renderCompetitiveRoutes(competitiveRoutes) {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
           <div style="padding: 0.5rem; background: rgba(59, 130, 246, 0.1); border-radius: 4px;">
             <div style="font-size: 0.75rem; color: var(--primary-color); font-weight: 600; margin-bottom: 0.25rem;">YOUR AIRLINE</div>
-            <div style="font-size: 0.85rem; color: var(--text-primary);">Economy: $${route.playerPrice}</div>
+            <div style="font-size: 0.85rem; color: var(--text-primary);">Economy: ${formatCurrency(route.playerPrice)}</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary);">Load Factor: ${Math.round(route.playerLoadFactor * 100)}%</div>
           </div>
 
@@ -218,7 +214,7 @@ function renderCompetitiveRoutes(competitiveRoutes) {
             <div style="padding: 0.5rem; background: var(--surface); border-radius: 4px;">
               <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 0.25rem;">${comp.airline} (${comp.code})</div>
               <div style="font-size: 0.85rem; color: ${comp.price < route.playerPrice ? '#ef4444' : '#22c55e'};">
-                Economy: $${comp.price}
+                Economy: ${formatCurrency(comp.price)}
                 ${comp.price < route.playerPrice ? ' (undercutting)' : ''}
               </div>
               <div style="font-size: 0.8rem; color: var(--text-secondary);">Load Factor: ${Math.round(comp.loadFactor * 100)}%</div>
