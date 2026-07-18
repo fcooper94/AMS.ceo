@@ -120,11 +120,11 @@ function displayAllRoutes(routes) {
 
   if (routes.length === 0) {
     container.innerHTML = `
-      <div class="empty-message">
-        <p>NO ROUTES CREATED YET</p>
-        <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">
-          Create your first route to start operating flights
-        </p>
+      <div class="table-empty">
+        <div class="empty-message">No routes created yet.</div>
+        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:0.4rem;">
+          Create your first route to start operating flights. <a href="/routes/create" style="color:var(--accent-color);">Create one</a>.
+        </div>
       </div>
     `;
     return;
@@ -383,6 +383,7 @@ function editRoute(routeId) {
 
 // Store route to be deleted
 let pendingDeleteRoute = null;
+let pendingDeleteTour = null;
 
 // Delete route - show modal
 function deleteRoute(routeId) {
@@ -390,18 +391,27 @@ function deleteRoute(routeId) {
   if (!route) return;
 
   pendingDeleteRoute = route;
+  pendingDeleteTour = null;
 
-  // Show modal
-  const modal = document.getElementById('deleteModal');
+  // Show modal (route mode)
+  document.getElementById('deleteModalTitle').textContent = 'Delete Route';
+  document.getElementById('deleteModalConfirmBtn').textContent = 'DELETE ROUTE';
   const message = document.getElementById('deleteModalMessage');
   message.textContent = `Are you sure you want to delete route ${route.routeNumber}${route.returnRouteNumber ? ' / ' + route.returnRouteNumber : ''}?`;
-  modal.style.display = 'flex';
+  document.getElementById('deleteModal').style.display = 'flex';
 }
 
 // Close delete modal
 function closeDeleteModal() {
   document.getElementById('deleteModal').style.display = 'none';
   pendingDeleteRoute = null;
+  pendingDeleteTour = null;
+}
+
+// Dispatch the confirm button to the right handler (route vs tour)
+function confirmDelete() {
+  if (pendingDeleteTour) return confirmDeleteTour();
+  return confirmDeleteRoute();
 }
 
 // Confirm and execute delete
@@ -590,8 +600,23 @@ function escapeTour(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-async function deleteTour(id, name) {
-  if (!confirm(`Delete sightseeing tour "${name}"?`)) return;
+// Delete tour - show the styled modal (same one routes use)
+function deleteTour(id, name) {
+  pendingDeleteTour = { id, name };
+  pendingDeleteRoute = null;
+
+  document.getElementById('deleteModalTitle').textContent = 'Delete Tour';
+  document.getElementById('deleteModalConfirmBtn').textContent = 'DELETE TOUR';
+  document.getElementById('deleteModalMessage').textContent =
+    `Are you sure you want to delete the sightseeing tour "${name}"?`;
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+
+// Confirm and execute tour delete
+async function confirmDeleteTour() {
+  if (!pendingDeleteTour) return;
+  const { id } = pendingDeleteTour;
+  closeDeleteModal();
   try {
     const res = await fetch(`/api/sightseeing-tours/${id}`, { method: 'DELETE' });
     const data = await res.json();
