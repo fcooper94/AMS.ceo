@@ -634,7 +634,8 @@ server.listen(PORT, () => {
       await sequelize.query(`
         ALTER TABLE worlds
           ADD COLUMN IF NOT EXISTS pause_on_session_end BOOLEAN NOT NULL DEFAULT FALSE,
-          ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE
+          ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS ai_maturity VARCHAR(20) NOT NULL DEFAULT 'brand_new'
       `);
     } catch (_) { /* worlds table may not exist yet — sync will create it */ }
     try {

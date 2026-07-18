@@ -122,6 +122,16 @@ const World = sequelize.define('World', {
     type: DataTypes.ENUM('easy', 'medium', 'hard'),
     allowNull: true
   },
+  // Singleplayer: how established AI airlines are at world start. 'brand_new'
+  // spawns empty shell airlines (they grow from scratch); the other presets give
+  // each AI a synthetic head-start (pre-built fleet/routes/finances) scaled to a
+  // random age. See aiHeadStartService.
+  aiMaturity: {
+    type: DataTypes.STRING,
+    defaultValue: 'brand_new',
+    field: 'ai_maturity',
+    comment: 'AI world maturity: brand_new | developing | established | mature'
+  },
   ownerUserId: {
     type: DataTypes.UUID,
     allowNull: true,

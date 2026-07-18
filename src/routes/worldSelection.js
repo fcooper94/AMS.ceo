@@ -552,6 +552,8 @@ router.post('/create-singleplayer', async (req, res) => {
     }
 
     const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode, cleaningContractor, groundContractor, engineeringContractor, backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg } = req.body;
+    const validMaturities = ['brand_new', 'developing', 'established', 'mature'];
+    const aiMaturity = validMaturities.includes(req.body.aiMaturity) ? req.body.aiMaturity : 'brand_new';
     const validTiers = ['budget', 'standard', 'premium'];
     const spCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
     const spGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
@@ -634,6 +636,7 @@ router.post('/create-singleplayer', async (req, res) => {
       freeWeeks: 4,
       worldType: 'singleplayer',
       difficulty,
+      aiMaturity,
       pauseOnSessionEnd: !!req.body.pauseOnSessionEnd,
       lastActiveAt: new Date(),
       ownerUserId: user.id
@@ -673,6 +676,15 @@ router.post('/create-singleplayer', async (req, res) => {
     try {
       const aiSpawningService = require('../services/aiSpawningService');
       await aiSpawningService.spawnAIAirlines(world, difficulty, airport);
+
+      // Give AI a synthetic head-start (pre-built fleet/routes/finances) if the
+      // player chose an established world. Runs in the BACKGROUND so world
+      // creation stays fast — networks materialise over the first few seconds.
+      if (aiMaturity && aiMaturity !== 'brand_new') {
+        const aiHeadStartService = require('../services/aiHeadStartService');
+        aiHeadStartService.applyHeadStart(world, difficulty, airport)
+          .catch(e => console.error('[WorldCreation] AI head-start error:', e.message));
+      }
     } catch (spawnErr) {
       console.error('Error spawning AI airlines:', spawnErr.message);
       console.error('Stack:', spawnErr.stack);

@@ -1678,6 +1678,8 @@ function openCreateSPModal() {
   document.querySelector('input[name="spDifficulty"][value="medium"]').checked = true;
   const pauseRun = document.querySelector('input[name="spPauseOnLeave"][value="run"]');
   if (pauseRun) pauseRun.checked = true;
+  const maturityNew = document.querySelector('input[name="spMaturity"][value="brand_new"]');
+  if (maturityNew) maturityNew.checked = true;
   document.getElementById('spBaseAirport').value = '';
   document.getElementById('spBaseAirportType').value = '';
   document.getElementById('spAirportSearch').value = '';
@@ -1878,7 +1880,7 @@ function getBranding(prefix) {
 }
 
 const MODAL_STEP_CONFIG = {
-  sp:     { steps: 6, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
+  sp:     { steps: 7, closeFunc: 'closeCreateSPModal', finalLabel: 'Create World', finalFunc: 'createSinglePlayerWorld' },
   mp:     { steps: 5, closeFunc: 'closeJoinModal',     finalLabel: 'Join World',   finalFunc: 'confirmJoin' },
   rejoin: { steps: 5, closeFunc: 'closeRejoinModal',   finalLabel: 'Create Airline', finalFunc: 'confirmRejoin' }
 };
@@ -1893,15 +1895,15 @@ function showModalStep(prefix, step) {
   updateModalStepIndicators(prefix, step);
   updateModalFooterButtons(prefix, step);
   // Initialize the branding/logo picker when the branding step is shown
-  // (SP: step 3, MP/rejoin: step 2)
-  const brandingStep = (prefix === 'sp') ? 3 : 2;
+  // (SP: step 4, MP/rejoin: step 2)
+  const brandingStep = (prefix === 'sp') ? 4 : 2;
   if (step === brandingStep) {
     const nameInput = prefix === 'sp' ? 'spAirlineName' : (prefix === 'mp' ? 'airlineName' : 'rejoinAirlineName');
     initBrandingPicker(prefix, nameInput);
   }
   // Trigger contractor cost update when entering contractor steps
-  // SP: steps 4-6 are contractors; MP/rejoin: steps 3-5 are contractors
-  const contractorStart = (prefix === 'sp') ? 4 : 3;
+  // SP: steps 5-7 are contractors; MP/rejoin: steps 3-5 are contractors
+  const contractorStart = (prefix === 'sp') ? 5 : 3;
   if (step >= contractorStart) {
     if (prefix === 'sp') updateSPContractorPreview();
     else if (prefix === 'mp') updateMPContractorPreview();
@@ -1960,7 +1962,7 @@ function updateModalFooterButtons(prefix, step) {
 
 // The airline-details step per wizard, and where to read/report its fields.
 const AIRLINE_STEP_FIELDS = {
-  sp:     { step: 2, name: 'spAirlineName',     code: 'spAirlineCode',     iata: 'spIataCode',     error: 'spCreateError', base: () => document.getElementById('spBaseAirport')?.value },
+  sp:     { step: 3, name: 'spAirlineName',     code: 'spAirlineCode',     iata: 'spIataCode',     error: 'spCreateError', base: () => document.getElementById('spBaseAirport')?.value },
   mp:     { step: 1, name: 'airlineName',       code: 'airlineCode',       iata: 'iataCode',       error: 'joinError',     base: () => document.getElementById('baseAirport')?.value },
   rejoin: { step: 1, name: 'rejoinAirlineName', code: 'rejoinAirlineCode', iata: 'rejoinIataCode', error: 'rejoinError',   base: () => (typeof rejoinAirportId !== 'undefined' ? rejoinAirportId : null) }
 };
@@ -2081,6 +2083,7 @@ async function createSinglePlayerWorld() {
   const timeAcceleration = document.getElementById('spSpeed').value;
   const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value;
   const pauseOnSessionEnd = document.querySelector('input[name="spPauseOnLeave"]:checked')?.value === 'pause';
+  const aiMaturity = document.querySelector('input[name="spMaturity"]:checked')?.value || 'brand_new';
   const airlineName = document.getElementById('spAirlineName').value.trim();
   const airlineCode = document.getElementById('spAirlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('spIataCode').value.trim().toUpperCase();
@@ -2168,7 +2171,7 @@ async function createSinglePlayerWorld() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name, era, timeAcceleration, difficulty, pauseOnSessionEnd,
+        name, era, timeAcceleration, difficulty, pauseOnSessionEnd, aiMaturity,
         baseAirportId, airlineName, airlineCode, iataCode,
         cleaningContractor, groundContractor, engineeringContractor,
         ...getBranding('sp')

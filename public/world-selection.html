@@ -140,18 +140,20 @@
     </div>
     <div class="modal-body">
       <!-- Step Indicators -->
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-        <div id="spStepInd1" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">1. WORLD</div>
-        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd2" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">2. AIRLINE</div>
-        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd3" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">3. BRANDING</div>
-        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd4" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">4. CABIN SERVICES</div>
-        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd5" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">5. GROUND</div>
-        <div style="width: 0.75rem; height: 2px; background: var(--border-color);"></div>
-        <div id="spStepInd6" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.7rem; transition: all 0.3s;">6. ENGINEERING</div>
+      <div style="display: flex; gap: 0.35rem; margin-bottom: 0.5rem; align-items: center;">
+        <div id="spStepInd1" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--accent-color); border-radius: 4px; text-align: center; color: white; font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">1. WORLD</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd2" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">2. MATURITY</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd3" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">3. AIRLINE</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd4" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">4. BRANDING</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd5" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">5. CABIN</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd6" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">6. GROUND</div>
+        <div style="width: 0.5rem; height: 2px; background: var(--border-color);"></div>
+        <div id="spStepInd7" style="flex: 1; padding: 0.4rem 0.4rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 4px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.65rem; transition: all 0.3s;">7. ENGINE</div>
       </div>
 
       <!-- STEP 1: World Setup -->
@@ -212,7 +214,47 @@
           </div>
         </div>
 
-        <!-- Row 2: When I leave — two options side by side -->
+      </div>
+
+      <!-- STEP 2: World Maturity & Session -->
+      <div id="spStep2" style="display: none;">
+        <!-- World Maturity -->
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label>WORLD MATURITY</label>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Choose how established the AI airlines already are. You always start fresh &mdash; this only ages your rivals.</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: stretch;">
+            <label class="difficulty-option">
+              <input type="radio" name="spMaturity" value="brand_new" checked>
+              <div>
+                <div style="font-weight: 600; color: #22c55e;">Brand New</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Everyone starts from zero. AI airlines build their fleets and networks from scratch alongside you.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spMaturity" value="developing">
+              <div>
+                <div style="font-weight: 600; color: #3b82f6;">Developing</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Rivals have been flying a few weeks &mdash; small fleets and a handful of routes already running.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spMaturity" value="established">
+              <div>
+                <div style="font-weight: 600; color: #f59e0b;">Established</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">A few months in. AI carriers hold real networks and route dominance &mdash; you're the newcomer.</div>
+              </div>
+            </label>
+            <label class="difficulty-option">
+              <input type="radio" name="spMaturity" value="mature">
+              <div>
+                <div style="font-weight: 600; color: #ef4444;">Mature</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Up to a year of head start. Big incumbent fleets and entrenched competition. The toughest way in.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- When I leave — two options side by side -->
         <div class="form-group" style="margin-bottom: 1rem;">
           <label>WHEN I LEAVE</label>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.25rem; align-items: stretch;">
@@ -233,7 +275,7 @@
           </div>
         </div>
 
-        <!-- Row 3: Summary -->
+        <!-- Summary -->
         <div class="form-info" style="margin-top: 0;">
           <p id="spStartingCapital">Starting Capital: Loading...</p>
           <p>Starting Reputation: 50/100</p>
@@ -245,8 +287,8 @@
         </div>
       </div>
 
-      <!-- STEP 2: Your Airline -->
-      <div id="spStep2" style="display: none;">
+      <!-- STEP 3: Your Airline -->
+      <div id="spStep3" style="display: none;">
         <div class="join-modal-grid">
           <div class="join-modal-col">
             <div class="form-group">
@@ -300,8 +342,8 @@
         </div>
       </div>
 
-      <!-- STEP 3: Airline Branding -->
-      <div id="spStep3" style="display: none;">
+      <!-- STEP 4: Airline Branding -->
+      <div id="spStep4" style="display: none;">
         <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">Give your airline a look &mdash; pick your colours and a logo.</p>
         <div class="form-group branding-group">
           <label>AIRLINE BRANDING</label>
@@ -316,8 +358,8 @@
         </div>
       </div>
 
-      <!-- STEP 4: Cabin Services -->
-      <div id="spStep4" style="display: none;">
+      <!-- STEP 5: Cabin Services -->
+      <div id="spStep5" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Cabin Services</p>
           <p style="font-size: 0.8rem;">As a startup airline, you won't have in-house cabin cleaning teams. You'll need to outsource cabin services to a third-party contractor. As your airline grows, you may eventually bring these operations in-house — but for now, choose a partner to get you off the ground.</p>
@@ -360,8 +402,8 @@
         </div>
       </div>
 
-      <!-- STEP 5: Ground Handling -->
-      <div id="spStep5" style="display: none;">
+      <!-- STEP 6: Ground Handling -->
+      <div id="spStep6" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Ground Handling</p>
           <p style="font-size: 0.8rem;">Your airline doesn't yet have the ground staff or equipment for baggage handling, boarding, and fuelling. You'll need a ground handling partner at every airport you operate from. Choose a contractor that fits your priorities — speed, cost, or passenger experience.</p>
@@ -404,8 +446,8 @@
         </div>
       </div>
 
-      <!-- STEP 6: Engineering -->
-      <div id="spStep6" style="display: none;">
+      <!-- STEP 7: Engineering -->
+      <div id="spStep7" style="display: none;">
         <div class="form-info" style="background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.3); margin-bottom: 1rem;">
           <p style="color: #3b82f6; font-weight: 600; font-size: 0.9rem;">Outsourced Engineering & MRO</p>
           <p style="font-size: 0.8rem;">Without your own hangars or engineering team, all maintenance, repair, and overhaul (MRO) work must be contracted out. Your choice of engineering partner directly affects aircraft reliability and operating costs. As your fleet grows, you may invest in your own MRO facilities.</p>
