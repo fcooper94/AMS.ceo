@@ -120,17 +120,82 @@ function _attachTooltips(container) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Belly cargo compartments (holds), by ICAO type code.
+// Real lower-deck hold layout tracks fuselage size, so aircraft map to one of a
+// few templates (nose→tail order, fractional lengths). Used to draw bulkhead
+// dividers + labels over the belly-hold diagram so the physical compartments are
+// visible — e.g. a 747 shows Forward / Aft / Bulk holds. Purely visual: cargo is
+// still allocated by type.
+const HOLD_TEMPLATES = {
+  WB3:  [{ code: 'FWD',  label: 'Fwd Hold', frac: 0.42 }, { code: 'AFT', label: 'Aft Hold', frac: 0.40 }, { code: 'BULK', label: 'Bulk', frac: 0.18 }],
+  NB3:  [{ code: 'FWD',  label: 'Fwd Hold', frac: 0.42 }, { code: 'AFT', label: 'Aft Hold', frac: 0.38 }, { code: 'BULK', label: 'Bulk', frac: 0.20 }],
+  NB2:  [{ code: 'FWD',  label: 'Fwd Hold', frac: 0.52 }, { code: 'AFT', label: 'Aft Hold', frac: 0.48 }],
+  REG2: [{ code: 'FWD',  label: 'Fwd Hold', frac: 0.45 }, { code: 'AFT', label: 'Aft Hold', frac: 0.55 }],
+  ONE:  [{ code: 'HOLD', label: 'Cargo Hold', frac: 1.0 }]
+};
+
+// Per-ICAO hold layout. Cargo-only freighters and airships are omitted (they use
+// the dual-deck / no cargo-config paths). Built from grouped lists for brevity.
+const AIRCRAFT_HOLDS = {};
+[
+  // Widebodies — forward + aft containerised holds + a rear bulk hold
+  ['WB3', ['A306','A30B','A310','A332','A333','A338','A339','A342','A343','A345','A346',
+           'A358','A359','A35K','A388','B741','B742','B743','B744','B748','B762','B763',
+           'B764','B772','B773','B778','B779','B77W','B788','B789','B78X','DC10','IL86','IL96','L101','MD11']],
+  // Long narrowbodies that also carry a bulk hold
+  ['NB3', ['B703','B752','B753','DC85','DC86','IL62','T204']],
+  // Narrowbodies — forward + aft holds
+  ['NB2', ['A20N','A21N','A318','A319','A320','A321','AVYO','B377','B37M','B38M','B39M','B3XM',
+           'B721','B722','B731','B732','B733','B734','B735','B736','B737','B738','B739','BA11',
+           'BCS1','BCS3','COMT','CONI','DC4','DC6','DC6B','DC7','DC91','DC93','HPH4','IL18','L188',
+           'L749','MC23','MD80','MD81','MD82','MD83','MD87','MD88','MD90','S210','T104','T134','T154','YK42']],
+  // Larger regionals — two small holds
+  ['REG2', ['A140','A148','A158','AN24','AT44','AT45','AT72','AT75','AT76','ATP','B461','B462','B463',
+            'C46','CRJ1','CRJ2','CRJ7','CRJ9','CRJX','CVLP','CVLT','DH8C','DH8D','DHC7','E145','E170',
+            'E190','E195','E290','E295','E75L','E75S','F100','F27','F28','F50','F60','F70','HPR7',
+            'RJ1H','RJ70','RJ85','SB20','SU95','VISC','YS11']],
+  // Single hold — small props, commuters, and light aircraft
+  ['ONE', ['AN2','AT43','AT46','B17C','B17W','B190','BE18','BE99','BN2P','C182','C208','C212','C408',
+           'C441','CL15','CONC','D228','D328','DA62','DC3','DH2T','DH8A','DH8B','DHC2','DHC3','DHC6',
+           'DOVE','E110','E120','E135','E140','F406','G21','GA8','HERN','IL12','IL14','J328','JS31',
+           'JS32','JS41','K100','L410','M202','M404','N262','NOMA','P212','P68','P750','PA31','PA46',
+           'PAY3','PC12','PC24','PC6T','SC7','SC90','SDRM','SF34','SH33','SH36','SW4','TBM9','TRIS','Y12','YK40']]
+].forEach(([tmpl, list]) => list.forEach(icao => { AIRCRAFT_HOLDS[icao] = tmpl; }));
+
+// Resolve the belly-hold compartments for an aircraft (nose→tail), or null.
+// Falls back to a size/type rule for any airframe not explicitly mapped.
+function getAircraftHolds(aircraft) {
+  if (!aircraft) return null;
+  let tmpl = AIRCRAFT_HOLDS[aircraft.icaoCode];
+  if (!tmpl) {
+    const cap = aircraft.passengerCapacity || 0;
+    if (aircraft.type === 'Widebody') tmpl = 'WB3';
+    else if (aircraft.type === 'Narrowbody') tmpl = cap < 50 ? 'ONE' : 'NB2';
+    else if (aircraft.type === 'Regional') tmpl = cap >= 50 ? 'REG2' : 'ONE';
+    else return null;
+  }
+  return HOLD_TEMPLATES[tmpl] || null;
+}
+
 /**
  * Render SVG aircraft fuselage (top-down view) filled with pallet blocks.
  * Each cargo type's allocation maps to a proportional number of coloured pallets
  * arranged in a 2-column grid inside the fuselage, clipped to its outline.
+ * `holds` (optional): belly compartments to overlay as bulkhead dividers + labels
+ * (landscape view only).
  */
-function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0, landscape = false) {
+function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0, landscape = false, holds = null, bellySize = 'lg') {
   const sfx = idSuffix || '';
   const activeTypes = types.filter(t => config[t] > 0);
-  const W = 200;
+  // Fuselage cross-section width — narrower for small aircraft so the body hugs
+  // its 2-column pallet grid instead of looking fat. Widebodies keep the full 200.
+  const W = (landscape ? { sm: 128, md: 158, lg: 200 }[bellySize] : 200) || 200;
   const H = holdHeight || 360;
   const cx = W / 2;
+  // COCKPIT label scales with the (smaller) nose on small aircraft.
+  const cockpitFont = landscape ? ({ sm: 5, md: 6.5, lg: 8 }[bellySize] || 8) : 8;
+  const cockpitLS = (cockpitFont / 8) * 1.5;
 
   // Landscape: the hold is drawn in portrait coords then rotated -90° so the
   // nose points LEFT (matching the cabin diagram). Text is counter-rotated +90°
@@ -178,8 +243,12 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
 
   const vbW = landscape ? H : W;
   const vbH = landscape ? W : H;
+  // Small aircraft cap their display width so the whole diagram (fuselage +
+  // pallets) reads as physically smaller and centred, rather than stretching
+  // across the full modal like a widebody. Large aircraft fill the width.
+  const bellyCapPx = { sm: 520, md: 760 }[bellySize] || null;
   const svgStyle = landscape
-    ? 'width:100%;height:auto;display:block;margin:0 auto;'
+    ? `width:100%;${bellyCapPx ? `max-width:${bellyCapPx}px;` : ''}height:auto;display:block;margin:0 auto;`
     : 'width:100%;height:100%;max-height:100%;display:block;margin:0 auto;';
 
   let svg = `<svg viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet"
@@ -202,7 +271,7 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
     <path d="M${bL + 1},${noseH} C${bL},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},2 C${cx + 2},${noseH * 0.04} ${bR},${noseH * 0.45} ${bR - 1},${noseH} Z"
           fill="rgba(15,23,42,0.45)" stroke="none"/>
     <line x1="${bL + 2}" y1="${noseH}" x2="${bR - 2}" y2="${noseH}" stroke="rgba(100,116,139,0.4)" stroke-width="0.8"/>
-    <text x="${cx}" y="${noseH * 0.6}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="8" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="1.5"${_tr(cx, noseH * 0.6)}>COCKPIT</text>
+    <text x="${cx}" y="${noseH * 0.6}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="${cockpitFont}" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="${cockpitLS}"${_tr(cx, noseH * 0.6)}>COCKPIT</text>
     ` : `
     <!-- Center line -->
     <line x1="${cx}" y1="${bodyTop + 4}" x2="${cx}" y2="${bodyBot - 4}" stroke="rgba(100,116,139,0.07)" stroke-width="0.5" stroke-dasharray="3,3"/>
@@ -231,18 +300,29 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
               fill="rgba(100,116,139,0.35)" font-size="10" font-family="system-ui, sans-serif"${_tr(cx, H / 2)}>Empty</text>`;
   } else {
     // ── Pallet grid setup ──
-    // Landscape: a 3-wide grid of square pallets — more of them to show how the
-    // load is shared, while staying square and centred. Portrait keeps the
-    // compact 2-wide layout used by the freighter view.
-    const cols = landscape ? 3 : 2;
-    const palletW = landscape ? 44 : 72;
-    const palletH = landscape ? 44 : 24;
-    const gapX = landscape ? 7 : 6;
-    const gapY = landscape ? 7 : 4;
-    const palletFont = landscape ? 13 : 9.5;
+    // The landscape grid scales with aircraft size so a tiny AN-2 doesn't get the
+    // same big 3-wide pallets as a widebody. Portrait (freighter) is unchanged.
+    const SZ = {
+      sm: { cols: 2, pallet: 30, gap: 5, font: 10, strip: 14 },
+      md: { cols: 2, pallet: 36, gap: 6, font: 12, strip: 16 },
+      lg: { cols: 3, pallet: 42, gap: 7, font: 13, strip: 18 }
+    };
+    const sz = SZ[bellySize] || SZ.lg;
+    const cols = landscape ? sz.cols : 2;
+    const palletW = landscape ? sz.pallet : 72;
+    const palletH = landscape ? sz.pallet : 24;
+    const gapX = landscape ? sz.gap : 6;
+    const gapY = landscape ? sz.gap : 4;
+    const palletFont = landscape ? sz.font : 9.5;
     const rowH = palletH + gapY;
     const gridW = cols * palletW + (cols - 1) * gapX;
-    const gridX = (W - gridW) / 2;
+
+    // Belly compartments (Fwd/Aft/Bulk). When present, reserve a strip along the
+    // bottom fuselage edge for compartment labels; otherwise centre the grid.
+    const compsOn = landscape && holds && holds.length > 1;
+    const LABEL_STRIP = compsOn ? sz.strip : 0;
+    const gridLeft = bL + LABEL_STRIP;
+    const gridX = gridLeft + Math.max(0, ((bR - gridLeft) - gridW) / 2);
 
     // Usable area inside fuselage body
     const holdUsableTop = bodyTop + 8;
@@ -251,24 +331,76 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
     const PAX_BULKHEAD_H = paxBlockPct > 0 ? 6 : 0;
     const paxHoldH = paxBlockPct > 0 ? Math.max(36, Math.round((pEndY - holdUsableTop) * paxBlockPct)) : 0;
     const pStartY = holdUsableTop + paxHoldH + PAX_BULKHEAD_H;
-    const numRows = Math.floor((pEndY - pStartY) / rowH);
+
+    // Split the hold length into compartments (each a block of rows separated by
+    // a bulkhead gap). Single pseudo-compartment when not a multi-hold belly.
+    const comps = compsOn ? holds : [{ frac: 1, label: null, code: null }];
+    const nComp = comps.length;
+    const COMP_GAP = compsOn ? 12 : 0;
+    const availH = pEndY - pStartY - (nComp - 1) * COMP_GAP;
+    let numRows = Math.max(nComp, Math.floor(availH / rowH));
+    const rowsPerComp = [];
+    let rowsLeft = numRows;
+    for (let c = 0; c < nComp; c++) {
+      let r = (c === nComp - 1) ? rowsLeft : Math.max(1, Math.round(comps[c].frac * numRows));
+      r = Math.max(1, Math.min(r, rowsLeft - (nComp - 1 - c)));
+      rowsPerComp.push(r); rowsLeft -= r;
+    }
+    numRows = rowsPerComp.reduce((s, r) => s + r, 0);
     const totalSlots = numRows * cols;
 
-    // Distribute slots proportionally to each type
-    const slots = [];
+    // Per-row Y (with compartment gaps) + compartment top/bottom for dividers/labels
+    const rowYs = [];
+    const compTopY = [], compBotY = [];
+    let yc = pStartY;
+    for (let c = 0; c < nComp; c++) {
+      if (c > 0) yc += COMP_GAP;
+      compTopY[c] = yc;
+      for (let lr = 0; lr < rowsPerComp[c]; lr++) { rowYs.push(yc); yc += rowH; }
+      compBotY[c] = yc - gapY;
+    }
+
+    // Slot counts per type (proportional to allocation)
+    const counts = {};
     let remaining = totalSlots;
     for (let i = 0; i < activeTypes.length; i++) {
       const t = activeTypes[i];
       let count;
-      if (i === activeTypes.length - 1) {
-        count = remaining;
-      } else {
-        const minForRest = activeTypes.length - 1 - i; // at least 1 per remaining type
+      if (i === activeTypes.length - 1) count = remaining;
+      else {
+        const minForRest = activeTypes.length - 1 - i;
         count = Math.max(1, Math.round((config[t] / totalCapacity) * totalSlots));
         count = Math.min(count, remaining - minForRest);
       }
-      for (let j = 0; j < count; j++) slots.push(t);
-      remaining -= count;
+      counts[t] = count; remaining -= count;
+    }
+
+    // Assign types to compartments: a BULK hold carries GENERAL cargo only; all
+    // the special types go in the other holds (Fwd/Aft), with general filling the
+    // rest and pushing the specials toward the tail.
+    const genType = 'general';
+    const specialsArr = [];
+    for (const t of activeTypes) { if (t !== genType) for (let k = 0; k < (counts[t] || 0); k++) specialsArr.push(t); }
+    let genForBulk = 0, bulkSlotsTotal = 0;
+    for (let c = 0; c < nComp; c++) if (comps[c].code === 'BULK') bulkSlotsTotal += rowsPerComp[c] * cols;
+    genForBulk = Math.min(counts[genType] || 0, bulkSlotsTotal);
+    let genForRest = (counts[genType] || 0) - genForBulk;
+    let sPtr = 0;
+    const placed = new Array(totalSlots).fill(null);
+    let idx = 0;
+    for (let c = 0; c < nComp; c++) {
+      const n = rowsPerComp[c] * cols;
+      const isBulk = comps[c].code === 'BULK';
+      for (let k = 0; k < n; k++, idx++) {
+        if (isBulk) { if (genForBulk > 0) { placed[idx] = genType; genForBulk--; } }
+        else if (genForRest > 0) { placed[idx] = genType; genForRest--; }
+        else if (sPtr < specialsArr.length) { placed[idx] = specialsArr[sPtr++]; }
+      }
+    }
+    // Extreme case (general < bulk capacity): spill leftover specials into empties.
+    if (sPtr < specialsArr.length) {
+      for (let i = 0; i < placed.length && sPtr < specialsArr.length; i++)
+        if (placed[i] === null) placed[i] = specialsArr[sPtr++];
     }
 
     // Render clipped pallet group
@@ -280,56 +412,99 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       const plY = paxY + paxHoldH / 2;
       svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
       svg += `<text x="${cx}" y="${plY}" text-anchor="middle" dominant-baseline="central" fill="rgba(59,130,246,0.9)" font-size="9" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, plY)}>PAX CABIN</text>`;
-      // Bulkhead bar
       svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
       svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.8)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, paxY + paxHoldH + PAX_BULKHEAD_H/2)}>BULKHEAD</text>`;
     }
 
-    // Background zones — light tint behind each type group
-    let zoneStart = 0;
-    let prevType = slots[0];
-    for (let i = 0; i <= slots.length; i++) {
-      if (i === slots.length || slots[i] !== prevType) {
-        const startRow = Math.floor(zoneStart / cols);
-        const endRow = Math.floor((i - 1) / cols);
-        const zy = pStartY + startRow * rowH - 1;
-        const zh = (endRow - startRow + 1) * rowH + 2;
-        const ct = CARGO_TYPES[prevType];
-        svg += `<rect x="0" y="${zy}" width="${W}" height="${zh}" fill="${ct.color}" opacity="0.1"/>`;
-        if (startRow > 0) {
-          svg += `<line x1="${gridX}" y1="${zy}" x2="${gridX + gridW}" y2="${zy}"
-                    stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>`;
-        }
-        if (i < slots.length) { prevType = slots[i]; zoneStart = i; }
-      }
+    // Background zones — light tint behind each contiguous same-type run
+    let z = 0;
+    while (z < placed.length) {
+      if (placed[z] === null) { z++; continue; }
+      let zEnd = z;
+      while (zEnd + 1 < placed.length && placed[zEnd + 1] === placed[z]) zEnd++;
+      const sRow = Math.floor(z / cols), eRow = Math.floor(zEnd / cols);
+      const zy = rowYs[sRow] - 1;
+      const zh = (rowYs[eRow] + palletH + 1) - zy;
+      const ct = CARGO_TYPES[placed[z]];
+      svg += `<rect x="0" y="${zy}" width="${W}" height="${zh}" fill="${ct.color}" opacity="0.1"/>`;
+      z = zEnd + 1;
     }
 
     // Render pallets
-    for (let i = 0; i < slots.length; i++) {
+    for (let i = 0; i < placed.length; i++) {
+      const t = placed[i];
+      if (!t) continue;
       const row = Math.floor(i / cols);
       const col = i % cols;
-      const t = slots[i];
       const ct = CARGO_TYPES[t];
       const px = gridX + col * (palletW + gapX);
-      const py = pStartY + row * rowH;
+      const py = rowYs[row];
 
-      // Pallet body
       svg += `<rect x="${px}" y="${py}" width="${palletW}" height="${palletH}" rx="3" ry="3"
                 fill="${ct.color}" opacity="0.6" stroke="${ct.border}" stroke-width="0.75"/>`;
-      // Top accent strip (handle/latch bar)
       svg += `<rect x="${px + 1}" y="${py}" width="${palletW - 2}" height="3.5" rx="1.5" ry="1.5"
                 fill="${ct.border}" opacity="0.55"/>`;
-      // Bottom shadow
       svg += `<rect x="${px + 2}" y="${py + palletH - 2}" width="${palletW - 4}" height="2" rx="1" ry="1"
                 fill="rgba(0,0,0,0.12)"/>`;
-      // Label (outlined text for readability) — centred on the pallet
       svg += `<text x="${px + palletW / 2}" y="${py + palletH / 2}" text-anchor="middle" dominant-baseline="central"
                 fill="white" font-size="${palletFont}" font-weight="600" letter-spacing="0.5"
                 font-family="system-ui, sans-serif"
                 stroke="rgba(0,0,0,0.35)" stroke-width="2" paint-order="stroke"${_tr(px + palletW / 2, py + palletH / 2)}>${ct.code}</text>`;
     }
 
+    // Compartment bulkhead dividers + labels along the bottom edge
+    if (compsOn) {
+      for (let c = 0; c < nComp; c++) {
+        if (c > 0) {
+          const gy = (compBotY[c - 1] + compTopY[c]) / 2;
+          svg += `<rect x="${bL}" y="${gy - 2}" width="${bR - bL}" height="4" rx="1"
+                    fill="rgba(15,23,42,0.55)" stroke="rgba(148,163,184,0.55)" stroke-width="0.6"/>`;
+        }
+        const label = comps[c].label;
+        if (label) {
+          const midY = (compTopY[c] + compBotY[c]) / 2;
+          const lx = bL + LABEL_STRIP / 2;
+          svg += `<text x="${lx}" y="${midY}" text-anchor="middle" dominant-baseline="central"
+                    fill="rgba(226,232,240,0.95)" font-size="8" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" stroke="rgba(15,23,42,0.8)" stroke-width="2.6"
+                    paint-order="stroke"${_tr(lx, midY)}>${label.toUpperCase()}</text>`;
+        }
+      }
+    }
+
     svg += `</g>`;
+  }
+
+  // Belly compartment dividers for an EMPTY hold (a filled hold draws its own
+  // dividers/labels inline above). Fraction-based split; labels along the bottom.
+  if (landscape && holds && holds.length > 1 && activeTypes.length === 0) {
+    const holdUsableTop = bodyTop + 8;
+    const pEndY = bodyBot - 6;
+    const PAX_BULKHEAD_H = paxBlockPct > 0 ? 6 : 0;
+    const paxHoldH = paxBlockPct > 0 ? Math.max(36, Math.round((pEndY - holdUsableTop) * paxBlockPct)) : 0;
+    const cStart = holdUsableTop + paxHoldH + PAX_BULKHEAD_H;
+    const cLen = pEndY - cStart;
+    const LABEL_STRIP = 18;
+    if (cLen > 20) {
+      svg += `<g clip-path="url(#fc${sfx})">`;
+      let y = cStart;
+      for (let i = 0; i < holds.length; i++) {
+        const seg = holds[i];
+        const segH = (i === holds.length - 1) ? (pEndY - y) : Math.round(cLen * seg.frac);
+        if (i > 0) {
+          svg += `<rect x="${bL}" y="${y - 2}" width="${bR - bL}" height="4" rx="1"
+                    fill="rgba(15,23,42,0.55)" stroke="rgba(148,163,184,0.55)" stroke-width="0.6"/>`;
+        }
+        const midY = y + segH / 2;
+        const lx = bL + LABEL_STRIP / 2;
+        svg += `<text x="${lx}" y="${midY}" text-anchor="middle" dominant-baseline="central"
+                  fill="rgba(226,232,240,0.9)" font-size="8" font-weight="700" letter-spacing="1"
+                  font-family="system-ui, sans-serif" stroke="rgba(15,23,42,0.8)" stroke-width="2.6"
+                  paint-order="stroke"${_tr(lx, midY)}>${seg.label.toUpperCase()}</text>`;
+        y += segH;
+      }
+      svg += `</g>`;
+    }
   }
 
   if (landscape) svg += `</g>`;
@@ -358,6 +533,17 @@ function getCombiCargoSplit(aircraft) {
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
 function _formatKg(kg) { return kg >= 1000 ? (kg / 1000).toFixed(1) + 't' : kg + 'kg'; }
+
+// Size class for the belly-hold pallet grid — scales pallet count/size to the
+// aircraft so small types (AN-2, Twin Otter) get a compact 2-wide grid and
+// widebodies keep the full 3-wide one.
+function _bellySizeClass(aircraft) {
+  if (!aircraft || aircraft.type === 'Widebody') return 'lg';
+  const cap = aircraft.passengerCapacity || 0;
+  if (cap < 20) return 'sm';
+  if (cap < 60) return 'md';
+  return 'lg';
+}
 
 /** Build a default cargo split across types for the given capacity.
  *  Allocates percentages to each non-general type, rounded to step sizes.
@@ -530,9 +716,17 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
         ? Math.min(0.5, (aircraft.passengerCapacity * 100) / (aircraft.cargoCapacityKg + aircraft.passengerCapacity * 100))
         : 0);
 
+  // Belly compartments to overlay as bulkhead dividers. Skipped on a combi's
+  // MAIN DECK section (that's the main freight deck, not a lower-deck hold).
+  const bellyHolds = (options?.sectionLabel && /main deck/i.test(options.sectionLabel))
+    ? null : getAircraftHolds(aircraft);
+  const bellySize = _bellySizeClass(aircraft);
+  // Shorter fuselage (and so fewer pallet rows) for smaller aircraft.
+  const bellyHoldLen = { sm: 240, md: 360, lg: 560 }[bellySize] || 560;
+
   function renderDiagram() {
     const c = document.getElementById('cargoDiagramContainer');
-    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, 560, '_single', paxBlockPct, true);
+    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, bellyHoldLen, '_single', paxBlockPct, true, bellyHolds, bellySize);
   }
 
   function updateUI() {
