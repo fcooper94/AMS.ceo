@@ -31,7 +31,7 @@ const Aircraft = sequelize.define('Aircraft', {
     comment: 'ICAO aircraft type designator (e.g., B77L, A359)'
   },
   type: {
-    type: DataTypes.ENUM('Narrowbody', 'Widebody', 'Regional', 'Cargo'),
+    type: DataTypes.ENUM('Narrowbody', 'Widebody', 'Regional', 'Cargo', 'Airship'),
     allowNull: false
   },
   rangeCategory: {

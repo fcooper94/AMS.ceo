@@ -655,9 +655,11 @@ function filterAircraft() {
   }
 
   if (type) {
-    filteredAircraft = filteredAircraft.filter(aircraft =>
-      aircraft.type === type
-    );
+    // "Combi" isn't a stored airframe type — combis keep their airframe type
+    // (Narrowbody/Widebody/Regional) plus an isCombi flag, so match on that.
+    filteredAircraft = (type === 'Combi')
+      ? filteredAircraft.filter(aircraft => aircraft.isCombi)
+      : filteredAircraft.filter(aircraft => aircraft.type === type);
   }
 
   if (range) {

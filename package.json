@@ -12,6 +12,7 @@
     "db:fix-maintenance-schema": "node src/scripts/fixRecurringMaintenanceSchema.js",
     "db:seed-aircraft": "node src/scripts/seedAircraft.js",
     "db:seed-historical-aircraft": "node src/scripts/seedHistoricalAircraft.js",
+    "db:add-airships-combis": "node src/scripts/addAirshipsAndCombis.js",
     "db:seed-airports": "node src/scripts/seedAirports.js",
     "db:seed-major-airports": "node src/scripts/seedMajorAirports.js",
     "db:import-airports": "node src/scripts/importOurAirports.js",

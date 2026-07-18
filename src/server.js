@@ -642,6 +642,10 @@ server.listen(PORT, () => {
       await sequelize.query(`ALTER TYPE enum_user_aircraft_status ADD VALUE IF NOT EXISTS 'scrapping'`);
     } catch (_) { /* enum may not exist yet */ }
     try {
+      // Allow airships as an aircraft type (seeded via seedHistoricalAircraft)
+      await sequelize.query(`ALTER TYPE enum_aircraft_type ADD VALUE IF NOT EXISTS 'Airship'`);
+    } catch (_) { /* enum may not exist yet */ }
+    try {
       await sequelize.query(`
         ALTER TABLE user_aircraft
           ADD COLUMN IF NOT EXISTS scrap_price DECIMAL(15,2),

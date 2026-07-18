@@ -20,7 +20,8 @@ const TYPE_DURATION_MULTIPLIER = {
   Regional: 0.4,
   Narrowbody: 1.0,
   Widebody: 1.8,
-  Cargo: 1.2
+  Cargo: 1.2,
+  Airship: 0.5
 };
 
 // Default check intervals (how long a check stays valid). A is flight-hours
