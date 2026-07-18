@@ -19,12 +19,15 @@ class AirportCacheService {
   /**
    * Generate cache key based on query parameters
    */
-  getCacheKey(worldId, type, country, search, eraYear) {
+  getCacheKey(worldId, type, country, search, eraYear, difficulty) {
     const parts = [worldId || 'default'];
     if (eraYear) parts.push(`era:${eraYear}`);
     if (type) parts.push(`type:${type}`);
     if (country) parts.push(`country:${country}`);
     if (search) parts.push(`search:${search}`);
+    // Difficulty only changes the forecast competitor count (setup preview, no
+    // world yet); include it in the key so easy/medium/hard previews don't collide.
+    if (!worldId && difficulty) parts.push(`diff:${difficulty}`);
     return parts.join('_');
   }
 
@@ -40,8 +43,8 @@ class AirportCacheService {
   /**
    * Get airports from cache if available and valid
    */
-  get(worldId, type, country, search, eraYear) {
-    const key = this.getCacheKey(worldId, type, country, search, eraYear);
+  get(worldId, type, country, search, eraYear, difficulty) {
+    const key = this.getCacheKey(worldId, type, country, search, eraYear, difficulty);
     const cacheEntry = this.cache.get(key);
 
     if (this.isCacheValid(cacheEntry)) {
@@ -60,8 +63,8 @@ class AirportCacheService {
   /**
    * Store airports in cache
    */
-  set(worldId, type, country, search, data, eraYear) {
-    const key = this.getCacheKey(worldId, type, country, search, eraYear);
+  set(worldId, type, country, search, data, eraYear, difficulty) {
+    const key = this.getCacheKey(worldId, type, country, search, eraYear, difficulty);
     this.cache.set(key, {
       data,
       timestamp: Date.now()
@@ -123,7 +126,7 @@ class AirportCacheService {
    * Fetch and cache airports for a specific world
    * This is the main method that queries the database
    */
-  async fetchAndCacheAirports(worldId, type, country, search, eraYear) {
+  async fetchAndCacheAirports(worldId, type, country, search, eraYear, difficulty) {
     const { Op } = require('sequelize');
 
     // Build where clause
@@ -234,14 +237,29 @@ class AirportCacheService {
     // Calculate dynamic traffic and infrastructure based on year
     let worldYear = filterYear || 2024;
 
+    // Setup-preview forecast: with no world there's nothing to count, so predict
+    // the competitors a player would face if they based at each airport, from the
+    // difficulty's base-competitor config. `forecast` flags these as estimates.
+    const forecastMode = !worldId && !!difficulty;
+    let getForecastCompetitors = null;
+    if (forecastMode) {
+      ({ getForecastCompetitors } = require('../data/aiDifficultyConfig'));
+    }
+
     // Apply dynamic metrics and historical country names to each airport
     const airportsWithDynamicData = airportsWithData.map(airport => {
       const metrics = airportGrowthService.getAirportMetricsExtended(airport, worldYear);
       const historicalCountry = historicalCountryService.getHistoricalCountryName(airport.country, worldYear);
 
+      const airlinesBasedHere = forecastMode
+        ? getForecastCompetitors(airport.type, difficulty)
+        : airport.airlinesBasedHere;
+
       return {
         ...airport,
         country: historicalCountry,
+        airlinesBasedHere,
+        forecast: forecastMode,
         trafficDemand: metrics.trafficDemand,
         movementsIndex: metrics.movementsIndex,
         infrastructureLevel: metrics.infrastructureLevel,
@@ -261,7 +279,7 @@ class AirportCacheService {
     }
 
     // Cache the result
-    this.set(worldId, type, country, search, airportsWithDynamicData, eraYear);
+    this.set(worldId, type, country, search, airportsWithDynamicData, eraYear, difficulty);
 
     return airportsWithDynamicData;
   }

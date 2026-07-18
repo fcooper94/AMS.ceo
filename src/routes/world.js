@@ -414,17 +414,21 @@ router.get('/:worldId/info', async (req, res) => {
 router.get('/airports', async (req, res) => {
   try {
     const startTime = Date.now();
-    const { type, search, country, worldId, era } = req.query;
+    const { type, search, country, worldId, era, difficulty } = req.query;
 
     // Determine effective world ID
     const effectiveWorldId = worldId || req.session?.activeWorldId;
     // Era override: used when creating a new SP world (no worldId yet)
     const eraYear = era ? parseInt(era, 10) : null;
+    // Difficulty: only used to forecast competitors when creating a new SP world
+    // (no world exists yet, so there's nothing to count).
+    const validDifficulties = ['easy', 'medium', 'hard'];
+    const forecastDifficulty = (!effectiveWorldId && validDifficulties.includes(difficulty)) ? difficulty : null;
 
-    console.log(`[AIRPORT API] Request - worldId: ${effectiveWorldId}, era: ${eraYear}, type: ${type}, country: ${country}, search: ${search}`);
+    console.log(`[AIRPORT API] Request - worldId: ${effectiveWorldId}, era: ${eraYear}, difficulty: ${forecastDifficulty}, type: ${type}, country: ${country}, search: ${search}`);
 
     // Try to get from cache first
-    let airportsData = airportCacheService.get(effectiveWorldId, type, country, search, eraYear);
+    let airportsData = airportCacheService.get(effectiveWorldId, type, country, search, eraYear, forecastDifficulty);
     let isFirstLoad = false;
 
     // If not in cache, fetch from database and cache it
@@ -436,7 +440,8 @@ router.get('/airports', async (req, res) => {
         type,
         country,
         search,
-        eraYear
+        eraYear,
+        forecastDifficulty
       );
     } else {
       console.log('[AIRPORT API] Cache HIT - returning cached data');

@@ -285,6 +285,23 @@ function getAICount(difficulty) {
 }
 
 /**
+ * Forecast how many AI competitors a player would face if they based at an
+ * airport of the given type, for the given difficulty. Used by the world-setup
+ * airport picker (no world exists yet, so there's nothing to count) to preview
+ * the guaranteed competition at a prospective home base. This is the same for
+ * every maturity — maturity ages competitors, it doesn't change how many spawn.
+ * @param {string} airportType - 'International Hub' | 'Major' | 'Regional' | 'Small Regional'
+ * @param {string} difficulty - 'easy', 'medium', 'hard'
+ * @returns {number} - expected competitors based at that airport
+ */
+function getForecastCompetitors(airportType, difficulty) {
+  const config = AI_DIFFICULTY[difficulty] || AI_DIFFICULTY.medium;
+  const bands = config.baseAirportCompetitors || {};
+  const band = bands[airportType] || bands['Regional'] || { min: 0, max: 0 };
+  return Math.round((band.min + band.max) / 2);
+}
+
+/**
  * Pick an AI personality based on difficulty weights
  * @param {string} difficulty - 'easy', 'medium', 'hard'
  * @returns {string} - 'aggressive', 'conservative', or 'balanced'
@@ -304,6 +321,7 @@ module.exports = {
   AI_DIFFICULTY,
   AIRLINE_ARCHETYPES,
   getAICount,
+  getForecastCompetitors,
   pickPersonality,
   pickArchetype
 };

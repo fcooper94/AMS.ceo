@@ -810,7 +810,16 @@ function renderAirportStats(airport, containerId, isNewWorld) {
   const pax = formatPax(airport.annualPassengers);
   const competitors = airport.airlinesBasedHere || 0;
   let compColor, compLabel;
-  if (isNewWorld) {
+  if (isNewWorld && airport.forecast) {
+    // Forecast of rivals that will be based here (world doesn't exist yet).
+    if (competitors === 0) {
+      compColor = '#22c55e';
+      compLabel = 'Little competition expected';
+    } else {
+      compColor = competitors <= 3 ? '#f59e0b' : '#ef4444';
+      compLabel = `~${competitors} expected`;
+    }
+  } else if (isNewWorld) {
     compColor = 'var(--text-secondary)';
     compLabel = 'None — world has not started';
   } else if (competitors === 0) {
@@ -1364,6 +1373,8 @@ async function loadAllAirports() {
     if (airportBrowserContext === 'sp') {
       const era = document.getElementById('spEra')?.value;
       if (era) params.set('era', era);
+      const diff = document.querySelector('input[name="spDifficulty"]:checked')?.value;
+      if (diff) params.set('difficulty', diff);
     }
     const qs = params.toString() ? `?${params.toString()}` : '';
     const response = await fetch(`/api/world/airports${qs}`);
@@ -1618,6 +1629,8 @@ function renderAirportBrowser() {
   listDiv.innerHTML = filteredAirports.map(airport => {
     const comp = airport.airlinesBasedHere || 0;
     const compColor = comp === 0 ? '#22c55e' : comp <= 3 ? '#f59e0b' : '#ef4444';
+    const compText = airport.forecast ? `~${comp}` : `${comp}`;
+    const compHeading = airport.forecast ? 'Competitors (est.)' : 'Competitors';
     return `
     <div onclick="selectAirportFromBrowser('${airport.id}')" style="
       padding: 1rem;
@@ -1638,8 +1651,8 @@ function renderAirportBrowser() {
           </div>
         </div>
         <div style="text-align: right;">
-          <div style="font-size: 0.7rem; color: var(--text-secondary);">Competitors</div>
-          <div style="font-weight: 600; color: ${compColor};">${comp}</div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary);">${compHeading}</div>
+          <div style="font-weight: 600; color: ${compColor};">${compText}</div>
         </div>
       </div>
 
@@ -2011,7 +2024,8 @@ async function searchSPAirports(query) {
 
   try {
     const era = document.getElementById('spEra').value;
-    const response = await fetch(`/api/world/airports?search=${encodeURIComponent(query)}&era=${era}`);
+    const diff = document.querySelector('input[name="spDifficulty"]:checked')?.value || '';
+    const response = await fetch(`/api/world/airports?search=${encodeURIComponent(query)}&era=${era}${diff ? `&difficulty=${diff}` : ''}`);
     const resultsDiv = document.getElementById('spAirportResults');
 
     if (!response.ok) {
