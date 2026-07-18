@@ -1484,6 +1484,17 @@ class WorldTimeService {
 
           for (const loan of loans) {
             try {
+              // Idempotent per game week: skip a loan already paid this week.
+              // The in-memory lastLoanWeek gate above resets on every server
+              // restart (frequent under nodemon in dev), which previously let a
+              // loan be charged again on each restart — draining/"paying off" a
+              // loan in a few real hours. lastPaymentGameDate is persisted, so
+              // this guard survives restarts. Both are 'YYYY-MM-DD' strings, so
+              // a lexicographic compare is chronological.
+              if (loan.lastPaymentGameDate && loan.lastPaymentGameDate >= weekStart) {
+                continue;
+              }
+
               const remaining = parseFloat(loan.remainingPrincipal) || 0;
               if (remaining <= 0) {
                 loan.status = 'paid_off';
