@@ -63,6 +63,9 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors());
+// Stripe webhook needs the RAW request body for signature verification, so it
+// must be registered before the JSON body parser below.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), require('./routes/billingWebhook'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -347,6 +350,7 @@ app.use('/api/loans', requireWorld, loansRoutes);
 app.use('/api/airspace', requireWorld, airspaceRoutes);
 app.use('/api/marketing', requireWorld, marketingRoutes);
 app.use('/api/sightseeing-tours', requireWorld, sightseeingRoutes);
+app.use('/api/billing', requireAuth, require('./routes/billing'));
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -672,6 +676,12 @@ server.listen(PORT, () => {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE
       `);
     } catch (_) { /* users table may not exist yet — sync will create it */ }
+    try {
+      // Create the payments table if it doesn't exist (non-destructive CREATE).
+      await require('./models/Payment').sync();
+      // Additive column for admin refunds (sync() won't alter an existing table).
+      await sequelize.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP WITH TIME ZONE`);
+    } catch (e) { console.warn('[boot] payments table sync skipped:', e.message); }
     try {
       await sequelize.query(`
         ALTER TABLE worlds

@@ -20,8 +20,12 @@ const Loan = require('./Loan');
 const AirspaceRestriction = require('./AirspaceRestriction');
 const MarketingCampaign = require('./MarketingCampaign');
 const SightseeingTour = require('./SightseeingTour');
+const Payment = require('./Payment');
 
 // Define associations
+User.hasMany(Payment, { foreignKey: 'user_id', as: 'payments' });
+Payment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 User.belongsToMany(World, {
   through: WorldMembership,
   foreignKey: 'user_id',
@@ -146,5 +150,6 @@ module.exports = {
   Loan,
   AirspaceRestriction,
   MarketingCampaign,
-  SightseeingTour
+  SightseeingTour,
+  Payment
 };

@@ -5,11 +5,13 @@
   <main class="main-content">
     <div class="page-header">
       <h1>CREDITS</h1>
-      <p class="subtitle">MANAGE YOUR CREDITS & SUBSCRIPTIONS</p>
+      <p class="subtitle">TOP UP AND MANAGE YOUR CREDITS</p>
     </div>
 
+    <div id="billingBanner"></div>
+
+    <!-- Summary -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-      <!-- Current Balance -->
       <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
         <div style="padding: 0.5rem 1rem; background: var(--surface-elevated); border-bottom: 1px solid var(--border-color);">
           <span style="font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase;">Current Balance</span>
@@ -19,8 +21,6 @@
           <div id="creditsPageBalanceLabel" style="font-size: 0.75rem; color: var(--text-secondary);">credits available</div>
         </div>
       </div>
-
-      <!-- Weekly Outgoings -->
       <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
         <div style="padding: 0.5rem 1rem; background: var(--surface-elevated); border-bottom: 1px solid var(--border-color);">
           <span style="font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase;">Weekly Outgoings</span>
@@ -33,7 +33,7 @@
     </div>
 
     <!-- World Commitments -->
-    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; margin-bottom: 1rem;">
+    <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; margin-bottom: 1.75rem;">
       <div style="padding: 0.5rem 1rem; background: var(--surface-elevated); border-bottom: 1px solid var(--border-color);">
         <span style="font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase;">World Commitments</span>
       </div>
@@ -42,107 +42,262 @@
       </div>
     </div>
 
-    <!-- Add Credits Section -->
-    <div style="background: var(--surface); border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 6px; overflow: hidden;">
-      <div style="padding: 0.5rem 1rem; background: rgba(37, 99, 235, 0.08); border-bottom: 1px solid rgba(37, 99, 235, 0.2);">
-        <span style="font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: var(--accent-color); text-transform: uppercase;">Add Credits</span>
+    <!-- Buy Credits -->
+    <div id="buyCreditsSection">
+      <div style="text-align: center; margin-bottom: 1rem;">
+        <h2 style="font-size: 1.35rem; color: var(--text-primary); margin: 0 0 0.35rem;">Top up your credits</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 0.75rem;">One credit runs an airline for about a game week. Buy once, and they <strong>never expire</strong>.</p>
+        <label style="font-size: 0.8rem; color: var(--text-muted);">Show prices in
+          <select id="currencySelect" style="margin-left: 0.35rem; background: var(--surface-elevated); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.8rem; cursor: pointer;"></select>
+        </label>
       </div>
-      <div id="addCreditsBody" style="padding: 1rem 1.25rem; text-align: center;">
-        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.25rem;">Credit purchasing coming soon.</p>
-        <p style="color: var(--text-muted); font-size: 0.75rem;">Credits are used to maintain your airline memberships across worlds.</p>
+      <div id="packGrid" class="pack-grid">
+        <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 1.5rem;">Loading packs…</div>
+      </div>
+      <p id="currencyNote" style="display:none; text-align:center; color:var(--text-muted); font-size:0.78rem; margin-top:0.85rem;"></p>
+      <p id="billingDisabledNote" style="display:none; text-align:center; color:var(--text-muted); font-size:0.8rem; margin-top:0.5rem;">Card payments aren't switched on yet — check back soon.</p>
+    </div>
+
+    <!-- Billing history -->
+    <div id="historySection" style="display: none; margin-top: 1.75rem;">
+      <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;">
+        <div style="padding: 0.5rem 1rem; background: var(--surface-elevated); border-bottom: 1px solid var(--border-color);">
+          <span style="font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase;">Purchase History</span>
+        </div>
+        <div id="historyBody" style="padding: 0;"></div>
       </div>
     </div>
   </main>
 </div>
 
+<style>
+  .pack-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; align-items: stretch; }
+  .pack-card { position: relative; background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 1.4rem 1.1rem 1.1rem; display: flex; flex-direction: column; }
+  .pack-card.popular { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color), 0 10px 34px rgba(37,99,235,0.18); }
+  .pack-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--accent-color); color: #fff; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 0.22rem 0.7rem; border-radius: 20px; white-space: nowrap; }
+  .pack-name { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; margin-bottom: 0.5rem; }
+  .pack-credits { font-size: 1.9rem; font-weight: 800; color: var(--text-primary); line-height: 1; }
+  .pack-credits small { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+  .pack-price { font-size: 1.3rem; font-weight: 700; color: var(--text-primary); margin: 0.4rem 0 0.15rem; }
+  .pack-saving { display: inline-block; font-size: 0.66rem; font-weight: 700; color: var(--success-color); background: rgba(5,150,105,0.12); border-radius: 4px; padding: 0.12rem 0.45rem; }
+  .pack-blurb { font-size: 0.8rem; color: var(--text-secondary); margin: 0.7rem 0 0.4rem; line-height: 1.45; }
+  .pack-bullets { list-style: none; padding: 0; margin: 0.2rem 0 1.1rem; font-size: 0.76rem; color: var(--text-secondary); }
+  .pack-bullets li { margin: 0.28rem 0; padding-left: 1.15rem; position: relative; }
+  .pack-bullets li::before { content: '✓'; position: absolute; left: 0; color: var(--success-color); font-weight: 700; }
+  .pack-buy { margin-top: auto; padding: 0.6rem; border: none; border-radius: 6px; background: var(--accent-color); color: #fff; font-weight: 700; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; transition: filter 0.15s; }
+  .pack-buy:hover:not(:disabled) { filter: brightness(1.1); }
+  .pack-buy:disabled { opacity: 0.5; cursor: default; }
+  .hist-row { display: grid; grid-template-columns: 1.3fr 1fr 0.8fr 0.9fr auto; gap: 0.75rem; align-items: center; padding: 0.55rem 1rem; border-bottom: 1px solid var(--border-color); font-size: 0.82rem; }
+  .hist-row .hist-link { color: var(--accent-color); text-decoration: none; font-size: 0.78rem; }
+</style>
+
 <script>
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const [statusRes, worldsRes] = await Promise.all([
-      fetch('/auth/status'),
-      fetch('/api/worlds/my-worlds')
-    ]);
+(function () {
+  let unlimited = false;
+  let _packs = [], _rates = { GBP: 1 }, _enabled = false;
+  let _cur = 'GBP';
+  try { _cur = localStorage.getItem('amsBillingCurrency') || 'GBP'; } catch (e) { /* ignore */ }
 
-    const statusData = await statusRes.json();
-    const worlds = await worldsRes.json();
+  function formatPrice(pence) {
+    const amt = (pence / 100) * (_rates[_cur] || 1);
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: _cur, maximumFractionDigits: _cur === 'JPY' ? 0 : 2 }).format(amt);
+    } catch (e) {
+      return _cur + ' ' + amt.toFixed(2);
+    }
+  }
 
-    // Update balance
-    const balanceEl = document.getElementById('creditsPageBalance');
-    if (balanceEl && statusData.authenticated) {
-      if (statusData.user.unlimitedCredits) {
-        balanceEl.textContent = 'Unlimited';
-        balanceEl.style.color = 'var(--accent-color)';
-        balanceEl.style.fontSize = '1.4rem';
-        const balanceLabel = document.getElementById('creditsPageBalanceLabel');
-        if (balanceLabel) balanceLabel.style.display = 'none';
-      } else {
-        balanceEl.textContent = statusData.user.credits;
-        if (statusData.user.credits < 0) {
-          balanceEl.style.color = 'var(--warning-color)';
-        } else if (statusData.user.credits < 4) {
-          balanceEl.style.color = 'var(--text-secondary)';
+  function updateCurrencyNote() {
+    const note = document.getElementById('currencyNote');
+    if (!note) return;
+    if (_cur === 'GBP') { note.style.display = 'none'; return; }
+    note.style.display = 'block';
+    note.innerHTML = `Prices shown in ${_cur} are an approximate guide — <strong>all payments are charged in GBP (£)</strong>.`;
+  }
+
+  function populateCurrencyDropdown() {
+    const sel = document.getElementById('currencySelect');
+    if (!sel) return;
+    const PREF = [['GBP','GBP (£)'],['USD','USD ($)'],['EUR','EUR (€)'],['AUD','AUD (A$)'],['CAD','CAD (C$)'],['NZD','NZD (NZ$)'],['JPY','JPY (¥)'],['CHF','CHF (Fr)'],['SEK','SEK (kr)'],['ZAR','ZAR (R)'],['INR','INR (₹)'],['BRL','BRL (R$)']];
+    if (!PREF.some(([c]) => c === _cur && _rates[c])) _cur = 'GBP';
+    sel.innerHTML = PREF.filter(([c]) => _rates[c]).map(([c, label]) => `<option value="${c}" ${c === _cur ? 'selected' : ''}>${label}</option>`).join('');
+    sel.onchange = () => { _cur = sel.value; try { localStorage.setItem('amsBillingCurrency', _cur); } catch (e) {} renderPacks(); };
+  }
+
+  function renderPacks() {
+    const grid = document.getElementById('packGrid');
+    if (!grid) return;
+    grid.innerHTML = _packs.map(p => `
+      <div class="pack-card ${p.highlight ? 'popular' : ''}">
+        ${p.badge ? `<div class="pack-badge">${p.badge}${p.highlight ? ' &#11088;' : ''}</div>` : ''}
+        <div class="pack-name">${p.name}</div>
+        <div class="pack-credits">${p.credits} <small>credits</small></div>
+        <div class="pack-price">${formatPrice(p.price)}</div>
+        ${p.saving ? `<span class="pack-saving">Save ${p.saving}%</span>` : ''}
+        <div class="pack-blurb">${p.blurb}</div>
+        <ul class="pack-bullets">${p.bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+        <button class="pack-buy" data-pack="${p.id}" ${_enabled ? '' : 'disabled'}>Buy</button>
+      </div>`).join('');
+    grid.querySelectorAll('.pack-buy').forEach(btn => btn.addEventListener('click', () => buyPack(btn)));
+    updateCurrencyNote();
+  }
+
+  function moneyFromMinor(amount, currency) {
+    const sym = (currency || 'gbp').toLowerCase() === 'gbp' ? '£' : (currency + ' ');
+    return sym + (amount / 100).toFixed(2);
+  }
+
+  function showBanner(kind, msg) {
+    const el = document.getElementById('billingBanner');
+    if (!el) return;
+    const colors = kind === 'success'
+      ? 'background:rgba(5,150,105,0.12); border:1px solid var(--success-color); color:var(--success-color);'
+      : kind === 'error'
+      ? 'background:rgba(220,38,38,0.12); border:1px solid #f85149; color:#f85149;'
+      : 'background:rgba(37,99,235,0.1); border:1px solid rgba(37,99,235,0.4); color:var(--text-secondary);';
+    el.innerHTML = `<div style="${colors} border-radius:6px; padding:0.7rem 1rem; margin-bottom:1rem; font-size:0.85rem;">${msg}</div>`;
+  }
+
+  async function loadSummary() {
+    try {
+      const [statusRes, worldsRes] = await Promise.all([
+        fetch('/auth/status'),
+        fetch('/api/worlds/my-worlds')
+      ]);
+      const statusData = await statusRes.json();
+      const worlds = await worldsRes.json();
+      unlimited = !!(statusData.authenticated && statusData.user.unlimitedCredits);
+
+      const balanceEl = document.getElementById('creditsPageBalance');
+      if (balanceEl && statusData.authenticated) {
+        if (unlimited) {
+          balanceEl.textContent = 'Unlimited';
+          balanceEl.style.color = 'var(--accent-color)';
+          balanceEl.style.fontSize = '1.4rem';
+          const bl = document.getElementById('creditsPageBalanceLabel'); if (bl) bl.style.display = 'none';
+        } else {
+          balanceEl.textContent = statusData.user.credits;
+          balanceEl.style.color = statusData.user.credits < 0 ? 'var(--warning-color)'
+            : statusData.user.credits < 4 ? 'var(--text-secondary)' : 'var(--success-color)';
         }
       }
-    }
 
-    // Update add credits section for unlimited users
-    const addCreditsBody = document.getElementById('addCreditsBody');
-    if (addCreditsBody && statusData.authenticated && statusData.user.unlimitedCredits) {
-      addCreditsBody.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.85rem;">You can not purchase credits as you have unlimited credits assigned by an admin.</p>';
-    }
-
-    // Build world commitments
-    const worldsEl = document.getElementById('creditsPageWorlds');
-    const weeklyEl = document.getElementById('creditsPageWeekly');
-    if (!worldsEl) return;
-
-    if (!worlds || worlds.length === 0) {
-      worldsEl.innerHTML = '<div style="padding: 1.25rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">No world memberships</div>';
-      if (weeklyEl) weeklyEl.textContent = '0';
-      return;
-    }
-
-    let totalWeekly = 0;
-    let html = '';
-
-    worlds.forEach(world => {
-      const gameDate = new Date(world.currentTime);
-      const deductDate = new Date(world.lastCreditDeduction);
-      const yearGap = Math.abs(deductDate.getFullYear() - gameDate.getFullYear());
-      const isInFreePeriod = world.freeWeeks > 0 && world.lastCreditDeduction && world.currentTime &&
-        yearGap < 20 && gameDate < deductDate;
-      const cost = world.weeklyCost || 1;
-
-      if (!isInFreePeriod) {
-        totalWeekly += cost;
-      }
-
-      html += `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border-color);">
-          <div style="display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1;">
-            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${world.worldName}</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">${world.airlineName} (${world.airlineCode})</div>
-          </div>
-          <div style="font-size: 0.8rem; font-weight: 700; color: ${isInFreePeriod ? 'var(--success-color)' : 'var(--warning-color)'}; white-space: nowrap; margin-left: 1rem;">
-            ${isInFreePeriod ? 'FREE PERIOD' : cost + ' credit' + (cost !== 1 ? 's' : '') + '/wk'}
-          </div>
-        </div>`;
-    });
-
-    worldsEl.innerHTML = html;
-    if (weeklyEl) {
-      if (statusData.user.unlimitedCredits) {
-        weeklyEl.textContent = 'None';
-        weeklyEl.style.color = 'var(--accent-color)';
-        weeklyEl.style.fontSize = '1.4rem';
-        const weeklyLabel = document.getElementById('creditsPageWeeklyLabel');
-        if (weeklyLabel) weeklyLabel.style.display = 'none';
+      const worldsEl = document.getElementById('creditsPageWorlds');
+      const weeklyEl = document.getElementById('creditsPageWeekly');
+      if (!worlds || worlds.length === 0) {
+        if (worldsEl) worldsEl.innerHTML = '<div style="padding:1.25rem; text-align:center; color:var(--text-muted); font-size:0.85rem;">No world memberships</div>';
+        if (weeklyEl) weeklyEl.textContent = '0';
       } else {
-        weeklyEl.textContent = totalWeekly;
+        let totalWeekly = 0, html = '';
+        worlds.forEach(world => {
+          const gameDate = new Date(world.currentTime);
+          const deductDate = new Date(world.lastCreditDeduction);
+          const yearGap = Math.abs(deductDate.getFullYear() - gameDate.getFullYear());
+          const isFree = world.freeWeeks > 0 && world.lastCreditDeduction && world.currentTime && yearGap < 20 && gameDate < deductDate;
+          const cost = world.weeklyCost || 1;
+          if (!isFree) totalWeekly += cost;
+          html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 1rem; border-bottom:1px solid var(--border-color);">
+            <div style="min-width:0; flex:1;">
+              <div style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${world.worldName}</div>
+              <div style="font-size:0.75rem; color:var(--text-secondary);">${world.airlineName} (${world.airlineCode})</div>
+            </div>
+            <div style="font-size:0.8rem; font-weight:700; color:${isFree ? 'var(--success-color)' : 'var(--warning-color)'}; white-space:nowrap; margin-left:1rem;">
+              ${isFree ? 'FREE PERIOD' : cost + ' credit' + (cost !== 1 ? 's' : '') + '/wk'}
+            </div></div>`;
+        });
+        if (worldsEl) worldsEl.innerHTML = html;
+        if (weeklyEl) {
+          if (unlimited) {
+            weeklyEl.textContent = 'None'; weeklyEl.style.color = 'var(--accent-color)'; weeklyEl.style.fontSize = '1.4rem';
+            const wl = document.getElementById('creditsPageWeeklyLabel'); if (wl) wl.style.display = 'none';
+          } else weeklyEl.textContent = totalWeekly;
+        }
       }
-    }
-  } catch (error) {
-    console.error('Error loading credits page:', error);
+    } catch (e) { console.error('summary load failed', e); }
   }
-});
+
+  async function loadPacks() {
+    const section = document.getElementById('buyCreditsSection');
+    if (unlimited) { if (section) section.style.display = 'none'; return; }
+    try {
+      const [packsRes, fxRes] = await Promise.all([fetch('/api/billing/packs'), fetch('/api/billing/fx')]);
+      const data = await packsRes.json();
+      _packs = data.packs || [];
+      _enabled = !!data.enabled;
+      if (!_enabled) document.getElementById('billingDisabledNote').style.display = 'block';
+      try { const fx = await fxRes.json(); if (fx && fx.rates) _rates = fx.rates; } catch (e) { /* fallback GBP only */ }
+      if (!_rates.GBP) _rates.GBP = 1;
+
+      populateCurrencyDropdown();
+      renderPacks();
+    } catch (e) {
+      console.error('packs load failed', e);
+      const grid = document.getElementById('packGrid');
+      if (grid) grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-muted); padding:1.5rem;">Could not load packs.</div>';
+    }
+  }
+
+  async function buyPack(btn) {
+    const packId = btn.getAttribute('data-pack');
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Redirecting…';
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId })
+      });
+      const data = await res.json();
+      if (res.ok && data.url) { window.location.href = data.url; return; }
+      showBanner('error', data.error || 'Could not start checkout.');
+    } catch (e) {
+      showBanner('error', 'Network error starting checkout.');
+    }
+    btn.disabled = false; btn.textContent = orig;
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/billing/history');
+      if (!res.ok) return;
+      const rows = await res.json();
+      if (!rows || rows.length === 0) return;
+      document.getElementById('historySection').style.display = 'block';
+      const body = document.getElementById('historyBody');
+      body.innerHTML = rows.map(r => {
+        const d = new Date(r.date).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+        const statusColor = r.status === 'paid' ? 'var(--success-color)' : r.status === 'pending' ? 'var(--warning-color)' : '#f85149';
+        const links = [
+          r.invoiceUrl ? `<a class="hist-link" href="${r.invoiceUrl}" target="_blank" rel="noopener">Invoice</a>` : '',
+          r.receiptUrl ? `<a class="hist-link" href="${r.receiptUrl}" target="_blank" rel="noopener">Receipt</a>` : ''
+        ].filter(Boolean).join(' · ') || '<span style="color:var(--text-muted); font-size:0.75rem;">—</span>';
+        return `<div class="hist-row">
+          <span style="color:var(--text-secondary);">${d}</span>
+          <span style="color:var(--text-primary);">+${r.credits} credits</span>
+          <span style="font-family:'Courier New',monospace;">${moneyFromMinor(r.amount, r.currency)}</span>
+          <span style="color:${statusColor}; text-transform:capitalize; font-weight:600;">${r.status}</span>
+          <span style="text-align:right;">${links}</span>
+        </div>`;
+      }).join('');
+    } catch (e) { console.error('history load failed', e); }
+  }
+
+  function handleReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const billing = params.get('billing');
+    if (billing === 'success') {
+      showBanner('success', '✓ Payment received — your credits have been added. Thank you!');
+      // The webhook grants credits; refresh the balance shortly after.
+      setTimeout(loadSummary, 1500);
+    } else if (billing === 'cancelled') {
+      showBanner('info', 'Checkout cancelled — no charge was made.');
+    }
+    if (billing) window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    handleReturn();
+    await loadSummary();  // sets `unlimited`
+    loadPacks();
+    loadHistory();
+  });
+})();
 </script>
