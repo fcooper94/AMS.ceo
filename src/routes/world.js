@@ -1113,7 +1113,9 @@ router.get('/competition', async (req, res) => {
             { departureAirportId: pRoute.arrivalAirportId, arrivalAirportId: pRoute.departureAirportId }
           ]
         },
-        include: [{ model: WorldMembership, as: 'membership', attributes: ['airlineName', 'airlineCode'] }]
+        // Scope competitors to THIS world — without this, routes on the same
+        // airport pair in other worlds (incl. their AI airlines) leaked in.
+        include: [{ model: WorldMembership, as: 'membership', attributes: ['airlineName', 'airlineCode'], where: { worldId: activeWorldId }, required: true }]
       });
 
       if (competitors.length > 0) {
