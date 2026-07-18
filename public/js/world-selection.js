@@ -516,10 +516,10 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     `;
   } else if (isSP && isMember) {
     footerHtml = `
-      <div class="world-card-costs">
+      ${!userUnlimited ? `<div class="world-card-costs">
         <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
         ${freeWeeksRemaining > 0 ? `<span class="cost-badge free">${freeWeeksRemaining} free wk${freeWeeksRemaining !== 1 ? 's' : ''} remaining</span>` : ''}
-      </div>
+      </div>` : ''}
       <div style="display: flex; gap: 0.5rem; align-items: center;">
         <button class="btn btn-primary continue-game-btn" style="flex: 1;">CONTINUE</button>
         <button class="end-world-btn" title="End World" style="
@@ -563,12 +563,12 @@ function createWorldCard(world, isMember, userCredits, userUnlimited) {
     `;
   } else {
     footerHtml = `
-      <div class="world-card-costs">
+      ${!userUnlimited ? `<div class="world-card-costs">
         <span class="cost-badge weekly">${weeklyCost} Credit/wk</span>
         ${!isMember ? `<span class="cost-badge join">${joinCost} to join</span>` : ''}
         ${!isMember && freeWeeks > 0 ? `<span class="cost-badge free">First ${freeWeeks} wks free!</span>` : ''}
         ${isMember && freeWeeksRemaining > 0 ? `<span class="cost-badge free">${freeWeeksRemaining} free wk${freeWeeksRemaining !== 1 ? 's' : ''} remaining</span>` : ''}
-      </div>
+      </div>` : ''}
       ${isMember ? `
         <button class="btn btn-primary continue-game-btn">CONTINUE</button>
       ` : (canAffordJoin ? `
@@ -1305,6 +1305,8 @@ async function enterWorld(worldId, message) {
     });
 
     if (response.ok) {
+      // Show the onboarding tutorial on the dashboard after joining
+      try { sessionStorage.setItem('amsShowTutorial', '1'); } catch (e) { /* ignore */ }
       // Navigate to dashboard
       window.location.href = '/dashboard';
     } else {
@@ -2203,6 +2205,8 @@ async function createSinglePlayerWorld() {
       clearInterval(loadingMsgInterval);
       // Seed the display currency so money is right on first paint of the world.
       try { if (typeof setAppCurrency === 'function') setAppCurrency(currency); else localStorage.setItem('amsWorldCurrency', currency); } catch (e) { /* ignore */ }
+      // Show the onboarding tutorial on the dashboard after creating a world
+      try { sessionStorage.setItem('amsShowTutorial', '1'); } catch (e) { /* ignore */ }
       // Redirect to dashboard
       window.location.href = '/dashboard';
     } else {
