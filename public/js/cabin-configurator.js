@@ -392,7 +392,9 @@ function _renderExitDoor(x, y, isLeft, fW, fuseLeft, fuseRight, trFn) {
  * @param {number} toiletCount - number of toilet cubicles to show (0 = galley only)
  */
 function _renderServiceArea(x, y, width, height, toiletCount, textTransform, isLandscape) {
-  const _tt = textTransform || '';
+  // Galley labels rotate around their OWN position (not the block centre that
+  // the caller's textTransform uses), so an off-centre galley stays aligned.
+  const _ltr = isLandscape ? (lx, ly) => ` transform="rotate(90,${lx},${ly})"` : () => '';
   let s = '';
   // Service area background
   s += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="3"
@@ -416,7 +418,7 @@ function _renderServiceArea(x, y, width, height, toiletCount, textTransform, isL
     const _lx = x + width / 2, _ly = y + height / 2 + 2;
     s += `<text x="${_lx}" y="${_ly}" text-anchor="middle"
             fill="rgba(148,163,184,0.35)" font-size="6" font-weight="700" font-family="system-ui, sans-serif"
-            letter-spacing="1.5"${_tt}>GALLEY</text>`;
+            letter-spacing="1.5"${_ltr(_lx, _ly)}>GALLEY</text>`;
   } else {
     // Combined: toilet cubicles on the sides, galley carts in the center
     const cubW = Math.min(width * 0.28, innerH * 1.1);
@@ -452,7 +454,7 @@ function _renderServiceArea(x, y, width, height, toiletCount, textTransform, isL
       const _glx = galleyX + galleyW / 2, _gly = y + height / 2 + 2;
       s += `<text x="${_glx}" y="${_gly}" text-anchor="middle"
               fill="rgba(148,163,184,0.35)" font-size="5" font-weight="700" font-family="system-ui, sans-serif"
-              letter-spacing="1"${_tt}>GALLEY</text>`;
+              letter-spacing="1"${_ltr(_glx, _gly)}>GALLEY</text>`;
     }
   }
   return s;
@@ -460,7 +462,8 @@ function _renderServiceArea(x, y, width, height, toiletCount, textTransform, isL
 
 /** Render a compact service area for small aircraft: 1 toilet on one side, small galley on the other */
 function _renderCompactServiceArea(x, y, width, height, textTransform, isLandscape) {
-  const _tt = textTransform || '';
+  // Galley label rotates around its own (left-side) position, not the block centre.
+  const _ltr = isLandscape ? (lx, ly) => ` transform="rotate(90,${lx},${ly})"` : () => '';
   let s = '';
   // Background
   s += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="3"
@@ -481,7 +484,7 @@ function _renderCompactServiceArea(x, y, width, height, textTransform, isLandsca
           fill="rgba(148,163,184,0.06)" stroke="rgba(148,163,184,0.15)" stroke-width="0.3"/>`;
   const _glx = galleyX + halfW / 2, _gly = y + height / 2 + 1.5;
   s += `<text x="${_glx}" y="${_gly}" text-anchor="middle" fill="rgba(148,163,184,0.3)" font-size="4" font-weight="700"
-          font-family="system-ui, sans-serif" letter-spacing="0.8"${_tt}>GALLEY</text>`;
+          font-family="system-ui, sans-serif" letter-spacing="0.8"${_ltr(_glx, _gly)}>GALLEY</text>`;
   // Divider
   const divX = x + pad + halfW + 1;
   s += `<line x1="${divX}" y1="${y}" x2="${divX}" y2="${y + height}" stroke="rgba(100,116,139,0.15)" stroke-width="0.3"/>`;
@@ -723,6 +726,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   }
 
   // All cabin content clipped to fuselage outline
+  let bulkheadLabelY = null; // pax/cargo divider Y; label drawn above the body after the clip closes
   html += `<g clip-path="url(#${clipId})">`;
 
   const seatStartY = isCapsule ? noseH + 6 : (showCockpit ? noseH + 8 : noseH - 10);
@@ -898,17 +902,16 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // Combi: cargo deck block at the tail of the cabin, after passenger seats
   if (cargoDeckPct > 0 && cargoBlockH > 0) {
-    // Bulkhead divider bar first
+    // Bulkhead divider bar first (label is drawn above the fuselage, after the clip)
     html += `<rect x="${seatLeft - 2}" y="${curY}" width="${seatWidth + 4}" height="${BULKHEAD_H}" rx="1"
                fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.55)" stroke-width="0.5"/>`;
-    html += `<text x="${fW/2}" y="${curY + BULKHEAD_H/2 + 2}" text-anchor="middle" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(fW/2, curY + BULKHEAD_H/2 + 2)}>BULKHEAD</text>`;
+    bulkheadLabelY = curY + BULKHEAD_H/2 + 2;
     curY += BULKHEAD_H;
     // Cargo deck block
     html += `<rect x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${cargoBlockH}" rx="3"
                fill="rgba(251,146,60,0.12)" stroke="rgba(251,146,60,0.5)" stroke-width="0.8" stroke-dasharray="4,2"/>`;
     const clabelY = curY + cargoBlockH / 2;
-    html += `<text x="${fW/2}" y="${clabelY - 4}" text-anchor="middle" fill="rgba(251,146,60,0.9)" font-size="8" font-weight="700" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY - 4)}>CARGO DECK</text>`;
-    html += `<text x="${fW/2}" y="${clabelY + 6}" text-anchor="middle" fill="rgba(251,146,60,0.6)" font-size="6" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY + 6)}>Main Deck · Freight</text>`;
+    html += `<text x="${fW/2}" y="${clabelY}" text-anchor="middle" dominant-baseline="central" fill="rgba(251,146,60,0.9)" font-size="8" font-weight="700" font-family="system-ui, sans-serif"${_tr(fW/2, clabelY)}>CARGO DECK</text>`;
   }
 
   // Seat letter labels at the start of each class section (like airline seatmaps)
@@ -944,6 +947,12 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   }
 
   html += `</g>`;
+
+  // BULKHEAD label above the aircraft, aligned with the pax/cargo divider line
+  if (bulkheadLabelY !== null) {
+    const _bhX = fuseRight + 4;
+    html += `<text x="${_bhX}" y="${bulkheadLabelY}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.75)" font-size="4.5" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(_bhX, bulkheadLabelY)}>BULKHEAD</text>`;
+  }
 
   // If widebody with no mid-cabin service areas, add 2 mid-cabin exit doors
   const isWidebody = fW >= 350;

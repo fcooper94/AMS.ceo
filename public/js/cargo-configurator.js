@@ -303,8 +303,10 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
       svg += `<text x="${cx}" y="${plY}" text-anchor="middle" dominant-baseline="central" fill="rgba(59,130,246,0.9)" font-size="9" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, plY)}>PAX CABIN</text>`;
       svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
-      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.8)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, paxY + paxHoldH + PAX_BULKHEAD_H/2)}>BULKHEAD</text>`;
       svg += `</g>`;
+      // BULKHEAD label above the aircraft, aligned with the divider line
+      { const _bhY = paxY + paxHoldH + PAX_BULKHEAD_H / 2, _bhX = bR + 8;
+        svg += `<text x="${_bhX}" y="${_bhY}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.75)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(_bhX, _bhY)}>BULKHEAD</text>`; }
     }
     svg += `<text x="${cx}" y="${H / 2}" text-anchor="middle" dominant-baseline="central"
               fill="rgba(100,116,139,0.35)" font-size="10" font-family="system-ui, sans-serif"${_tr(cx, H / 2)}>Empty</text>`;
@@ -428,7 +430,6 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
       svg += `<rect x="${bL}" y="${paxY}" width="${bR - bL}" height="${paxHoldH}" fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.45)" stroke-width="0.8" stroke-dasharray="3,2"/>`;
       svg += `<text x="${cx}" y="${plY}" text-anchor="middle" dominant-baseline="central" fill="rgba(59,130,246,0.9)" font-size="9" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, plY)}>PAX CABIN</text>`;
       svg += `<rect x="${bL}" y="${paxY + paxHoldH}" width="${bR - bL}" height="${PAX_BULKHEAD_H}" fill="rgba(100,116,139,0.4)" stroke="rgba(100,116,139,0.5)" stroke-width="0.5"/>`;
-      svg += `<text x="${cx}" y="${paxY + paxHoldH + PAX_BULKHEAD_H/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.8)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(cx, paxY + paxHoldH + PAX_BULKHEAD_H/2)}>BULKHEAD</text>`;
     }
 
     // Background zones — light tint behind each contiguous same-type run
@@ -488,6 +489,12 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
     }
 
     svg += `</g>`;
+
+    // BULKHEAD label above the aircraft, aligned with the pax/cargo divider line
+    if (paxBlockPct > 0 && paxHoldH > 0) {
+      const _bhY = holdUsableTop + paxHoldH + PAX_BULKHEAD_H / 2, _bhX = bR + 8;
+      svg += `<text x="${_bhX}" y="${_bhY}" text-anchor="middle" dominant-baseline="central" fill="rgba(200,210,220,0.75)" font-size="4" font-weight="700" letter-spacing="1" font-family="system-ui, sans-serif"${_tr(_bhX, _bhY)}>BULKHEAD</text>`;
+    }
   }
 
   // Belly compartment dividers for an EMPTY hold (a filled hold draws its own
