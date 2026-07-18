@@ -359,7 +359,7 @@ router.get('/status', async (req, res) => {
       // Fetch full user data from database to get current credits and roles
       const dbUser = await User.findOne({
         where: { vatsimId: req.user.vatsimId },
-        attributes: ['credits', 'isAdmin', 'isContributor', 'unlimitedCredits']
+        attributes: ['credits', 'isAdmin', 'isContributor', 'unlimitedCredits', 'tutorialDismissed']
       });
 
       res.json({
@@ -372,7 +372,8 @@ router.get('/status', async (req, res) => {
           credits: dbUser ? dbUser.credits : 0,
           isAdmin: dbUser ? dbUser.isAdmin : false,
           isContributor: dbUser ? dbUser.isContributor : false,
-          unlimitedCredits: dbUser ? dbUser.unlimitedCredits : false
+          unlimitedCredits: dbUser ? dbUser.unlimitedCredits : false,
+          tutorialDismissed: dbUser ? dbUser.tutorialDismissed : false
         }
       });
     } catch (error) {
@@ -391,6 +392,18 @@ router.get('/status', async (req, res) => {
     }
   } else {
     res.json({ authenticated: false });
+  }
+});
+
+// Opt the signed-in user out of the new-world onboarding tutorial (persists per account)
+router.post('/tutorial-dismiss', async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    await User.update({ tutorialDismissed: true }, { where: { vatsimId: req.user.vatsimId } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error dismissing tutorial:', error);
+    res.status(500).json({ error: 'Failed to save preference' });
   }
 });
 

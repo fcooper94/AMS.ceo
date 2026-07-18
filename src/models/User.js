@@ -79,6 +79,13 @@ const User = sequelize.define('User', {
     field: 'unlimited_credits',
     comment: 'Whether user has unlimited credits (no deductions)'
   },
+  tutorialDismissed: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    field: 'tutorial_dismissed',
+    comment: 'Whether the user opted out of the new-world onboarding tutorial'
+  },
   passwordHash: {
     type: DataTypes.STRING,
     allowNull: true,

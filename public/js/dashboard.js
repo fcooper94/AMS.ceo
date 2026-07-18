@@ -545,7 +545,44 @@ function clearStuckStatLoaders() {
   });
 }
 
+// New-world onboarding tutorial (spotlight coach-marks over the sidebar).
+// Triggered by world-selection after create/join via a sessionStorage flag;
+// skipped if the user opted out (persisted per account via /auth/status).
+const TUTORIAL_STEPS = [
+  { selector: null, title: 'Welcome, CEO!', text: "You've founded an airline. Here's a quick tour of how to get flying — you can skip anytime." },
+  { expand: '.nav-item.parent[data-path*="/aircraft-marketplace"]', selector: '.nav-item[data-path="/aircraft-marketplace"]',
+    image: '/img/tutorial/Marketplace.png',
+    title: 'Get some aircraft', text: 'Open the <b>Aircraft Marketplace</b> (under Fleet Management) to buy or lease your first aircraft.' },
+  { expand: '.nav-item.parent[data-path*="/scheduling"]', selector: '.nav-item[data-path="/routes/create"]',
+    image: '/img/tutorial/New-Route.png',
+    title: 'Create a route', text: 'Use <b>Create New Route</b> (under Flight Operations) to open a route between two airports.' },
+  { expand: '.nav-item.parent[data-path*="/scheduling"]', selector: '.nav-item[data-path="/scheduling"]',
+    image: '/img/tutorial/Scheduling.png',
+    title: 'Schedule your flights', text: 'In <b>Scheduling</b>, assign aircraft and set departure times to actually operate your routes.' },
+  { expand: '.nav-item.parent[data-path*="/finances"]', selector: '.nav-item[data-path="/marketing"]',
+    image: '/img/tutorial/Marketing.png',
+    title: 'Grow your brand', text: 'Run <b>Marketing</b> campaigns (under Office) to boost demand — Office also holds pricing, finances, staff and loans.' },
+  { selector: '.nav-item[data-path="/world-map"]',
+    image: '/img/tutorial/WorldMap.png',
+    title: 'Watch it come alive', text: 'The <b>World Map</b> tracks your flights in real time. That’s it — enjoy building your empire!' }
+];
+
+async function maybeStartTutorial() {
+  try {
+    if (sessionStorage.getItem('amsShowTutorial') !== '1') return;
+    sessionStorage.removeItem('amsShowTutorial');
+  } catch (e) { return; }
+  // Respect a per-account opt-out
+  try {
+    const res = await fetch('/auth/status');
+    const data = await res.json();
+    if (data.authenticated && data.user && data.user.tutorialDismissed) return;
+  } catch (e) { /* if the check fails, still show the tour */ }
+  if (window.AMSTutorial) window.AMSTutorial.start(TUTORIAL_STEPS);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  maybeStartTutorial();
   Promise.allSettled([loadDashboardStats(), loadPerformanceStats()])
     .then(clearStuckStatLoaders);
   loadNotifications();

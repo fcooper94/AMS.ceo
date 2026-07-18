@@ -669,6 +669,11 @@ server.listen(PORT, () => {
     } catch (_) { /* routes table may not exist yet — sync will create it */ }
     try {
       await sequelize.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE
+      `);
+    } catch (_) { /* users table may not exist yet — sync will create it */ }
+    try {
+      await sequelize.query(`
         ALTER TABLE worlds
           ADD COLUMN IF NOT EXISTS pause_on_session_end BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE,
