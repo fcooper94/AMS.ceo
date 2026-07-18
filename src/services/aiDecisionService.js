@@ -11,9 +11,10 @@
  * Personality (conservative/balanced/aggressive) shapes each decision.
  */
 
-const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification } = require('../models');
+const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification, Loan } = require('../models');
 const { Op } = require('sequelize');
 const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
+const { getAllBanks, calculateOfferRate, calculateFixedPayment, calculateMaxLoanAmount, TERM_RANGES } = require('../data/bankConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
 const routeDemandService = require('./routeDemandService');
@@ -884,6 +885,145 @@ async function scheduleAIFlights(route, aircraft) {
   }
 }
 
+// ─── AI acquisition financing ────────────────────────────────────────
+//
+// AI airlines vary how they pay for aircraft instead of always leasing:
+//   'cash'    — buy outright (full price now), when reserves are ample.
+//   'finance' — buy new with a deposit + a fleet-expansion bank loan for the
+//               rest (delivered instantly; the loan repays weekly via
+//               worldTimeService.processLoanPayments, which already handles AI).
+//   'lease'   — low-commitment 1%/week operating lease (the legacy default).
+// The mix is weighted by personality and constrained by what the airline can
+// actually afford — conservative airlines lean lease/cash, aggressive airlines
+// lean on leverage to grow faster.
+
+// Deposit an AI puts down on a financed purchase (rest is the loan principal).
+const AI_FINANCE_DEPOSIT_PCT = 0.25;
+// Loan term for AI fleet-expansion loans (game weeks; within fleet_expansion range).
+const AI_FINANCE_TERM_WEEKS = 156;
+// Don't let an AI stack more than this many active loans at once.
+const AI_MAX_ACTIVE_LOANS = 3;
+
+// Assumed credit score for an AI airline — better personalities/reputations
+// reach cheaper banks. (Human credit scoring is player-oriented; AI uses a
+// fixed proxy, like the delivery-settlement path does.)
+function aiCreditScore(airline) {
+  const base = { conservative: 640, balanced: 580, aggressive: 520 }[airline.aiPersonality] || 570;
+  return base;
+}
+
+// How far above its cash budget an AI will stretch when financing, as a multiple
+// of current cash balance. Aggressive airlines lever up harder.
+function aiFinanceMaxPrice(airline, balance) {
+  const mult = { conservative: 0.9, balanced: 1.4, aggressive: 2.2 }[airline.aiPersonality] || 1.2;
+  return balance * mult;
+}
+
+// Base method weights per personality (renormalised over feasible options).
+const AI_ACQ_WEIGHTS = {
+  conservative: { lease: 0.50, cash: 0.35, finance: 0.15 },
+  balanced:     { lease: 0.34, cash: 0.33, finance: 0.33 },
+  aggressive:   { lease: 0.25, cash: 0.25, finance: 0.50 }
+};
+
+// Build a concrete finance plan (bank, deposit, loan, weekly payment) for a
+// purchase, or return null if the AI can't sensibly finance it right now.
+function buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoanCount) {
+  if (activeLoanCount >= AI_MAX_ACTIVE_LOANS) return null;
+  if (purchasePrice > aiFinanceMaxPrice(airline, balance)) return null;
+
+  const score = aiCreditScore(airline);
+  // Eligible: credit accepted, and not already borrowing from that bank.
+  const eligible = getAllBanks().filter(b => score >= b.minCreditScore && !existingLoanBankIds.has(b.id));
+  if (eligible.length === 0) return null;
+
+  // Prefer a bank matching the airline's risk appetite, else any eligible bank.
+  const prefAppetite = { conservative: 'conservative', balanced: 'moderate', aggressive: 'aggressive' }[airline.aiPersonality] || 'moderate';
+  let pool = eligible.filter(b => b.riskAppetite === prefAppetite);
+  if (pool.length === 0) pool = eligible;
+
+  // Cheapest offered rate in the pool.
+  let best = null;
+  for (const b of pool) {
+    const rate = calculateOfferRate(b.id, score, 'fleet_expansion');
+    if (best === null || rate < best.rate) best = { bank: b, rate };
+  }
+  if (!best) return null;
+
+  const deposit = Math.round(purchasePrice * AI_FINANCE_DEPOSIT_PCT);
+  const loanAmount = purchasePrice - deposit;
+
+  // Respect the bank's max loan sizing (net worth proxied by cash balance).
+  const maxLoan = calculateMaxLoanAmount(best.bank.id, balance);
+  if (maxLoan > 0 && loanAmount > maxLoan) return null;
+
+  const termWeeks = Math.max(TERM_RANGES.fleet_expansion.min,
+    Math.min(TERM_RANGES.fleet_expansion.max, AI_FINANCE_TERM_WEEKS));
+  const weeklyPayment = calculateFixedPayment(loanAmount, best.rate, termWeeks);
+
+  // Need the deposit plus ~8 weeks of repayment runway after paying it.
+  if (balance < deposit + weeklyPayment * 8) return null;
+
+  return { bankId: best.bank.id, bank: best.bank, rate: best.rate, deposit, loanAmount, termWeeks, weeklyPayment };
+}
+
+// Weighted pick among the feasible methods; returns 'cash' | 'finance' | 'lease' | null.
+function pickWeightedMethod(personality, feasible) {
+  const weights = AI_ACQ_WEIGHTS[personality] || AI_ACQ_WEIGHTS.balanced;
+  const pool = [];
+  let total = 0;
+  for (const method of ['lease', 'cash', 'finance']) {
+    if (feasible[method] && weights[method] > 0) { pool.push({ method, w: weights[method] }); total += weights[method]; }
+  }
+  if (pool.length === 0) return null;
+  let roll = Math.random() * total;
+  for (const p of pool) { roll -= p.w; if (roll <= 0) return p.method; }
+  return pool[pool.length - 1].method;
+}
+
+// Decide how the AI pays for `purchasePrice`. Returns { method, leaseWeekly, financePlan }.
+// method === null means "can't afford any method — skip this acquisition".
+async function decideAIAcquisition(airline, purchasePrice, balance, hasRoutes) {
+  const maxPurchase = balance * (hasRoutes ? 0.4 : 0.7);
+  const cashFeasible = purchasePrice <= maxPurchase;
+
+  const leaseWeekly = Math.round(purchasePrice * 0.01);
+  const leaseFeasible = balance >= leaseWeekly * 8;
+
+  const activeLoans = await Loan.findAll({
+    where: { worldMembershipId: airline.id, status: 'active' },
+    attributes: ['bankId']
+  });
+  const existingLoanBankIds = new Set(activeLoans.map(l => l.bankId));
+  const financePlan = buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoans.length);
+
+  const method = pickWeightedMethod(airline.aiPersonality, {
+    cash: cashFeasible, lease: leaseFeasible, finance: !!financePlan
+  });
+  return { method, leaseWeekly, financePlan };
+}
+
+// Create the fleet-expansion Loan backing a financed AI purchase.
+async function createAIFleetLoan(airline, financePlan, now) {
+  return Loan.create({
+    worldMembershipId: airline.id,
+    bankId: financePlan.bankId,
+    loanType: 'fleet_expansion',
+    status: 'active',
+    principalAmount: financePlan.loanAmount,
+    remainingPrincipal: financePlan.loanAmount,
+    interestRate: financePlan.rate,
+    termWeeks: financePlan.termWeeks,
+    weeksRemaining: financePlan.termWeeks,
+    repaymentStrategy: 'fixed',
+    weeklyPayment: financePlan.weeklyPayment,
+    earlyRepaymentFee: financePlan.bank?.earlyRepaymentFee || 0,
+    paymentHolidaysTotal: financePlan.bank?.paymentHolidays || 0,
+    originationGameDate: now.toISOString().split('T')[0],
+    creditScoreAtOrigin: aiCreditScore(airline)
+  });
+}
+
 /**
  * Try to buy a new aircraft for the AI airline.
  * Considers: route needs (range/capacity), era popularity, fleet commonality, airport size.
@@ -929,9 +1069,6 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   });
 
   if (affordable.length === 0) return;
-
-  // Track whether we'll need to lease (decided after scoring)
-  let useLease = false;
 
   const baseAirport = airline.baseAirport || await Airport.findByPk(airline.baseAirportId);
   const maxPax = getMaxCapacityForAirport(baseAirport?.type);
@@ -1019,18 +1156,12 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
 
   const purchasePrice = parseFloat(chosen.purchasePrice) || 50000000;
 
-  // Decide: purchase or lease?
-  // Lease if can't afford purchase, or if conservative personality (prefers lower upfront risk)
-  const canAffordPurchase = purchasePrice <= maxPurchase;
-  const prefersLease = airline.aiPersonality === 'conservative' && Math.random() < 0.6;
-  useLease = !canAffordPurchase || prefersLease;
-
-  // Lease terms: ~1% of value per week, 36-month duration
-  const leaseWeeklyPayment = Math.round(purchasePrice * 0.01);
+  // Decide how to pay: cash outright / finance (deposit + bank loan) / lease.
+  // Weighted by personality and constrained by what the airline can afford.
+  const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, purchasePrice, balance, hasRoutes);
+  if (!method) return; // can't sensibly afford any acquisition method right now
+  const leaseWeeklyPayment = leaseWeekly;
   const leaseDurationMonths = 36;
-
-  // Final affordability check for lease
-  if (useLease && balance < leaseWeeklyPayment * 8) return; // Need 8 weeks runway
 
   // Generate registration
   const existingRegs = new Set(currentFleet.map(ac => ac.registration));
@@ -1053,66 +1184,61 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   try {
     const now = new Date(gameTime || new Date());
 
-    if (useLease) {
+    // Common maintenance/scheduling defaults for a newly acquired aircraft.
+    const baseFields = {
+      worldMembershipId: airline.id,
+      aircraftId: chosen.id,
+      registration: reg,
+      totalFlightHours: 0,
+      status: 'active',
+      autoScheduleDaily: true,
+      autoScheduleWeekly: true,
+      lastDailyCheckDate: now,
+      lastWeeklyCheckDate: now,
+      lastACheckDate: now,
+      lastACheckHours: 0,
+      lastCCheckDate: now,
+      lastDCheckDate: now
+    };
+
+    let acqType, acqDetail;
+
+    if (method === 'lease') {
       const leaseEnd = new Date(now);
       leaseEnd.setMonth(leaseEnd.getMonth() + leaseDurationMonths);
-
       await UserAircraft.create({
-        worldMembershipId: airline.id,
-        aircraftId: chosen.id,
-        registration: reg,
+        ...baseFields,
         acquisitionType: 'lease',
         purchasePrice: null,
         leaseWeeklyPayment,
         leaseDurationMonths,
         leaseStartDate: now,
-        leaseEndDate: leaseEnd,
-        totalFlightHours: 0,
-        status: 'active',
-        autoScheduleDaily: true,
-        autoScheduleWeekly: true,
-        lastDailyCheckDate: now,
-        lastWeeklyCheckDate: now,
-        lastACheckDate: now,
-        lastACheckHours: 0,
-        lastCCheckDate: now,
-        lastDCheckDate: now
+        leaseEndDate: leaseEnd
       });
-
-      // Deduct first week's payment
-      airline.balance = parseFloat(airline.balance) - leaseWeeklyPayment;
+      airline.balance = parseFloat(airline.balance) - leaseWeeklyPayment; // first week
       await airline.save();
-
+      acqType = 'leased';
+      acqDetail = `$${Math.round(leaseWeeklyPayment).toLocaleString()}/week`;
       console.log(`[AI-DECISION] ${airline.airlineName} leased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${Math.round(leaseWeeklyPayment).toLocaleString()}/week`);
-    } else {
-      await UserAircraft.create({
-        worldMembershipId: airline.id,
-        aircraftId: chosen.id,
-        registration: reg,
-        acquisitionType: 'purchase',
-        purchasePrice,
-        totalFlightHours: 0,
-        status: 'active',
-        autoScheduleDaily: true,
-        autoScheduleWeekly: true,
-        lastDailyCheckDate: now,
-        lastWeeklyCheckDate: now,
-        lastACheckDate: now,
-        lastACheckHours: 0,
-        lastCCheckDate: now,
-        lastDCheckDate: now
-      });
 
+    } else if (method === 'finance') {
+      await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice });
+      await createAIFleetLoan(airline, financePlan, now);
+      airline.balance = parseFloat(airline.balance) - financePlan.deposit; // deposit only; loan covers the rest
+      await airline.save();
+      acqType = 'financed';
+      acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M ($${(financePlan.deposit / 1000000).toFixed(1)}M down, $${Math.round(financePlan.loanAmount).toLocaleString()} loan via ${financePlan.bank.shortName})`;
+      console.log(`[AI-DECISION] ${airline.airlineName} financed ${chosen.manufacturer} ${chosen.model} (${reg}): $${(financePlan.deposit / 1000000).toFixed(1)}M down + $${Math.round(financePlan.loanAmount).toLocaleString()} loan @ ${financePlan.rate}% (${financePlan.bank.shortName}), $${Math.round(financePlan.weeklyPayment).toLocaleString()}/wk`);
+
+    } else { // cash
+      await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice });
       airline.balance = parseFloat(airline.balance) - purchasePrice;
       await airline.save();
-
+      acqType = 'purchased';
+      acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M cash`;
       console.log(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
     }
 
-    const acqType = useLease ? 'leased' : 'purchased';
-    const acqDetail = useLease
-      ? `$${Math.round(leaseWeeklyPayment).toLocaleString()}/week`
-      : `$${(purchasePrice / 1000000).toFixed(1)}M`;
     await notifyPlayer(world.id,
       `${airline.airlineName} Acquired Aircraft`,
       `${airline.airlineName} ${acqType} a ${chosen.manufacturer} ${chosen.model}${chosen.variant ? ' ' + chosen.variant : ''} (${reg}) for ${acqDetail}.`,
@@ -1459,12 +1585,10 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
     const replacement = scored[0];
     if (!replacement) continue;
 
-    // Can we afford this? (buy or lease)
-    const canBuy = replacement.price <= balance * 0.4;
-    const leaseWeekly = Math.round(replacement.price * 0.01);
-    const canLease = balance >= leaseWeekly * 8;
-
-    if (!canBuy && !canLease) continue;
+    // Decide how to pay for the replacement: cash / finance / lease (a renewing
+    // airline has routes, so use the with-routes cash budget).
+    const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, replacement.price, balance, true);
+    if (!method) continue;
 
     // Acquire replacement (reuse tryBuyAircraft logic is complex, do inline)
     const prefix = { 'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-' }[airline.region] || 'XX-';
@@ -1475,41 +1599,37 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
 
     const now = new Date(gameTime);
     try {
-      if (canBuy) {
-        await UserAircraft.create({
-          worldMembershipId: airline.id,
-          aircraftId: replacement.aircraft.id,
-          registration: reg,
-          acquisitionType: 'purchase',
-          purchasePrice: replacement.price,
-          status: 'active',
-          totalFlightHours: 0,
-          autoScheduleDaily: true, autoScheduleWeekly: true,
-          lastDailyCheckDate: now, lastWeeklyCheckDate: now,
-          lastACheckDate: now, lastACheckHours: 0,
-          lastCCheckDate: now, lastDCheckDate: now
-        });
-        airline.balance = balance - replacement.price;
-        await airline.save();
-      } else {
+      const baseFields = {
+        worldMembershipId: airline.id,
+        aircraftId: replacement.aircraft.id,
+        registration: reg,
+        status: 'active',
+        totalFlightHours: 0,
+        autoScheduleDaily: true, autoScheduleWeekly: true,
+        lastDailyCheckDate: now, lastWeeklyCheckDate: now,
+        lastACheckDate: now, lastACheckHours: 0,
+        lastCCheckDate: now, lastDCheckDate: now
+      };
+      if (method === 'lease') {
         const leaseEnd = new Date(now);
         leaseEnd.setMonth(leaseEnd.getMonth() + 36);
         await UserAircraft.create({
-          worldMembershipId: airline.id,
-          aircraftId: replacement.aircraft.id,
-          registration: reg,
+          ...baseFields,
           acquisitionType: 'lease',
           leaseWeeklyPayment: leaseWeekly,
           leaseDurationMonths: 36,
-          leaseStartDate: now, leaseEndDate: leaseEnd,
-          status: 'active',
-          totalFlightHours: 0,
-          autoScheduleDaily: true, autoScheduleWeekly: true,
-          lastDailyCheckDate: now, lastWeeklyCheckDate: now,
-          lastACheckDate: now, lastACheckHours: 0,
-          lastCCheckDate: now, lastDCheckDate: now
+          leaseStartDate: now, leaseEndDate: leaseEnd
         });
         airline.balance = balance - leaseWeekly;
+        await airline.save();
+      } else if (method === 'finance') {
+        await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice: replacement.price });
+        await createAIFleetLoan(airline, financePlan, now);
+        airline.balance = balance - financePlan.deposit;
+        await airline.save();
+      } else { // cash
+        await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice: replacement.price });
+        airline.balance = balance - replacement.price;
         await airline.save();
       }
 
@@ -1560,7 +1680,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
         console.log(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
       }
 
-      const acqLabel = canBuy ? 'purchased' : 'leased';
+      const acqLabel = method === 'lease' ? 'leased' : method === 'finance' ? 'financed' : 'purchased';
       console.log(`[AI-DECISION] ${airline.airlineName} upgraded: ${acType.manufacturer} ${acType.model} → ${replacement.aircraft.manufacturer} ${replacement.aircraft.model} (${acqLabel})`);
 
       await notifyPlayer(world.id,

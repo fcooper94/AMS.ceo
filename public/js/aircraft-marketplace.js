@@ -694,7 +694,7 @@ function showAircraftDetails(aircraftId) {
       <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.4rem;">
         <div id="acImageContainer" style="width: 300px; min-height: 180px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-elevated);">
           ${acImgCodes.length > 0 ? `<img src="${acImgBase}${acImgCodes[0]}" alt="${aircraft.manufacturer} ${aircraft.model}" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: invert(1); mix-blend-mode: screen;"            data-fallbacks='${JSON.stringify(acImgCodes.slice(1))}' data-base-url="${acImgBase}"
-            onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<span style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</span>';}">` : `<span style="color: var(--text-muted); font-size: 0.75rem;">No image</span>`}
+            onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML=window.aircraftNoImage();}">` : window.aircraftNoImage()}
         </div>
         ${aircraft.description ? `<div style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.3;">${aircraft.description}</div>` : ''}
       </div>

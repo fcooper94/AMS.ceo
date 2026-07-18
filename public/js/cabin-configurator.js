@@ -81,6 +81,162 @@ const WIDEBODY_OVERRIDES = [
   }
 ];
 
+// ---------------------------------------------------------------------------
+// Real per-aircraft cabin cross-sections, keyed by ICAO type code.
+// The type category (Regional/Narrowbody/Widebody) is too coarse — a 30-seat
+// DC-3 and a 180-seat 737 are both "Narrowbody" — so this table carries the
+// ACTUAL seats-abreast for every airframe in the fleet. ICAO code == fuselage
+// cross-section, so variants that share a code (combis, sub-variants) correctly
+// share one entry.
+//
+// Value shapes:
+//   [g, ...]                         economy groups; premium classes derived,
+//                                    fuselage width derived from total abreast.
+//   { eco, ep?, biz?, fst?, fw? }    explicit per-class groups (used for
+//                                    twin-aisle widebodies where the real
+//                                    premium cabins matter). Any omitted class
+//                                    is derived; width derived unless `fw` set.
+//
+// Excluded (never open the single-deck configurator): Cargo airframes and
+// Airships (no cabin config), and the 747 / A380 families (handled by the
+// double-deck configurator via DOUBLE_DECK).
+const AIRCRAFT_CABIN = {
+  // ---- Widebodies — twin-aisle, real premium cabins ----
+  A306: { eco: [2,4,2], ep: [2,3,2], biz: [2,2,2], fst: [1,2,1] }, // A300
+  A30B: { eco: [2,4,2], ep: [2,3,2], biz: [2,2,2], fst: [1,2,1] }, // A300
+  A310: { eco: [2,4,2], ep: [2,3,2], biz: [2,2,2], fst: [1,2,1] },
+  A332: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] }, // A330
+  A333: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A338: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A339: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A342: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] }, // A340
+  A343: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A345: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A346: { eco: [2,4,2], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  A358: { eco: [3,3,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] }, // A350
+  A359: { eco: [3,3,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  A35K: { eco: [3,3,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  B762: { eco: [2,3,2], ep: [2,2,2], biz: [1,2,1], fst: [1,2,1] }, // 767
+  B763: { eco: [2,3,2], ep: [2,2,2], biz: [1,2,1], fst: [1,2,1] },
+  B764: { eco: [2,3,2], ep: [2,2,2], biz: [1,2,1], fst: [1,2,1] },
+  B772: { eco: [3,4,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] }, // 777 (10-ab)
+  B773: { eco: [3,4,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  B77W: { eco: [3,4,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  B778: { eco: [3,4,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  B779: { eco: [3,4,3], ep: [2,4,2], biz: [1,2,1], fst: [1,2,1] },
+  B788: { eco: [3,3,3], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] }, // 787
+  B789: { eco: [3,3,3], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  B78X: { eco: [3,3,3], ep: [2,3,2], biz: [1,2,1], fst: [1,2,1] },
+  DC10: { eco: [2,5,2], ep: [2,3,2], biz: [2,2,2], fst: [2,2,2] },
+  L101: { eco: [2,5,2], ep: [2,3,2], biz: [2,2,2], fst: [2,2,2] }, // L-1011
+  MD11: { eco: [2,5,2], ep: [2,3,2], biz: [2,2,2], fst: [1,2,1] },
+  IL86: { eco: [3,3,3], ep: [2,3,2], biz: [2,2,2], fst: [2,2,2] },
+  IL96: { eco: [3,3,3], ep: [2,3,2], biz: [2,2,2], fst: [1,2,1] },
+
+  // ---- Narrowbody jets — 3-3 (6 abreast) ----
+  A20N: [3,3], A21N: [3,3], A318: [3,3], A319: [3,3], A320: [3,3], A321: [3,3],
+  B37M: [3,3], B38M: [3,3], B39M: [3,3], B3XM: [3,3],
+  B731: [3,3], B732: [3,3], B733: [3,3], B734: [3,3], B735: [3,3], B736: [3,3],
+  B737: [3,3], B738: [3,3], B739: [3,3],
+  B703: [3,3], B721: [3,3], B722: [3,3], B752: [3,3], B753: [3,3],
+  DC85: [3,3], DC86: [3,3],
+  T104: [3,3], T154: [3,3], T204: [3,3], IL18: [3,3], IL62: [3,3], YK42: [3,3],
+  MC23: [3,3], L188: [3,3],
+  B461: [3,3], B462: [3,3], B463: [3,3], RJ70: [3,3], RJ85: [3,3], RJ1H: [3,3], // BAe 146 / Avro RJ
+
+  // ---- 5 abreast (2-3) ----
+  DC91: [2,3], DC93: [2,3], // DC-9
+  MD80: [2,3], MD81: [2,3], MD82: [2,3], MD83: [2,3], MD87: [2,3], MD88: [2,3], MD90: [2,3],
+  BA11: [2,3], S210: [2,3], T134: [2,3], // BAC 1-11, Caravelle, Tu-134
+  BCS1: [2,3], BCS3: [2,3], // A220
+  COMT: [2,3], // Comet 4
+  F28: [2,3], F70: [2,3], F100: [2,3], // Fokker jets
+  SU95: [2,3], A148: [2,3], A158: [2,3],
+  DC6B: [2,3], DC7: [2,3], CONI: [2,3], // high-density pistons
+
+  // ---- 4 abreast (2-2) ----
+  CONC: [2,2], // Concorde — narrow supersonic tube
+  DC4: [2,2], DC6: [2,2], L749: [2,2], B377: [2,2], HPH4: [2,2], AVYO: [2,2], // pistons
+  IL12: [2,2], IL14: [2,2], YK40: [2,2], SC90: [2,2], N262: [2,2], HPR7: [2,2],
+  YS11: [2,2], VISC: [2,2], CVLP: [2,2], CVLT: [2,2], C46: [2,2], M202: [2,2],
+  M404: [2,2], SDRM: [2,2], A140: [2,2], AN24: [2,2], ATP: [2,2], B17C: [2,2],
+  B17W: [2,2], C212: [2,2], CL15: [2,2],
+  F27: [2,2], F50: [2,2], F60: [2,2], // Fokker turboprops
+  DHC7: [2,2], DH8A: [2,2], DH8B: [2,2], DH8C: [2,2], DH8D: [2,2], // Dash 8
+  AT43: [2,2], AT44: [2,2], AT45: [2,2], AT46: [2,2], AT72: [2,2], AT75: [2,2], AT76: [2,2], // ATR
+  CRJ1: [2,2], CRJ2: [2,2], CRJ7: [2,2], CRJ9: [2,2], CRJX: [2,2], // CRJ
+  E170: [2,2], E75S: [2,2], E75L: [2,2], E190: [2,2], E195: [2,2], E290: [2,2], E295: [2,2], // E-jets
+
+  // ---- 3 abreast (2-1) ----
+  DC3: [2,1], E120: [2,1], SF34: [2,1], SB20: [2,1], D328: [2,1], J328: [2,1],
+  SH33: [2,1], SH36: [2,1], C208: [2,1], HERN: [2,1], NOMA: [2,1], Y12: [2,1],
+
+  // ---- 3 abreast (1-2) — regional jets/turboprops with single+double rows ----
+  E110: [1,2], E135: [1,2], E140: [1,2], E145: [1,2], // Bandeirante, ERJ
+  JS31: [1,2], JS32: [1,2], JS41: [1,2], // Jetstream
+  D228: [1,2], L410: [1,2], DHC6: [1,2], SC7: [1,2], C408: [1,2],
+
+  // ---- 3 abreast bench (no aisle) ----
+  BN2P: [3], TRIS: [3], // Islander, Trislander
+
+  // ---- 2 abreast (1-1) — light singles/twins & narrow commuters ----
+  SW4: [1,1], B190: [1,1], BE99: [1,1], // Metro, Beech 1900, Beech 99
+  C182: [1,1], P68: [1,1], TBM9: [1,1], PA46: [1,1], DHC2: [1,1], DA62: [1,1],
+  DH2T: [1,1], GA8: [1,1], PA31: [1,1], P750: [1,1], PC6T: [1,1], DHC3: [1,1],
+  K100: [1,1], BE18: [1,1], DOVE: [1,1], PAY3: [1,1], C441: [1,1], PC12: [1,1],
+  PC24: [1,1], P212: [1,1], AN2: [1,1], G21: [1,1], F406: [1,1]
+};
+
+// Visual fuselage width for a given total seats-abreast (single source of truth
+// so a 2-2 regional and a 2-2 Concorde render at the same width).
+const FUSELAGE_WIDTH_BY_ABREAST = { 1: 80, 2: 95, 3: 120, 4: 145, 5: 180, 6: 235, 7: 300, 8: 340, 9: 380, 10: 410 };
+function _abreastOf(groups) { return groups.reduce((s, g) => s + g, 0); }
+function _widthForAbreast(n) { return FUSELAGE_WIDTH_BY_ABREAST[n] || (n > 10 ? 410 : 190); }
+// Premium derived from economy: one fewer seat per side (min 1). Used for
+// single-aisle/regional types, which were historically single-class or have
+// era-locked premium cabins anyway.
+function _derivePremium(eco) { return eco.map(g => Math.max(1, g - 1)); }
+
+// Resolve the real cabin for an ICAO code → { layout, fuselageWidth } or null.
+function getIcaoCabin(icaoCode) {
+  const d = icaoCode && AIRCRAFT_CABIN[icaoCode];
+  if (!d) return null;
+  const isArr = Array.isArray(d);
+  const eco = isArr ? d : d.eco;
+  const layout = {
+    economy:     eco,
+    economyPlus: (!isArr && d.ep)  ? d.ep  : eco.slice(),             // same abreast, more pitch
+    business:    (!isArr && d.biz) ? d.biz : _derivePremium(eco),
+    first:       (!isArr && d.fst) ? d.fst : ((!isArr && d.biz) ? d.biz : _derivePremium(eco))
+  };
+  const fuselageWidth = (!isArr && d.fw) ? d.fw : _widthForAbreast(_abreastOf(eco));
+  return { layout, fuselageWidth };
+}
+
+// Blanket small-aircraft rule — FALLBACK only, for any airframe missing from
+// AIRCRAFT_CABIN above. Scales the abreast count down by passenger capacity
+// (first threshold that fits wins), applied only when it yields a NARROWER
+// cabin than the type default — it only narrows.
+//   ≤12 pax → 1-1 (2 abreast, e.g. Beech 1900 / Twin Otter)
+//   ≤30 pax → 2-1 (3 abreast, e.g. DC-3 / Saab 340 / EMB-120)
+//   ≤50 pax → 2-2 (4 abreast, e.g. ATR / CRJ)
+const SMALL_AIRCRAFT_LAYOUTS = [
+  { maxCapacity: 12, fuselageWidth: 95,  layout: { economy: [1, 1], economyPlus: [1, 1], business: [1, 1], first: [1, 1] } },
+  { maxCapacity: 30, fuselageWidth: 120, layout: { economy: [2, 1], economyPlus: [2, 1], business: [1, 1], first: [1, 1] } },
+  { maxCapacity: 50, fuselageWidth: 135, layout: { economy: [2, 2], economyPlus: [2, 2], business: [1, 1], first: [1, 1] } }
+];
+
+// Returns { layout, fuselageWidth } for a small aircraft, or null when the type
+// default is already as narrow (never widens an aircraft's cabin).
+function getSmallAircraftOverride(capacity, typeLayout) {
+  if (!capacity || capacity <= 0) return null;
+  const rule = SMALL_AIRCRAFT_LAYOUTS.find(r => capacity <= r.maxCapacity);
+  if (!rule) return null;
+  const typeEcon = typeLayout && typeLayout.economy ? typeLayout.economy.reduce((s, g) => s + g, 0) : 99;
+  const ruleEcon = rule.layout.economy.reduce((s, g) => s + g, 0);
+  return ruleEcon < typeEcon ? rule : null;
+}
+
 // Row pixel heights per class (SVG units — larger = more visible seats)
 const ROW_HEIGHTS = { economy: 22, economyPlus: 26, business: 32, first: 42 };
 const ROW_GAP = 3;
@@ -894,10 +1050,18 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   const acType = aircraft.type;
 
-  // Check for per-aircraft layout override (e.g. 777 = 10-abreast, 767 = 7-abreast)
+  // Resolve the cabin cross-section. Precedence: real per-ICAO data →
+  // blanket small-aircraft fallback → widebody name override → type default.
   const acStr = `${aircraft.manufacturer || ''} ${aircraft.model || ''} ${aircraft.icaoCode || ''}`;
-  const wbOverride = (!deckSpec && acType === 'Widebody') ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
-  const layouts = deckSpec ? deckSpec.layout : (wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType]);
+  const icaoCabin = !deckSpec ? getIcaoCabin(aircraft.icaoCode) : null;
+  const smallOverride = (!deckSpec && !icaoCabin)
+    ? getSmallAircraftOverride(aircraft.passengerCapacity, SEAT_LAYOUTS[acType]) : null;
+  const wbOverride = (!deckSpec && !icaoCabin && !smallOverride && acType === 'Widebody')
+    ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
+  const layouts = deckSpec ? deckSpec.layout
+    : (icaoCabin ? icaoCabin.layout
+      : (smallOverride ? smallOverride.layout
+        : (wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType])));
 
   function classPerRow(cls) {
     return layouts[cls] ? layouts[cls].reduce((s, g) => s + g, 0) : 0;
@@ -1004,11 +1168,16 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     padding: 1rem;
   `;
 
-  const fuselageWidth = deckSpec ? deckSpec.fuselageWidth : ((wbOverride && wbOverride.fuselageWidth) || FUSELAGE_WIDTHS[acType] || 190);
+  const fuselageWidth = deckSpec ? deckSpec.fuselageWidth
+    : (icaoCabin ? icaoCabin.fuselageWidth
+       : ((smallOverride && smallOverride.fuselageWidth)
+          || (wbOverride && wbOverride.fuselageWidth)
+          || FUSELAGE_WIDTHS[acType] || 190));
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
-                display: flex; flex-direction: column; max-width: 1600px; width: 96%; max-height: 94vh; overflow: hidden;">
+                display: flex; flex-direction: column; width: fit-content; min-width: min(680px, 96vw);
+                max-width: 96vw; max-height: 94vh; overflow: hidden;">
       <!-- Top controls bar -->
       <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); overflow-y: auto; flex-shrink: 0;">
         <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
@@ -1065,7 +1234,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
       <!-- Landscape diagram area — scrollable in both directions -->
       <div id="cabinDiagramScroll" style="flex: 1; min-height: 0; background: rgba(0,0,0,0.2); overflow: auto; padding: 0.5rem 0.75rem;">
-        <div id="cabinDiagramContainer" style="display: flex; flex-direction: column; align-items: flex-start;"></div>
+        <div id="cabinDiagramContainer" style="display: flex; flex-direction: column; align-items: center; min-width: 100%;"></div>
       </div>
     </div>
   `;
@@ -1772,6 +1941,27 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
   updateUI();
 }
 
+
+// ======================================================================
+// Shared aircraft-image placeholder
+// Rendered in place of a blank box when an aircraft has no photo (or all
+// image fallbacks fail). Used by the marketplace, fleet and scheduling
+// detail cards — cabin-configurator.js is loaded on all three pages, so it
+// hosts this shared UI helper. Returns self-contained, theme-aware HTML.
+// ======================================================================
+window.aircraftNoImage = window.aircraftNoImage || function (opts) {
+  opts = opts || {};
+  const compact = !!opts.compact;          // smaller variant for thumbnails
+  const icon = compact ? 30 : 46;
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.4rem;width:100%;height:100%;padding:0.75rem;text-align:center;user-select:none;pointer-events:none;">
+      <svg width="${icon}" height="${icon}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="opacity:0.22;">
+        <path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="var(--text-muted)"/>
+      </svg>
+      <div style="font-size:${compact ? '0.85rem' : '1.05rem'};font-weight:800;letter-spacing:0.3px;color:var(--text-secondary);opacity:0.85;line-height:1;">AMS<span style="color:var(--accent-color);font-weight:500;">.ceo</span></div>
+      <div style="font-size:${compact ? '0.48rem' : '0.55rem'};text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);opacity:0.7;">No Image Available</div>
+    </div>`;
+};
 
 /**
  * Build a short cabin summary string like "4F / 16J / 142Y"

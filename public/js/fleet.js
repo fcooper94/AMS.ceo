@@ -357,7 +357,7 @@ async function showAircraftDetails(userAircraftId) {
         <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
           <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:130px;">
             ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"              data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
-              onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML='<div style=\\'color:var(--text-muted);font-size:0.75rem;\\'>No image</div>';}">` : `<span style="color:var(--text-muted);font-size:0.75rem;">No image</span>`}
+              onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML=window.aircraftNoImage();}">` : window.aircraftNoImage()}
           </div>
           <div style="font-size:0.75rem;color:var(--text-secondary);padding:0.1rem 0;">${ownershipHtml}</div>
         </div>
