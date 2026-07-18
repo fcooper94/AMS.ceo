@@ -71,8 +71,40 @@ function fmtDuration(min) {
 async function initMap() {
   await loadLeaflet();
   const lat = parseFloat(baseAirport.latitude), lng = parseFloat(baseAirport.longitude);
-  tourMap = L.map('tourMap', { center: [lat, lng], zoom: 9, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(tourMap);
+  tourMap = L.map('tourMap', { center: [lat, lng], zoom: 9, attributionControl: true });
+  tourMap.attributionControl.setPrefix(false);
+
+  // Themed base map (default) — follows the app's light/dark theme, and swaps
+  // live when the theme is toggled. Satellite/Terrain/Streets stay available in
+  // the switcher (top-right) for more detail when routing over scenery.
+  const cartoUrl = () => document.documentElement.getAttribute('data-theme') === 'light'
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  const themedMap = L.tileLayer(cartoUrl(), { subdomains: 'abcd', maxZoom: 19, attribution: '© OpenStreetMap, © CARTO' });
+  new MutationObserver(() => themedMap.setUrl(cartoUrl()))
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  const satellite = L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics'
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19
+    })
+  ]);
+  const terrain = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: '© Esri — Topographic'
+  });
+  const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    subdomains: 'abc', maxZoom: 19, attribution: '© OpenStreetMap contributors'
+  });
+
+  themedMap.addTo(tourMap); // default: matches the app theme (light/dark)
+  L.control.layers(
+    { 'Map': themedMap, 'Satellite': satellite, 'Terrain': terrain, 'Streets': streets },
+    {},
+    { position: 'topright', collapsed: false }
+  ).addTo(tourMap);
 
   baseMarker = L.circleMarker([lat, lng], { radius: 8, color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 0.9, weight: 2 })
     .addTo(tourMap).bindTooltip(`${baseAirport.icaoCode} (base)`, { permanent: false });
