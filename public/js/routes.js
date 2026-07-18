@@ -502,7 +502,105 @@ function showSuccessBanner(type = null, route = null) {
 }
 
 // Initialize when page loads
+// ── Sightseeing Tours (separate from scheduled routes) ────────────────
+function fmtTourDuration(min) {
+  if (min == null) return '—';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function loadTours() {
+  const container = document.getElementById('toursTable');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/sightseeing-tours');
+    const tours = await res.json();
+    if (!res.ok) throw new Error(tours.error || 'Failed');
+    displayTours(tours);
+  } catch (err) {
+    console.error('Error loading tours:', err);
+    container.innerHTML = '<div class="empty-message">Error loading tours</div>';
+  }
+}
+
+function displayTours(tours) {
+  const container = document.getElementById('toursTable');
+  if (!tours || tours.length === 0) {
+    container.innerHTML = `
+      <div class="table-empty">
+        <div class="empty-message">No sightseeing tours yet.</div>
+        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:0.4rem;">
+          Scenic pleasure flights that loop from your base airport. <a href="/sightseeing/create" style="color:var(--accent-color);">Create one</a>.
+        </div>
+      </div>`;
+    return;
+  }
+
+  const thL = 'padding: 0.5rem; text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem;';
+  const thC = 'padding: 0.5rem; text-align: center; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; white-space: nowrap;';
+  const tdC = 'padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;';
+
+  const rows = tours.map(t => {
+    const ac = t.assignedAircraft;
+    const acLabel = ac ? `${ac.registration} · ${ac.manufacturer} ${ac.model}` : '<span style="color:var(--text-muted);">Unassigned</span>';
+    const statusColor = t.isActive ? 'var(--success-color)' : 'var(--text-muted)';
+    const statusText = t.isActive ? 'ACTIVE' : 'PAUSED';
+    const nameEsc = escapeTour(t.name).replace(/'/g, "\\'");
+    return `
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 0.4rem 0.5rem; color: var(--accent-color); font-weight: 600; white-space: nowrap;">${escapeTour(t.name)}</td>
+        <td style="padding: 0.4rem 0.5rem; color: var(--text-primary); white-space: nowrap;">${t.baseAirport ? t.baseAirport.icaoCode : '—'}</td>
+        <td style="padding: 0.4rem 0.5rem; color: var(--text-primary); white-space: nowrap;">${acLabel}</td>
+        <td style="${tdC}">${Math.round(t.distanceNm).toLocaleString()} nm</td>
+        <td style="${tdC}">${fmtTourDuration(t.durationMin)}</td>
+        <td style="${tdC}">${displayDaysOfWeek(t.daysOfWeek)}</td>
+        <td style="${tdC}">${formatCurrency(t.ticketPrice)}</td>
+        <td style="${tdC}">${formatCurrency(t.totalRevenue || 0)}</td>
+        <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;"><span style="color:${statusColor};font-weight:600;font-size:0.8rem;">${statusText}</span></td>
+        <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
+          <button onclick="deleteTour('${t.id}','${nameEsc}')" title="Delete Tour" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">✕</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+      <thead>
+        <tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color);">
+          <th style="${thL}">TOUR</th>
+          <th style="${thL}">BASE</th>
+          <th style="${thL}">AIRCRAFT</th>
+          <th style="${thC}">DISTANCE</th>
+          <th style="${thC}">DURATION</th>
+          <th style="${thC}">OPERATING DAYS</th>
+          <th style="${thC}">PRICE</th>
+          <th style="${thC}">REVENUE</th>
+          <th style="${thC}">STATUS</th>
+          <th style="${thC}">ACTIONS</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function escapeTour(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function deleteTour(id, name) {
+  if (!confirm(`Delete sightseeing tour "${name}"?`)) return;
+  try {
+    const res = await fetch(`/api/sightseeing-tours/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok && data.success) loadTours();
+    else alert(data.error || 'Failed to delete tour');
+  } catch (err) {
+    alert('Network error');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   showSuccessBanner();
   loadAllRoutes();
+  loadTours();
 });

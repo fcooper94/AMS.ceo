@@ -171,6 +171,7 @@ const staffRoutes = require('./routes/staff');
 const loansRoutes = require('./routes/loans');
 const airspaceRoutes = require('./routes/airspace');
 const marketingRoutes = require('./routes/marketing');
+const sightseeingRoutes = require('./routes/sightseeing');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -328,6 +329,7 @@ app.use('/api/staff', requireWorld, staffRoutes);
 app.use('/api/loans', requireWorld, loansRoutes);
 app.use('/api/airspace', requireWorld, airspaceRoutes);
 app.use('/api/marketing', requireWorld, marketingRoutes);
+app.use('/api/sightseeing-tours', requireWorld, sightseeingRoutes);
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -468,6 +470,15 @@ app.get('/routes', requireWorld, async (req, res) => {
 app.get('/routes/create', requireWorld, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/routes-create.html'), '/routes/create');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/sightseeing/create', requireWorld, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/sightseeing-create.html'), '/sightseeing/create');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');

@@ -689,8 +689,120 @@ class WorldTimeService {
           }
         }
       }
+
+      // 3. Sightseeing tours (separate model — scenic loops from a base airport)
+      await this.processSightseeingTours(worldId, currentGameTime, gameDate, gameDayOfWeek, currentMinutesOfDay, membershipIds);
     } catch (error) {
       console.error('Error processing flights:', error.message);
+    }
+  }
+
+  /**
+   * Process sightseeing-tour revenue. A tour is a scenic round-trip from a base
+   * airport; it operates on its daysOfWeek and is credited once per operating
+   * game day (lastRevenueGameDay guard) once its departure + duration has passed.
+   * Revenue uses a flat, price-driven load: a high baseline softened by how far
+   * the ticket price sits above a duration-based suggested price.
+   */
+  async processSightseeingTours(worldId, currentGameTime, gameDate, gameDayOfWeek, currentMinutesOfDay, membershipIds) {
+    try {
+      const { SightseeingTour } = require('../models');
+      const eraEconomicService = require('./eraEconomicService');
+      if (!membershipIds || membershipIds.length === 0) return;
+
+      const tours = await SightseeingTour.findAll({
+        where: {
+          worldMembershipId: { [Op.in]: membershipIds },
+          isActive: true,
+          assignedAircraftId: { [Op.ne]: null },
+          daysOfWeek: { [Op.contains]: [gameDayOfWeek] },
+          [Op.or]: [{ lastRevenueGameDay: { [Op.ne]: gameDate } }, { lastRevenueGameDay: null }]
+        },
+        include: [{ model: UserAircraft, as: 'assignedAircraft', include: [{ model: Aircraft, as: 'aircraft' }] }]
+      });
+      if (tours.length === 0) return;
+
+      const worldYear = currentGameTime.getFullYear();
+      const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
+      const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
+
+      for (const tour of tours) {
+        const ac = tour.assignedAircraft;
+        if (!ac || !ac.aircraft) continue;
+        // Don't fly (or earn) while the aircraft is grounded — maintenance, storage, on order, etc.
+        if (ac.status && ac.status !== 'active') continue;
+
+        // Gate: departure (default 09:00) + duration must have elapsed today.
+        const dep = (tour.scheduledDepartureTime || '09:00').split(':').map(Number);
+        const depMinutes = (dep[0] || 0) * 60 + (dep[1] || 0);
+        const durationMin = tour.durationMin || Math.max(5, Math.round((parseFloat(tour.distanceNm) || 0) / (ac.aircraft.cruiseSpeed || 200) * 60));
+        if (currentMinutesOfDay < depMinutes + durationMin) continue;
+
+        const distance = parseFloat(tour.distanceNm) || 0;
+        const price = parseFloat(tour.ticketPrice) || 0;
+
+        // Seats: configured cabin if set, else aircraft capacity.
+        const configured = (ac.economySeats || 0) + (ac.economyPlusSeats || 0) + (ac.businessSeats || 0) + (ac.firstSeats || 0);
+        const seats = configured > 0 ? configured : (ac.aircraft.passengerCapacity || 0);
+
+        // Flat, price-driven load: 0.9 baseline, softened above a suggested price.
+        // Era-scaled so the sweet-spot price matches era-appropriate values (and
+        // the builder's hint, which scales the same way).
+        const suggested = Math.max(5 * eraMultiplier, durationMin * 3 * eraMultiplier);
+        const priceRatio = suggested > 0 ? price / suggested : 1;
+        let load = 0.9 - 0.5 * (priceRatio - 1);
+        load = Math.max(0.15, Math.min(0.98, load));
+        load = Math.max(0.05, Math.min(1, load * (0.95 + Math.random() * 0.10))); // ±5% noise
+
+        const pax = Math.round(seats * load);
+        const revenue = Math.round(pax * price);
+
+        // Costs — mirror routes, but distanceNm is already the full loop (no x2).
+        const fuelCost = Math.round(distance * 2.5 * fuelMultiplier * eraMultiplier);
+        const crewCost = Math.round(distance * 0.30 * eraMultiplier);
+        const maintenanceCost = Math.round(distance * 0.20 * eraMultiplier);
+        const airportFees = Math.round((400 + seats * 2) * eraMultiplier); // single base landing
+        const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
+        const profit = revenue - totalCosts;
+
+        // Tour metrics
+        const flights = (parseInt(tour.totalFlights) || 0) + 1;
+        const avgLF = ((parseFloat(tour.averageLoadFactor) || 0) * (flights - 1) + load * 100) / flights;
+        await tour.update({
+          totalFlights: flights,
+          totalRevenue: (parseFloat(tour.totalRevenue) || 0) + revenue,
+          totalCosts: (parseFloat(tour.totalCosts) || 0) + totalCosts,
+          totalPassengers: (parseInt(tour.totalPassengers) || 0) + pax,
+          averageLoadFactor: Math.round(avgLF * 100) / 100,
+          lastRevenueGameDay: gameDate
+        });
+
+        // Credit airline balance
+        const membership = await WorldMembership.findByPk(tour.worldMembershipId);
+        if (membership) {
+          membership.balance = (parseFloat(membership.balance) || 0) + profit;
+          await membership.save();
+        }
+
+        // Weekly financials
+        try {
+          const WeeklyFinancial = require('../models/WeeklyFinancial');
+          const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
+          const [weekRecord] = await WeeklyFinancial.findOrCreate({
+            where: { worldMembershipId: tour.worldMembershipId, weekStart }, defaults: {}
+          });
+          await weekRecord.increment({
+            flightRevenue: revenue, fuelCosts: fuelCost, crewCosts: crewCost,
+            maintenanceCosts: maintenanceCost, airportFees, flights: 1, passengers: pax
+          });
+        } catch (_) { /* non-critical */ }
+
+        // Aircraft flight hours (drives maintenance accrual)
+        ac.totalFlightHours = (parseFloat(ac.totalFlightHours) || 0) + (durationMin / 60);
+        await ac.save();
+      }
+    } catch (error) {
+      console.error('Error processing sightseeing tours:', error.message);
     }
   }
 

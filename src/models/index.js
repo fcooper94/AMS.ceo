@@ -19,6 +19,7 @@ const WeeklyFinancial = require('./WeeklyFinancial');
 const Loan = require('./Loan');
 const AirspaceRestriction = require('./AirspaceRestriction');
 const MarketingCampaign = require('./MarketingCampaign');
+const SightseeingTour = require('./SightseeingTour');
 
 // Define associations
 User.belongsToMany(World, {
@@ -62,6 +63,14 @@ Route.belongsTo(UserAircraft, { foreignKey: 'assigned_aircraft_id', as: 'assigne
 Airport.hasMany(Route, { foreignKey: 'departure_airport_id', as: 'departingRoutes' });
 Airport.hasMany(Route, { foreignKey: 'arrival_airport_id', as: 'arrivingRoutes' });
 Airport.hasMany(Route, { foreignKey: 'tech_stop_airport_id', as: 'techStopRoutes' });
+
+// SightseeingTour associations (a scenic loop from/to a single base airport)
+WorldMembership.hasMany(SightseeingTour, { foreignKey: 'world_membership_id', as: 'sightseeingTours' });
+SightseeingTour.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
+SightseeingTour.belongsTo(Airport, { foreignKey: 'base_airport_id', as: 'baseAirport' });
+SightseeingTour.belongsTo(UserAircraft, { foreignKey: 'assigned_aircraft_id', as: 'assignedAircraft' });
+Airport.hasMany(SightseeingTour, { foreignKey: 'base_airport_id', as: 'sightseeingTours' });
+UserAircraft.hasMany(SightseeingTour, { foreignKey: 'assigned_aircraft_id', as: 'sightseeingTours' });
 
 // ScheduledFlight associations
 Route.hasMany(ScheduledFlight, { foreignKey: 'route_id', as: 'scheduledFlights' });
@@ -136,5 +145,6 @@ module.exports = {
   WeeklyFinancial,
   Loan,
   AirspaceRestriction,
-  MarketingCampaign
+  MarketingCampaign,
+  SightseeingTour
 };
