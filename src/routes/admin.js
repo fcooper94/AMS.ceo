@@ -5,7 +5,8 @@ const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const bcrypt = require('bcryptjs');
 const { sendEmail } = require('../utils/mailer');
-const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, MarketingCampaign, RecurringMaintenance } = require('../models');
+const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, MarketingCampaign, RecurringMaintenance, Payment } = require('../models');
+const { getStripe } = require('../config/billingConfig');
 const airportCacheService = require('../services/airportCacheService');
 const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
 
@@ -183,6 +184,104 @@ router.post('/users/:userId/permissions', async (req, res) => {
       console.error('Error updating permissions:', error);
     }
     res.status(500).json({ error: 'Failed to update permissions' });
+  }
+});
+
+// ── Billing / invoices ────────────────────────────────────────────────
+
+/** All of a user's payments (invoices), newest first. */
+router.get('/users/:userId/payments', async (req, res) => {
+  try {
+    const payments = await Payment.findAll({
+      where: { userId: req.params.userId },
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(payments.map(p => ({
+      id: p.id, packId: p.packId, credits: p.credits,
+      amount: p.amount, currency: p.currency, status: p.status,
+      invoiceUrl: p.invoiceUrl, receiptUrl: p.receiptUrl,
+      refundedAt: p.refundedAt, date: p.createdAt
+    })));
+  } catch (err) {
+    console.error('[admin] list payments failed:', err.message);
+    res.status(500).json({ error: 'Failed to load payments' });
+  }
+});
+
+/** Manually approve (fulfil) a pending payment — grants credits like the webhook. */
+router.post('/payments/:paymentId/approve', async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.paymentId);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (payment.status === 'paid') return res.status(400).json({ error: 'Already paid' });
+
+    // Best-effort invoice/receipt from Stripe if we have the session.
+    const stripe = getStripe();
+    if (stripe && payment.stripeSessionId) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(payment.stripeSessionId);
+        if (session.payment_intent) payment.stripePaymentIntent = session.payment_intent;
+        if (session.invoice) {
+          const inv = await stripe.invoices.retrieve(session.invoice);
+          payment.invoiceUrl = inv.hosted_invoice_url || inv.invoice_pdf || payment.invoiceUrl;
+        }
+        if (session.payment_intent) {
+          const pi = await stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] });
+          payment.receiptUrl = pi.latest_charge?.receipt_url || payment.receiptUrl;
+        }
+      } catch (e) { /* URLs are best-effort */ }
+    }
+
+    const user = await User.findByPk(payment.userId);
+    if (user) { user.credits = (user.credits || 0) + payment.credits; await user.save(); }
+    payment.status = 'paid';
+    await payment.save();
+    res.json({ success: true, credits: user ? user.credits : null });
+  } catch (err) {
+    console.error('[admin] approve payment failed:', err.message);
+    res.status(500).json({ error: 'Failed to approve payment' });
+  }
+});
+
+/** Deny a pending payment — marks it failed, grants nothing. */
+router.post('/payments/:paymentId/deny', async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.paymentId);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (payment.status === 'paid') return res.status(400).json({ error: 'Cannot deny a paid payment — use Refund' });
+    payment.status = 'failed';
+    await payment.save();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] deny payment failed:', err.message);
+    res.status(500).json({ error: 'Failed to deny payment' });
+  }
+});
+
+/** Refund a paid payment via Stripe, and claw the credits back. */
+router.post('/payments/:paymentId/refund', async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.paymentId);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (payment.status !== 'paid') return res.status(400).json({ error: 'Only paid payments can be refunded' });
+    if (payment.refundedAt) return res.status(400).json({ error: 'Already refunded' });
+
+    const stripe = getStripe();
+    if (stripe && payment.stripePaymentIntent) {
+      await stripe.refunds.create({ payment_intent: payment.stripePaymentIntent });
+    } else if (!stripe) {
+      return res.status(503).json({ error: 'Stripe not configured' });
+    }
+
+    // Claw back the granted credits (may go negative if already spent).
+    const user = await User.findByPk(payment.userId);
+    if (user) { user.credits = (user.credits || 0) - payment.credits; await user.save(); }
+    payment.refundedAt = new Date();
+    await payment.save();
+    res.json({ success: true, credits: user ? user.credits : null });
+  } catch (err) {
+    console.error('[admin] refund failed:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to refund payment' });
   }
 });
 

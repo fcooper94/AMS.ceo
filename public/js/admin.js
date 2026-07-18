@@ -21,7 +21,7 @@ async function loadUsers() {
     if (users.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
+          <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
         </tr>
       `;
       return;
@@ -51,6 +51,7 @@ async function loadUsers() {
           <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
           <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
           <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
+          <td style="padding: 0.5rem; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap;">${user.lastLogin ? new Date(user.lastLogin).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
           <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
           <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${creditDisplay}</td>
           <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
@@ -66,7 +67,7 @@ async function loadUsers() {
     const tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading users</td>
+        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading users</td>
       </tr>
     `;
   }
@@ -82,8 +83,8 @@ function searchUsers() {
   }
 
   const filteredUsers = allUsers.filter(user =>
-    user.vatsimId.toLowerCase().includes(searchTerm) ||
-    (user.firstName + ' ' + user.lastName).toLowerCase().includes(searchTerm)
+    (user.firstName + ' ' + user.lastName).toLowerCase().includes(searchTerm) ||
+    (user.email || '').toLowerCase().includes(searchTerm)
   );
 
   const tbody = document.getElementById('usersTableBody');
@@ -121,6 +122,7 @@ function searchUsers() {
         <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
         <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
         <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
+        <td style="padding: 0.5rem; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap;">${user.lastLogin ? new Date(user.lastLogin).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace; color: ${creditColor}; font-weight: 600;">${creditDisplay}</td>
         <td style="padding: 0.5rem; text-align: center;">${permissionStatus}</td>
@@ -251,6 +253,7 @@ function renderUserActions(user) {
   let items = '';
   items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openEditModal(${uj})'>Edit Credits</button>`;
   items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openPermissionModal(${uj})'>Permissions</button>`;
+  items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openInvoicesModal(${uj})'>Invoices</button>`;
 
   if (user.vatsimId && user.vatsimId.startsWith('LOCAL-')) {
     items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openSetCidModal(${uj})'>Set CID</button>`;
@@ -384,6 +387,104 @@ function showConfirmDialog({ title, message, confirmText = 'Confirm', cancelText
     overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
     okBtn.addEventListener('click', () => done(true));
   });
+}
+
+// ── Invoices / payments modal ─────────────────────────────────────────
+async function openInvoicesModal(user) {
+  const overlay = document.createElement('div');
+  overlay.id = 'invoicesOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  overlay.innerHTML = `
+    <style>
+      .inv-pill { display:inline-block; font-size:0.72rem; color:var(--accent-color); text-decoration:none; border:1px solid var(--border-color); padding:0.22rem 0.55rem; border-radius:6px; transition:border-color 0.15s, background 0.15s; }
+      .inv-pill:hover { border-color:var(--accent-color); background:rgba(59,130,246,0.10); }
+      .inv-btn { padding:0.34rem 0.85rem; border:none; border-radius:6px; font-size:0.72rem; font-weight:600; cursor:pointer; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.25); transition:filter 0.15s, transform 0.05s; }
+      .inv-btn:hover { filter:brightness(1.12); }
+      .inv-btn:active { transform:translateY(1px); }
+      .inv-approve { background:var(--success-color, #16a34a); }
+      .inv-danger { background:#dc2626; }
+    </style>
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:12px;width:100%;max-width:780px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:var(--text-primary);">Invoices — ${_escHtml((user.firstName || '') + ' ' + (user.lastName || ''))}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">${_escHtml(user.email || user.vatsimId || '')}</div>
+        </div>
+        <button onclick="closeInvoicesModal()" style="background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+      <div id="invoicesBody" style="overflow-y:auto;">
+        <div style="padding:2rem;text-align:center;color:var(--text-muted);">Loading…</div>
+      </div>
+    </div>`;
+  overlay.addEventListener('mousedown', e => { if (e.target === overlay) closeInvoicesModal(); });
+  document.body.appendChild(overlay);
+  await loadInvoices(user.id);
+}
+
+function closeInvoicesModal() { const o = document.getElementById('invoicesOverlay'); if (o) o.remove(); }
+
+async function loadInvoices(userId) {
+  const body = document.getElementById('invoicesBody');
+  if (!body) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/payments`);
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">No payments for this user.</div>';
+      return;
+    }
+    body.innerHTML = rows.map(r => invoiceRow(userId, r)).join('');
+  } catch (e) {
+    body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--warning-color);">Failed to load payments.</div>';
+  }
+}
+
+function invoiceRow(userId, r) {
+  const date = new Date(r.date).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const money = (r.currency || 'gbp').toLowerCase() === 'gbp' ? '£' + (r.amount / 100).toFixed(2) : (r.currency + ' ' + (r.amount / 100).toFixed(2));
+  const refunded = !!r.refundedAt;
+  let statusLabel, statusColor;
+  if (refunded) { statusLabel = 'Refunded'; statusColor = 'var(--text-muted)'; }
+  else if (r.status === 'paid') { statusLabel = 'Paid'; statusColor = 'var(--success-color)'; }
+  else if (r.status === 'pending') { statusLabel = 'Pending'; statusColor = 'var(--warning-color)'; }
+  else { statusLabel = 'Failed'; statusColor = '#f85149'; }
+
+  // Subtle "ghost" pill for Invoice/Receipt links
+  const pill = (label, href) => `<a href="${href}" target="_blank" rel="noopener" class="inv-pill">${label}</a>`;
+  const links = [
+    r.invoiceUrl ? pill('Invoice', r.invoiceUrl) : '',
+    r.receiptUrl ? pill('Receipt', r.receiptUrl) : ''
+  ].filter(Boolean).join('');
+
+  // Solid action button
+  const btn = (label, cls, action) => `<button onclick="invoiceAction('${userId}','${r.id}','${action}')" class="inv-btn ${cls}">${label}</button>`;
+  let actions = '';
+  if (r.status === 'pending') actions = btn('Approve', 'inv-approve', 'approve') + btn('Deny', 'inv-danger', 'deny');
+  else if (r.status === 'paid' && !refunded) actions = btn('Refund', 'inv-danger', 'refund');
+
+  return `<div style="display:grid;grid-template-columns:1.3fr 1fr 0.8fr 0.9fr 1.6fr;gap:0.5rem;align-items:center;padding:0.6rem 1.25rem;border-bottom:1px solid var(--border-color);font-size:0.8rem;">
+    <span style="color:var(--text-secondary);">${date}</span>
+    <span style="color:var(--text-primary);">+${r.credits} credits</span>
+    <span style="font-family:monospace;">${money}</span>
+    <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>
+    <span style="display:flex;gap:0.4rem;align-items:center;justify-content:flex-end;flex-wrap:wrap;">${links}${actions}</span>
+  </div>`;
+}
+
+async function invoiceAction(userId, paymentId, action) {
+  const verb = action.charAt(0).toUpperCase() + action.slice(1);
+  const msg = action === 'approve' ? 'Approve this payment and grant the credits?'
+    : action === 'deny' ? 'Deny this pending payment? No credits will be granted.'
+    : 'Refund this payment? This issues a <strong>real Stripe refund</strong> and removes the granted credits from the user.';
+  const ok = await showConfirmDialog({ title: verb + ' payment', message: msg, confirmText: verb, tone: action === 'approve' ? 'primary' : 'danger' });
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/admin/payments/${paymentId}/${action}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Action failed'); return; }
+    await loadInvoices(userId);
+    if (typeof loadUsers === 'function') loadUsers(); // refresh credits column
+  } catch (e) { alert('Network error'); }
 }
 
 async function loginAsUser(user) {
