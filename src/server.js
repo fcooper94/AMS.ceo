@@ -185,7 +185,7 @@ async function renderPage(pagePath, requestPath) {
   try {
     // Determine which sidebar to use based on the request path
     // Use simplified sidebar for admin, world selection, and public pages
-    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/privacy', '/data-handling'];
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/faqs', '/privacy', '/data-handling'];
     const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
@@ -249,6 +249,23 @@ async function renderPage(pagePath, requestPath) {
     // Replace title if specified
     if (titleMatch) {
       result = result.replace(/<title[^>]*>.*?<\/title>/, `<title>${titleMatch[1]}</title>`);
+    }
+
+    // Per-page SEO overrides. Public content pages opt IN to indexing via
+    // comment directives; without them a page keeps base-layout's safe
+    // `noindex` default (correct for the auth-gated app pages).
+    const descriptionMatch = pageHtml.match(/<!--\s*DESCRIPTION:\s*([\s\S]+?)\s*-->/);
+    const robotsMatch = pageHtml.match(/<!--\s*ROBOTS:\s*(.+?)\s*-->/);
+    const canonicalMatch = pageHtml.match(/<!--\s*CANONICAL:\s*(.+?)\s*-->/);
+    if (descriptionMatch) {
+      // Function replacement avoids `$` in the description being treated as a backreference.
+      result = result.replace(/<meta name="description"[^>]*>/, () => `<meta name="description" content="${descriptionMatch[1]}">`);
+    }
+    if (robotsMatch) {
+      result = result.replace(/<meta name="robots"[^>]*>/, () => `<meta name="robots" content="${robotsMatch[1]}">`);
+    }
+    if (canonicalMatch) {
+      result = result.replace('</head>', () => `  <link rel="canonical" href="${canonicalMatch[1]}">\n</head>`);
     }
 
     // Add additional stylesheets in head if specified
@@ -542,6 +559,15 @@ app.get('/contact', async (req, res) => {
 app.get('/wiki', async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/wiki.html'), '/wiki');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/faqs', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/faqs.html'), '/faqs');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
