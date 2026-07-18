@@ -411,6 +411,9 @@ function applySPControls(world) {
     return;
   }
 
+  // Single-player only — reveal the card (hidden by default to avoid a flash on MP).
+  card.style.display = '';
+
   // Set current speed
   const speedSelect = document.getElementById('spSpeedSelect');
   if (speedSelect) {
