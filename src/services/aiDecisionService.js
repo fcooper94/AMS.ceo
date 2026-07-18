@@ -764,7 +764,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
         distance,
         scheduledDepartureTime: departureTime,
         turnaroundTime,
-        frequency: routeDays.length,
+        frequency: routeDays.length >= 7 ? 'daily' : 'weekly',
         daysOfWeek: routeDays,
         demand: demandScore,
         ticketPrice: economyPrice,
