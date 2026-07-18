@@ -2037,7 +2037,7 @@ async function findActiveTemplates(worldTime, membershipFilter) {
           {
             model: Aircraft,
             as: 'aircraft',
-            attributes: ['model', 'variant', 'manufacturer', 'cruiseSpeed', 'passengerCapacity']
+            attributes: ['model', 'variant', 'manufacturer', 'cruiseSpeed', 'passengerCapacity', 'type', 'icaoCode']
           }
         ]
       }

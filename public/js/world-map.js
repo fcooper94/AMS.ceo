@@ -102,8 +102,84 @@ function stopPositionUpdates() {
   }
 }
 
-// Aircraft icon SVG
-const aircraftSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`;
+// Aircraft icon SVGs by category. Plan-view silhouettes, nose pointing up
+// (north / bearing 0) so the marker rotation reads correctly. No fill here —
+// colour is applied by CSS (own = accent, other = grey, selected = yellow) and
+// inherited by the child shapes.
+// Clean top-down airliner silhouettes (VATSIM-Radar style): smooth fuselage,
+// swept wing, tail stabiliser, and teardrop engine pods. Built from overlapping
+// same-fill shapes on a 48x48 grid. Size is driven by `px` (see createFlightMarker).
+const AIRCRAFT_ICONS = {
+  // Light / GA aircraft (<20 seats) — straight wings, nose propeller
+  light: {
+    px: 16,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 8c1.3 0 1.3 1.4 1.3 3V38c0 1.4 0 2.5-1.3 2.5S22.7 39.4 22.7 38V11c0-1.6 0-3 1.3-3z"/><path d="M24 20l18 1.6v2.2L24 23 6 23.8v-2.2z"/><path d="M24 36l7 1v1.5l-7-.8-7 .8V37z"/></svg>`
+  },
+  // Small regional / turboprop — compact, short lightly-swept wings, two pods
+  regional: {
+    px: 20,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 6c1.9 0 1.9 1.8 1.9 3.5V39c0 1.6 0 3-1.9 3s-1.9-1.4-1.9-3V9.5C22.1 7.8 22.1 6 24 6z"/><path d="M24 20l15 7v1.2l-15-3.7-15 3.7V27z"/><path d="M24 38l6 3.5v.8L24 40.5 18 42.3v-.8z"/><ellipse cx="15.5" cy="24.2" rx="1.4" ry="2.4"/><ellipse cx="32.5" cy="24.2" rx="1.4" ry="2.4"/></svg>`
+  },
+  // Short-haul narrowbody (A320 / 737) — swept wing, two pods
+  shorthaul: {
+    px: 24,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 4.5c2.2 0 2.2 2 2.2 4V41c0 2 0 3-2.2 3s-2.2-1-2.2-3V8.5C21.8 6.5 21.8 4.5 24 4.5z"/><path d="M24 20l18 10v1.6l-18-6.1L6 31.6V30z"/><path d="M24 39.5l7 3.5v.9L24 41.8 17 43.9V43z"/><ellipse cx="16" cy="23.8" rx="1.8" ry="3"/><ellipse cx="32" cy="23.8" rx="1.8" ry="3"/></svg>`
+  },
+  // Twin-engine widebody (777 / A330 / 787) — larger, two big pods
+  widebody2: {
+    px: 30,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 3.5c2.7 0 2.7 2.3 2.7 4.5V42c0 2 0 3-2.7 3s-2.7-1-2.7-3V8C21.3 5.8 21.3 3.5 24 3.5z"/><path d="M24 19l20 11v2l-20-6.5L4 32v-2z"/><path d="M24 40.5l8.5 3.7v1L24 42.8l-8.5 2.4v-1z"/><ellipse cx="15" cy="23" rx="2.2" ry="3.7"/><ellipse cx="33" cy="23" rx="2.2" ry="3.7"/></svg>`
+  },
+  // Four-engine widebody (747 / A340) — same size, four pods
+  widebody4: {
+    px: 31,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 3.5c2.7 0 2.7 2.3 2.7 4.5V42c0 2 0 3-2.7 3s-2.7-1-2.7-3V8C21.3 5.8 21.3 3.5 24 3.5z"/><path d="M24 19l20 11v2l-20-6.5L4 32v-2z"/><path d="M24 40.5l8.5 3.7v1L24 42.8l-8.5 2.4v-1z"/><ellipse cx="18" cy="21.5" rx="1.9" ry="3.3"/><ellipse cx="30" cy="21.5" rx="1.9" ry="3.3"/><ellipse cx="11" cy="25" rx="1.9" ry="3.3"/><ellipse cx="37" cy="25" rx="1.9" ry="3.3"/></svg>`
+  },
+  // A380 — largest, very broad wing (spans nearly the full width), four pods
+  a380: {
+    px: 44,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 3c3.1 0 3.1 2.5 3.1 5V42.5c0 2 0 3-3.1 3s-3.1-1-3.1-3V8C20.9 5.5 20.9 3 24 3z"/><path d="M24 18l23 12v2.6l-23-7.2-23 7.2V30z"/><path d="M24 40.5l10 4v1.1L24 43l-10 2.6v-1.1z"/><ellipse cx="17" cy="21" rx="2.1" ry="3.6"/><ellipse cx="31" cy="21" rx="2.1" ry="3.6"/><ellipse cx="9.5" cy="24.8" rx="2.1" ry="3.6"/><ellipse cx="38.5" cy="24.8" rx="2.1" ry="3.6"/></svg>`
+  },
+  // Concorde — long needle nose; slender delta wing starts mid-fuselage; twin nacelles
+  concorde: {
+    px: 26,
+    svg: `<svg viewBox="0 0 48 48"><path d="M24 2.5c.8 0 1.2 1.7 1.2 4v16.5L44 40v1.6l-18.8-.6v3.5c0 1.2-.6 1.8-1.2 1.8s-1.2-.6-1.2-1.8v-3.5L4 41.6V40l18.8-17V6.5c0-2.3.4-4 1.2-4z"/><rect x="17.6" y="40.3" width="4" height="4.4" rx="1"/><rect x="26.4" y="40.3" width="4" height="4.4" rx="1"/></svg>`
+  },
+  // Airship / blimp — cigar body with tail fins and gondola, no wings
+  airship: {
+    px: 26,
+    svg: `<svg viewBox="0 0 48 48"><ellipse cx="24" cy="21" rx="8.6" ry="16"/><path d="M24 35l6.4 6.2H17.6z"/><path d="M15.4 32.5l-5.8 3.8 2.4-6.6z"/><path d="M32.6 32.5l5.8 3.8-2.4-6.6z"/><rect x="21.4" y="26" width="5.2" height="7" rx="2.4"/></svg>`
+  }
+};
+
+// Four-engine widebodies. Engine count isn't stored, so resolve by ICAO family:
+// 747 (B74x) and A340 (A34x) plus a few misc heavies. Trijets and everything
+// else widebody fall through to the twin icon (per design decision).
+function isFourEngineWidebody(icao) {
+  if (!icao) return false;
+  icao = icao.toUpperCase();
+  if (icao.startsWith('B74')) return true;   // 747 family (not the A380 — handled separately)
+  if (icao.startsWith('A34')) return true;   // A340 family
+  return icao === 'IL96' || icao === 'A124' || icao === 'A225' || icao === 'C5M';
+}
+
+// Map an aircraft type to one of the six icon categories.
+function classifyAircraftIcon(at) {
+  if (!at) return 'shorthaul';
+  const type = (at.type || '').toLowerCase();
+  const icao = (at.icaoCode || '').toUpperCase();
+  const model = (at.model || '').toLowerCase();
+  if (type === 'airship') return 'airship';
+  if (icao === 'CONC' || model.includes('concorde')) return 'concorde';
+  if (icao === 'A388' || model.includes('a380')) return 'a380';
+  const cap = at.passengerCapacity || 0;
+  if (cap > 0 && cap <= 19) return 'light'; // GA / commuter, smaller than regional
+  if (type === 'regional') return 'regional';
+  if (type === 'widebody' || type === 'cargo') {
+    return isFourEngineWidebody(icao) ? 'widebody4' : 'widebody2';
+  }
+  return 'shorthaul'; // narrowbody / unknown
+}
 
 // Loading overlay for map
 function showMapLoadingOverlay() {
@@ -1049,20 +1125,26 @@ function createFlightMarker(flight, position) {
   const isOtherAirline = flight.isOwnFlight === false;
   const markerClass = isOtherAirline ? 'aircraft-marker-inner other-airline' : 'aircraft-marker-inner';
 
+  // Pick the icon + size for this aircraft's category (regional, shorthaul,
+  // widebody 2/4-engine, A380, airship) and scale the marker box to match.
+  const iconDef = AIRCRAFT_ICONS[classifyAircraftIcon(flight.aircraft?.aircraftType)] || AIRCRAFT_ICONS.shorthaul;
+  const px = iconDef.px;
+  const innerStyle = `transform: rotate(${bearing}deg); width: ${px}px; height: ${px}px`;
+
   const icon = L.divIcon({
     className: 'aircraft-marker',
     html: isOtherAirline
-      ? `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="transform: rotate(${bearing}deg)">${aircraftSvg}</div></div>`
+      ? `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="${innerStyle}">${iconDef.svg}</div></div>`
       : `<div class="aircraft-marker-wrapper">
-        <div class="${markerClass}" style="transform: rotate(${bearing}deg)">${aircraftSvg}</div>
+        <div class="${markerClass}" style="${innerStyle}">${iconDef.svg}</div>
         <div class="aircraft-label">
           ${flightNumber ? `<div class="flight-number-label">${flightNumber}</div>` : ''}
           ${registration ? `<div>${registration}</div>` : ''}
           ${aircraftModel ? `<div>${aircraftModel}</div>` : ''}
         </div>
       </div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
+    iconSize: [px, px],
+    iconAnchor: [px / 2, px / 2]
   });
 
   const marker = L.marker([position.lat, position.lng], { icon })
