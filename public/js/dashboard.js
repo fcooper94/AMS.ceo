@@ -536,9 +536,18 @@ async function changeWorldSpeed(factor) {
   }
 }
 
+// Replace any stat still showing the loading spinner (failed/empty load) with
+// its placeholder, so it never spins forever.
+function clearStuckStatLoaders() {
+  document.querySelectorAll('.stat-value .stat-loader').forEach(loader => {
+    const el = loader.closest('.stat-value');
+    if (el) el.textContent = el.getAttribute('data-fallback') || '--';
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  loadDashboardStats();
-  loadPerformanceStats();
+  Promise.allSettled([loadDashboardStats(), loadPerformanceStats()])
+    .then(clearStuckStatLoaders);
   loadNotifications();
 
   // Measure and set navbar height for fixed sidebar positioning

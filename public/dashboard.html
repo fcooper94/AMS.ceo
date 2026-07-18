@@ -13,19 +13,19 @@
     <div class="dashboard-stats-row">
       <div class="dashboard-stat-card">
         <div class="stat-label">BALANCE</div>
-        <div class="stat-value" id="statBalance">$--</div>
+        <div class="stat-value" id="statBalance" data-fallback="$--"><span class="stat-loader"></span></div>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">FLEET</div>
-        <div class="stat-value" id="statFleet">--</div>
+        <div class="stat-value" id="statFleet" data-fallback="--"><span class="stat-loader"></span></div>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">ROUTES</div>
-        <div class="stat-value" id="statRoutes">--</div>
+        <div class="stat-value" id="statRoutes" data-fallback="--"><span class="stat-loader"></span></div>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">REPUTATION</div>
-        <div class="stat-value" id="statReputation">--</div>
+        <div class="stat-value" id="statReputation" data-fallback="--"><span class="stat-loader"></span></div>
       </div>
     </div>
 
@@ -33,22 +33,22 @@
     <div class="dashboard-stats-row">
       <div class="dashboard-stat-card">
         <div class="stat-label">WEEKLY PROFIT</div>
-        <div class="stat-value" id="statWeeklyProfit">$--</div>
+        <div class="stat-value" id="statWeeklyProfit" data-fallback="$--"><span class="stat-loader"></span></div>
         <a href="/finances" class="stat-link">Open full statement &rsaquo;</a>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">LAST WEEK'S PROFIT</div>
-        <div class="stat-value" id="statLastWeekProfit">$--</div>
+        <div class="stat-value" id="statLastWeekProfit" data-fallback="$--"><span class="stat-loader"></span></div>
         <a href="/finances?week=previous" class="stat-link">Open full statement &rsaquo;</a>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">MOST PROFITABLE ROUTE</div>
-        <div class="stat-value stat-value-sm" id="statBestRoute">--</div>
+        <div class="stat-value stat-value-sm" id="statBestRoute" data-fallback="--"><span class="stat-loader"></span></div>
         <a href="/scheduling" class="stat-link">Manage routes &rsaquo;</a>
       </div>
       <div class="dashboard-stat-card">
         <div class="stat-label">LEAST PROFITABLE ROUTE</div>
-        <div class="stat-value stat-value-sm" id="statWorstRoute">--</div>
+        <div class="stat-value stat-value-sm" id="statWorstRoute" data-fallback="--"><span class="stat-loader"></span></div>
         <a href="/scheduling" class="stat-link">Manage routes &rsaquo;</a>
       </div>
     </div>

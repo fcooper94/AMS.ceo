@@ -1403,6 +1403,22 @@
   font-size: 0.95rem;
 }
 
+/* Loading spinner shown in stat values until data arrives */
+.stat-loader {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: statLoaderSpin 0.7s linear infinite;
+}
+
+@keyframes statLoaderSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* Quick Actions */
 .dashboard-quick-actions {
   display: flex;
