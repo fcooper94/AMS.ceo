@@ -542,7 +542,7 @@ function displayTours(tours) {
 
   const rows = tours.map(t => {
     const ac = t.assignedAircraft;
-    const acLabel = ac ? `${ac.registration} · ${ac.manufacturer} ${ac.model}` : '<span style="color:var(--text-muted);">Unassigned</span>';
+    const acLabel = ac ? `${ac.manufacturer} ${ac.model}${ac.variant ? ' ' + ac.variant : ''}` : '<span style="color:var(--text-muted);">Unassigned</span>';
     const statusColor = t.isActive ? 'var(--success-color)' : 'var(--text-muted)';
     const statusText = t.isActive ? 'ACTIVE' : 'PAUSED';
     const nameEsc = escapeTour(t.name).replace(/'/g, "\\'");
@@ -558,7 +558,10 @@ function displayTours(tours) {
         <td style="${tdC}">${formatCurrency(t.totalRevenue || 0)}</td>
         <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;"><span style="color:${statusColor};font-weight:600;font-size:0.8rem;">${statusText}</span></td>
         <td style="padding: 0.4rem 0.5rem; text-align: center; white-space: nowrap;">
-          <button onclick="deleteTour('${t.id}','${nameEsc}')" title="Delete Tour" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">✕</button>
+          <div style="display:flex; gap:0.25rem; justify-content:center;">
+            <button onclick="window.location.href='/sightseeing/create?id=${t.id}'" title="Edit Tour" style="background: transparent; border: none; color: var(--accent-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">✎</button>
+            <button onclick="deleteTour('${t.id}','${nameEsc}')" title="Delete Tour" style="background: transparent; border: none; color: var(--warning-color); cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">✕</button>
+          </div>
         </td>
       </tr>`;
   }).join('');

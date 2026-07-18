@@ -83,7 +83,7 @@ function serialiseTour(t) {
     assignedAircraftId: t.assignedAircraftId,
     assignedAircraft: ac ? {
       id: ac.id, registration: ac.registration,
-      manufacturer: ac.aircraft?.manufacturer, model: ac.aircraft?.model,
+      manufacturer: ac.aircraft?.manufacturer, model: ac.aircraft?.model, variant: ac.aircraft?.variant,
       cruiseSpeed: ac.aircraft?.cruiseSpeed, passengerCapacity: ac.aircraft?.passengerCapacity
     } : null,
     totalFlights: t.totalFlights,

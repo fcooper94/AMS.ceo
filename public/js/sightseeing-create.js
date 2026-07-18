@@ -16,6 +16,7 @@ let pathLine = null;
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 let selectedDays = [0, 1, 2, 3, 4, 5, 6];
+let editTourId = null;   // set when editing an existing tour (?id=…); only price + aircraft change
 
 function loadLeaflet() {
   return new Promise((resolve, reject) => {
@@ -81,6 +82,7 @@ async function initMap() {
 }
 
 function addWaypoint(lat, lng) {
+  if (editTourId) return; // route is fixed when editing — only price + aircraft change
   if (waypoints.length >= 25) { showError('A tour can have at most 25 waypoints.'); return; }
   waypoints.push({ lat: +lat.toFixed(5), lng: +lng.toFixed(5), name: '' });
   clearError();
@@ -102,8 +104,8 @@ function redrawMap() {
 
   waypoints.forEach((w, i) => {
     const m = L.circleMarker([w.lat, w.lng], { radius: 7, color: '#f0b429', fillColor: '#f0b429', fillOpacity: 0.85, weight: 2 })
-      .addTo(tourMap).bindTooltip(`Waypoint ${i + 1} — click to remove`);
-    m.on('click', (ev) => { L.DomEvent.stopPropagation(ev); removeWaypoint(i); });
+      .addTo(tourMap).bindTooltip(editTourId ? `Waypoint ${i + 1}` : `Waypoint ${i + 1} — click to remove`);
+    if (!editTourId) m.on('click', (ev) => { L.DomEvent.stopPropagation(ev); removeWaypoint(i); });
     wpMarkers.push(m);
   });
 
@@ -146,21 +148,23 @@ function render() {
     priceHint.textContent = '';
   }
 
-  // Waypoint list
+  // Waypoint list (no remove buttons in edit mode — the route is fixed)
   document.getElementById('wpCount').textContent = waypoints.length;
   const list = document.getElementById('wpList');
   list.innerHTML = waypoints.map((w, i) =>
     `<div class="wp-item"><span class="idx">${i + 1}</span>
       <span>${w.lat.toFixed(3)}, ${w.lng.toFixed(3)}</span>
-      <button class="rm" data-i="${i}" title="Remove">&times;</button>
+      ${editTourId ? '' : `<button class="rm" data-i="${i}" title="Remove">&times;</button>`}
     </div>`).join('') || '<div class="tour-hint">No waypoints yet — click the map.</div>';
-  list.querySelectorAll('.rm').forEach(btn => btn.addEventListener('click', () => removeWaypoint(parseInt(btn.dataset.i))));
+  if (!editTourId) list.querySelectorAll('.rm').forEach(btn => btn.addEventListener('click', () => removeWaypoint(parseInt(btn.dataset.i))));
 }
 
 function renderDays() {
   const row = document.getElementById('tourDays');
+  const locked = !!editTourId; // operating days are fixed when editing
   row.innerHTML = DAY_LABELS.map((d, i) =>
-    `<div class="day-toggle ${selectedDays.includes(i) ? 'on' : ''}" data-day="${i}">${d}</div>`).join('');
+    `<div class="day-toggle ${selectedDays.includes(i) ? 'on' : ''}" data-day="${i}"${locked ? ' style="opacity:0.6;cursor:default;"' : ''}>${d}</div>`).join('');
+  if (locked) return;
   row.querySelectorAll('.day-toggle').forEach(el => el.addEventListener('click', () => {
     const day = parseInt(el.dataset.day);
     if (selectedDays.includes(day)) selectedDays = selectedDays.filter(d => d !== day);
@@ -181,71 +185,135 @@ async function loadBaseAirport() {
   document.getElementById('tourBaseLabel').textContent = baseAirport ? `${baseAirport.icaoCode} — ${baseAirport.name}` : 'No base airport';
 }
 
+function _typeKeyOf(ac) {
+  return `${ac.manufacturer} ${ac.model}${ac.variant ? ' ' + ac.variant : ''}`;
+}
+
 async function loadFleet() {
   const r = await fetch('/api/fleet');
   const data = await r.json();
   userFleet = (data.fleet || data).filter(a => a.aircraft && (a.status === 'active' || a.status === 'stored' || !a.status));
   const sel = document.getElementById('tourAircraft');
+  // Tours are assigned to an aircraft TYPE (any aircraft of that type flies it),
+  // like routes — group the fleet by type and store a representative aircraft id.
+  const byType = new Map();
   userFleet.forEach(a => {
+    const key = _typeKeyOf(a.aircraft);
+    if (!byType.has(key)) byType.set(key, { key, rep: a, count: 0 });
+    byType.get(key).count++;
+  });
+  [...byType.values()].sort((x, y) => x.key.localeCompare(y.key)).forEach(g => {
     const opt = document.createElement('option');
-    opt.value = a.id;
-    const ac = a.aircraft;
-    opt.textContent = `${a.registration} — ${ac.manufacturer} ${ac.model}${ac.variant ? ' ' + ac.variant : ''}`;
+    opt.value = g.rep.id;            // representative aircraft of this type
+    opt.dataset.typeKey = g.key;
+    opt.textContent = `${g.key} (${g.count})`;
     sel.appendChild(opt);
   });
 }
 
 async function saveTour() {
   clearError();
-  const name = document.getElementById('tourName').value.trim();
   const aircraftId = document.getElementById('tourAircraft').value;
   const price = parseFloat(document.getElementById('tourPrice').value);
-  const time = document.getElementById('tourTime').value;
-
-  if (!name) return showError('Please give the tour a name.');
-  if (waypoints.length < 1) return showError('Add at least one scenic waypoint on the map.');
   if (!isFinite(price) || price < 0) return showError('Enter a valid ticket price.');
-  if (selectedDays.length === 0) return showError('Select at least one operating day.');
 
   const btn = document.getElementById('saveTourBtn');
+  const savingLabel = editTourId ? 'Save Changes' : 'Save Tour';
   btn.disabled = true; btn.textContent = 'Saving…';
+
   try {
-    const res = await fetch('/api/sightseeing-tours', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        baseAirportId: baseAirport.id,
-        waypoints,
-        ticketPrice: price,
-        assignedAircraftId: aircraftId || null,
-        scheduledDepartureTime: time || null,
-        daysOfWeek: selectedDays.slice().sort((a, b) => a - b)
-      })
-    });
+    let res;
+    if (editTourId) {
+      // Edit mode: only price + assigned aircraft are changeable.
+      res = await fetch(`/api/sightseeing-tours/${editTourId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketPrice: price, assignedAircraftId: aircraftId || null })
+      });
+    } else {
+      const name = document.getElementById('tourName').value.trim();
+      const time = document.getElementById('tourTime').value;
+      if (!name) { btn.disabled = false; btn.textContent = savingLabel; return showError('Please give the tour a name.'); }
+      if (waypoints.length < 1) { btn.disabled = false; btn.textContent = savingLabel; return showError('Add at least one scenic waypoint on the map.'); }
+      if (selectedDays.length === 0) { btn.disabled = false; btn.textContent = savingLabel; return showError('Select at least one operating day.'); }
+      res = await fetch('/api/sightseeing-tours', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          baseAirportId: baseAirport.id,
+          waypoints,
+          ticketPrice: price,
+          assignedAircraftId: aircraftId || null,
+          scheduledDepartureTime: time || null,
+          daysOfWeek: selectedDays.slice().sort((a, b) => a - b)
+        })
+      });
+    }
     const data = await res.json();
     if (res.ok && data.success) {
       window.location.href = '/routes';
     } else {
       showError(data.error || 'Failed to save tour.');
-      btn.disabled = false; btn.textContent = 'Save Tour';
+      btn.disabled = false; btn.textContent = savingLabel;
     }
   } catch (err) {
     showError('Network error. Please try again.');
-    btn.disabled = false; btn.textContent = 'Save Tour';
+    btn.disabled = false; btn.textContent = savingLabel;
   }
 }
 
+// Load an existing tour into the form (edit mode) and lock everything but price + aircraft.
+async function loadTourForEdit() {
+  const r = await fetch('/api/sightseeing-tours');
+  const tours = await r.json();
+  const t = Array.isArray(tours) ? tours.find(x => x.id === editTourId) : null;
+  if (!t) { showError('Tour not found.'); editTourId = null; return; }
+
+  if (t.baseAirport) baseAirport = t.baseAirport; // centre the map on the tour's base
+  waypoints = (t.waypoints || []).map(w => ({ lat: +w.lat, lng: +w.lng, name: w.name || '' }));
+  selectedDays = Array.isArray(t.daysOfWeek) ? t.daysOfWeek.slice() : [0, 1, 2, 3, 4, 5, 6];
+
+  const nameEl = document.getElementById('tourName');
+  nameEl.value = t.name || ''; nameEl.disabled = true;
+  document.getElementById('tourPrice').value = Math.round(parseFloat(t.ticketPrice)) || '';
+  const timeEl = document.getElementById('tourTime');
+  if (t.scheduledDepartureTime) timeEl.value = t.scheduledDepartureTime.substring(0, 5);
+  timeEl.disabled = true;
+  // Select the type option matching the tour's assigned aircraft type.
+  const sel = document.getElementById('tourAircraft');
+  if (t.assignedAircraft) {
+    const typeKey = _typeKeyOf(t.assignedAircraft);
+    const opt = [...sel.options].find(o => o.dataset.typeKey === typeKey);
+    if (opt) sel.value = opt.value;
+  }
+
+  const clearBtn = document.getElementById('clearWpBtn');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const h1 = document.querySelector('h1');
+  if (h1) h1.textContent = 'EDIT SIGHTSEEING TOUR';
+  const hint = h1?.parentElement?.querySelector('.tour-hint');
+  if (hint) hint.textContent = 'Only the ticket price and assigned aircraft can be changed.';
+  const saveBtn = document.getElementById('saveTourBtn');
+  if (saveBtn) saveBtn.textContent = 'Save Changes';
+
+  renderDays(); // re-render (locked) with the tour's days
+}
+
 async function init() {
+  editTourId = new URLSearchParams(window.location.search).get('id');
   renderDays();
   await loadBaseAirport();
   if (!baseAirport) { showError('Your airline has no base airport set.'); return; }
-  await Promise.all([loadFleet(), initMap()]);
+  await loadFleet();
+  if (editTourId) await loadTourForEdit();
+  await initMap();
   render();
 
   document.getElementById('tourAircraft').addEventListener('change', render);
   document.getElementById('tourPrice').addEventListener('input', render);
-  document.getElementById('clearWpBtn').addEventListener('click', () => { waypoints = []; redrawMap(); render(); });
+  const clearBtn = document.getElementById('clearWpBtn');
+  if (clearBtn) clearBtn.addEventListener('click', () => { if (editTourId) return; waypoints = []; redrawMap(); render(); });
   document.getElementById('saveTourBtn').addEventListener('click', saveTour);
   document.getElementById('cancelTourBtn').addEventListener('click', () => { window.location.href = '/routes'; });
 }

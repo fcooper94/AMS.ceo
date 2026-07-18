@@ -5,6 +5,9 @@ let selectedDayOfWeek = 1; // Default to Monday (1=Monday, 0=Sunday)
 let viewMode = 'weekly'; // 'daily' or 'weekly'
 let currentAircraftId = null; // Aircraft being scheduled
 let draggedRoute = null; // Route being dragged
+let draggedTour = null; // Sightseeing tour being dragged
+let sightseeingTours = []; // Airline's sightseeing tours (separate from routes)
+let tourPseudoFlights = []; // Per-day grid blocks synthesized from tours
 let scheduledFlights = []; // All scheduled flights
 let scheduledMaintenance = []; // All scheduled maintenance checks
 let scheduleWorldReferenceTime = null; // Server's world time at a specific moment
@@ -1322,6 +1325,18 @@ async function fetchAllScheduleData() {
       // Templates come from server with dayOfWeek - compute virtual dates for rendering
       scheduledFlights = computeVirtualDatesForTemplates(data.flights || [], worldTime);
       scheduledMaintenance = data.maintenance || [];
+
+      // Sightseeing tours render as their own grid blocks (Option B — they carry
+      // their own daysOfWeek + scheduledDepartureTime; no ScheduledFlight rows).
+      try {
+        const tourRes = await fetch('/api/sightseeing-tours');
+        if (tourRes.ok) {
+          sightseeingTours = await tourRes.json();
+          // Give tour blocks the same virtual scheduledDate/arrivalDate the grid
+          // renderer expects (it reads flight.scheduledDate).
+          tourPseudoFlights = computeVirtualDatesForTemplates(buildTourPseudoFlights(sightseeingTours), worldTime);
+        }
+      } catch (e) { console.error('Error fetching sightseeing tours:', e); }
       // Set era/fuel multipliers (fleet.js globals) so cost calculations are era-scaled
       if (typeof fleetEraMultiplier !== 'undefined') fleetEraMultiplier = data.eraMultiplier || 1.0;
       if (typeof fleetFuelMultiplier !== 'undefined') fleetFuelMultiplier = data.fuelMultiplier || 1.0;
@@ -2514,6 +2529,26 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
     // Calculate minute offset within the starting hour (0-60)
     const minuteOffsetPercent = (minutes / 60) * 100;
     const leftPercent = minuteOffsetPercent;
+
+    // Sightseeing tours are a single scenic loop — render one teal block, not the
+    // route outbound/turnaround/return segments (and open the tour details modal).
+    if (flight.isTour) {
+      const tour = flight.tour || {};
+      const dur = flight.totalDurationMinutes || tour.durationMin || 30;
+      const widthPercent = (dur / 60) * 100;
+      const label = tour.baseAirport?.icaoCode || flight.route?.departureAirport?.icaoCode || 'TOUR';
+      const durLabel = dur >= 60 ? `${Math.floor(dur / 60)}h ${dur % 60}m` : `${dur}m`;
+      const tourContent = `
+        <div
+          onclick="event.stopPropagation(); viewTourFromSchedule('${flight.tourId}')"
+          title="${(tour.name || 'Sightseeing Tour').replace(/"/g, '&quot;')} · ${depTime} (${durLabel})"
+          style="position:absolute; left:${leftPercent}%; width:${widthPercent}%; top:2px; bottom:2px; background:linear-gradient(to right,#0d9488,#14b8a6); border-radius:3px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.3); z-index:2;"
+        >
+          <span style="color:#fff; font-size:0.6rem; font-weight:700; line-height:1; white-space:nowrap;">${label}</span>
+          <span style="color:rgba(255,255,255,0.85); font-size:0.55rem; line-height:1.1; white-space:nowrap;">${durLabel}</span>
+        </div>`;
+      return blurStyle ? `<div style="position:absolute; left:0; right:0; top:0; bottom:0; ${blurStyle}">${tourContent}</div>` : tourContent;
+    }
 
     // Calculate estimated flight time with wind adjustment
     let outboundFlightMinutes = 0;
@@ -6257,11 +6292,20 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         // Main flight block - covers the full flight time (no separate pre/post-flight slivers in weekly view)
         // Apply blur only if aircraft is actually grounded (not just in maintenance)
         const flightBlockBlur = actuallyExpired.length > 0 ? 'filter: blur(2px); opacity: 0.4;' : '';
+        // Sightseeing tours: distinct teal block + safe click (no ScheduledFlight details).
+        const isTourBlock = flight.isTour;
+        const blockBg = isTourBlock ? 'linear-gradient(to right, #0d9488, #14b8a6)' : flightBg;
+        const blockClick = isTourBlock
+          ? `event.stopPropagation(); viewTourFromSchedule('${flight.tourId}')`
+          : `event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')`;
+        const blockTitle = isTourBlock
+          ? `${(flight.tour?.name || 'Sightseeing Tour').replace(/"/g, '&quot;')} (tour): ${depTimeStr}→${arrTimeStr}`
+          : `${routeNum}: ${depTimeStr}→${arrTimeStr}${techStopAirport ? ' via ' + techStopAirport : ''}`;
         cellContent += `
           <div
-            onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
-            title="${routeNum}: ${depTimeStr}→${arrTimeStr}${techStopAirport ? ' via ' + techStopAirport : ''}"
-            style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${flightBg}; border-radius: ${finalBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; ${flightBlockBlur}"
+            onclick="${blockClick}"
+            title="${blockTitle}"
+            style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${blockBg}; border-radius: ${finalBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; ${flightBlockBlur}"
           >
             ${labelContent}
           </div>
@@ -6708,8 +6752,169 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
 }
 
 // Get flights for a specific day of week for an aircraft
+// Synthesize per-day "flight blocks" from sightseeing tours so the existing grid
+// renderer can draw them. A tour is a same-day scenic loop from/to its base, so
+// each operating day becomes one block at the tour's departure time.
+function buildTourPseudoFlights(tours) {
+  const out = [];
+  for (const t of tours || []) {
+    if (!t.assignedAircraftId || !t.isActive) continue;
+    const dep = (t.scheduledDepartureTime || '09:00').substring(0, 5);
+    const [dh, dm] = dep.split(':').map(Number);
+    const depMin = (dh || 0) * 60 + (dm || 0);
+    const dur = t.durationMin || 30;
+    let arrMin = depMin + dur;
+    let offset = 0;
+    if (arrMin >= 1440) { offset = Math.floor(arrMin / 1440); arrMin = arrMin % 1440; }
+    const arrTime = `${String(Math.floor(arrMin / 60)).padStart(2, '0')}:${String(arrMin % 60).padStart(2, '0')}:00`;
+    const routeLike = {
+      routeNumber: t.name || 'TOUR',
+      distance: t.distanceNm || 0,
+      departureAirport: t.baseAirport || null,
+      arrivalAirport: t.baseAirport || null,
+      techStopAirport: null
+    };
+    for (const day of (t.daysOfWeek || [])) {
+      out.push({
+        id: `tour-${t.id}-${day}`,
+        isTour: true,
+        tourId: t.id,
+        tour: t,
+        aircraft: { id: t.assignedAircraftId },
+        dayOfWeek: day,
+        departureTime: `${dep}:00`,
+        arrivalTime: arrTime,
+        arrivalDayOffset: offset,
+        totalDurationMinutes: dur,
+        route: routeLike
+      });
+    }
+  }
+  return out;
+}
+
+// Lazy-load Leaflet for the tour details map.
+function _tourLoadLeaflet() {
+  return new Promise((resolve, reject) => {
+    if (typeof L !== 'undefined') return resolve();
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css'; link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve; script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function _tourDurLabel(min) {
+  if (min == null) return '—';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function _tourStatCell(k, v) {
+  return `<div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;">
+    <div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">${k}</div>
+    <div style="font-size:0.9rem;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v}</div>
+  </div>`;
+}
+
+// Clicking a tour block on the grid opens a details modal with a small map.
+function viewTourFromSchedule(tourId) {
+  const tour = sightseeingTours.find(t => t.id === tourId);
+  if (tour) showTourDetailsModal(tour);
+}
+
+async function showTourDetailsModal(tour) {
+  let modal = document.getElementById('tourDetailsModal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'tourDetailsModal';
+  modal.className = 'modal';
+  modal.style.display = 'flex';
+
+  const ac = tour.assignedAircraft;
+  const acLabel = ac ? `${ac.manufacturer} ${ac.model}${ac.variant ? ' ' + ac.variant : ''}` : 'Unassigned';
+  const start = tour.scheduledDepartureTime ? tour.scheduledDepartureTime.substring(0, 5) : '—';
+  const fc = (typeof formatCurrency === 'function');
+  const price = fc ? formatCurrency(tour.ticketPrice) : `$${Math.round(tour.ticketPrice)}`;
+  const rev = fc ? formatCurrency(tour.totalRevenue || 0) : `$${Math.round(tour.totalRevenue || 0)}`;
+
+  // When the aircraft is free again = departure + duration (back at base).
+  let nextAvail = '—';
+  if (tour.scheduledDepartureTime && tour.durationMin) {
+    const [dh, dm] = tour.scheduledDepartureTime.substring(0, 5).split(':').map(Number);
+    let end = (dh || 0) * 60 + (dm || 0) + tour.durationMin;
+    const nextDay = end >= 1440;
+    end %= 1440;
+    nextAvail = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}${nextDay ? ' (+1 day)' : ''}`;
+  }
+
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 560px;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;">Sightseeing Tour — ${(tour.name || 'Tour').replace(/</g, '&lt;')}</h2>
+        <button onclick="document.getElementById('tourDetailsModal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 0.3rem;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="tourDetailMap" style="width:100%;height:220px;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);margin-bottom:0.85rem;background:var(--surface-elevated);"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.6rem;">
+          ${_tourStatCell('Base', tour.baseAirport ? tour.baseAirport.icaoCode : '—')}
+          ${_tourStatCell('Distance', Math.round(tour.distanceNm).toLocaleString() + ' nm')}
+          ${_tourStatCell('Duration', _tourDurLabel(tour.durationMin))}
+          ${_tourStatCell('Aircraft', acLabel)}
+          ${_tourStatCell('Departs', start)}
+          ${_tourStatCell('Days', formatDaysOfWeek(tour.daysOfWeek))}
+          ${_tourStatCell('Price', price)}
+          ${_tourStatCell('Revenue', rev)}
+          ${_tourStatCell('Waypoints', (tour.waypoints || []).length)}
+        </div>
+        <div style="margin-top:0.85rem;padding:0.6rem 0.85rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
+          <div>
+            <div style="font-size:0.55rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Aircraft Next Available</div>
+            <div style="font-size:1.2rem;font-weight:700;color:var(--success-color);">${nextAvail}</div>
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-muted);text-align:right;">Back at ${tour.baseAirport ? tour.baseAirport.icaoCode : 'base'}<br>after the ${_tourDurLabel(tour.durationMin)} loop</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:0.5rem;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="document.getElementById('tourDetailsModal').remove()">Close</button>
+        <button class="btn btn-primary" onclick="window.location.href='/routes'">Manage on Routes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  // Draw the tour loop on a small map: base → waypoints → base.
+  try {
+    await _tourLoadLeaflet();
+    if (!document.getElementById('tourDetailMap') || !tour.baseAirport) return;
+    const bLat = parseFloat(tour.baseAirport.latitude), bLng = parseFloat(tour.baseAirport.longitude);
+    const map = L.map('tourDetailMap', { zoomControl: false, attributionControl: false });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+    L.circleMarker([bLat, bLng], { radius: 7, color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 0.9, weight: 2 })
+      .addTo(map).bindTooltip(`${tour.baseAirport.icaoCode} (base)`);
+    const wps = tour.waypoints || [];
+    wps.forEach((w, i) => L.circleMarker([parseFloat(w.lat), parseFloat(w.lng)], { radius: 6, color: '#14b8a6', fillColor: '#14b8a6', fillOpacity: 0.85, weight: 2 })
+      .addTo(map).bindTooltip(`Waypoint ${i + 1}`));
+    const latlngs = [[bLat, bLng], ...wps.map(w => [parseFloat(w.lat), parseFloat(w.lng)]), [bLat, bLng]];
+    L.polyline(latlngs, { color: '#14b8a6', weight: 2, opacity: 0.85, dashArray: '4,4' }).addTo(map);
+    map.fitBounds(latlngs, { padding: [24, 24] });
+    setTimeout(() => map.invalidateSize(), 120); // correct sizing after modal layout
+  } catch (e) {
+    console.error('Tour map failed to load:', e);
+    const el = document.getElementById('tourDetailMap');
+    if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.8rem;">Map unavailable</div>';
+  }
+}
+
 function getFlightsForDay(aircraftId, dayOfWeek) {
-  return scheduledFlights.filter(f => {
+  const tourFlights = tourPseudoFlights.filter(f => f.aircraft?.id === aircraftId && f.dayOfWeek === dayOfWeek);
+  const routeFlights = scheduledFlights.filter(f => {
     if (f.aircraft?.id !== aircraftId) return false;
     const dow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
     if (dow < 0) return false;
@@ -6755,6 +6960,7 @@ function getFlightsForDay(aircraftId, dayOfWeek) {
 
     return false;
   });
+  return [...routeFlights, ...tourFlights];
 }
 
 // Get maintenance for a specific date for an aircraft
@@ -7328,13 +7534,27 @@ async function loadUnassignedRoutes(aircraftId) {
     return aircraftMatch && dayMatch && notAlreadyScheduled;
   });
 
-  if (availableRoutes.length === 0) {
+  // Sightseeing tours available to schedule on this aircraft: ones assigned to
+  // it, plus unassigned ones (so a removed/unassigned tour can be added back —
+  // dragging it assigns it to this aircraft). Same day filtering as routes.
+  const availableTours = sightseeingTours.filter(t => {
+    if (t.assignedAircraftId !== null && t.assignedAircraftId !== aircraftId) return false;
+    if (viewMode === 'weekly') {
+      if (dayFilterValue === 'all') return true;
+      const fd = parseInt(dayFilterValue, 10);
+      return t.daysOfWeek && (t.daysOfWeek.includes(fd) || t.daysOfWeek.length === 7);
+    }
+    return t.daysOfWeek && (t.daysOfWeek.includes(selectedDayOfWeek) || t.daysOfWeek.length === 7);
+  });
+
+  if (availableRoutes.length === 0 && availableTours.length === 0) {
     container.innerHTML = `
       <div style="padding: 2rem; text-align: center;">
-        <p style="color: var(--text-muted); font-size: 1.1rem;">NO ROUTES AVAILABLE</p>
+        <p style="color: var(--text-muted); font-size: 1.1rem;">NOTHING TO SCHEDULE</p>
         <p style="color: var(--text-secondary); margin-top: 0.5rem; font-size: 0.85rem;">
-          No routes operate on this day for this aircraft.<br/>
-          <a href="/routes/create" style="color: var(--accent-color);">Create a route</a> or select a different day
+          No routes or tours for this aircraft on this day.<br/>
+          <a href="/routes/create" style="color: var(--accent-color);">Create a route</a> ·
+          <a href="/sightseeing/create" style="color: var(--accent-color);">Create a tour</a>
         </p>
       </div>
     `;
@@ -7453,20 +7673,66 @@ async function loadUnassignedRoutes(aircraftId) {
     `;
   }).join('');
 
-  container.innerHTML = html;
+  // Sightseeing tour cards (teal-accented, dragged like routes to set their days).
+  const toursHtml = availableTours.map(tour => {
+    const start = tour.scheduledDepartureTime ? tour.scheduledDepartureTime.substring(0, 5) : '--:--';
+    const dur = tour.durationMin || 0;
+    const durLabel = dur ? `${Math.floor(dur / 60)}h ${dur % 60}m` : '—';
+    const acLabel = tour.assignedAircraft ? `${tour.assignedAircraft.manufacturer} ${tour.assignedAircraft.model}` : '';
+    return `
+      <div
+        class="tour-draggable"
+        draggable="true"
+        data-tour-id="${tour.id}"
+        style="background: var(--surface-elevated); border: 1px solid rgba(13,148,136,0.5); border-left: 3px solid #14b8a6; border-radius: 4px; padding: 0.75rem; margin-bottom: 0.5rem; transition: all 0.2s; font-size: 0.85rem;"
+        onmouseover="this.style.background='var(--surface)'"
+        onmouseout="this.style.background='var(--surface-elevated)'"
+      >
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+          <div style="color: #2dd4bf; font-weight: 600; font-size: 0.9rem;">${(tour.name || 'Tour').replace(/</g, '&lt;')}</div>
+          <span style="font-size: 0.6rem; font-weight: 700; letter-spacing: 0.5px; color: #14b8a6; border: 1px solid rgba(20,184,166,0.5); border-radius: 3px; padding: 0.05rem 0.3rem;">TOUR</span>
+        </div>
+        <div style="color: var(--text-primary); font-size: 0.8rem; margin-bottom: 0.4rem;">
+          ${tour.baseAirport ? tour.baseAirport.icaoCode : '???'} · Scenic Tour · ${Math.round(tour.distanceNm)} nm
+        </div>
+        <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; font-size: 0.75rem; margin-bottom: 0.4rem;">
+          <div style="color: var(--text-secondary); font-weight: 600;">Start:</div>
+          <div style="color: var(--success-color); font-weight: 600;">${start}</div>
+          <div style="color: var(--text-secondary); font-weight: 600;">Duration:</div>
+          <div style="color: var(--text-primary); font-weight: 600;">${durLabel}</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="color: var(--text-muted); font-size: 0.75rem;">${acLabel}</div>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">${formatDaysOfWeek(tour.daysOfWeek)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 
-  // Add event listeners to draggable items
+  const toursHeader = availableTours.length > 0
+    ? `<div style="margin: 0.75rem 0 0.4rem; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; color: #14b8a6; text-transform: uppercase;">Sightseeing Tours</div>`
+    : '';
+
+  container.innerHTML = html + toursHeader + toursHtml;
+
+  // Add event listeners to draggable routes
   container.querySelectorAll('.route-draggable').forEach(element => {
     const routeId = element.getAttribute('data-route-id');
     element.addEventListener('dragstart', (e) => handleDragStart(e, routeId));
     element.addEventListener('dragend', handleDragEnd);
-    // Click to schedule (alternative to drag)
     element.addEventListener('click', (e) => {
-      // Don't trigger if dragging
       if (e.defaultPrevented) return;
       showDaySelectionForRoute(routeId);
     });
     element.style.cursor = 'pointer';
+  });
+
+  // Add event listeners to draggable tours
+  container.querySelectorAll('.tour-draggable').forEach(element => {
+    const tourId = element.getAttribute('data-tour-id');
+    element.addEventListener('dragstart', (e) => handleTourDragStart(e, tourId));
+    element.addEventListener('dragend', handleDragEnd);
+    element.style.cursor = 'grab';
   });
 }
 
@@ -7893,6 +8159,7 @@ function filterRoutesByDay() {
 
 // Handle drag start
 function handleDragStart(event, routeId) {
+  draggedTour = null;
   draggedRoute = routes.find(r => r.id === routeId);
   if (!draggedRoute) {
     console.error('Route not found:', routeId);
@@ -7915,6 +8182,22 @@ function handleDragStart(event, routeId) {
   if (modal) {
     modal.style.opacity = '0.7';
   }
+}
+
+// Handle sightseeing-tour drag start
+function handleTourDragStart(event, tourId) {
+  draggedRoute = null;
+  draggedTour = sightseeingTours.find(t => t.id === tourId);
+  if (!draggedTour) {
+    console.error('Tour not found:', tourId);
+    return;
+  }
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', 'tour:' + tourId);
+  const preview = document.getElementById('dragPreview');
+  if (preview) { preview.textContent = draggedTour.name || 'Tour'; preview.style.display = 'block'; }
+  const modal = document.getElementById('addRouteModal');
+  if (modal) modal.style.opacity = '0.7';
 }
 
 // Handle drag end
@@ -9289,6 +9572,10 @@ async function clearDaySchedule(aircraftId) {
     return dow === selectedDayOfWeek;
   });
 
+  // Sightseeing tours on this aircraft operating on the selected day.
+  const dayTours = sightseeingTours.filter(t =>
+    t.assignedAircraftId === aircraftId && (t.daysOfWeek || []).includes(selectedDayOfWeek));
+
   // Get maintenance for this aircraft on the selected day
   const dayMaint = scheduledMaintenance.filter(m => {
     if ((m.aircraftId || m.aircraft?.id) != aircraftId) return false;
@@ -9297,7 +9584,7 @@ async function clearDaySchedule(aircraftId) {
     return maintDate.getDay() === selectedDayOfWeek;
   });
 
-  const totalItems = dayFlights.length + dayMaint.length;
+  const totalItems = dayFlights.length + dayTours.length + dayMaint.length;
 
   if (totalItems === 0) {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -9308,7 +9595,7 @@ async function clearDaySchedule(aircraftId) {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const choice = await showClearChoiceModal(
     `Clear ${dayNames[selectedDayOfWeek]} — ${aircraft.registration}`,
-    dayFlights.length,
+    dayFlights.length + dayTours.length,
     dayMaint.length
   );
 
@@ -9317,6 +9604,15 @@ async function clearDaySchedule(aircraftId) {
   const toDelete = [];
   if (choice === 'flights' || choice === 'all') {
     toDelete.push(...dayFlights.map(f => fetch(`/api/schedule/flight/${f.id}`, { method: 'DELETE' })));
+    // Tours: drop this day from their operating days (pause if it was the last
+    // day — keeps the aircraft allocation, unlike unassigning).
+    toDelete.push(...dayTours.map(t => {
+      const remaining = (t.daysOfWeek || []).filter(d => d !== selectedDayOfWeek);
+      const body = remaining.length ? { daysOfWeek: remaining } : { isActive: false };
+      return fetch(`/api/sightseeing-tours/${t.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+    }));
   }
   if (choice === 'maintenance' || choice === 'all') {
     toDelete.push(...dayMaint.map(m => fetch(`/api/schedule/maintenance/${m.id}`, { method: 'DELETE' })));
@@ -9342,10 +9638,13 @@ async function clearWeekSchedule(aircraftId) {
   // Get all flights for this aircraft in the current week data
   const weekFlights = scheduledFlights.filter(f => f.aircraft?.id == aircraftId); // Use == for type-coercive comparison
 
+  // Sightseeing tours assigned to this aircraft (removed by unassigning them).
+  const weekTours = sightseeingTours.filter(t => t.assignedAircraftId === aircraftId);
+
   // Get all maintenance for this aircraft in the current week data
   const weekMaint = scheduledMaintenance.filter(m => (m.aircraftId || m.aircraft?.id) == aircraftId);
 
-  const totalItems = weekFlights.length + weekMaint.length;
+  const totalItems = weekFlights.length + weekTours.length + weekMaint.length;
 
   if (totalItems === 0) {
     await showAlertModal('No Schedule', `${aircraft.registration} has no flights or maintenance scheduled this week.`);
@@ -9354,7 +9653,7 @@ async function clearWeekSchedule(aircraftId) {
 
   const choice = await showClearChoiceModal(
     `Clear Week Schedule — ${aircraft.registration}`,
-    weekFlights.length,
+    weekFlights.length + weekTours.length, // tours count as "flights" for the removal choice
     weekMaint.length
   );
 
@@ -9363,6 +9662,11 @@ async function clearWeekSchedule(aircraftId) {
   const toDelete = [];
   if (choice === 'flights' || choice === 'all') {
     toDelete.push(...weekFlights.map(f => fetch(`/api/schedule/flight/${f.id}`, { method: 'DELETE' })));
+    // Tours: pause them (keeps the aircraft allocation — the tour stays assigned
+    // to this aircraft type, just off the active schedule; re-adding reactivates).
+    toDelete.push(...weekTours.map(t => fetch(`/api/sightseeing-tours/${t.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: false })
+    })));
   }
   if (choice === 'maintenance' || choice === 'all') {
     toDelete.push(...weekMaint.map(m => fetch(`/api/schedule/maintenance/${m.id}`, { method: 'DELETE' })));
@@ -9382,6 +9686,14 @@ async function clearWeekSchedule(aircraftId) {
 
 // Handle drag over
 function handleDragOver(event) {
+  // Tour drag: allow the drop (preventDefault) and highlight the hovered cell.
+  if (draggedTour) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    if (event.currentTarget) event.currentTarget.classList.add('drag-over');
+    return;
+  }
   if (!draggedRoute) return;
 
   event.preventDefault();
@@ -9472,6 +9784,15 @@ function handleDragLeave(event) {
 
 // Handle drag over for weekly view cells
 function handleWeeklyDragOver(event, dayOfWeek) {
+  // Tour drag: allow the drop (preventDefault) and highlight the hovered cell.
+  if (draggedTour) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.weekly-cell').forEach(c => { c.classList.remove('drag-over'); c.style.background = ''; });
+    if (event.currentTarget) event.currentTarget.classList.add('drag-over');
+    return;
+  }
   if (!draggedRoute) return;
 
   event.preventDefault();
@@ -9563,6 +9884,144 @@ function handleWeeklyDragLeave(event) {
 }
 
 // Handle drop for weekly view cells
+// Tour version of the all-days-vs-single choice modal.
+function showTourScheduleChoiceModal(tour, aircraft, dayName, dayCount) {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('tourScheduleChoiceModal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'tourScheduleChoiceModal';
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 460px;">
+        <div class="modal-header"><h2>Schedule Tour</h2></div>
+        <div class="modal-body">
+          <p style="color: var(--text-primary); line-height:1.6; margin:0 0 0.5rem 0;"><strong>${(tour.name || 'Tour').replace(/</g, '&lt;')}</strong> on ${aircraft.registration}.</p>
+          <p style="color: var(--text-secondary); margin:0;">This tour operates on ${dayCount} days. Keep all of them, or run it only on ${dayName}?</p>
+        </div>
+        <div class="modal-footer" style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:flex-end;">
+          <button class="btn btn-secondary" data-choice="cancel">Cancel</button>
+          <button class="btn btn-secondary" data-choice="single">${dayName} only</button>
+          <button class="btn btn-primary" data-choice="all">Keep all ${dayCount} days</button>
+        </div>
+      </div>`;
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) { modal.remove(); resolve(null); return; }
+      const btn = e.target.closest('[data-choice]');
+      if (!btn) return;
+      modal.remove();
+      resolve(btn.dataset.choice === 'cancel' ? null : btn.dataset.choice);
+    });
+    document.body.appendChild(modal);
+  });
+}
+
+// Shared handler for dropping a sightseeing tour onto the grid. Sets the tour's
+// operating days (all vs single) and, in daily view, its departure time — and
+// assigns it to the target aircraft — via a single PUT (no ScheduledFlight).
+// ── Schedule conflict detection (tours ↔ routes/tours, client-side) ───
+function _minsOf(timeStr, fallback) {
+  const s = (timeStr || fallback || '00:00').substring(0, 5);
+  const [h, m] = s.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function _overlaps(aStart, aEnd, bStart, bEnd) { return aStart < bEnd && bStart < aEnd; }
+
+// Route (ScheduledFlight) time windows occupying `day` for this aircraft.
+function _routeWindowsForDay(aircraftId, day) {
+  const wins = [];
+  for (const f of scheduledFlights) {
+    if (f.aircraft?.id !== aircraftId) continue;
+    const dow = f.dayOfWeek ?? (f.scheduledDate ? new Date(f.scheduledDate + 'T00:00:00').getDay() : -1);
+    const dep = _minsOf(f.departureTime);
+    const dur = f.totalDurationMinutes || 0;
+    if (dow === day) wins.push({ start: dep, end: dep + dur, label: f.route?.routeNumber || 'flight', kind: 'route' });
+    else if (dow === (day + 6) % 7 && dep + dur > 1440) wins.push({ start: 0, end: (dep + dur) - 1440, label: f.route?.routeNumber || 'flight', kind: 'route' });
+  }
+  return wins;
+}
+// Tour time windows occupying `day` for this aircraft (excluding excludeId).
+// Paused tours (isActive === false) are off the schedule, so they don't conflict.
+function _tourWindowsForDay(aircraftId, day, excludeId) {
+  const wins = [];
+  for (const t of sightseeingTours) {
+    if (t.assignedAircraftId !== aircraftId || t.id === excludeId) continue;
+    if (t.isActive === false) continue;
+    if (!(t.daysOfWeek || []).includes(day)) continue;
+    const dep = _minsOf(t.scheduledDepartureTime, '09:00');
+    wins.push({ start: dep, end: dep + (t.durationMin || 0), label: t.name || 'tour', kind: 'tour' });
+  }
+  return wins;
+}
+// Estimated round-trip window length (minutes) for a route, for overlap checks.
+function _estimateRouteMinutes(route) {
+  const speed = route.assignedAircraft?.aircraft?.cruiseSpeed;
+  if (!speed || !route.distance) return 0;
+  const dLat = parseFloat(route.departureAirport?.latitude) || 0, dLng = parseFloat(route.departureAirport?.longitude) || 0;
+  const aLat = parseFloat(route.arrivalAirport?.latitude) || 0, aLng = parseFloat(route.arrivalAirport?.longitude) || 0;
+  const out = calculateFlightMinutes(route.distance, speed, dLng, aLng, dLat, aLat) || 0;
+  const ret = calculateFlightMinutes(route.distance, speed, aLng, dLng, aLat, dLat) || 0;
+  return out + (route.turnaroundTime || 45) + ret;
+}
+// Returns a conflict {day, label, kind} if a route/tour is scheduled on this
+// aircraft overlapping [startMin, startMin+durMin) on any of `days`, else null.
+function findScheduleConflict(aircraftId, days, startMin, durMin, excludeTourId) {
+  for (const day of days) {
+    const busy = [..._routeWindowsForDay(aircraftId, day), ..._tourWindowsForDay(aircraftId, day, excludeTourId)];
+    const clash = busy.find(w => _overlaps(startMin, startMin + durMin, w.start, w.end));
+    if (clash) return { day, label: clash.label, kind: clash.kind };
+  }
+  return null;
+}
+
+async function handleTourDrop(aircraftId, dayOfWeek, timeValue) {
+  const tour = draggedTour;
+  if (!tour) return;
+  const aircraft = userFleet.find(a => a.id === aircraftId);
+  if (!aircraft) { await showAlertModal('Error', 'Aircraft not found'); return; }
+
+  const days = Array.isArray(tour.daysOfWeek) ? [...tour.daysOfWeek].sort((a, b) => a - b) : [];
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let newDays;
+  if (days.length > 1 && days.includes(dayOfWeek)) {
+    const choice = await showTourScheduleChoiceModal(tour, aircraft, dayNames[dayOfWeek], days.length);
+    if (choice === null) return; // cancelled
+    newDays = choice === 'all' ? days : [dayOfWeek];
+  } else if (!days.includes(dayOfWeek)) {
+    newDays = [...days, dayOfWeek].sort((a, b) => a - b); // add the dropped day
+  } else {
+    newDays = days;
+  }
+
+  // Conflict check: this tour's window vs the aircraft's existing routes + tours.
+  const startMin = timeValue ? _minsOf(timeValue) : _minsOf(tour.scheduledDepartureTime, '09:00');
+  const conflict = findScheduleConflict(aircraftId, newDays, startMin, tour.durationMin || 0, tour.id);
+  if (conflict) {
+    await showAlertModal('Schedule Conflict',
+      `${aircraft.registration} is already busy on ${dayNames[conflict.day]} — ${conflict.kind === 'tour' ? 'tour' : 'flight'} "${conflict.label}" overlaps this tour's time. Change the tour's departure time or days first.`);
+    return;
+  }
+
+  const body = { assignedAircraftId: aircraftId, daysOfWeek: newDays, isActive: true };
+  if (timeValue) body.scheduledDepartureTime = timeValue.length === 5 ? timeValue + ':00' : timeValue;
+
+  try {
+    const res = await fetch(`/api/sightseeing-tours/${tour.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      if (typeof closeAddRouteModal === 'function') closeAddRouteModal();
+      await loadSchedule();
+    } else {
+      await showAlertModal('Error', data.error || 'Failed to schedule tour');
+    }
+  } catch (e) {
+    await showAlertModal('Error', 'Network error scheduling tour');
+  }
+}
+
 async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
   event.preventDefault();
   event.stopPropagation();
@@ -9572,6 +10031,13 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
     c.classList.remove('drag-over');
     c.style.background = '';
   });
+
+  // Sightseeing tour dropped — handle via its own fields (Option B).
+  if (draggedTour) {
+    await handleTourDrop(aircraftId, dayOfWeek, null);
+    draggedTour = null;
+    return;
+  }
 
   if (!draggedRoute) {
     console.error('No route being dragged');
@@ -9648,6 +10114,23 @@ async function handleWeeklyDrop(event, aircraftId, dayOfWeek) {
       `Schedule route ${draggedRoute.routeNumber} / ${draggedRoute.returnRouteNumber} on ${aircraft.registration} for ${dayName} at ${timeStr}?`
     );
     if (!confirmed) { draggedRoute = null; return; }
+  }
+
+  // Conflict check: this route's window vs any sightseeing tours on the aircraft.
+  // (Route-vs-route conflicts are validated server-side.)
+  {
+    const daysToCheck = mode === 'all' ? operatingDays : [dayOfWeek];
+    const rStart = _minsOf(departureTime);
+    const rDur = _estimateRouteMinutes(draggedRoute);
+    for (const d of daysToCheck) {
+      const clash = _tourWindowsForDay(aircraftId, d, null).find(w => _overlaps(rStart, rStart + rDur, w.start, w.end));
+      if (clash) {
+        await showAlertModal('Schedule Conflict',
+          `${aircraft.registration} runs sightseeing tour "${clash.label}" on ${dayNames[d]} overlapping this flight's time. Reschedule the tour first, or choose another departure time.`);
+        draggedRoute = null;
+        return;
+      }
+    }
   }
 
   const routeId = draggedRoute.id;
@@ -9764,6 +10247,13 @@ async function handleDrop(event, aircraftId, timeValue) {
     });
   }
 
+  // Sightseeing tour dropped in daily view — set its time from the slot + days.
+  if (draggedTour) {
+    await handleTourDrop(aircraftId, selectedDayOfWeek, timeValue);
+    draggedTour = null;
+    return;
+  }
+
   if (!draggedRoute) {
     console.error('No route being dragged');
     return;
@@ -9842,6 +10332,23 @@ async function handleDrop(event, aircraftId, timeValue) {
     if (!confirmed) {
       draggedRoute = null;
       return;
+    }
+  }
+
+  // Conflict check: this route's window vs sightseeing tours on the aircraft.
+  {
+    const daysToCheck = scheduleForWholeWeek ? [0, 1, 2, 3, 4, 5, 6] : [selectedDayOfWeek];
+    const rStart = _minsOf(departureTime);
+    const rDur = _estimateRouteMinutes(draggedRoute);
+    const dNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const d of daysToCheck) {
+      const clash = _tourWindowsForDay(aircraftId, d, null).find(w => _overlaps(rStart, rStart + rDur, w.start, w.end));
+      if (clash) {
+        await showAlertModal('Schedule Conflict',
+          `${aircraft.registration} runs sightseeing tour "${clash.label}" on ${dNames[d]} overlapping this flight's time. Reschedule the tour first, or choose another time.`);
+        draggedRoute = null;
+        return;
+      }
     }
   }
 
