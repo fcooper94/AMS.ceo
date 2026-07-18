@@ -185,7 +185,8 @@ function getAircraftHolds(aircraft) {
  * `holds` (optional): belly compartments to overlay as bulkhead dividers + labels
  * (landscape view only).
  */
-function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0, landscape = false, holds = null, bellySize = 'lg') {
+function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix, paxBlockPct = 0, landscape = false, holds = null, bellySize = 'lg', shape = 'plane') {
+  const isCapsule = landscape && shape === 'capsule';
   const sfx = idSuffix || '';
   const activeTypes = types.filter(t => config[t] > 0);
   // Fuselage cross-section width — narrower for small aircraft so the body hugs
@@ -209,21 +210,30 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
   const bL = landscape ? 20 : 16;
   const bR = W - (landscape ? 20 : 16);
   const bodyW = bR - bL;
-  const noseH = Math.round(bodyW * 0.55);   // landscape pointed-nose region
-  const tailH = Math.round(bodyW * 0.25);   // landscape rounded tail
+  // Capsule (airship gondola): semicircular caps. Plane: pointed nose + tail cone.
+  const noseH = isCapsule ? Math.round(bodyW * 0.5) : Math.round(bodyW * 0.55);
+  const tailH = isCapsule ? Math.round(bodyW * 0.5) : Math.round(bodyW * 0.25);
   let bodyTop, bodyBot, fuselage;
   if (landscape) {
     bodyTop = noseH;                         // straight body starts after the nose
     bodyBot = H - tailH;                     // straight body ends before the tail
-    fuselage = [
-      `M ${bL} ${noseH}`,
-      `C ${bL} ${noseH * 0.45}, ${cx - 2} ${noseH * 0.04}, ${cx} 2`,
-      `C ${cx + 2} ${noseH * 0.04}, ${bR} ${noseH * 0.45}, ${bR} ${noseH}`,
-      `L ${bR} ${bodyBot}`,
-      `Q ${bR} ${bodyBot + tailH * 0.85}, ${cx} ${H - 1}`,
-      `Q ${bL} ${bodyBot + tailH * 0.85}, ${bL} ${bodyBot}`,
-      'Z'
-    ].join(' ');
+    fuselage = isCapsule
+      ? [
+        `M ${bL} ${noseH}`,
+        `A ${bodyW / 2} ${bodyW / 2} 0 0 1 ${bR} ${noseH}`,
+        `L ${bR} ${bodyBot}`,
+        `A ${bodyW / 2} ${bodyW / 2} 0 0 1 ${bL} ${bodyBot}`,
+        'Z'
+      ].join(' ')
+      : [
+        `M ${bL} ${noseH}`,
+        `C ${bL} ${noseH * 0.45}, ${cx - 2} ${noseH * 0.04}, ${cx} 2`,
+        `C ${cx + 2} ${noseH * 0.04}, ${bR} ${noseH * 0.45}, ${bR} ${noseH}`,
+        `L ${bR} ${bodyBot}`,
+        `Q ${bR} ${bodyBot + tailH * 0.85}, ${cx} ${H - 1}`,
+        `Q ${bL} ${bodyBot + tailH * 0.85}, ${bL} ${bodyBot}`,
+        'Z'
+      ].join(' ');
   } else {
     const noseY = 6;
     const tailY = H - 6;
@@ -266,13 +276,13 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
 
     <!-- Fuselage outline -->
     <path d="${fuselage}" fill="url(#fg${sfx})" stroke="rgba(100,116,139,0.35)" stroke-width="1.2"/>
-    ${landscape ? `
+    ${landscape ? (isCapsule ? '' : `
     <!-- Cockpit — darkened nose + label + bulkhead line (matches cabin) -->
     <path d="M${bL + 1},${noseH} C${bL},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},2 C${cx + 2},${noseH * 0.04} ${bR},${noseH * 0.45} ${bR - 1},${noseH} Z"
           fill="rgba(15,23,42,0.45)" stroke="none"/>
     <line x1="${bL + 2}" y1="${noseH}" x2="${bR - 2}" y2="${noseH}" stroke="rgba(100,116,139,0.4)" stroke-width="0.8"/>
     <text x="${cx}" y="${noseH * 0.6}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="${cockpitFont}" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="${cockpitLS}"${_tr(cx, noseH * 0.6)}>COCKPIT</text>
-    ` : `
+    `) : `
     <!-- Center line -->
     <line x1="${cx}" y1="${bodyTop + 4}" x2="${cx}" y2="${bodyBot - 4}" stroke="rgba(100,116,139,0.07)" stroke-width="0.5" stroke-dasharray="3,3"/>
     <!-- Wing stubs -->
@@ -349,10 +359,15 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
     numRows = rowsPerComp.reduce((s, r) => s + r, 0);
     const totalSlots = numRows * cols;
 
-    // Per-row Y (with compartment gaps) + compartment top/bottom for dividers/labels
+    // Per-row Y (with compartment gaps) + compartment top/bottom for dividers/labels.
+    // With no compartments (airships, single-hold small aircraft) the grid rarely
+    // fills the whole hold, so centre it along the length instead of packing it at
+    // the nose. Compartment layouts already span the hold proportionally.
+    const contentH = (numRows - 1) * rowH + palletH;
+    const rowCenterOffset = compsOn ? 0 : Math.max(0, ((pEndY - pStartY) - contentH) / 2);
     const rowYs = [];
     const compTopY = [], compBotY = [];
-    let yc = pStartY;
+    let yc = pStartY + rowCenterOffset;
     for (let c = 0; c < nComp; c++) {
       if (c > 0) yc += COMP_GAP;
       compTopY[c] = yc;
@@ -723,10 +738,12 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
   const bellySize = _bellySizeClass(aircraft);
   // Shorter fuselage (and so fewer pallet rows) for smaller aircraft.
   const bellyHoldLen = { sm: 240, md: 360, lg: 560 }[bellySize] || 560;
+  // Airships use a cylindrical (capsule) hold with no cockpit, matching the cabin.
+  const holdShape = aircraft.type === 'Airship' ? 'capsule' : 'plane';
 
   function renderDiagram() {
     const c = document.getElementById('cargoDiagramContainer');
-    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, bellyHoldLen, '_single', paxBlockPct, true, bellyHolds, bellySize);
+    if (c) c.innerHTML = renderContainerHold(config, types, totalCapacity, bellyHoldLen, '_single', paxBlockPct, true, bellyHolds, bellySize, holdShape);
   }
 
   function updateUI() {

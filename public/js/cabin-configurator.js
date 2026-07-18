@@ -25,8 +25,28 @@ const SEAT_LAYOUTS = {
     business:    [1, 2, 1],    // 4 abreast (reverse herringbone / lie-flat)
     first:       [1, 2, 1]     // 4 abreast (suites)
   },
+  Airship: {                   // narrow gondola — fallback (see getAirshipCabin)
+    economy:     [1, 1],       // 2 abreast, single seat each side of the aisle
+    economyPlus: [1, 1],
+    business:    [1, 1],
+    first:       [1, 1]
+  },
   Cargo: null
 };
+
+// Airship gondola cabin scales with capacity: a small blimp is a single-seat-
+// each-side aisle; larger craft (Airlander) widen to 2-1 / 2-2. Returns
+// { layout, fuselageWidth }. Rendered with a cylindrical (capsule) fuselage.
+function getAirshipCabin(aircraft) {
+  const cap = aircraft.passengerCapacity || 0;
+  if (cap <= 20) {
+    return { layout: { economy: [1, 1], economyPlus: [1, 1], business: [1, 1], first: [1, 1] }, fuselageWidth: 100 };
+  }
+  if (cap <= 40) {
+    return { layout: { economy: [2, 1], economyPlus: [2, 1], business: [1, 1], first: [1, 1] }, fuselageWidth: 130 };
+  }
+  return { layout: { economy: [2, 2], economyPlus: [2, 2], business: [1, 1], first: [1, 1] }, fuselageWidth: 155 };
+}
 
 // Pitch multiplier per class (row height relative to economy)
 // 1-2-1 lie-flat business takes ~2x economy pitch; first class suites ~3x
@@ -46,7 +66,7 @@ const CLASS_COLORS = {
 };
 
 // Fuselage visual widths per aircraft type
-const FUSELAGE_WIDTHS = { Regional: 130, Narrowbody: 280, Widebody: 400 };
+const FUSELAGE_WIDTHS = { Regional: 130, Narrowbody: 280, Widebody: 400, Airship: 100 };
 
 // Era year — set from the host page via setCabinEraYear().
 // Classes not yet invented are rendered as locked/greyed cards.
@@ -556,7 +576,8 @@ function seatsPerRow(aircraftType, cabinClass) {
 
 // --- Shared fuselage SVG renderer ---
 // landscape: if true, renders nose-left horizontal orientation
-function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null) {
+function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null, shape = 'plane') {
+  const isCapsule = shape === 'capsule';
   if (!deckLayout) return '';
 
   const fW = fWidth;
@@ -622,20 +643,28 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     : 0;
   const totalH = seatContentH + cargoBlockH + BULKHEAD_H;
 
-  // Fuselage shape — clean streamlined silhouette matching professional airline seatmaps
-  // Nose must be taller than half the body width to look pointed
+  // Fuselage shape — a streamlined plane silhouette, or a cylindrical capsule
+  // (rounded both ends) for airship gondolas.
   const bodyW = fuseRight - fuseLeft;
-  const noseH = Math.round(bodyW * (isSmallAircraft ? 1.0 : 0.55));
-  const tailH = Math.round(bodyW * (isSmallAircraft ? 0.7 : 0.25));
+  const noseH = isCapsule ? Math.round(bodyW * 0.5) : Math.round(bodyW * (isSmallAircraft ? 1.0 : 0.55));
+  const tailH = isCapsule ? Math.round(bodyW * 0.5) : Math.round(bodyW * (isSmallAircraft ? 0.7 : 0.25));
   const svgH = noseH + totalH + tailH + 10;
   const gradId = svgId || 'fuselageGrad';
   const clipId = `fClip_${svgId || 'def'}`;
   const cx = fW / 2;
   const bodyEnd = svgH - tailH;
 
-  // Nose: cubic bezier — hugs body wall then converges sharply to tip
-  // Tail: gentle rounded cone
-  const fuselagePath = `
+  // Capsule: semicircular caps + straight sides (cylinder viewed top-down).
+  // Plane: cubic-bezier pointed nose + rounded tail cone.
+  const capR = bodyW / 2;
+  const fuselagePath = isCapsule
+    ? `
+    M ${fuseLeft} ${noseH}
+    A ${capR} ${capR} 0 0 1 ${fuseRight} ${noseH}
+    L ${fuseRight} ${bodyEnd}
+    A ${capR} ${capR} 0 0 1 ${fuseLeft} ${bodyEnd}
+    Z`
+    : `
     M ${fuseLeft} ${noseH}
     C ${fuseLeft} ${noseH * 0.45}, ${cx - 2} ${noseH * 0.04}, ${cx} ${2}
     C ${cx + 2} ${noseH * 0.04}, ${fuseRight} ${noseH * 0.45}, ${fuseRight} ${noseH}
@@ -696,7 +725,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   // All cabin content clipped to fuselage outline
   html += `<g clip-path="url(#${clipId})">`;
 
-  const seatStartY = showCockpit ? noseH + 8 : noseH - 10;
+  const seatStartY = isCapsule ? noseH + 6 : (showCockpit ? noseH + 8 : noseH - 10);
   let curY = seatStartY;
 
   // Collect aisle X positions for floor shading & row numbers
@@ -1050,18 +1079,24 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   const acType = aircraft.type;
 
-  // Resolve the cabin cross-section. Precedence: real per-ICAO data →
-  // blanket small-aircraft fallback → widebody name override → type default.
+  // Airships get a capacity-scaled gondola cabin and a cylindrical (capsule)
+  // fuselage rather than a plane silhouette.
+  const isAirship = acType === 'Airship';
+  const airshipCabin = (isAirship && !deckSpec) ? getAirshipCabin(aircraft) : null;
+
+  // Resolve the cabin cross-section. Precedence: airship gondola → real per-ICAO
+  // data → blanket small-aircraft fallback → widebody name override → type default.
   const acStr = `${aircraft.manufacturer || ''} ${aircraft.model || ''} ${aircraft.icaoCode || ''}`;
-  const icaoCabin = !deckSpec ? getIcaoCabin(aircraft.icaoCode) : null;
-  const smallOverride = (!deckSpec && !icaoCabin)
+  const icaoCabin = (!deckSpec && !airshipCabin) ? getIcaoCabin(aircraft.icaoCode) : null;
+  const smallOverride = (!deckSpec && !airshipCabin && !icaoCabin)
     ? getSmallAircraftOverride(aircraft.passengerCapacity, SEAT_LAYOUTS[acType]) : null;
-  const wbOverride = (!deckSpec && !icaoCabin && !smallOverride && acType === 'Widebody')
+  const wbOverride = (!deckSpec && !airshipCabin && !icaoCabin && !smallOverride && acType === 'Widebody')
     ? WIDEBODY_OVERRIDES.find(o => o.match.test(acStr)) : null;
   const layouts = deckSpec ? deckSpec.layout
-    : (icaoCabin ? icaoCabin.layout
-      : (smallOverride ? smallOverride.layout
-        : (wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType])));
+    : (airshipCabin ? airshipCabin.layout
+      : (icaoCabin ? icaoCabin.layout
+        : (smallOverride ? smallOverride.layout
+          : (wbOverride ? wbOverride.layout : SEAT_LAYOUTS[acType]))));
 
   function classPerRow(cls) {
     return layouts[cls] ? layouts[cls].reduce((s, g) => s + g, 0) : 0;
@@ -1169,10 +1204,11 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   `;
 
   const fuselageWidth = deckSpec ? deckSpec.fuselageWidth
-    : (icaoCabin ? icaoCabin.fuselageWidth
-       : ((smallOverride && smallOverride.fuselageWidth)
-          || (wbOverride && wbOverride.fuselageWidth)
-          || FUSELAGE_WIDTHS[acType] || 190));
+    : (airshipCabin ? airshipCabin.fuselageWidth
+       : (icaoCabin ? icaoCabin.fuselageWidth
+          : ((smallOverride && smallOverride.fuselageWidth)
+             || (wbOverride && wbOverride.fuselageWidth)
+             || FUSELAGE_WIDTHS[acType] || 190)));
 
   overlay.innerHTML = `
     <div style="background: var(--surface); border: 1px solid var(--border-color); border-radius: 10px;
@@ -1321,8 +1357,9 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const cdp = combiHasCargoHere
       ? Math.min(0.75, aircraft.cargoCapacityKg / (aircraft.cargoCapacityKg + (aircraft.passengerCapacity || 1) * 100))
       : 0;
-    const showCockpit = deckSpec ? !!deckSpec.showCockpit : true;
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions) + renderLegend();
+    const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
+    const shape = isAirship ? 'capsule' : 'plane';
+    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape) + renderLegend();
   }
 
   // Drag handling for mid-cabin service areas
