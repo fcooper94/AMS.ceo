@@ -554,6 +554,8 @@ router.post('/create-singleplayer', async (req, res) => {
     const { name, era, timeAcceleration, difficulty, baseAirportId, airlineName, airlineCode, iataCode, cleaningContractor, groundContractor, engineeringContractor, backgroundColor, primaryColor, secondaryColor, logoTemplate, logoSvg } = req.body;
     const validMaturities = ['brand_new', 'developing', 'established', 'mature'];
     const aiMaturity = validMaturities.includes(req.body.aiMaturity) ? req.body.aiMaturity : 'brand_new';
+    const validCurrencies = ['USD', 'GBP', 'EUR'];
+    const currency = validCurrencies.includes(req.body.currency) ? req.body.currency : 'USD';
     const validTiers = ['budget', 'standard', 'premium'];
     const spCleaningTier = validTiers.includes(cleaningContractor) ? cleaningContractor : 'standard';
     const spGroundTier = validTiers.includes(groundContractor) ? groundContractor : 'standard';
@@ -637,6 +639,7 @@ router.post('/create-singleplayer', async (req, res) => {
       worldType: 'singleplayer',
       difficulty,
       aiMaturity,
+      currency,
       pauseOnSessionEnd: !!req.body.pauseOnSessionEnd,
       lastActiveAt: new Date(),
       ownerUserId: user.id

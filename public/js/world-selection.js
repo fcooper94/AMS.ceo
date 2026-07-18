@@ -1688,6 +1688,8 @@ function openCreateSPModal() {
   document.getElementById('spIataCode').value = '';
   document.getElementById('spEra').value = '2010';
   document.getElementById('spSpeed').value = '60';
+  const spCur = document.getElementById('spCurrency'); if (spCur) spCur.value = 'USD';
+  if (typeof setAppCurrency === 'function') setAppCurrency('USD');
   document.querySelector('input[name="spDifficulty"][value="medium"]').checked = true;
   const pauseRun = document.querySelector('input[name="spPauseOnLeave"][value="run"]');
   if (pauseRun) pauseRun.checked = true;
@@ -1748,9 +1750,7 @@ function updateSPPreview() {
   const diffMult = DIFFICULTY_CAPITAL_MULT[difficulty] || 1.0;
   const baseCapital = 37500000;
   const capital = Math.round(baseCapital * mult * diffMult);
-  const capitalFormatted = capital >= 1000000
-    ? `$${(capital / 1000000).toFixed(1)}M`
-    : `$${(capital / 1000).toFixed(0)}K`;
+  const capitalFormatted = (typeof formatCurrencyShort === 'function') ? formatCurrencyShort(capital) : ('$' + (capital / 1000000).toFixed(1) + 'M');
   document.getElementById('spStartingCapital').textContent = `Starting Capital: ${capitalFormatted}`;
 
   // Update AI count preview
@@ -1761,11 +1761,17 @@ function updateSPPreview() {
   updateSPContractorPreview();
 }
 
+// Preview world money in the currency the player is selecting.
+function onSPCurrencyChange() {
+  const cur = document.getElementById('spCurrency')?.value || 'USD';
+  if (typeof setAppCurrency === 'function') setAppCurrency(cur);
+  if (typeof updateSPPreview === 'function') updateSPPreview();
+  if (typeof updateSPContractorPreview === 'function') updateSPContractorPreview();
+}
+
 function formatContractorCost(cost2024, mult) {
   const scaled = Math.round(cost2024 * mult);
-  return scaled >= 1000000
-    ? `$${(scaled / 1000000).toFixed(1)}M/wk`
-    : `$${(scaled / 1000).toLocaleString('en-US')}K/wk`;
+  return ((typeof formatCurrencyShort === 'function') ? formatCurrencyShort(scaled) : ('$' + Math.round(scaled / 1000) + 'K')) + '/wk';
 }
 
 function updateContractorCosts(prefix, mult) {
@@ -1780,9 +1786,7 @@ function updateContractorCosts(prefix, mult) {
   const ground = document.querySelector(`input[name="${prefix}Ground"]:checked`)?.value || 'standard';
   const engineering = document.querySelector(`input[name="${prefix}Engineering"]:checked`)?.value || 'standard';
   const total = (CONTRACTOR_COSTS.cleaning[cleaning] + CONTRACTOR_COSTS.ground[ground] + CONTRACTOR_COSTS.engineering[engineering]) * mult;
-  const totalText = total >= 1000000
-    ? `$${(total / 1000000).toFixed(1)}M/wk`
-    : `$${Math.round(total / 1000).toLocaleString('en-US')}K/wk`;
+  const totalText = ((typeof formatCurrencyShort === 'function') ? formatCurrencyShort(total) : ('$' + Math.round(total / 1000) + 'K')) + '/wk';
   // Update all total spans (one per contractor step)
   for (const suffix of ['', '2', '3']) {
     const el = document.getElementById(`${prefix}ContractorTotal${suffix}`);
@@ -2098,6 +2102,7 @@ async function createSinglePlayerWorld() {
   const difficulty = document.querySelector('input[name="spDifficulty"]:checked')?.value;
   const pauseOnSessionEnd = document.querySelector('input[name="spPauseOnLeave"]:checked')?.value === 'pause';
   const aiMaturity = document.querySelector('input[name="spMaturity"]:checked')?.value || 'brand_new';
+  const currency = document.getElementById('spCurrency')?.value || 'USD';
   const airlineName = document.getElementById('spAirlineName').value.trim();
   const airlineCode = document.getElementById('spAirlineCode').value.trim().toUpperCase();
   const iataCode = document.getElementById('spIataCode').value.trim().toUpperCase();
@@ -2185,7 +2190,7 @@ async function createSinglePlayerWorld() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name, era, timeAcceleration, difficulty, pauseOnSessionEnd, aiMaturity,
+        name, era, timeAcceleration, difficulty, pauseOnSessionEnd, aiMaturity, currency,
         baseAirportId, airlineName, airlineCode, iataCode,
         cleaningContractor, groundContractor, engineeringContractor,
         ...getBranding('sp')
@@ -2196,6 +2201,8 @@ async function createSinglePlayerWorld() {
 
     if (response.ok) {
       clearInterval(loadingMsgInterval);
+      // Seed the display currency so money is right on first paint of the world.
+      try { if (typeof setAppCurrency === 'function') setAppCurrency(currency); else localStorage.setItem('amsWorldCurrency', currency); } catch (e) { /* ignore */ }
       // Redirect to dashboard
       window.location.href = '/dashboard';
     } else {

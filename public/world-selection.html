@@ -174,13 +174,21 @@
                 <option value="2020">2020s - Current Era</option>
               </select>
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group" style="margin-bottom: 0.75rem;">
               <label for="spSpeed">GAME SPEED</label>
               <select id="spSpeed">
                 <option value="30">30x (Slow)</option>
                 <option value="60" selected>60x (Normal)</option>
                 <option value="120">120x (Fast)</option>
                 <option value="240">240x (Very Fast)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="spCurrency">CURRENCY</label>
+              <select id="spCurrency" onchange="onSPCurrencyChange()">
+                <option value="USD" selected>US Dollars ($)</option>
+                <option value="GBP">British Pounds (£)</option>
+                <option value="EUR">Euros (€)</option>
               </select>
             </div>
           </div>

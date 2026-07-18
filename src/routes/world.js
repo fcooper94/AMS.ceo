@@ -130,6 +130,7 @@ router.get('/info', async (req, res) => {
       worldType: world.worldType || 'multiplayer',
       pauseOnSessionEnd: !!world.pauseOnSessionEnd,
       difficulty: world.difficulty || null,
+      currency: world.currency || 'USD',
       endDate: world.endDate || null,
       freeWeeks: world.freeWeeks || 0,
       weeklyCost: world.weeklyCost !== undefined ? world.weeklyCost : 1,

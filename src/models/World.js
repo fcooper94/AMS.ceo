@@ -132,6 +132,14 @@ const World = sequelize.define('World', {
     field: 'ai_maturity',
     comment: 'AI world maturity: brand_new | developing | established | mature'
   },
+  // Display currency for this world. Internal money is always USD; the UI
+  // converts + formats to this at display time (see public/js/currency.js).
+  currency: {
+    type: DataTypes.STRING,
+    defaultValue: 'USD',
+    field: 'currency',
+    comment: 'Display currency: USD | GBP | EUR'
+  },
   ownerUserId: {
     type: DataTypes.UUID,
     allowNull: true,

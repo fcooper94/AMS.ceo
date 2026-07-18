@@ -316,6 +316,9 @@ function applyWorldInfo(worldInfo) {
   // Store current world ID for filtering Socket.IO events
   currentWorldId = worldInfo.id;
 
+  // Set the display currency for all money formatting on this page.
+  if (typeof setAppCurrency === 'function') setAppCurrency(worldInfo.currency || 'USD');
+
   // Update world name
   const worldNameEl = document.getElementById('worldName');
   if (worldNameEl) {
@@ -334,7 +337,7 @@ function applyWorldInfo(worldInfo) {
   const worldBalanceEl = document.getElementById('worldBalance');
   if (worldBalanceEl) {
     const balance = Number(worldInfo.balance) || 0;
-    worldBalanceEl.textContent = `$${Math.round(balance).toLocaleString('en-US')}`;
+    worldBalanceEl.textContent = formatCurrency(balance);
     if (balance < 0) {
       worldBalanceEl.style.color = 'var(--warning-color)';
     } else if (balance < 100000) {
@@ -1018,7 +1021,7 @@ async function executeBankruptcy() {
               </div>
               <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; font-weight: 600;">
                 <span>Liquidation value:</span>
-                <span style="color: #22c55e;">$${liquidationValue.toLocaleString()}</span>
+                <span style="color: #22c55e;">${formatCurrency(liquidationValue)}</span>
               </div>
             </div>
           </div>
