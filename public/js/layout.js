@@ -183,6 +183,10 @@ if (socket) {
 }
 
 // Load user information for navigation bar
+// Tracks whether the signed-in user has unlimited credits, so credit-related
+// banners (free period, low credits) can be suppressed for them.
+let _userUnlimitedCredits = false;
+
 async function loadUserInfo() {
   try {
     // Fire both requests in parallel — world info will 404 if no session, which is fine
@@ -197,6 +201,8 @@ async function loadUserInfo() {
     const data = await authResponse.json();
 
     if (data.authenticated) {
+      _userUnlimitedCredits = !!data.user.unlimitedCredits;
+
       // Remove the anti-flash stylesheet so normal dashboard layout is restored
       const publicStyles = document.getElementById('public-page-styles');
       if (publicStyles) publicStyles.remove();
@@ -466,10 +472,10 @@ function applyWorldInfo(worldInfo) {
     endBanner.style.display = 'none';
   }
 
-  // Check if airline is in free period - show banner
+  // Check if airline is in free period - show banner (never for unlimited-credit users)
   const freeBanner = document.getElementById('freePeriodBanner');
   const freeMessage = document.getElementById('freePeriodMessage');
-  if (freeBanner && freeMessage && worldInfo.freeWeeks > 0 && worldInfo.lastCreditDeduction) {
+  if (freeBanner && freeMessage && !_userUnlimitedCredits && worldInfo.freeWeeks > 0 && worldInfo.lastCreditDeduction) {
     const gameTime = new Date(worldInfo.currentTime);
     const creditDeductionStart = new Date(worldInfo.lastCreditDeduction);
     const yearGap = Math.abs(creditDeductionStart.getFullYear() - gameTime.getFullYear());

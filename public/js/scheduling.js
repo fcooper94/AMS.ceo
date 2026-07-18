@@ -953,7 +953,7 @@ async function showAircraftDetails(userAircraftId) {
           </div>
           <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
             <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Flight Hours</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);">${formatCurrency(parseFloat(userAircraft.totalFlightHours) || 0)}</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);">${(parseFloat(userAircraft.totalFlightHours) || 0).toLocaleString()}</div>
           </div>
           <div style="background: var(--surface-elevated); padding: 0.75rem; border-radius: 6px; text-align: center;">
             <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.25rem;">Routes</div>
@@ -966,7 +966,7 @@ async function showAircraftDetails(userAircraftId) {
           <!-- Col 1: Specs -->
           <div style="background: var(--surface-elevated); border-radius: 6px; padding: 0.75rem;">
             <div style="font-size: 0.8rem; color: var(--accent-color); text-transform: uppercase; font-weight: 600; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35rem;">Specifications</div>
-            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Range</span><span style="font-weight: 500;">${formatCurrency(aircraft.rangeNm)} nm</span></div>
+            <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Range</span><span style="font-weight: 500;">${Number(aircraft.rangeNm || 0).toLocaleString()} nm</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Speed</span><span style="font-weight: 500;">${aircraft.cruiseSpeed} kts</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Fuel Cap</span><span style="font-weight: 500;">${formatCurrency(aircraft.fuelCapacityLiters)} L</span></div>
             <div style="display: flex; justify-content: space-between; padding: 0.3rem 0;"><span style="color: var(--text-muted);">Burn Rate</span><span style="font-weight: 500;">${formatCurrency(fuelBurnPerHour)} L/hr</span></div>

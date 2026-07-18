@@ -382,7 +382,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Range</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrency(ac.rangeNm)}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${Number(ac.rangeNm || 0).toLocaleString()}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Speed</div>
@@ -431,7 +431,7 @@ async function showAircraftDetails(userAircraftId) {
               <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
             </div>
             <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
-              <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrency(parseFloat(ua.totalFlightHours) || 0)}</strong>
+              <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${(parseFloat(ua.totalFlightHours) || 0).toLocaleString()}</strong>
             </div>
             <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
