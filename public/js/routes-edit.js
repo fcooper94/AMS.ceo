@@ -1,3 +1,13 @@
+// Price inputs are shown/typed in the world's display currency; the backend
+// stores USD. Convert at the input boundary.
+function _usdToPriceInput(usd) {
+  return Math.round((typeof convertFromUSD === 'function' ? convertFromUSD(usd) : (Number(usd) || 0)));
+}
+function _priceInputToUsd(val) {
+  const n = parseFloat(val) || 0;
+  return Math.round((typeof convertToUSD === 'function' ? convertToUSD(n) : n));
+}
+
 let routeId = null;
 let existingRoute = null;
 let baseAirport = null;
@@ -348,11 +358,11 @@ function populateFormFields() {
   document.getElementById('transportType').value = existingRoute.transportType || 'both';
   updatePricingVisibility();
 
-  // Set pricing values
-  document.getElementById('economyPrice').value = existingRoute.economyPrice || 0;
-  document.getElementById('economyPlusPrice').value = existingRoute.economyPlusPrice || 0;
-  document.getElementById('businessPrice').value = existingRoute.businessPrice || 0;
-  document.getElementById('firstPrice').value = existingRoute.firstPrice || 0;
+  // Set pricing values (stored USD → shown in the display currency)
+  document.getElementById('economyPrice').value = _usdToPriceInput(existingRoute.economyPrice || 0);
+  document.getElementById('economyPlusPrice').value = _usdToPriceInput(existingRoute.economyPlusPrice || 0);
+  document.getElementById('businessPrice').value = _usdToPriceInput(existingRoute.businessPrice || 0);
+  document.getElementById('firstPrice').value = _usdToPriceInput(existingRoute.firstPrice || 0);
 
   // Build and populate the cargo rate inputs (new 8-type model)
   renderCargoRateFields();
@@ -821,16 +831,18 @@ async function submitRouteUpdate() {
   // Get pricing values. Era-gated classes (Business <1978, Economy Plus <1992) are
   // disabled and cleared by applyEraClassGating(); for those, keep the route's stored
   // value rather than overwriting it with a blank/0.
+  // Enabled inputs are typed in the display currency → convert to USD. Disabled
+  // fields fall back to the existing route's stored value (already USD).
   const economyPlusField = document.getElementById('economyPlusPrice');
   const businessField = document.getElementById('businessPrice');
-  const economyPrice = parseFloat(document.getElementById('economyPrice').value) || 0;
+  const economyPrice = _priceInputToUsd(document.getElementById('economyPrice').value);
   const economyPlusPrice = economyPlusField.disabled
     ? (parseFloat(existingRoute.economyPlusPrice) || 0)
-    : (parseFloat(economyPlusField.value) || 0);
+    : _priceInputToUsd(economyPlusField.value);
   const businessPrice = businessField.disabled
     ? (parseFloat(existingRoute.businessPrice) || 0)
-    : (parseFloat(businessField.value) || 0);
-  const firstPrice = parseFloat(document.getElementById('firstPrice').value) || 0;
+    : _priceInputToUsd(businessField.value);
+  const firstPrice = _priceInputToUsd(document.getElementById('firstPrice').value);
 
   // Validation
   if (!routeNumberPart) {

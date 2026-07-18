@@ -737,6 +737,16 @@ function onAircraftSelectionChange() {
 }
 
 // Update passenger class field availability based on aircraft capabilities and game era.
+// Price inputs are shown/typed in the world's display currency; the backend
+// stores USD. Convert at the input boundary.
+function _usdToPriceInput(usd) {
+  return Math.round((typeof convertFromUSD === 'function' ? convertFromUSD(usd) : (Number(usd) || 0)));
+}
+function _priceInputToUsd(val) {
+  const n = parseFloat(val) || 0;
+  return Math.round((typeof convertToUSD === 'function' ? convertToUSD(n) : n));
+}
+
 // Business class was introduced in 1978; Premium Economy in 1992.
 function updatePassengerClassAvailability(aircraftData) {
   const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 9999;
@@ -887,10 +897,10 @@ function applyDefaultPricing(aircraftData) {
   const economyPlusField = document.getElementById('economyPlusPrice');
   const businessField = document.getElementById('businessPrice');
   const firstField = document.getElementById('firstPrice');
-  if (economyField && !economyField.disabled && !economyField.value) economyField.value = getPrice('economyPrice');
-  if (economyPlusField && !economyPlusField.disabled && !economyPlusField.value) economyPlusField.value = getPrice('economyPlusPrice');
-  if (businessField && !businessField.disabled && !businessField.value) businessField.value = getPrice('businessPrice');
-  if (firstField && !firstField.disabled && !firstField.value) firstField.value = getPrice('firstPrice');
+  if (economyField && !economyField.disabled && !economyField.value) economyField.value = _usdToPriceInput(getPrice('economyPrice'));
+  if (economyPlusField && !economyPlusField.disabled && !economyPlusField.value) economyPlusField.value = _usdToPriceInput(getPrice('economyPlusPrice'));
+  if (businessField && !businessField.disabled && !businessField.value) businessField.value = _usdToPriceInput(getPrice('businessPrice'));
+  if (firstField && !firstField.disabled && !firstField.value) firstField.value = _usdToPriceInput(getPrice('firstPrice'));
 
   // Apply cargo rate defaults from cargoRates JSON (with fallback to old fields)
   if (typeof CARGO_TYPE_KEYS !== 'undefined') {
@@ -1300,7 +1310,7 @@ function generateYieldIndicator(airport) {
       </div>`;
     }).join('')}
     <div style="margin-top: 0.35rem; font-size: 0.6rem; color: #888;">
-      ${b.originCountry || '??'} $${(b.originGdp || 0).toLocaleString()} / ${b.destCountry || '??'} $${(b.destGdp || 0).toLocaleString()}<br>
+      ${b.originCountry || '??'} ${formatCurrency(b.originGdp || 0)} / ${b.destCountry || '??'} ${formatCurrency(b.destGdp || 0)}<br>
       ${(b.distKm || 0).toLocaleString()} km
     </div>
   ` : '';
@@ -1701,7 +1711,7 @@ function generateSupplyIndicator(airport) {
         </div>
         <div style="display:flex; flex-direction:column; gap:0.2rem;">${ptsHtml}</div>
         <div style="margin-top:0.3rem; font-size:0.72rem; color:#666;">
-          ${b.originCountry || '??'} $${(b.originGdp || 0).toLocaleString()} · ${b.destCountry || '??'} $${(b.destGdp || 0).toLocaleString()} · ${(dk).toLocaleString()} km
+          ${b.originCountry || '??'} ${formatCurrency(b.originGdp || 0)} · ${b.destCountry || '??'} ${formatCurrency(b.destGdp || 0)} · ${(dk).toLocaleString()} km
         </div>
       </div>`;
   }
@@ -3695,11 +3705,11 @@ async function submitNewRoute() {
   const departureTime = document.getElementById('departureTime').value;
   const turnaroundTime = roundTo5(parseInt(document.getElementById('turnaroundTime').value) || 45);
 
-  // Get pricing values
-  const economyPrice = parseFloat(document.getElementById('economyPrice').value) || 0;
-  const economyPlusPrice = parseFloat(document.getElementById('economyPlusPrice').value) || 0;
-  const businessPrice = parseFloat(document.getElementById('businessPrice').value) || 0;
-  const firstPrice = parseFloat(document.getElementById('firstPrice').value) || 0;
+  // Get pricing values (typed in display currency → convert to USD for the backend)
+  const economyPrice = _priceInputToUsd(document.getElementById('economyPrice').value);
+  const economyPlusPrice = _priceInputToUsd(document.getElementById('economyPlusPrice').value);
+  const businessPrice = _priceInputToUsd(document.getElementById('businessPrice').value);
+  const firstPrice = _priceInputToUsd(document.getElementById('firstPrice').value);
   const transportType = document.getElementById('transportType').value;
 
   // Check for route number conflicts on same operating days
