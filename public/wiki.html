@@ -47,6 +47,7 @@
             <li><a href="#fleet-management" class="wiki-toc-link" onclick="scrollToSection('fleet-management'); return false;">Fleet Management</a></li>
             <li><a href="#route-operations" class="wiki-toc-link" onclick="scrollToSection('route-operations'); return false;">Route Operations</a></li>
             <li><a href="#scheduling" class="wiki-toc-link" onclick="scrollToSection('scheduling'); return false;">Scheduling</a></li>
+            <li><a href="#sightseeing-tours" class="wiki-toc-link" onclick="scrollToSection('sightseeing-tours'); return false;">Sightseeing Tours</a></li>
             <li><a href="#pricing" class="wiki-toc-link" onclick="scrollToSection('pricing'); return false;">Pricing</a></li>
             <li><a href="#maintenance" class="wiki-toc-link" onclick="scrollToSection('maintenance'); return false;">Maintenance</a></li>
             <li><a href="#financial-management" class="wiki-toc-link" onclick="scrollToSection('financial-management'); return false;">Financial Management</a></li>
@@ -145,6 +146,30 @@
                 </div>
                 <p>Your airline starts with <strong>$1,000,000</strong> in starting capital to purchase or lease your first aircraft.</p>
                 <div class="wiki-img-placeholder">Screenshot: Airline setup form with name, codes, and hub selection</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Designing Your Airline Brand &amp; Logo</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>During setup you design your airline's visual identity &mdash; a dedicated step in the create/join wizard:</p>
+                <ul>
+                  <li><strong>Colour scheme:</strong> pick a background, primary and secondary colour for your livery</li>
+                  <li><strong>Logo:</strong> choose from a grid of procedurally generated wordmark logos built from your airline name and colours. Not happy with the options? Hit <strong>"Fresh designs"</strong> to reshuffle the templates.</li>
+                </ul>
+                <p>Your logo and colours appear throughout the game &mdash; in your sidebar, on the competitors page, and on the world map when other players see your aircraft. Every AI airline gets a generated logo too, so the whole world looks distinct.</p>
+                <h4>Naming Rules</h4>
+                <ul>
+                  <li><strong>ICAO code:</strong> 3 letters (e.g. <em>BAW</em>)</li>
+                  <li><strong>IATA code:</strong> 2 alphanumeric characters (e.g. <em>BA</em>, <em>U2</em>, <em>3K</em>)</li>
+                  <li>Airline names are checked against a filter that blocks real-world airline names and offensive language, so pick something original.</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Two-word names (e.g. "British Airways") produce a two-letter monogram in some logo templates &mdash; worth trying if you want a classic flag-carrier look.
+                </div>
               </div>
             </div>
 
@@ -341,6 +366,48 @@
                 <div class="wiki-img-placeholder">Screenshot: Fleet overview showing aircraft status and utilisation</div>
               </div>
             </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Cabin &amp; Cargo Configuration</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>When you buy an aircraft &mdash; and any time from the marketplace, fleet or scheduling pages &mdash; you can lay out its interior with the <strong>cabin and cargo configurators</strong>.</p>
+                <h4>Cabin (Seat Map)</h4>
+                <ul>
+                  <li>An interactive seat map shows the real <strong>seats-abreast</strong> layout for that aircraft type (e.g. 3-3 on a narrowbody, 2-4-2 or 3-3-3 on a widebody). Concorde, for example, is a slender 2-2.</li>
+                  <li>Split capacity across up to four cabins: <strong>Economy, Economy Plus, Business and First</strong>. Premium cabins take fewer seats per row but earn far more per seat.</li>
+                  <li>Widebodies carry explicit premium cabins; smaller aircraft derive a sensible premium layout automatically.</li>
+                </ul>
+                <h4>Cargo (Belly Holds)</h4>
+                <ul>
+                  <li>Larger aircraft have their real belly compartments &mdash; typically <strong>Forward, Aft and Bulk</strong> holds &mdash; drawn to scale for the airframe.</li>
+                  <li>Allocate cargo by type across the holds. The <strong>Bulk hold carries general cargo only</strong>; specialised cargo goes in the Forward or Aft holds.</li>
+                </ul>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Match your cabin mix to the route. A short domestic hop does well as high-density economy; a long-haul business route earns more with a bigger Business/First cabin even though total seat count drops.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Cabin configurator seat map with class allocation</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Airships</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Alongside conventional aircraft, the marketplace includes historic <strong>airships</strong> &mdash; such as the Goodyear L-class and K-class &mdash; available from the earliest (1950s) eras.</p>
+                <ul>
+                  <li>Airships are slow with modest passenger capacity, laid out in a long gondola cabin rather than a standard fuselage.</li>
+                  <li>Their leisurely pace and panoramic ride make them a natural fit for <strong>sightseeing tours</strong> (see the Sightseeing Tours section) rather than scheduled point-to-point routes.</li>
+                </ul>
+                <div class="wiki-note">
+                  <strong>Note:</strong> Airships have their own capsule-shaped cabin and cargo diagrams in the configurators, reflecting their unique gondola layout.
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- ==================== ROUTE OPERATIONS ==================== -->
@@ -391,6 +458,30 @@
                   <strong>Tip:</strong> High demand with low competition is the ideal route. But don't ignore medium-demand routes — they can be very profitable with the right pricing and frequency.
                 </div>
                 <div class="wiki-img-placeholder">Screenshot: Route demand analysis showing passenger estimates and competition</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Route Indicators &amp; Seasonality</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>When picking a destination, each candidate airport shows at-a-glance indicator columns so you can judge a route before committing:</p>
+                <ul>
+                  <li><strong>Dist:</strong> great-circle distance from your base</li>
+                  <li><strong>Demand:</strong> estimated passengers per day, shown in amber for summer and blue for winter, with an archetype label below &mdash; <em>BEACH</em>, <em>SKI</em>, <em>BUSINESS</em>, <em>LEISURE</em> or <em>YEAR-ROUND</em></li>
+                  <li><strong>Yield:</strong> how much revenue the route tends to earn per passenger</li>
+                  <li><strong>Comp:</strong> how much competition already serves the market</li>
+                  <li><strong>Capacity:</strong> a gap label (OPEN / GAP / LOW / MED / SAT) with a magnifying-glass button</li>
+                </ul>
+                <h4>Capacity Panel</h4>
+                <p>Click the magnifying glass to open a 7-day chart (Mon&ndash;Sun) comparing, in passengers per day: summer demand, winter demand, the whole market's seat capacity, and your own capacity from your fleet's cabin layout. It covers both directions of the route at once.</p>
+                <h4>Summer vs Winter</h4>
+                <p>Demand swings with the season according to the route's archetype &mdash; a ski destination peaks in winter, a beach route in summer, business routes stay steady year-round. The seasonal swing is deliberately gentle in early eras (mass leisure travel barely existed in the 1950s) and grows as the world matures.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> A strongly seasonal route (SKI or BEACH) can be very profitable in peak season but soft off-season &mdash; pair it with a year-round route so your aircraft stays busy all year.
+                </div>
               </div>
             </div>
 
@@ -515,6 +606,82 @@
                 <div class="wiki-tip">
                   <strong>Tip:</strong> Don't schedule flights too tightly. Leave buffer time for minor delays to prevent cascading schedule disruptions.
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== SIGHTSEEING TOURS ==================== -->
+          <div class="wiki-category" id="sightseeing-tours">
+            <h2 class="wiki-category-title">Sightseeing Tours</h2>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>What Are Sightseeing Tours?</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Sightseeing tours are <strong>scenic pleasure flights</strong> that take off and land at the same base airport, looping over scenic points you choose &mdash; coastlines, mountains, city landmarks. They're a separate product from scheduled routes, with their own revenue model.</p>
+                <ul>
+                  <li>No destination airport &mdash; the aircraft returns to where it started</li>
+                  <li>Great for slow, panoramic aircraft like <strong>airships</strong> and small propliners</li>
+                  <li>Priced per seat as a leisure experience rather than point-to-point transport</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Creating a Tour</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <ol>
+                  <li>Go to <strong>Flight Operations &rarr; Create Sightseeing Tour</strong></li>
+                  <li>Pick your <strong>base airport</strong> &mdash; the tour departs from and returns here</li>
+                  <li>Click points on the interactive map to drop <strong>scenic waypoints</strong> for the aircraft to fly over</li>
+                  <li>The tour's <strong>distance and duration</strong> are calculated automatically from your waypoints and the aircraft's cruise speed</li>
+                  <li>Assign an <strong>aircraft type</strong> to operate the tour</li>
+                  <li>Set a <strong>ticket price</strong> &mdash; a suggested price is offered based on the tour length and the world's era</li>
+                  <li>Choose the days and departure time, then save</li>
+                </ol>
+                <div class="wiki-note">
+                  <strong>Note:</strong> The aircraft must have the range to complete the full loop. If a tour is too long for the selected type, the builder will tell you.
+                </div>
+                <div class="wiki-img-placeholder">Screenshot: Sightseeing tour builder with map waypoints and duration</div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Scheduling Tours &amp; Revenue</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Tours slot into your operation alongside normal routes:</p>
+                <ul>
+                  <li>Drag a tour onto the <strong>scheduling grid</strong> just like a route; it appears on the days and time you set</li>
+                  <li>The scheduler checks for <strong>conflicts</strong> in both directions, so a tour and a route can't double-book the same aircraft</li>
+                  <li>Removing a tour from the schedule <strong>pauses</strong> it and keeps the aircraft assigned &mdash; drag it back to resume</li>
+                </ul>
+                <h4>How Tours Earn</h4>
+                <p>Tour revenue is a flat, price-driven model: a scenic flight tends to fill well, so demand is high and mostly responds to how you price it against the suggested fare. Operating costs scale with the era, and a grounded aircraft won't fly its tour.</p>
+                <div class="wiki-tip">
+                  <strong>Tip:</strong> Sightseeing tours are a good way to earn from an aircraft that's too slow or small to compete on scheduled routes &mdash; especially airships over a scenic coastline or city.
+                </div>
+              </div>
+            </div>
+
+            <div class="wiki-article">
+              <button class="wiki-article-header" onclick="toggleArticle(this)">
+                <span>Managing &amp; Editing Tours</span>
+                <svg class="wiki-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="wiki-article-body">
+                <p>Your tours are listed in their own table on the <strong>Manage Routes</strong> page, separate from scheduled routes.</p>
+                <ul>
+                  <li>Use the <strong>edit</strong> button to adjust a tour &mdash; you can change its <strong>price</strong> and <strong>aircraft type</strong>; the waypoints and base stay locked once created</li>
+                  <li>Use <strong>delete</strong> to remove a tour entirely</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -1184,6 +1351,14 @@
                   <li>They help create a realistic competitive environment even with few human players</li>
                 </ul>
                 <p>In multiplayer worlds, AI airlines supplement human players to ensure a healthy competitive market.</p>
+                <h4>How AI Airlines Finance Aircraft</h4>
+                <p>AI airlines don't just lease &mdash; like a real carrier, they vary how they pay for aircraft depending on their finances and personality:</p>
+                <ul>
+                  <li><strong>Cash:</strong> buying outright when they can afford it</li>
+                  <li><strong>Financed:</strong> a deposit plus a bank loan</li>
+                  <li><strong>Lease:</strong> lower upfront cost, ongoing payments</li>
+                </ul>
+                <p>They also take out and repay bank loans using the same lending system you do, so a well-funded AI can expand aggressively while an over-leveraged one gets into trouble.</p>
               </div>
             </div>
 
