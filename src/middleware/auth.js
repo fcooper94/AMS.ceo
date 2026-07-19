@@ -30,10 +30,16 @@ const requireAdmin = async (req, res, next) => {
     const { User } = require('../models');
     const me = await User.findOne({
       where: req.user.id ? { id: req.user.id } : { vatsimId: req.user.vatsimId },
-      attributes: ['id', 'isAdmin']
+      attributes: ['id', 'isAdmin', 'totpEnabled']
     });
     if (!me || !me.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
+    }
+    // Two-factor step-up: if this admin has 2FA on, the session must have passed
+    // it. The /2fa management endpoints are exempt so setup/verify remain reachable.
+    if (me.totpEnabled && !(req.session && req.session.adminTwoFA)) {
+      if (path.startsWith('/api/admin/2fa')) return next();
+      return res.status(403).json({ error: 'Two-factor verification required', twoFactorRequired: true });
     }
     return next();
   } catch (e) {

@@ -342,6 +342,7 @@ app.use('/api/finances', requireWorld, financesRoutes);
 app.use('/api/routes', requireWorld, routesRoutes);
 app.use('/api/schedule', requireWorld, schedulingRoutes);
 app.use('/api/pricing', requireWorld, pricingRoutes);
+app.use('/api/admin/2fa', requireAdmin, require('./routes/admin2fa'));
 app.use('/api/admin', requireAdmin, adminRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', requireWorld, dashboardRoutes);
@@ -675,12 +676,16 @@ server.listen(PORT, () => {
       await sequelize.query(`
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE
       `);
+      await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(255)`);
+      await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+      await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes JSONB`);
     } catch (_) { /* users table may not exist yet — sync will create it */ }
     try {
       // Create the payments table if it doesn't exist (non-destructive CREATE).
       await require('./models/Payment').sync();
       // Additive column for admin refunds (sync() won't alter an existing table).
       await sequelize.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP WITH TIME ZONE`);
+      await sequelize.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS credit_note_url TEXT`);
     } catch (e) { console.warn('[boot] payments table sync skipped:', e.message); }
     try {
       await sequelize.query(`

@@ -21,7 +21,7 @@ async function loadUsers() {
     if (users.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="8" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
+          <td colspan="7" style="padding: 1rem; text-align: center; color: var(--text-muted);">No users found</td>
         </tr>
       `;
       return;
@@ -48,7 +48,6 @@ async function loadUsers() {
 
       return `
         <tr style="border-bottom: 1px solid var(--border-color);">
-          <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
           <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
           <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
           <td style="padding: 0.5rem; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap;">${user.lastLogin ? new Date(user.lastLogin).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
@@ -67,7 +66,7 @@ async function loadUsers() {
     const tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading users</td>
+        <td colspan="7" style="padding: 1rem; text-align: center; color: var(--warning-color);">Error loading users</td>
       </tr>
     `;
   }
@@ -450,9 +449,11 @@ function invoiceRow(userId, r) {
   else { statusLabel = 'Failed'; statusColor = '#f85149'; }
 
   // Subtle "ghost" pill for Invoice/Receipt links
+  // Admin sees the full paper trail: original invoice + credit note + receipt.
   const pill = (label, href) => `<a href="${href}" target="_blank" rel="noopener" class="inv-pill">${label}</a>`;
   const links = [
     r.invoiceUrl ? pill('Invoice', r.invoiceUrl) : '',
+    r.creditNoteUrl ? pill('Credit Note', r.creditNoteUrl) : '',
     r.receiptUrl ? pill('Receipt', r.receiptUrl) : ''
   ].filter(Boolean).join('');
 
@@ -1609,7 +1610,113 @@ async function confirmDeleteAirport() {
 }
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+// ── Admin two-factor auth (TOTP) ──────────────────────────────────────
+// Returns true if a step-up gate is shown (panel should not load data yet).
+async function check2FA() {
+  try {
+    const res = await fetch('/api/admin/2fa/status');
+    if (!res.ok) return false;
+    const s = await res.json();
+    if (s.enabled && !s.verified) { show2FAGate(); return true; }
+    if (!s.enabled) showEnable2FABanner();
+    return false;
+  } catch (e) { return false; }
+}
+
+function show2FAGate() {
+  const o = document.createElement('div');
+  o.id = 'twofaGate';
+  o.style.cssText = 'position:fixed;inset:0;background:rgba(10,14,20,0.97);z-index:100000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  o.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:12px;max-width:380px;width:100%;padding:1.75rem;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      <div style="font-size:1.15rem;font-weight:700;color:var(--text-primary);margin-bottom:0.4rem;">Two-factor verification</div>
+      <p style="color:var(--text-secondary);font-size:0.85rem;margin:0 0 1rem;">Enter the code from your authenticator app to open the admin panel.</p>
+      <input id="twofaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="11" style="width:100%;text-align:center;letter-spacing:0.25em;font-size:1.3rem;padding:0.6rem;border:1px solid var(--border-color);border-radius:8px;background:var(--surface-elevated);color:var(--text-primary);margin-bottom:0.5rem;box-sizing:border-box;">
+      <div id="twofaErr" style="color:#f85149;font-size:0.8rem;min-height:1rem;margin-bottom:0.5rem;"></div>
+      <button id="twofaSubmit" class="btn btn-primary" style="width:100%;padding:0.6rem;">Verify</button>
+      <p style="color:var(--text-muted);font-size:0.72rem;margin:0.85rem 0 0;">Lost your device? Use a backup code. (An admin can disable 2FA in the DB via <code>totp_enabled=false</code>.)</p>
+    </div>`;
+  document.body.appendChild(o);
+  const input = o.querySelector('#twofaCode');
+  input.focus();
+  const submit = async () => {
+    const code = input.value.trim();
+    const err = o.querySelector('#twofaErr'); err.textContent = '';
+    const btn = o.querySelector('#twofaSubmit'); btn.disabled = true; btn.textContent = 'Verifying…';
+    try {
+      const r = await fetch('/api/admin/2fa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+      const d = await r.json();
+      if (r.ok && d.success) { location.reload(); return; }
+      err.textContent = d.error || 'Invalid code.';
+    } catch (e) { err.textContent = 'Network error.'; }
+    btn.disabled = false; btn.textContent = 'Verify';
+  };
+  o.querySelector('#twofaSubmit').onclick = submit;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+function showEnable2FABanner() {
+  const header = document.querySelector('.page-header');
+  if (!header || document.getElementById('enable2faBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'enable2faBanner';
+  b.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:1rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:0.7rem 1rem;margin:0 0 1rem;flex-wrap:wrap;';
+  b.innerHTML = `<span style="font-size:0.85rem;color:var(--text-secondary);">🔒 Protect the admin panel with two-factor authentication (Authy, Google Authenticator, etc.).</span>
+    <button class="btn btn-primary" onclick="open2FASetup()" style="padding:0.4rem 0.9rem;font-size:0.8rem;white-space:nowrap;">Set up 2FA</button>`;
+  header.insertAdjacentElement('afterend', b);
+}
+
+async function open2FASetup() {
+  let data;
+  try {
+    const r = await fetch('/api/admin/2fa/setup', { method: 'POST' });
+    data = await r.json();
+    if (!r.ok) { alert(data.error || 'Could not start setup'); return; }
+  } catch (e) { alert('Network error'); return; }
+
+  const o = document.createElement('div');
+  o.id = 'twofaSetup';
+  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  o.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:12px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text-primary);">Set up two-factor auth</div>
+        <button onclick="document.getElementById('twofaSetup').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;">&times;</button>
+      </div>
+      <p style="color:var(--text-secondary);font-size:0.82rem;margin:0 0 0.6rem;">1. Scan with Authy (or any authenticator app):</p>
+      <div style="text-align:center;margin-bottom:0.6rem;"><img src="${data.qrDataUrl}" alt="2FA QR" style="width:180px;height:180px;background:#fff;border-radius:8px;padding:6px;"></div>
+      <p style="color:var(--text-muted);font-size:0.74rem;margin:0 0 0.8rem;text-align:center;">Can't scan? Enter this key manually:<br><code style="color:var(--text-primary);font-size:0.8rem;word-break:break-all;">${data.secret}</code></p>
+      <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:8px;padding:0.75rem;margin-bottom:0.9rem;">
+        <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--warning-color);font-weight:700;margin-bottom:0.45rem;">Backup codes — save these now</div>
+        <div style="font-family:monospace;font-size:0.82rem;color:var(--text-primary);columns:2;line-height:1.8;">${data.backupCodes.map(c => `<div>${c}</div>`).join('')}</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.45rem;">Each works once if you lose your device.</div>
+      </div>
+      <p style="color:var(--text-secondary);font-size:0.82rem;margin:0 0 0.4rem;">2. Enter the current 6-digit code to confirm:</p>
+      <input id="twofaEnableCode" inputmode="numeric" placeholder="000000" maxlength="6" style="width:100%;text-align:center;letter-spacing:0.3em;font-size:1.2rem;padding:0.55rem;border:1px solid var(--border-color);border-radius:8px;background:var(--surface-elevated);color:var(--text-primary);margin-bottom:0.4rem;box-sizing:border-box;">
+      <div id="twofaEnableErr" style="color:#f85149;font-size:0.8rem;min-height:1rem;margin-bottom:0.4rem;"></div>
+      <button id="twofaEnableBtn" class="btn btn-primary" style="width:100%;padding:0.6rem;">Enable 2FA</button>
+    </div>`;
+  document.body.appendChild(o);
+  const submit = async () => {
+    const code = o.querySelector('#twofaEnableCode').value.trim();
+    const err = o.querySelector('#twofaEnableErr'); err.textContent = '';
+    const btn = o.querySelector('#twofaEnableBtn'); btn.disabled = true; btn.textContent = 'Enabling…';
+    try {
+      const r = await fetch('/api/admin/2fa/enable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+      const d = await r.json();
+      if (r.ok && d.success) { o.remove(); const bn = document.getElementById('enable2faBanner'); if (bn) bn.remove(); alert('Two-factor authentication is now enabled. You will be asked for a code each session.'); return; }
+      err.textContent = d.error || 'Failed';
+    } catch (e) { err.textContent = 'Network error'; }
+    btn.disabled = false; btn.textContent = 'Enable 2FA';
+  };
+  o.querySelector('#twofaEnableBtn').onclick = submit;
+  o.querySelector('#twofaEnableCode').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const gated = await check2FA();
+  if (gated) return; // step-up gate is shown; don't load panel data yet
+
   loadUsers();
 
   // Update world times regularly to keep them ticking

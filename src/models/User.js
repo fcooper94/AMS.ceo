@@ -86,6 +86,25 @@ const User = sequelize.define('User', {
     field: 'tutorial_dismissed',
     comment: 'Whether the user opted out of the new-world onboarding tutorial'
   },
+  totpSecret: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'totp_secret',
+    comment: 'Base32 TOTP secret for admin 2FA (null = not set up)'
+  },
+  totpEnabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'totp_enabled',
+    comment: 'Whether admin 2FA is active for this user'
+  },
+  totpBackupCodes: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    field: 'totp_backup_codes',
+    comment: 'Array of hashed one-time backup codes'
+  },
   passwordHash: {
     type: DataTypes.STRING,
     allowNull: true,
