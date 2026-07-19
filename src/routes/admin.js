@@ -199,7 +199,7 @@ router.get('/users/:userId/payments', async (req, res) => {
     res.json(payments.map(p => ({
       id: p.id, packId: p.packId, credits: p.credits,
       amount: p.amount, currency: p.currency, status: p.status,
-      invoiceUrl: p.invoiceUrl, receiptUrl: p.receiptUrl,
+      invoiceUrl: p.invoiceUrl, receiptUrl: p.receiptUrl, creditNoteUrl: p.creditNoteUrl,
       refundedAt: p.refundedAt, date: p.createdAt
     })));
   } catch (err) {
@@ -267,10 +267,21 @@ router.post('/payments/:paymentId/refund', async (req, res) => {
     if (payment.refundedAt) return res.status(400).json({ error: 'Already refunded' });
 
     const stripe = getStripe();
-    if (stripe && payment.stripePaymentIntent) {
-      await stripe.refunds.create({ payment_intent: payment.stripePaymentIntent });
-    } else if (!stripe) {
-      return res.status(503).json({ error: 'Stripe not configured' });
+    if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+    if (payment.stripePaymentIntent) {
+      const refund = await stripe.refunds.create({ payment_intent: payment.stripePaymentIntent });
+      // Issue a credit note (the customer's "refund invoice") against the invoice.
+      try {
+        let invoiceId = null;
+        if (payment.stripeSessionId) {
+          const session = await stripe.checkout.sessions.retrieve(payment.stripeSessionId);
+          invoiceId = session.invoice || null;
+        }
+        if (invoiceId && refund.id) {
+          const cn = await stripe.creditNotes.create({ invoice: invoiceId, refund: refund.id });
+          payment.creditNoteUrl = cn.pdf || null;
+        }
+      } catch (e) { console.warn('[admin] credit note not created:', e.message); }
     }
 
     // Claw back the granted credits (may go negative if already spent).

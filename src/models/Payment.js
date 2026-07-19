@@ -70,6 +70,12 @@ const Payment = sequelize.define('Payment', {
     allowNull: true,
     field: 'refunded_at',
     comment: 'When an admin refunded this payment (null = active)'
+  },
+  creditNoteUrl: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'credit_note_url',
+    comment: 'Stripe credit note (refund invoice) PDF, set on refund'
   }
 }, {
   tableName: 'payments',

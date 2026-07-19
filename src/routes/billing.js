@@ -101,8 +101,8 @@ router.get('/history', async (req, res) => {
     res.json(payments.map(p => ({
       id: p.id, packId: p.packId, credits: p.credits,
       amount: p.amount, currency: p.currency, status: p.status,
-      invoiceUrl: p.invoiceUrl, receiptUrl: p.receiptUrl,
-      date: p.createdAt
+      invoiceUrl: p.invoiceUrl, receiptUrl: p.receiptUrl, creditNoteUrl: p.creditNoteUrl,
+      refundedAt: p.refundedAt, date: p.createdAt
     })));
   } catch (err) {
     console.error('[billing] history failed:', err.message);
