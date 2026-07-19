@@ -6666,7 +6666,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         ondragover="${hasExpiredChecks ? '' : `handleWeeklyDragOver(event, ${col.dayOfWeek})`}"
         ondragleave="${hasExpiredChecks ? '' : 'handleWeeklyDragLeave(event)'}"
         ondrop="${hasExpiredChecks ? '' : `handleWeeklyDrop(event, '${aircraft.id}', ${col.dayOfWeek})`}"
-        title="${hasExpiredChecks ? groundedTooltip : 'Drag route here to schedule'}"
+        title="${hasExpiredChecks ? groundedTooltip : (isCoarsePointer() ? 'Tap a route, then tap here to schedule' : 'Drag route here to schedule')}"
       >
         ${hasContent ? cellContent : ''}
         ${expiredOverlay}
@@ -7722,6 +7722,12 @@ async function loadUnassignedRoutes(aircraftId) {
     element.addEventListener('dragend', handleDragEnd);
     element.addEventListener('click', (e) => {
       if (e.defaultPrevented) return;
+      // Touch devices get no drag events at all, so tap arms the route for
+      // placement into a grid slot. Mouse users keep the day-picker modal.
+      if (isCoarsePointer()) {
+        armPlacement('route', routeId);
+        return;
+      }
       showDaySelectionForRoute(routeId);
     });
     element.style.cursor = 'pointer';
@@ -7732,6 +7738,10 @@ async function loadUnassignedRoutes(aircraftId) {
     const tourId = element.getAttribute('data-tour-id');
     element.addEventListener('dragstart', (e) => handleTourDragStart(e, tourId));
     element.addEventListener('dragend', handleDragEnd);
+    element.addEventListener('click', (e) => {
+      if (e.defaultPrevented) return;
+      if (isCoarsePointer()) armPlacement('tour', tourId);
+    });
     element.style.cursor = 'grab';
   });
 }
@@ -11288,3 +11298,153 @@ async function showAircraftDetails(userAircraftId) {
   const escHandler = (e) => { if (e.key === 'Escape') { document.body.removeChild(overlay); document.removeEventListener('keydown', escHandler); } };
   document.addEventListener('keydown', escHandler);
 }
+
+// ---------------------------------------------------------------------------
+// Touch scheduling: tap-to-select then tap-to-place
+//
+// iOS Safari never fires HTML5 drag-and-drop events, so the drag path that
+// desktop uses is dead on iPad/iPhone. On coarse-pointer devices we instead
+// "arm" a route/tour on tap, then place it into whichever grid cell is tapped
+// next. Placement reuses handleDrop / handleWeeklyDrop verbatim (via a
+// synthetic event) so all the existing type/conflict/confirm logic still runs.
+// Desktop behaviour is untouched.
+// ---------------------------------------------------------------------------
+
+let armedPlacement = null; // { kind: 'route'|'tour', id, label }
+
+function isCoarsePointer() {
+  return typeof window.matchMedia === 'function' &&
+         window.matchMedia('(pointer: coarse)').matches;
+}
+
+function armPlacement(kind, id) {
+  const label = kind === 'tour'
+    ? (sightseeingTours.find(t => t.id === id)?.name || 'Tour')
+    : (() => {
+        const r = routes.find(x => x.id === id);
+        return r ? `${formatRouteNumber(r.routeNumber)} ${r.departureAirport.icaoCode}→${r.arrivalAirport.icaoCode}` : 'Route';
+      })();
+
+  armedPlacement = { kind, id, label };
+  draggedRoute = kind === 'route' ? routes.find(r => r.id === id) : null;
+  draggedTour = kind === 'tour' ? sightseeingTours.find(t => t.id === id) : null;
+
+  highlightArmedCard();
+  showPlacementBanner(label);
+}
+
+function cancelPlacement() {
+  armedPlacement = null;
+  draggedRoute = null;
+  draggedTour = null;
+  highlightArmedCard();
+  const banner = document.getElementById('placementBanner');
+  if (banner) banner.remove();
+}
+
+function highlightArmedCard() {
+  document.querySelectorAll('.route-draggable, .tour-draggable').forEach(el => {
+    const isArmed = !!armedPlacement && (
+      el.getAttribute('data-route-id') === armedPlacement.id ||
+      el.getAttribute('data-tour-id') === armedPlacement.id
+    );
+    el.style.outline = isArmed ? '2px solid var(--accent-color)' : '';
+    el.style.outlineOffset = isArmed ? '1px' : '';
+  });
+}
+
+function showPlacementBanner(label) {
+  let banner = document.getElementById('placementBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'placementBanner';
+    banner.style.cssText = `
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+      z-index: 3000;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      max-width: calc(100vw - 2rem);
+      padding: 0.75rem 1rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--accent-color);
+      border-radius: 8px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+      font-size: 0.85rem;
+      color: var(--text-primary);
+    `;
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = `
+    <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+      Tap a slot to place <strong style="color:var(--accent-color);"></strong>
+    </span>
+    <button type="button" id="placementCancelBtn"
+      style="flex:0 0 auto; min-height:44px; padding:0 0.9rem; background:transparent; border:1px solid var(--border-color); border-radius:4px; color:var(--text-secondary); font-size:0.85rem; cursor:pointer;">
+      Cancel
+    </button>
+  `;
+  banner.querySelector('strong').textContent = label;
+  banner.querySelector('#placementCancelBtn').addEventListener('click', cancelPlacement);
+}
+
+// Delegated tap handler: place the armed item into the tapped grid cell.
+document.addEventListener('click', async (e) => {
+  if (!armedPlacement) return;
+  if (e.target.closest('#placementBanner')) return;
+
+  const cell = e.target.closest('.schedule-cell, .weekly-cell');
+  if (!cell) return;
+
+  // Grounded cells opt out of drops; keep tap consistent with that.
+  if (!cell.getAttribute('ondrop')) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // handleDrop/handleWeeklyDrop only use the event for preventDefault,
+  // stopPropagation and currentTarget, so a synthetic one is sufficient.
+  const syntheticEvent = {
+    preventDefault() {},
+    stopPropagation() {},
+    currentTarget: cell,
+    target: cell
+  };
+
+  const aircraftId = cell.getAttribute('data-aircraft-id');
+  const isWeekly = cell.classList.contains('weekly-cell');
+
+  // Clear the armed UI before awaiting, but keep draggedRoute/draggedTour set
+  // because the drop handlers read and null them out themselves.
+  const banner = document.getElementById('placementBanner');
+  if (banner) banner.remove();
+  armedPlacement = null;
+  highlightArmedCard();
+
+  try {
+    if (isWeekly) {
+      const dayOfWeek = parseInt(cell.getAttribute('data-day'), 10);
+      await handleWeeklyDrop(syntheticEvent, aircraftId, dayOfWeek);
+    } else {
+      await handleDrop(syntheticEvent, aircraftId, cell.getAttribute('data-time'));
+    }
+  } finally {
+    draggedRoute = null;
+    draggedTour = null;
+  }
+}, true);
+
+// Esc cancels an armed placement.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && armedPlacement) cancelPlacement();
+});
+
+// The panel header says "DRAG ROUTE TO SCHEDULE", which is impossible on touch.
+document.addEventListener('DOMContentLoaded', () => {
+  if (!isCoarsePointer()) return;
+  const title = document.getElementById('addRouteModalTitle');
+  if (title) title.textContent = 'TAP ROUTE, THEN TAP A SLOT';
+});

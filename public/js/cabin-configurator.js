@@ -854,7 +854,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
       // Draggable overlay for each mid-cabin service area at this row
       for (const hidx of handleIndices) {
         html += `<rect class="mid-drag-handle" data-mid-idx="${hidx}" x="${seatLeft}" y="${curY}" width="${seatWidth}" height="${SERVICE_BLOCK_H}"
-                  fill="rgba(148,163,184,0.0)" stroke="none" cursor="grab" pointer-events="all"
+                  fill="rgba(148,163,184,0.0)" stroke="none" cursor="grab" pointer-events="all" style="touch-action: none;"
                   onmouseover="this.setAttribute('fill','rgba(148,163,184,0.15)');this.setAttribute('stroke','rgba(148,163,184,0.5)');this.setAttribute('stroke-width','1')"
                   onmouseout="this.setAttribute('fill','rgba(148,163,184,0.0)');this.setAttribute('stroke','none')"/>`;
       }
@@ -1399,22 +1399,33 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const totalRows = parseInt(meta.dataset.totalRows);
 
     svg.querySelectorAll('.mid-drag-handle').forEach(handle => {
-      handle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const idx = parseInt(handle.dataset.midIdx);
-        // Calculate what row this currently sits at
-        const currentRow = Math.round(midPositions[idx] * totalRows);
-        _midDrag = { idx, startY, endY, totalRows, lastRow: currentRow };
-        document.body.style.cursor = 'grabbing';
-        const scrollEl = document.getElementById('cabinDiagramScroll');
-        if (scrollEl) scrollEl.style.overflow = 'hidden';
-      });
+      handle.addEventListener('mousedown', (e) => _startMidDrag(e, handle));
+      // Touch equivalent — iOS never fires mouse events for a finger drag.
+      // passive:false so preventDefault() can stop the page scrolling.
+      handle.addEventListener('touchstart', (e) => _startMidDrag(e, handle), { passive: false });
     });
+
+    function _startMidDrag(e, handle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(handle.dataset.midIdx);
+      // Calculate what row this currently sits at
+      const currentRow = Math.round(midPositions[idx] * totalRows);
+      _midDrag = { idx, startY, endY, totalRows, lastRow: currentRow };
+      document.body.style.cursor = 'grabbing';
+      const scrollEl = document.getElementById('cabinDiagramScroll');
+      if (scrollEl) scrollEl.style.overflow = 'hidden';
+    }
   }
 
-  // Global mouse handlers for drag (attached to overlay)
-  overlay.addEventListener('mousemove', (e) => {
+  // Pull clientX/clientY from either a mouse or a touch event.
+  function _dragPoint(e) {
+    const t = e.touches && e.touches[0];
+    return t ? { x: t.clientX, y: t.clientY } : { x: e.clientX, y: e.clientY };
+  }
+
+  // Global move handler for drag (attached to overlay)
+  function _moveMidDrag(e) {
     if (!_midDrag) return;
     e.preventDefault();
     const container = document.getElementById('cabinDiagramContainer');
@@ -1422,7 +1433,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const svg = container.querySelector('svg');
     if (!svg) return;
 
-    const portraitY = _screenToSvgY(svg, e.clientX, e.clientY);
+    const pt = _dragPoint(e);
+    const portraitY = _screenToSvgY(svg, pt.x, pt.y);
     const range = _midDrag.endY - _midDrag.startY;
     if (range <= 0) return;
 
@@ -1437,7 +1449,9 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       renderDiagram();
       setupMidDragHandles();
     }
-  });
+  }
+  overlay.addEventListener('mousemove', _moveMidDrag);
+  overlay.addEventListener('touchmove', _moveMidDrag, { passive: false });
 
   function _endMidDrag() {
     if (_midDrag) {
@@ -1449,6 +1463,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   }
   overlay.addEventListener('mouseup', _endMidDrag);
   overlay.addEventListener('mouseleave', _endMidDrag);
+  overlay.addEventListener('touchend', _endMidDrag);
+  overlay.addEventListener('touchcancel', _endMidDrag);
 
   function updateUI() {
     recalcEconomy();

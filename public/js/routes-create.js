@@ -4355,17 +4355,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Global indicator tooltip — position:fixed so it escapes overflow:auto containers.
   const globalTip = document.getElementById('globalIndicatorTooltip');
   if (globalTip) {
-    document.addEventListener('mouseover', function(e) {
-      const hover = e.target.closest('.indicator-hover');
-      if (!hover) return;
+    // Touch devices never fire mouseover, so these tooltips were unreachable.
+    // On a coarse pointer we toggle them on tap instead of on hover.
+    const isCoarse = typeof window.matchMedia === 'function' &&
+                     window.matchMedia('(pointer: coarse)').matches;
+    let tipAnchor = null;
+
+    function showTip(hover) {
       const inline = hover.querySelector('.indicator-tooltip');
-      if (!inline) return;
+      if (!inline) return false;
 
       // Copy content and inherit min-width from the inline tooltip (e.g. 460px for supply chart).
       globalTip.innerHTML = inline.innerHTML;
       const minW = inline.style.minWidth;
-      globalTip.style.minWidth = minW || '190px';
-      globalTip.style.maxWidth = minW ? 'none' : '230px';
+      // Never let a wide tooltip (the 460px supply chart) exceed the viewport.
+      const cap = window.innerWidth - 16;
+      const desired = minW ? parseFloat(minW) : 190;
+      globalTip.style.minWidth = Math.min(desired, cap) + 'px';
+      globalTip.style.maxWidth = (minW ? cap : Math.min(230, cap)) + 'px';
       globalTip.style.display = 'block';
 
       // Measure after layout so offsetWidth/offsetHeight are accurate.
@@ -4381,14 +4388,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         globalTip.style.left = left + 'px';
         globalTip.style.top  = top  + 'px';
       });
-    });
+      return true;
+    }
 
-    document.addEventListener('mouseout', function(e) {
-      const hover = e.target.closest('.indicator-hover');
-      if (!hover) return;
-      if (!hover.contains(e.relatedTarget)) {
-        globalTip.style.display = 'none';
-      }
-    });
+    function hideTip() {
+      globalTip.style.display = 'none';
+      tipAnchor = null;
+    }
+
+    if (isCoarse) {
+      document.addEventListener('click', function(e) {
+        const hover = e.target.closest('.indicator-hover');
+        if (!hover) {
+          // Tap outside dismisses, but a tap inside the tooltip itself does not
+          // (the capacity chart is interactive).
+          if (!e.target.closest('#globalIndicatorTooltip')) hideTip();
+          return;
+        }
+        // Tapping the same indicator again closes it.
+        if (tipAnchor === hover) { hideTip(); return; }
+        if (showTip(hover)) {
+          tipAnchor = hover;
+          // Don't let this tap fall through to the row's select-airport handler.
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    } else {
+      document.addEventListener('mouseover', function(e) {
+        const hover = e.target.closest('.indicator-hover');
+        if (!hover) return;
+        showTip(hover);
+      });
+
+      document.addEventListener('mouseout', function(e) {
+        const hover = e.target.closest('.indicator-hover');
+        if (!hover) return;
+        if (!hover.contains(e.relatedTarget)) hideTip();
+      });
+    }
   }
 });
