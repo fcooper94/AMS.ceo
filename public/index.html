@@ -862,17 +862,17 @@
         </div>
       </div>
 
-      <!-- Phase 2: User Selection -->
+      <!-- Phase 2: Beta Menu -->
       <div id="devBypassUserView" style="display: none;">
+        <div style="text-align: center; margin-bottom: 1.25rem;">
+          <div style="font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; line-height: 1; color: var(--text-primary, #f1f5f9);">AMS<span style="color: var(--accent-color, #3b82f6); font-size: 0.6em; font-weight: 600; letter-spacing: 0;">.ceo</span></div>
+          <div style="font-size: 0.68rem; letter-spacing: 3px; color: var(--text-muted, #64748b); text-transform: uppercase; font-weight: 600; margin-top: 0.4rem;">Airline Management Sim</div>
+        </div>
         <div id="devBypassUserList" style="
-          max-height: 400px;
-          overflow-y: auto;
-          margin-bottom: 1rem;
           display: flex;
           flex-direction: column;
           gap: 0.25rem;
         "></div>
-        <button onclick="devBypassBackToPassword()" class="lp-btn lp-btn-outline">Back</button>
       </div>
 
       <!-- Phase 3: Protected account second password -->
@@ -1161,7 +1161,7 @@
     function showUserSelection(users) {
       document.getElementById('devBypassPasswordView').style.display = 'none';
       document.getElementById('devBypassUserView').style.display = '';
-      document.getElementById('devBypassTitle').textContent = 'Select User';
+      document.getElementById('devBypassTitle').textContent = 'Beta Menu';
 
       const list = document.getElementById('devBypassUserList');
       const itemStyle = `
@@ -1176,29 +1176,11 @@
         align-items: center;
       `;
 
-      // Tester entry points — Register / Login (session is now dev-unlocked).
-      let html = `<div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+      // Tester entry points — Register / Login only (dev account picker removed).
+      list.innerHTML = `<div style="display: flex; gap: 0.5rem;">
         <a href="/register" class="lp-btn" style="flex: 1; background: var(--accent-color, #2563eb); border: 1px solid var(--accent-color, #2563eb); color: #fff;">Register</a>
         <a href="/login" class="lp-btn lp-btn-outline" style="flex: 1;">Login</a>
-      </div>
-      <div style="font-size: 0.7rem; color: var(--text-muted, #64748b); text-align: center; margin-bottom: 0.5rem;">— or pick a dev account —</div>`;
-
-      users.forEach(u => {
-        const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
-        const badge = u.isAdmin ? '<span style="background: var(--warning-color, #d97706); color: white; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; margin-left: 0.5rem;">ADMIN</span>' : '';
-        const locked = u.vatsimId === PROTECTED_DEV_ID
-          ? '<span style="color: var(--warning-color, #d97706); font-size: 0.7rem; margin-left: 0.4rem;">&#128274;</span>' : '';
-        const email = u.email ? `<div style="color: var(--text-muted, #64748b); font-size: 0.75rem;">${u.email}</div>` : '';
-        const onclick = u.vatsimId === PROTECTED_DEV_ID ? `selectProtectedUser('${u.id}', '${name.replace(/'/g, "\\'")}')` : `selectDevUser('${u.id}')`;
-        html += `<div onclick="${onclick}" style="${itemStyle}" onmouseenter="this.style.borderColor='var(--accent-color, #2563eb)'" onmouseleave="this.style.borderColor='var(--border-color, #334155)'">
-          <div>
-            <div style="color: var(--text-primary, #f1f5f9); font-weight: 500; font-size: 0.9rem;">${name}${badge}${locked}</div>
-            ${email}
-          </div>
-        </div>`;
-      });
-
-      list.innerHTML = html;
+      </div>`;
     }
 
     function selectProtectedUser(userId, name) {
@@ -1217,7 +1199,7 @@
     function devBypassBackToUsers() {
       document.getElementById('devBypassSecondView').style.display = 'none';
       document.getElementById('devBypassUserView').style.display = '';
-      document.getElementById('devBypassTitle').textContent = 'Select User';
+      document.getElementById('devBypassTitle').textContent = 'Beta Menu';
     }
 
     function submitSecondPassword() {
