@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Full-bleed background; artwork kept inside the central 80% safe zone. -->
+  <rect width="512" height="512" fill="#1a4d8f"/>
+  <text x="256" y="236" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="104" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">AMS</text>
+  <text x="256" y="316" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="64" font-weight="600" fill="#99ccff" text-anchor="middle" dominant-baseline="central">.ceo</text>
+</svg>

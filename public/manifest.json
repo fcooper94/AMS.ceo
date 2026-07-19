@@ -1,0 +1,25 @@
+{
+  "name": "AMS.ceo",
+  "short_name": "AMS",
+  "description": "Build and manage your airline empire — fleet, routes, scheduling and finances in real time.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0f1a",
+  "theme_color": "#1a4d8f",
+  "icons": [
+    {
+      "src": "/img/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

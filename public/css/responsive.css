@@ -1118,3 +1118,790 @@
     height: auto;
   }
 }
+
+/* ============================================================
+   FIXED-WIDTH OVERFLOW FIXES
+   Panels/grids authored with hard px minimums that blow past
+   the viewport on iPhone (390px) and iPad portrait (820px).
+   Overrides live here rather than in the source pages.
+   ============================================================ */
+
+/* Routes Create: capacity chart panel (routes-create.html, position:fixed,
+   min-width:560px / max-width:620px, previously with no responsive rule). */
+@media (max-width: 900px) {
+  #capacityPanel {
+    min-width: 0 !important;
+    max-width: none !important;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    width: auto !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #capacityPanelBody {
+    padding: 0.75rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #capacityPanel {
+    left: 0.25rem !important;
+    right: 0.25rem !important;
+    max-height: 70vh !important;
+  }
+}
+
+/* Dashboard operations grid: minmax(500px, 1fr) overflows iPad portrait.
+   dashboard.css already collapses to 1fr at 1024px; this covers the
+   1025-1100px band and keeps narrow widths honest. */
+@media (max-width: 1100px) {
+  .operations-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .operations-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Assorted hard px minimums that actually overflow at 390px. */
+@media (max-width: 480px) {
+  /* maintenance.html .maint-modal { min-width: 350px } */
+  .maint-modal {
+    min-width: 0 !important;
+  }
+
+  /* style.css .nav-world-info { min-width: 320px } */
+  .nav-world-info {
+    min-width: 0 !important;
+  }
+
+  /* airspace-config.css .toast { min-width: 260px; max-width: 380px } */
+  .toast {
+    min-width: 0 !important;
+    max-width: calc(100vw - 2rem) !important;
+  }
+
+  /* routes-create.html #globalIndicatorTooltip { min-width: 190px } */
+  #globalIndicatorTooltip {
+    min-width: 0 !important;
+    max-width: calc(100vw - 1.5rem) !important;
+  }
+}
+
+/* ============================================================
+   MARKETING PAGE
+   All styling is inline in marketing.html; it ships no @media.
+   ============================================================ */
+@media (max-width: 768px) {
+  .channel-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+  }
+
+  .campaign-summary {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  .camp-modal {
+    width: 95% !important;
+    max-width: none !important;
+  }
+
+  .camp-step-labels {
+    font-size: 0.6rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .channel-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Active campaign card: badge + progress bar force a 390px overflow */
+  .active-campaign-card {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  .campaign-duration-badge {
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+  }
+
+  .campaign-progress-bar {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+  }
+
+  .channel-meta,
+  .duration-pills,
+  .audience-level-btns,
+  .review-stat-row,
+  .camp-modal-header,
+  .camp-modal-footer {
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+  }
+
+  .audience-level-btn {
+    min-width: 0 !important;
+    flex: 1 1 45% !important;
+  }
+
+  .camp-modal-footer .btn,
+  .camp-modal-footer button {
+    flex: 1 1 100% !important;
+  }
+
+  .cancel-modal {
+    padding: 1rem !important;
+  }
+
+  #eraToast,
+  .era-toast {
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    max-width: none !important;
+  }
+}
+
+/* ============================================================
+   LOANS PAGE
+   ============================================================ */
+@media (max-width: 768px) {
+  .bank-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  }
+
+  .credit-score-card {
+    flex-wrap: wrap !important;
+    gap: 1rem !important;
+  }
+
+  .loans-table {
+    min-width: 640px;
+  }
+}
+
+@media (max-width: 480px) {
+  .bank-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .credit-factors {
+    gap: 0.5rem !important;
+  }
+
+  .credit-factor {
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
+  .bank-card-header,
+  .bank-tags,
+  .bank-stats,
+  .loan-summary-row,
+  .loan-modal-header,
+  .loan-modal-footer {
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+  }
+
+  .form-radio-group {
+    flex-wrap: wrap !important;
+  }
+
+  .form-radio-option {
+    min-width: 0 !important;
+    flex: 1 1 45% !important;
+  }
+
+  .loan-modal-content {
+    width: 96% !important;
+    max-height: 88vh !important;
+  }
+
+  .loan-modal-footer .btn,
+  .loan-modal-footer button {
+    flex: 1 1 100% !important;
+  }
+}
+
+/* ============================================================
+   ADMIN PAGE
+   admin.html is a fragment of inline styles + js/admin.js output,
+   so everything here is targeted by id / structural selector.
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Tab bar scrolls instead of overflowing */
+  .admin-tab {
+    flex: none !important;
+    white-space: nowrap;
+    padding: 0.6rem 1rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Every admin data table gets a horizontal scroller */
+  #usersTable,
+  #aircraftTable,
+  #airportsTable,
+  #mpWorldsTable,
+  #spWorldsTable,
+  #airlinesTable {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #usersTable table,
+  #aircraftTable table,
+  #airportsTable table,
+  #mpWorldsTable table,
+  #spWorldsTable table,
+  #airlinesTable table {
+    min-width: 720px;
+  }
+
+  #usersTable th,
+  #usersTable td,
+  #aircraftTable th,
+  #aircraftTable td,
+  #airportsTable th,
+  #airportsTable td,
+  #mpWorldsTable th,
+  #mpWorldsTable td,
+  #spWorldsTable th,
+  #spWorldsTable td,
+  #airlinesTable th,
+  #airlinesTable td {
+    white-space: nowrap;
+    font-size: 0.78rem;
+  }
+
+  /* Admin modal 2-col form bodies -> 1 col */
+  .admin-section div[style*="grid-template-columns: 1fr 1fr"],
+  #editCreditsModal div[style*="grid-template-columns: 1fr 1fr"],
+  #permissionModal div[style*="grid-template-columns: 1fr 1fr"],
+  #setCidModal div[style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Invoice rows (js/admin.js 5-track grid) stack */
+  #invoicesBody > div {
+    grid-template-columns: 1fr !important;
+    gap: 0.25rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Search + action rows stack */
+  .admin-section > div[style*="display: flex"][style*="gap: 1rem"],
+  .admin-section > div[style*="display:flex"][style*="gap:1rem"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .admin-section .form-group {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .admin-tab {
+    padding: 0.6rem 0.75rem !important;
+    font-size: 0.72rem !important;
+  }
+
+  [id^="actionMenu-"] {
+    min-width: 0 !important;
+    max-width: calc(100vw - 2rem) !important;
+  }
+}
+
+/* ============================================================
+   AIRSPACE CONFIG PAGE (map + floating panels)
+   ============================================================ */
+@media (max-width: 768px) {
+  .restrictions-panel {
+    width: calc(100% - 2rem) !important;
+    max-height: 42% !important;
+    top: auto !important;
+    bottom: 1rem !important;
+    left: 1rem !important;
+    right: 1rem !important;
+  }
+
+  .altitude-filter-panel {
+    width: calc(100% - 2rem) !important;
+    left: 1rem !important;
+    right: 1rem !important;
+    bottom: auto !important;
+    top: 1rem !important;
+  }
+
+  /* Legend would sit under both stacked panels - drop it on small screens */
+  .airspace-legend {
+    display: none !important;
+  }
+
+  .date-range-fields,
+  .altitude-range-fields,
+  .restriction-meta,
+  .affected-route-row,
+  .airspace-map-content .modal-footer {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .date-range-fields,
+  .altitude-range-fields {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .segmented-control {
+    flex-wrap: wrap !important;
+  }
+
+  .airspace-map-content .modal-content {
+    max-width: calc(100vw - 1rem) !important;
+    width: calc(100vw - 1rem) !important;
+  }
+
+  .toast-container {
+    left: 1rem !important;
+    right: 1rem !important;
+  }
+}
+
+/* ============================================================
+   SIGHTSEEING CREATE PAGE (map + side panel)
+   ============================================================ */
+@media (max-width: 768px) {
+  .tour-map-col {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+
+  .tour-panel {
+    flex: 1 1 100% !important;
+  }
+
+  #tourMap {
+    min-height: 45vh !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .tour-layout {
+    gap: 0.5rem !important;
+  }
+
+  #tourMap {
+    min-height: 38vh !important;
+  }
+
+  /* Hint text + clear-waypoints button row has no wrap */
+  .tour-map-col > div[style*="display: flex"][style*="justify-content: space-between"] {
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+  }
+
+  .day-toggle {
+    min-width: 0 !important;
+    flex: 1 1 12% !important;
+    padding: 0.5rem 0.15rem !important;
+  }
+}
+
+/* ============================================================
+   COMPETITION PAGE
+   ============================================================ */
+@media (max-width: 768px) {
+  /* JS-rendered div tables in these sections need a scroller */
+  #leaderboardTable,
+  #baseAirportAirlines,
+  #competitiveRoutes {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .airline-route-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  .airline-modal-content {
+    width: 96% !important;
+    max-height: 88vh !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .airline-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.4rem !important;
+  }
+
+  .airline-modal-header,
+  .airline-fleet-row {
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+  }
+}
+
+/* ============================================================
+   WORLD MAP PAGE
+   world-map.css already has a 768px block; at 390px its three
+   stacked toggles (bottom 45/40/35%) collide with the info
+   panel. Re-tune to a single top row of icon-only buttons.
+   ============================================================ */
+@media (max-width: 480px) {
+  .flights-list-toggle,
+  .fir-toggle,
+  .nat-toggle {
+    top: 0.75rem !important;
+    bottom: auto !important;
+  }
+
+  .flights-list-toggle {
+    left: 3.75rem !important;
+  }
+
+  .fir-toggle {
+    left: 7rem !important;
+  }
+
+  .nat-toggle {
+    left: 10.25rem !important;
+  }
+
+  .map-filter-dropdown {
+    top: 0.75rem !important;
+    bottom: auto !important;
+    right: 0.75rem !important;
+  }
+
+  .map-filter-dropdown select {
+    min-width: 0 !important;
+    max-width: 40vw !important;
+  }
+
+  /* Sibling-shift rule in world-map.css pushes this off-screen */
+  .map-filter-dropdown.shifted,
+  .flight-info-panel:not([style*="display: none"]) ~ .map-filter-dropdown {
+    right: 0.75rem !important;
+  }
+
+  /* No room for the legend once the panels stack */
+  .map-legend {
+    display: none !important;
+  }
+
+  .flight-info-panel {
+    width: calc(100% - 1rem) !important;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    max-height: 45% !important;
+  }
+
+  .flights-list-panel {
+    width: calc(100% - 1rem) !important;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    top: 3.5rem !important;
+    bottom: auto !important;
+    max-height: 45% !important;
+  }
+
+  .sector-airport,
+  .tech-stop-route .sector-airport,
+  .sector-arrow.small {
+    min-width: 0 !important;
+  }
+
+  .flight-details,
+  .stat-row,
+  .sector-route,
+  .flights-list-header {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ============================================================
+   iPad LANDSCAPE / large touch tablets
+   Deliberately ABOVE the 768px mobile breakpoint: layout.js
+   isMobileViewport() stays <= 768 so the sidebar remains a
+   permanent column here. This block only adds touch density.
+   ============================================================ */
+@media (min-width: 769px) and (max-width: 1366px) and (pointer: coarse) {
+  /* Sidebar stays visible - just roomier */
+  .sidebar .nav-item a {
+    min-height: 48px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Roomier table rows */
+  .ops-panel table th,
+  .ops-panel table td,
+  .data-table th,
+  .data-table td {
+    padding: 0.7rem 0.9rem;
+  }
+
+  .fleet-row,
+  .market-row,
+  .maintenance-row,
+  .airport-row {
+    min-height: 48px;
+  }
+
+  /* Bigger controls */
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  button,
+  select,
+  input[type="text"],
+  input[type="number"],
+  input[type="search"] {
+    min-height: 40px;
+  }
+
+  .filter-bar {
+    gap: 0.75rem;
+    padding: 0.85rem;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+  }
+
+  /* iOS zooms form fields under 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* ============================================================
+   TOUCH TAP TARGETS (any coarse pointer, any width)
+   ============================================================ */
+@media (pointer: coarse) {
+  button,
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .quick-action-btn,
+  .admin-tab,
+  .day-toggle,
+  .day-button,
+  select,
+  a.nav-logout-btn,
+  .credits-add-btn,
+  .sidebar-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Icon-only buttons: keep the glyph centred once padded out.
+     Deliberately an explicit list rather than a blanket `button` rule —
+     overriding `display` on every button would flip block-level, full-width
+     buttons such as .btn-login and .btn-full-width to inline-level. */
+  .btn-action,
+  .sidebar-toggle,
+  .inv-btn,
+  .modal-close,
+  #scheduleGrid td:last-child button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-item a,
+  .sidebar .nav-item a {
+    min-height: 44px;
+  }
+
+  /* Standalone links in chrome areas get a real target;
+     inline prose links keep their flow. */
+  .panel-header a,
+  .page-header a,
+  .modal-footer a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+}
+
+/* Scheduling action buttons: the 480px block above squeezes these to 20x20 in
+   a 34px column. Restore a real 44px target on touch.
+   Scoped to <=480px ON PURPOSE: that is the only place the buttons are stacked
+   into a column (flex-direction: column), which is what makes a 52px-wide
+   column workable. Applying it to every coarse pointer would put three 44px
+   buttons in a ROW inside a 52px column on iPad and overflow it. */
+@media (pointer: coarse) and (max-width: 480px) {
+  #scheduleGrid th:last-child,
+  #scheduleGrid td:last-child {
+    min-width: 52px !important;
+    width: 52px !important;
+    max-width: 52px !important;
+    padding: 0.25rem !important;
+  }
+
+  #scheduleGrid td:last-child button {
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 1rem !important;
+  }
+}
+
+/* iPad and larger touch screens keep the buttons in a row, so the column has
+   to be wide enough for three of them plus gaps. */
+@media (pointer: coarse) and (min-width: 481px) {
+  #scheduleGrid th:last-child,
+  #scheduleGrid td:last-child {
+    min-width: 148px;
+  }
+
+  #scheduleGrid td:last-child button {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+/* ============================================================
+   HOVER GUARDS
+   Touch browsers latch :hover until the next tap elsewhere,
+   leaving nav items and cards visually stuck. Neutralise the
+   purely decorative ones on the main interactive components.
+   This does NOT try to rewrite every hover rule in the codebase.
+   ============================================================ */
+@media (hover: none) {
+  /* :not(.active) matters — these tie on specificity with `.nav-item.active a`
+     in dashboard.css, and responsive.css loads last, so without it a tap would
+     strip the current page's highlight off the sidebar. */
+  .nav-item:not(.active) a:hover,
+  .sidebar .nav-item:not(.active) a:hover {
+    background: inherit;
+    color: inherit;
+  }
+
+  .dashboard-stat-card:hover,
+  .metric-card:hover,
+  .world-card:hover,
+  .bank-card:hover,
+  .channel-card:hover,
+  .ops-panel:hover,
+  .notification-item:hover,
+  .news-item:hover,
+  .airport-row:hover,
+  .fleet-row:hover,
+  .market-row:hover {
+    transform: none !important;
+    box-shadow: none !important;
+    background: inherit;
+  }
+
+  .btn:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-danger:hover,
+  .quick-action-btn:hover {
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* Hover-only tooltips never trigger reliably on touch */
+  .indicator-hover:hover .indicator-tooltip {
+    display: none !important;
+  }
+
+  /* Active-state feedback replaces hover on touch */
+  .btn:active,
+  .btn-primary:active,
+  .btn-secondary:active,
+  .btn-danger:active,
+  button:active {
+    opacity: 0.75;
+  }
+}
+
+/* ============================================================
+   iOS SAFE AREA (notch / home indicator)
+   env() resolves to 0 where there are no insets, so these are
+   unconditional. The navbar keeps using the offsetHeight-derived
+   --navbar-height set by layout.js; padding is included in
+   offsetHeight, so the sidebar top offset stays correct.
+   ============================================================ */
+.navbar {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.sidebar {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Fixed bottom-right footer pill clears the home indicator */
+.app-global-footer {
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  right: calc(14px + env(safe-area-inset-right, 0px)) !important;
+}
+
+/* Fixed bottom sheet clears it too */
+#addRouteModal {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding-left: max(1rem, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(1rem, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .wi-expand-panel {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .credits-dropdown {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Landscape phones sit above 768px (e.g. 844px) so they miss the mobile
+   query above - guard the side insets on any coarse-pointer device. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .main-content {
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+}

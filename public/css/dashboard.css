@@ -1145,40 +1145,16 @@
 }
 
 @media (max-width: 768px) {
-  .dashboard-container {
-    flex-direction: column;
-  }
-
-  .sidebar {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .sidebar-header {
-    display: none;
-  }
-
+  /* NOTE: the legacy "sidebar becomes a full-width horizontal bar" rules that
+     used to live here were removed — responsive.css (mobile drawer) overrides
+     every one of them with !important, so they were dead weight. Only the two
+     rules below survive because nothing else sets them. */
   .nav-menu {
-    display: flex;
-    overflow-x: auto;
     padding: 0;
   }
 
   .nav-item {
     margin-bottom: 0;
-  }
-
-  .nav-item a {
-    padding: 1rem 1.5rem;
-    border-left: none;
-    border-bottom: 3px solid transparent;
-    white-space: nowrap;
-  }
-
-  .nav-item.active a {
-    border-left: none;
-    border-bottom-color: var(--accent-color);
   }
 
   .nav-container {

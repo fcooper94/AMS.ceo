@@ -1472,6 +1472,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update on window resize
     window.addEventListener('resize', setNavbarHeight);
+
+    // iOS in standalone/PWA mode does not always fire `resize` on rotation,
+    // and the safe-area top inset (now part of the navbar's padding, and so
+    // of its offsetHeight) changes between portrait and landscape.
+    window.addEventListener('orientationchange', () => {
+      setTimeout(setNavbarHeight, 200);
+    });
   }
 });
 
