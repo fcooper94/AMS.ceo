@@ -373,6 +373,51 @@ Guardrails: leverage caps, deposit+runway check, one loan per bank, ≤3 loans,
 assumed AI credit score. Also added real postwar **Goodyear L-class + K-class
 airships** (available 1950) via `addPostwarAirships.js`.
 
+## Payments — Stripe credit packs (2026-07)
+
+Real money. Handle with care; test in **test mode** first.
+
+- **Sold as value/time, not "£/credit".** `src/config/billingConfig.js` is the
+  single source of truth for the 4 one-time packs (Starter/Popular/Value/
+  Ultimate). The `/credits` page (`public/credits.html`) is Steam/Nitro-style
+  cards + a **display-only currency dropdown** (live FX via `/api/billing/fx`,
+  cached, GBP fallback) that **always charges GBP** and says so.
+- **Stripe Checkout (hosted).** `POST /api/billing/checkout` → inline
+  `price_data` + `invoice_creation` → hosted page → back to `/credits`.
+  Credits are **global** (`User.credits`).
+- **Webhook** `POST /api/billing/webhook` **must be mounted BEFORE
+  `express.json()`** (raw body for signature check) — it is, in `server.js`.
+  Fulfils `checkout.session.completed` idempotently: grants credits, stores
+  invoice/receipt URLs. `Payment` model + `payments` table (auto-created on
+  boot; additive `ALTER … IF NOT EXISTS` for `refunded_at`, `credit_note_url`).
+- **Admin invoices/refunds** (user Actions → Invoices): approve/deny pending,
+  **refund** (real Stripe refund + credit clawback + issues a **Credit Note**
+  = the customer's "refund invoice"). Admin sees the full trail (Invoice ·
+  Credit Note · Receipt).
+- **Dormant until keys set.** Needs env: `STRIPE_SECRET_KEY`,
+  `STRIPE_WEBHOOK_SECRET`, `APP_URL`. Test-mode uses the Stripe CLI
+  (`stripe listen`) for the `whsec_`; live uses a dashboard webhook endpoint
+  at `https://ams.ceo/api/billing/webhook`. Keys live in `.env` / Railway vars,
+  **never committed**.
+- **Pricing caveat (open):** credits burn per *game* week, so at 60× a full
+  1950→2020 world ≈ 3,650 credits ≈ £1,600+ / ~£30/real-week — likely too
+  expensive; a consumption redesign (charge per real time, or CEO Plus
+  subscription for upkeep) is the recommended next step.
+
+## Admin 2FA — TOTP step-up (2026-07)
+
+- **Authy-compatible TOTP** (`otplib` **v12** — NOT v13, whose API is a
+  breaking rewrite; `qrcode` for the QR). Step-up: you log in normally, then a
+  code is required to open the **admin panel**, verified once per session.
+- `requireAdmin` (in `middleware/auth.js`) enforces it when `user.totpEnabled`
+  and `!req.session.adminTwoFA`, **exempting `/api/admin/2fa/*`** so setup/
+  verify stay reachable. Routes in `src/routes/admin2fa.js`
+  (status/setup/enable/verify/disable), mounted **before** `/api/admin`.
+- User columns `totp_secret / totp_enabled / totp_backup_codes` (additive
+  ALTER guards). **Backup codes** at enrol + **DB escape hatch**
+  (`totp_enabled=false`) so you can't get locked out. Secrets are per-account,
+  so live enrolment is separate from the sandbox.
+
 ## How the user wants Claude to work
 
 - **Be direct and honest. Correct mistakes, don't agree to be agreeable.** When
@@ -392,9 +437,14 @@ airships** (available 1950) via `addPostwarAirships.js`.
 - **Commit/push only when explicitly asked** ("commit and push" / "push").
   Then commit on `main` and `git push origin main` — **no feature branches**
   (his stated workflow: push to main to stay in sync). Split into logical
-  commits; **keep `.claude/settings.local.json` (has secrets) and
-  `package-lock.json` out**. Don't proactively commit/push after a fix — he
-  reviews in the running app first.
+  commits; **keep `.claude/settings.local.json` (has secrets) out**. Don't
+  proactively commit/push after a fix — he reviews in the running app first.
+- **DO commit `package-lock.json` — especially when dependencies change.**
+  Railway builds with `npm ci`, which fails if `package.json` and
+  `package-lock.json` are out of sync ("Missing: <pkg> from lock file").
+  The old "keep package-lock out" rule broke a deploy on 2026-07 after adding
+  `stripe`; superseded. `node_modules/` is partially tracked (legacy) but
+  gitignored for new files — that's fine, `npm ci` rebuilds it.
 - **Syntax-check after edits** (`node -c`), and sanity-test logic with a small
   harness when behaviour matters (e.g. the LHR–GVA ski litmus test).
 - **Track multi-step work with TodoWrite.** Keep one item in progress.
