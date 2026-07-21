@@ -67,6 +67,18 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     field: 'airport_fees'
   },
 
+  // Per-flight ground + passenger costs (incremented alongside fuel/crew/maint)
+  groundHandlingCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'ground_handling_costs'
+  },
+  paxServiceCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'pax_service_costs'
+  },
+
   // Weekly overhead costs (recorded once per week)
   staffCosts: {
     type: DataTypes.DECIMAL(15, 2),
@@ -100,6 +112,20 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0,
     field: 'loan_payments'
+  },
+
+  // Corporate overhead (recorded alongside other overheads each week)
+  insuranceCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'insurance_costs',
+    comment: 'Weekly fleet insurance (hull + liability per aircraft)'
+  },
+  corporateAdminCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'corporate_admin_costs',
+    comment: 'Weekly corporate admin (HQ + IT + per-route + per-aircraft)'
   },
 
   // Marketing spend (recorded alongside overheads each week)

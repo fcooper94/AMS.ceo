@@ -757,12 +757,18 @@ class WorldTimeService {
         const pax = Math.round(seats * load);
         const revenue = Math.round(pax * price);
 
-        // Costs — mirror routes, but distanceNm is already the full loop (no x2).
-        const fuelCost = Math.round(distance * 2.5 * fuelMultiplier * eraMultiplier);
-        const crewCost = Math.round(distance * 0.30 * eraMultiplier);
-        const maintenanceCost = Math.round(distance * 0.20 * eraMultiplier);
-        const airportFees = Math.round((400 + seats * 2) * eraMultiplier); // single base landing
-        const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
+        // Costs — mirror routes via shared helper. distanceNm is already the full loop.
+        const acData = ac.aircraft;
+        const { fuelCost, crewCost, maintenanceCost, airportFees, groundHandling,
+                paxServiceCost, navCharges, cateringCost, distributionCost, totalCosts } =
+          eraEconomicService.calculateFlightCosts(distance, seats, worldYear, pax, {
+            fuelBurnPerHour: parseFloat(acData?.fuelBurnPerHour) || 0,
+            maintenanceCostPerHour: parseFloat(acData?.maintenanceCostPerHour) || 0,
+            cruiseSpeed: parseInt(acData?.cruiseSpeed) || 0,
+            requiredPilots: parseInt(acData?.requiredPilots) || 2,
+            requiredCabinCrew: parseInt(acData?.requiredCabinCrew) || 0,
+            ticketRevenue: revenue
+          });
         const profit = revenue - totalCosts;
 
         // Tour metrics
@@ -793,7 +799,10 @@ class WorldTimeService {
           });
           await weekRecord.increment({
             flightRevenue: revenue, fuelCosts: fuelCost, crewCosts: crewCost,
-            maintenanceCosts: maintenanceCost, airportFees, flights: 1, passengers: pax
+            maintenanceCosts: maintenanceCost, airportFees: airportFees + navCharges,
+            groundHandlingCosts: groundHandling,
+            paxServiceCosts: paxServiceCost + cateringCost + distributionCost,
+            flights: 1, passengers: pax
           });
         } catch (_) { /* non-critical */ }
 
@@ -902,6 +911,8 @@ class WorldTimeService {
       // ── Load Factor Model ──
       // finalLF = baseLF × demand × maturity × prestige × price × competition × time × reputation × variance
       let loadFactor = 0.7; // Default fallback
+      let competitorCount = 0; // hoisted for yield pressure (used after the try block)
+      let myMembershipRef = null; // hoisted for ground handler tier in cost calc
       try {
         const routeDemandService = require('./routeDemandService');
 
@@ -1035,6 +1046,7 @@ class WorldTimeService {
         const myMembership = await WorldMembership.findByPk(route.worldMembershipId, {
           attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
         });
+        myMembershipRef = myMembership;
         const myRep = parseInt(myMembership?.reputation) || 50;
         isAIAirline = !!myMembership?.isAI;
         const myCleaningTier = myMembership?.cleaningContractor || 'standard';
@@ -1065,7 +1077,8 @@ class WorldTimeService {
 
         const myScore = _compScore(myRep, myEconomyPrice, fairPrice, myCleaningTier, myGroundTier, myAcAge, myAcCondition, myHasMarketing);
 
-        if (competingRoutesList.length > 0) {
+        competitorCount = competingRoutesList.length;
+        if (competitorCount > 0) {
           // Batch load competitor memberships
           const compMembershipIds = [...new Set(competingRoutesList.map(r => r.worldMembershipId))];
           const compMemberships = await WorldMembership.findAll({
@@ -1249,17 +1262,27 @@ class WorldTimeService {
         cargoRevenue = Math.round(cargoRevenue);
       }
 
-      const totalRevenue = ticketRevenue + cargoRevenue;
+      // Yield pressure: competitive routes push average fares down as passengers
+      // shop between airlines. ~3% per competitor, floor 0.88 (4+ competitors).
+      const yieldFactor = competitorCount === 0 ? 1.0
+        : Math.max(0.88, 1.0 - competitorCount * 0.03);
+      const adjustedTicketRevenue = Math.round(ticketRevenue * yieldFactor);
 
-      // Calculate costs — all components era-scaled so profitability is consistent across eras.
-      // Base rates are 2024 USD; era multiplier brings them in line with era ticket prices.
-      const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
-      const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
-      const fuelCost = Math.round(distance * 2 * 2.5 * fuelMultiplier * eraMultiplier); // $2.50/nm base, era+fuel scaled
-      const crewCost = Math.round(distance * 2 * 0.30 * eraMultiplier); // $0.30/nm crew, era-scaled
-      const maintenanceCost = Math.round(distance * 2 * 0.20 * eraMultiplier); // $0.20/nm maint, era-scaled
-      const airportFees = Math.round((800 + paxCapacity * 2) * eraMultiplier); // Landing + handling, era-scaled
-      const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees;
+      const totalRevenue = adjustedTicketRevenue + cargoRevenue;
+
+      // Calculate costs — aircraft-specific when data available, else seat-based fallback.
+      const acType = aircraft?.aircraft;
+      const { fuelCost, crewCost, maintenanceCost, airportFees, groundHandling,
+              paxServiceCost, navCharges, cateringCost, distributionCost, totalCosts } =
+        eraEconomicService.calculateFlightCosts(distance * 2, paxCapacity, worldYear, passengers, {
+          fuelBurnPerHour: parseFloat(acType?.fuelBurnPerHour) || 0,
+          maintenanceCostPerHour: parseFloat(acType?.maintenanceCostPerHour) || 0,
+          cruiseSpeed: parseInt(acType?.cruiseSpeed) || 0,
+          requiredPilots: parseInt(acType?.requiredPilots) || 2,
+          requiredCabinCrew: parseInt(acType?.requiredCabinCrew) || 0,
+          groundTier: myMembershipRef?.groundContractor || 'standard',
+          ticketRevenue: adjustedTicketRevenue
+        });
 
       const profit = totalRevenue - totalCosts;
 
@@ -1300,7 +1323,9 @@ class WorldTimeService {
           fuelCosts: fuelCost,
           crewCosts: crewCost,
           maintenanceCosts: maintenanceCost,
-          airportFees: airportFees,
+          airportFees: airportFees + navCharges,
+          groundHandlingCosts: groundHandling,
+          paxServiceCosts: paxServiceCost + cateringCost + distributionCost,
           flights: 1,
           passengers: passengers
         });
@@ -1406,6 +1431,17 @@ class WorldTimeService {
             commonalityCost += weeklyCost * eraMultiplier;
           }
 
+          // Corporate overhead: insurance + admin that scales with airline size.
+          // Insurance: per aircraft per week (hull + liability).
+          // Corporate admin: base HQ cost + per-route + per-aircraft (covers IT,
+          // reservations, legal, accounting, HR). Creates margin pressure that
+          // grows with the airline — prevents infinite scaling.
+          const routeCount = await Route.count({
+            where: { worldMembershipId: membership.id, isActive: true }
+          });
+          const insuranceCost = Math.round(fleetCount * 2000 * eraMultiplier);
+          const corporateAdminCost = Math.round((5000 + routeCount * 500 + fleetCount * 1000) * eraMultiplier);
+
           // All values are now weekly — no proration needed
           const [record] = await WeeklyFinancial.findOrCreate({
             where: { worldMembershipId: membership.id, weekStart },
@@ -1435,12 +1471,14 @@ class WorldTimeService {
               leaseCosts: Math.round(leaseCosts),
               contractorCosts: Math.round(contractorCost),
               fleetCommonalityCosts: Math.round(commonalityCost),
+              insuranceCosts: Math.round(insuranceCost),
+              corporateAdminCosts: Math.round(corporateAdminCost),
               marketingCosts: Math.round(marketingCost),
               overheadRecorded: true
             });
 
             // Deduct all overhead + marketing costs from airline balance
-            const totalOverheads = Math.round(staffCost) + Math.round(leaseCosts) + Math.round(contractorCost) + Math.round(commonalityCost) + Math.round(marketingCost);
+            const totalOverheads = Math.round(staffCost) + Math.round(leaseCosts) + Math.round(contractorCost) + Math.round(commonalityCost) + Math.round(insuranceCost) + Math.round(corporateAdminCost) + Math.round(marketingCost);
             if (totalOverheads > 0) {
               await membership.decrement('balance', { by: totalOverheads });
             }

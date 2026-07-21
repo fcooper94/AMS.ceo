@@ -112,16 +112,12 @@ function daysPerWeekForDemand(demandScore) {
 
 // Estimate operating cost per passenger — mirrors aiDecisionService's
 // calculateOperatingCostPerPax so seeded history looks consistent with live math.
+// Mirrors aiDecisionService's calculateOperatingCostPerPax — shared formula via
+// eraEconomicService.calculateFlightCosts so seeded history stays consistent.
 function estOperatingCostPerPax(distance, paxCapacity, worldYear) {
-  const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
-  const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
-  const fuelCost = Math.round(distance * 2 * 2.5 * fuelMultiplier * eraMultiplier);
-  const crewCost = Math.round(distance * 2 * 0.30 * eraMultiplier);
-  const maintenanceCost = Math.round(distance * 2 * 0.20 * eraMultiplier);
-  const airportFees = Math.round((800 + paxCapacity * 2) * eraMultiplier);
-  const total = fuelCost + crewCost + maintenanceCost + airportFees;
   const estPax = Math.max(1, Math.round(paxCapacity * 0.75));
-  return Math.round(total / estPax);
+  const { totalCosts } = eraEconomicService.calculateFlightCosts(distance * 2, paxCapacity, worldYear, estPax);
+  return Math.round(totalCosts / estPax);
 }
 
 function pickAircraftWithCommonality(pool, preferredFamily) {

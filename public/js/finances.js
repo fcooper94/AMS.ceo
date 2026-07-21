@@ -161,6 +161,8 @@ function renderWeeklyPL() {
     rows += wkRow('Crew', weeks, 'crewCosts', true, 'outgoing');
     rows += wkRow('Maintenance', weeks, 'maintenanceCosts', true, 'outgoing');
     rows += wkRow('Airport Fees', weeks, 'airportFees', true, 'outgoing');
+    rows += wkRow('Ground Handling', weeks, 'groundHandlingCosts', true, 'outgoing');
+    rows += wkRow('Pax Services', weeks, 'paxServiceCosts', true, 'outgoing');
   }
 
   // Overheads
@@ -170,6 +172,8 @@ function renderWeeklyPL() {
     rows += wkRow('Leases', weeks, 'leaseCosts', true, 'outgoing');
     rows += wkRow('Contractors', weeks, 'contractorCosts', true, 'outgoing');
     rows += wkRow('Fleet Commonality', weeks, 'fleetCommonalityCosts', true, 'outgoing');
+    rows += wkRow('Insurance', weeks, 'insuranceCosts', true, 'outgoing');
+    rows += wkRow('Corporate Admin', weeks, 'corporateAdminCosts', true, 'outgoing');
     rows += wkRow('Loan Payments', weeks, 'loanPayments', true, 'outgoing');
     rows += wkRow('Marketing', weeks, 'marketingCosts', true, 'outgoing');
   }

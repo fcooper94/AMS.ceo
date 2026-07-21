@@ -190,7 +190,10 @@ class EraEconomicService {
   }
 
   /**
-   * Calculate ticket price for a route
+   * Calculate ticket price for a route.
+   * Short-haul routes carry a per-departure premium (fixed costs amortised over
+   * fewer miles). Long-haul routes face yield pressure from indirect alternatives.
+   * The 1000nm economy price is unchanged (~$171 in 2010) — the benchmark.
    *
    * @param {number} routeDistance - Distance in nautical miles
    * @param {number} year - Year
@@ -199,7 +202,26 @@ class EraEconomicService {
    */
   calculateTicketPrice(routeDistance, year, cabinClass = 'economy') {
     const pricePerMile = this.getTicketPricePerMile(routeDistance, year, cabinClass);
-    return Math.round(pricePerMile * routeDistance);
+    let price = pricePerMile * routeDistance;
+
+    // Short-haul premium (< 800nm): fixed per-departure costs (check-in,
+    // boarding, airport handling) amortised over fewer miles push up fares.
+    // Fades to zero by 800nm so domestic trunk routes (700nm+) aren't inflated.
+    if (routeDistance < 800) {
+      const classScale = cabinClass === 'first' ? 4 : cabinClass === 'business' ? 2.5
+                       : cabinClass === 'economyPlus' ? 1.3 : 1;
+      price += 120 * (1 - routeDistance / 800) * classScale * this.getEraMultiplier(year);
+    }
+
+    // Long-haul yield discount (> 1500nm): passengers have indirect routing
+    // alternatives via connecting hubs, fare sensitivity increases with distance.
+    // Starts gently at 1500nm, up to 22% at extreme range.
+    if (routeDistance > 1500) {
+      const discount = Math.min(0.22, (routeDistance - 1500) / 14000);
+      price *= (1 - discount);
+    }
+
+    return Math.round(price);
   }
 
   /**
@@ -255,6 +277,125 @@ class EraEconomicService {
     }
 
     return formatted;
+  }
+
+  // ── Tuning constants for flight cost model ──────────────────────────
+  // All rates are 2024 USD; eraMult scales non-fuel costs to era currency.
+  // Fuel uses fuelMult ONLY (era-specific fuel prices, no double scaling).
+  static COST = {
+    FUEL_PRICE_PER_LITER:     0.75,   // base jet fuel $/L (~$2.84/gal, 2024)
+    FUEL_CONTINGENCY:         1.12,   // +12% for taxi, reserves, ATC holds
+    PILOT_HOURLY:             250,    // $/hr per pilot (salary+benefits+training)
+    CABIN_CREW_HOURLY:        60,     // $/hr per flight attendant
+    MAINT_VARIABLE_FRAC:      0.45,   // fraction of maintenanceCostPerHour for per-flight-hour variable costs
+    MAINT_CYCLE_FRAC:         0.30,   // fraction for per-cycle wear (landing/takeoff)
+    NAV_PER_NM:               0.10,   // $/nm ATC / navigation charges
+    CATERING_BASE_PER_PAX:    2.00,   // $/pax short-haul base catering
+    CATERING_PER_PAX_PER_HR:  0.50,   // additional $/pax per flight hour
+    DISTRIBUTION_RATE:        0.03,   // 3% of ticket revenue for sales/distribution
+    LONG_HAUL_CREW_HOURS:     6,      // one-way hours triggering +1 relief pilot
+    ULTRA_LONG_CREW_HOURS:    12,     // one-way hours triggering +2 relief pilots
+    // Ground handling per-departure by contractor tier
+    GROUND_HANDLING: {
+      budget:   { base: 200, perSeat: 1.5 },
+      standard: { base: 350, perSeat: 3.0 },
+      premium:  { base: 600, perSeat: 5.0 }
+    }
+  };
+
+  /**
+   * Calculate flight operating costs using aircraft-specific data when available,
+   * falling back to seat-based estimation for AI cost estimators.
+   *
+   * @param {number}  totalNm     - Total nautical miles (round-trip for routes, full loop for tours)
+   * @param {number}  seats       - Passenger capacity
+   * @param {number}  year        - World year
+   * @param {number}  [passengers]- Actual passengers. Omit for ~75% estimate.
+   * @param {object}  [opts]      - Aircraft-specific data + options
+   * @param {number}  [opts.fuelBurnPerHour]        - L/hr from Aircraft model
+   * @param {number}  [opts.maintenanceCostPerHour]  - $/hr from Aircraft model (2024 USD)
+   * @param {number}  [opts.cruiseSpeed]             - knots
+   * @param {number}  [opts.requiredPilots]           - count
+   * @param {number}  [opts.requiredCabinCrew]        - count
+   * @param {string}  [opts.groundTier]               - 'budget'|'standard'|'premium'
+   * @param {number}  [opts.ticketRevenue]             - for distribution commission calc
+   * @returns {{ fuelCost, crewCost, maintenanceCost, airportFees, groundHandling,
+   *             paxServiceCost, navCharges, cateringCost, distributionCost, totalCosts }}
+   */
+  calculateFlightCosts(totalNm, seats, year, passengers, opts) {
+    const C = EraEconomicService.COST;
+    const fuelMult = this.getFuelCostMultiplier(year);
+    const eraMult  = this.getEraMultiplier(year);
+    const pax = passengers != null ? passengers : Math.round(seats * 0.75);
+
+    let fuelCost, crewCost, maintenanceCost, flightHours;
+
+    if (opts && opts.fuelBurnPerHour && opts.cruiseSpeed) {
+      // ── Aircraft-specific path ─────────────────────────────────────
+      const speed = Math.max(opts.cruiseSpeed, 80);
+      flightHours = totalNm / speed;
+      const oneWayHours = flightHours / 2;
+
+      // Fuel: actual burn × time × fuel price, era-scaled.
+      // fuelMult adjusts for era-specific fuel price variation ON TOP of eraMult.
+      const fuelPrice = C.FUEL_PRICE_PER_LITER * fuelMult * eraMult;
+      fuelCost = Math.round(opts.fuelBurnPerHour * flightHours * fuelPrice * C.FUEL_CONTINGENCY);
+
+      // Crew: actual crew counts × hourly rates, with long-haul augmentation
+      let pilots = opts.requiredPilots || 2;
+      let cabinCrew = opts.requiredCabinCrew || 0;
+      if (oneWayHours > C.ULTRA_LONG_CREW_HOURS) {
+        pilots += 2; cabinCrew = Math.ceil(cabinCrew * 1.5);
+      } else if (oneWayHours > C.LONG_HAUL_CREW_HOURS) {
+        pilots += 1; cabinCrew = Math.ceil(cabinCrew * 1.3);
+      }
+      crewCost = Math.round((pilots * C.PILOT_HOURLY + cabinCrew * C.CABIN_CREW_HOURLY) * flightHours * eraMult);
+
+      // Maintenance: per-flight-hour variable + per-cycle fixed
+      const maintHr = opts.maintenanceCostPerHour || 1000;
+      maintenanceCost = Math.round(
+        (maintHr * C.MAINT_VARIABLE_FRAC * flightHours + maintHr * C.MAINT_CYCLE_FRAC) * eraMult
+      );
+    } else {
+      // ── Fallback: seat-based estimation (AI cost estimators) ───────
+      const sizeScale = Math.sqrt(Math.max(seats, 30) / 150);
+      const estSpeed = seats > 200 ? 480 : seats > 80 ? 460 : 300;
+      flightHours = totalNm / estSpeed;
+      // Fuel: era-scaled with fuel-specific multiplier (consistent with aircraft path)
+      fuelCost        = Math.round(totalNm * 5.5  * sizeScale * fuelMult * eraMult * C.FUEL_CONTINGENCY);
+      crewCost        = Math.round(totalNm * 0.90 * sizeScale * eraMult);
+      maintenanceCost = Math.round(totalNm * 0.65 * sizeScale * eraMult);
+    }
+
+    // ── Common costs (both paths) ────────────────────────────────────
+    // Airport fees: landing + terminal + handling. Scales with aircraft size —
+    // small regionals at small airports pay much less than widebodies at major hubs.
+    const airportFees = Math.round(seats * 15 * eraMult);
+
+    // Ground handling: per-departure cost by contractor tier
+    const tier = (opts && opts.groundTier) || 'standard';
+    const gh = C.GROUND_HANDLING[tier] || C.GROUND_HANDLING.standard;
+    const groundHandling = Math.round((gh.base + seats * gh.perSeat) * eraMult);
+
+    // Per-passenger service costs (check-in, boarding, compensation reserve)
+    const paxServiceCost = Math.round(pax * 3 * eraMult);
+
+    // Navigation / ATC charges
+    const navCharges = Math.round(totalNm * C.NAV_PER_NM * eraMult);
+
+    // Catering: scales with flight duration
+    const cateringCost = Math.round(pax * (C.CATERING_BASE_PER_PAX + (flightHours / 2) * C.CATERING_PER_PAX_PER_HR) * eraMult);
+
+    // Distribution / sales commission (3% of ticket revenue when known)
+    const distributionCost = (opts && opts.ticketRevenue) ? Math.round(opts.ticketRevenue * C.DISTRIBUTION_RATE) : 0;
+
+    const totalCosts = fuelCost + crewCost + maintenanceCost + airportFees +
+                       groundHandling + paxServiceCost + navCharges + cateringCost + distributionCost;
+
+    return {
+      fuelCost, crewCost, maintenanceCost, airportFees, groundHandling,
+      paxServiceCost, navCharges, cateringCost, distributionCost, totalCosts
+    };
   }
 
   /**

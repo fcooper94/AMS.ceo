@@ -51,14 +51,18 @@ router.get('/', async (req, res) => {
       const crew = parseFloat(w.crewCosts) || 0;
       const maint = parseFloat(w.maintenanceCosts) || 0;
       const fees = parseFloat(w.airportFees) || 0;
+      const ground = parseFloat(w.groundHandlingCosts) || 0;
+      const paxSvc = parseFloat(w.paxServiceCosts) || 0;
       const staff = parseFloat(w.staffCosts) || 0;
       const leases = parseFloat(w.leaseCosts) || 0;
       const contractors = parseFloat(w.contractorCosts) || 0;
       const commonality = parseFloat(w.fleetCommonalityCosts) || 0;
+      const insurance = parseFloat(w.insuranceCosts) || 0;
+      const corpAdmin = parseFloat(w.corporateAdminCosts) || 0;
       const loanPay = parseFloat(w.loanPayments) || 0;
       const marketing = parseFloat(w.marketingCosts) || 0;
-      const opCosts = fuel + crew + maint + fees;
-      const overheads = staff + leases + contractors + commonality + loanPay + marketing;
+      const opCosts = fuel + crew + maint + fees + ground + paxSvc;
+      const overheads = staff + leases + contractors + commonality + insurance + corpAdmin + loanPay + marketing;
       const totalCosts = opCosts + overheads;
       const netProfit = rev - totalCosts;
 
@@ -69,11 +73,15 @@ router.get('/', async (req, res) => {
         crewCosts: Math.round(crew),
         maintenanceCosts: Math.round(maint),
         airportFees: Math.round(fees),
+        groundHandlingCosts: Math.round(ground),
+        paxServiceCosts: Math.round(paxSvc),
         operatingCosts: Math.round(opCosts),
         staffCosts: Math.round(staff),
         leaseCosts: Math.round(leases),
         contractorCosts: Math.round(contractors),
         fleetCommonalityCosts: Math.round(commonality),
+        insuranceCosts: Math.round(insurance),
+        corporateAdminCosts: Math.round(corpAdmin),
         loanPayments: Math.round(loanPay),
         marketingCosts: Math.round(marketing),
         overheads: Math.round(overheads),
@@ -188,7 +196,12 @@ router.get('/', async (req, res) => {
       weeklyCommonality += Math.round(cost * eraMultiplier);
     }
 
-    const weeklyOverheads = weeklyStaff + Math.round(weeklyLeases) + weeklyContractors + weeklyCommonality;
+    // Corporate overhead: insurance + admin (mirrors worldTimeService recordWeeklyOverheads)
+    const activeRouteCount = routes.filter(r => r.isActive).length;
+    const weeklyInsurance = Math.round(activeFleet.length * 2000 * eraMultiplier);
+    const weeklyCorporateAdmin = Math.round((5000 + activeRouteCount * 500 + activeFleet.length * 1000) * eraMultiplier);
+
+    const weeklyOverheads = weeklyStaff + Math.round(weeklyLeases) + weeklyContractors + weeklyCommonality + weeklyInsurance + weeklyCorporateAdmin;
 
     // ── 4. All-time totals from weekly data (includes overheads + loans) ────
     let allTimeRevenue = 0;

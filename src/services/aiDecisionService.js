@@ -285,15 +285,9 @@ function calculateSmartFrequency(demandScore, aircraftCapacity, personality) {
  * Used as a price floor — AI should never price below this.
  */
 function calculateOperatingCostPerPax(distance, paxCapacity, worldYear) {
-  const fuelMultiplier = eraEconomicService.getFuelCostMultiplier(worldYear);
-  const eraMultiplier = eraEconomicService.getEraMultiplier(worldYear);
-  const fuelCost = Math.round(distance * 2 * 2.5 * fuelMultiplier * eraMultiplier);
-  const crewCost = Math.round(distance * 2 * 0.30 * eraMultiplier);
-  const maintenanceCost = Math.round(distance * 2 * 0.20 * eraMultiplier);
-  const airportFees = Math.round((800 + paxCapacity * 2) * eraMultiplier);
-  const totalCost = fuelCost + crewCost + maintenanceCost + airportFees;
   const estimatedPax = Math.round(paxCapacity * 0.75);
-  return estimatedPax > 0 ? Math.round(totalCost / estimatedPax) : totalCost;
+  const { totalCosts } = eraEconomicService.calculateFlightCosts(distance * 2, paxCapacity, worldYear, estimatedPax);
+  return estimatedPax > 0 ? Math.round(totalCosts / estimatedPax) : totalCosts;
 }
 
 /**
