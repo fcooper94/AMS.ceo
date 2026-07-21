@@ -241,9 +241,10 @@ function displayFleet() {
     aircraftList.forEach(userAircraft => {
       const isOwned = userAircraft.acquisitionType === 'purchase';
       const conditionPercent = userAircraft.conditionPercentage || 100;
-      const profit = userAircraft.profit || 0;
-      const profitDisplay = profit !== 0 ? (profit > 0 ? '+' : '') + formatCurrency(Math.abs(profit)) : '$0';
-      const profitColor = profit >= 0 ? 'var(--success-color)' : 'var(--warning-color)';
+      const isFlying = !userAircraft.status || userAircraft.status === 'active';
+      const profit = isFlying ? (userAircraft.profit || 0) : 0;
+      const profitDisplay = !isFlying ? '—' : profit !== 0 ? (profit > 0 ? '+' : '') + formatCurrency(Math.abs(profit)) : '$0';
+      const profitColor = !isFlying ? 'var(--text-muted)' : profit >= 0 ? 'var(--success-color)' : 'var(--warning-color)';
 
       // Status-aware badge
       let badgeText, badgeClass;

@@ -859,8 +859,9 @@ class WorldTimeService {
    * Process revenue for a completed template flight and update route statistics
    */
   async processTemplateRevenue(template, worldId, currentGameTime, gameDate) {
-    // Skip revenue for aircraft that are in cabin refit (flights suspended, not removed)
-    if (template.aircraft && template.aircraft.status === 'cabin_refit') {
+    // Skip revenue for aircraft that aren't actively flying
+    const acStatus = template.aircraft?.status;
+    if (acStatus && acStatus !== 'active') {
       return;
     }
 

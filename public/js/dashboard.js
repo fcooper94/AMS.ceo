@@ -66,10 +66,11 @@ async function loadDashboardStats() {
     }
 
     if (fleetRes.ok) {
-      const fleet = await fleetRes.json();
+      const fleetData = await fleetRes.json();
+      const fleetList = fleetData.fleet || fleetData;
       const fleetEl = document.getElementById('statFleet');
       if (fleetEl) {
-        const count = Array.isArray(fleet) ? fleet.length : 0;
+        const count = Array.isArray(fleetList) ? fleetList.length : 0;
         fleetEl.textContent = count + ' A/C';
       }
     }
