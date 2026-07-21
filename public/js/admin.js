@@ -3,6 +3,7 @@ let selectedUserData = null;
 let selectedPermissionUserId = null;
 let selectedPermissionUserData = null;
 let allUsers = [];
+let allOnlineIds = new Set();
 
 function displayVatsimId(vatsimId) {
   return vatsimId && vatsimId.startsWith('LOCAL-') ? 'Non-VATSIM' : (vatsimId || '');
@@ -13,7 +14,10 @@ function displayVatsimId(vatsimId) {
 async function loadUsers() {
   try {
     const response = await fetch('/api/admin/users');
-    const users = await response.json();
+    const data = await response.json();
+    const users = data.users || data; // support new {users, onlineIds} shape
+    const onlineIds = new Set(data.onlineIds || []);
+    allOnlineIds = onlineIds;
     allUsers = users; // Store for search functionality
 
     const tbody = document.getElementById('usersTableBody');
@@ -46,9 +50,13 @@ async function loadUsers() {
         permissionStatus = '<span style="color: var(--text-secondary);">STANDARD</span>';
       }
 
+      const onlineDot = onlineIds.has(user.id)
+        ? '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success-color); margin-right: 6px; flex-shrink: 0;" title="Online"></span>'
+        : '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--border-color); margin-right: 6px; flex-shrink: 0; opacity: 0.5;" title="Offline"></span>';
+
       return `
         <tr style="border-bottom: 1px solid var(--border-color);">
-          <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
+          <td style="padding: 0.5rem;"><span style="display: flex; align-items: center;">${onlineDot}${user.firstName} ${user.lastName}</span></td>
           <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
           <td style="padding: 0.5rem; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap;">${user.lastLogin ? new Date(user.lastLogin).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
           <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
@@ -116,10 +124,14 @@ function searchUsers() {
       permissionStatus = '<span style="color: var(--text-secondary);">STANDARD</span>';
     }
 
+    const onlineDot = allOnlineIds.has(user.id)
+      ? '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success-color); margin-right: 6px; flex-shrink: 0;" title="Online"></span>'
+      : '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--border-color); margin-right: 6px; flex-shrink: 0; opacity: 0.5;" title="Offline"></span>';
+
     return `
       <tr style="border-bottom: 1px solid var(--border-color);">
         <td style="padding: 0.5rem; font-family: 'Courier New', monospace;">${displayVatsimId(user.vatsimId)}</td>
-        <td style="padding: 0.5rem;">${user.firstName} ${user.lastName}</td>
+        <td style="padding: 0.5rem;"><span style="display: flex; align-items: center;">${onlineDot}${user.firstName} ${user.lastName}</span></td>
         <td style="padding: 0.5rem; color: var(--text-secondary);">${user.email || 'N/A'}</td>
         <td style="padding: 0.5rem; color: var(--text-secondary); font-size: 0.85rem; white-space: nowrap;">${user.lastLogin ? new Date(user.lastLogin).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
         <td style="padding: 0.5rem; text-align: center; font-family: 'Courier New', monospace;">${user.membershipCount}</td>
@@ -282,7 +294,23 @@ function toggleActionMenu(menuId, event) {
     if (m.id !== menuId) m.style.display = 'none';
   });
   const menu = document.getElementById(menuId);
-  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  const opening = menu.style.display === 'none';
+  menu.style.display = opening ? 'block' : 'none';
+  if (opening) {
+    // Flip upward if the menu would overflow the viewport bottom
+    const rect = menu.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = 'auto';
+      menu.style.bottom = '100%';
+      menu.style.marginTop = '0';
+      menu.style.marginBottom = '4px';
+    } else {
+      menu.style.top = '100%';
+      menu.style.bottom = 'auto';
+      menu.style.marginTop = '4px';
+      menu.style.marginBottom = '0';
+    }
+  }
 }
 
 function closeActionMenu() {
@@ -1106,7 +1134,8 @@ async function loadWorldOwnerDropdown() {
 
   try {
     const response = await fetch('/api/admin/users');
-    const users = await response.json();
+    const data = await response.json();
+    const users = data.users || data;
 
     select.innerHTML = '<option value="">-- Select Owner --</option>';
     users.forEach(user => {

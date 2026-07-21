@@ -93,6 +93,25 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Track online users — lightweight in-memory map (userId → lastSeen timestamp).
+// Updated on every authenticated request; admin endpoint reads it.
+const onlineUsers = new Map();
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+app.use((req, res, next) => {
+  if (req.isAuthenticated && req.isAuthenticated() && req.user && req.user.id) {
+    onlineUsers.set(req.user.id, Date.now());
+  }
+  next();
+});
+// Prune stale entries every 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - ONLINE_THRESHOLD_MS;
+  for (const [uid, ts] of onlineUsers) {
+    if (ts < cutoff) onlineUsers.delete(uid);
+  }
+}, 10 * 60 * 1000);
+app.set('onlineUsers', onlineUsers);
+
 // Under construction check - must be before static middleware (which serves index.html for /)
 app.use(async (req, res, next) => {
   if (req.path !== '/') return next();
@@ -648,7 +667,11 @@ server.listen(PORT, () => {
         ALTER TABLE weekly_financials
           ADD COLUMN IF NOT EXISTS passenger_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
           ADD COLUMN IF NOT EXISTS cargo_revenue_breakdown JSONB DEFAULT '{}'::jsonb,
-          ADD COLUMN IF NOT EXISTS marketing_costs DECIMAL(15,2) DEFAULT 0
+          ADD COLUMN IF NOT EXISTS marketing_costs DECIMAL(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS ground_handling_costs DECIMAL(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS pax_service_costs DECIMAL(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS insurance_costs DECIMAL(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS corporate_admin_costs DECIMAL(15,2) DEFAULT 0
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
     try {

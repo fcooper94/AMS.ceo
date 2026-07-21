@@ -36,7 +36,15 @@ router.get('/users', async (req, res) => {
       };
     }));
 
-    res.json(usersWithMemberships);
+    // Include online user IDs so the admin panel can show an indicator
+    const onlineUsers = req.app.get('onlineUsers') || new Map();
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    const onlineIds = [];
+    for (const [uid, ts] of onlineUsers) {
+      if (ts >= cutoff) onlineIds.push(uid);
+    }
+
+    res.json({ users: usersWithMemberships, onlineIds });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Error fetching users:', error);
