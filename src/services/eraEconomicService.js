@@ -181,12 +181,25 @@ class EraEconomicService {
 
     const basePrice = basePrices[cabinClass] || basePrices.economy;
 
+    // Fare premium for early eras: air travel was a luxury, fares were high
+    // relative to general price levels. This tapers to 1.0 by the modern era
+    // (deregulation + competition drove real fares down). Applied ON TOP of
+    // eraMult so that ticket prices are proportionally higher than costs —
+    // matching the real economics where airlines were profitable despite
+    // inefficient aircraft, because fares were premium-priced.
+    const farePremium = year < 1958 ? 3.5   // Propeller era: flying is exclusive luxury
+                      : year < 1970 ? 2.8   // Early jets: still expensive, growing market
+                      : year < 1980 ? 2.0   // Widebody era: fares dropping as capacity grows
+                      : year < 1990 ? 1.5   // Deregulation: fare wars begin
+                      : year < 2000 ? 1.15  // Modern: competitive market emerging
+                      : 1.0;                // 2000+: fully competitive, no premium
+
     // Distance discount: longer routes = cheaper per mile
     // Max 50% discount at 10,000nm
     const distanceDiscount = Math.min(0.5, routeDistance / 20000);
     const distanceMultiplier = 1 - distanceDiscount;
 
-    return basePrice * distanceMultiplier * this.getEraMultiplier(year);
+    return basePrice * distanceMultiplier * this.getEraMultiplier(year) * farePremium;
   }
 
   /**
