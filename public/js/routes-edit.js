@@ -18,6 +18,7 @@ let userFleet = [];
 let allRoutes = [];
 let isChangingDestination = false;
 let selectedDaysOfWeek = [];
+let initialAircraftDropdownValue = ''; // captured after page load for change detection
 let selectedTechStopAirport = null;   // user-selected tech stop (overrides route's stored one)
 let techStopRoutingDistance = null;   // leg1 + leg2 NM when a tech stop is set
 
@@ -151,6 +152,7 @@ async function fetchRouteData() {
       }
 
       populateFormFields();
+      populateFleetDropdown(); // re-run now that existingRoute is loaded to select the assigned aircraft type
       applyEraClassGating();
 
       // Initialize the route map preview, flight timing and auto ATC route now that
@@ -247,6 +249,9 @@ function populateFleetDropdown() {
       select.value = matchingType[1].id;
     }
   }
+
+  // Capture the initial dropdown value for change detection
+  initialAircraftDropdownValue = select.value;
 }
 
 // ─── Pricing adjust helpers (used by the +/- buttons in the HTML) ───
@@ -798,6 +803,43 @@ function toggleDay(day) {
     button.style.background = 'var(--accent-color)';
     button.style.borderColor = 'var(--accent-color)';
     button.style.color = 'white';
+  }
+}
+
+// Check whether schedule-affecting fields changed and show warning only if so.
+// Price, turnaround time, cargo rates, route number, and transport type changes
+// are harmless — they don't require re-scheduling.
+function handleSaveClick() {
+  if (!existingRoute) { submitRouteUpdate(); return; }
+
+  const prefix = worldInfo?.iataCode || '';
+  const newActive = document.getElementById('isActive').checked;
+
+  // Departure time: DB returns "09:00:00", input returns "09:00" — normalise to HH:MM
+  const normTime = t => (t || '').substring(0, 5);
+  const newDeparture = normTime(document.getElementById('departureTime').value);
+  const oldDeparture = normTime(existingRoute.scheduledDepartureTime);
+
+  // Days of week: compare sorted arrays
+  const newDays = selectedDaysOfWeek.slice().sort().join(',');
+  const oldDays = (existingRoute.daysOfWeek || []).slice().sort().join(',');
+
+  // Aircraft: the dropdown uses a representative UserAircraft id (by type), which
+  // differs from the route's stored assignedAircraftId. Compare the dropdown's
+  // current value against what it was set to when the page loaded.
+  const aircraftChanged = document.getElementById('assignedAircraft').value !== initialAircraftDropdownValue;
+
+  const scheduleChanged =
+    aircraftChanged ||
+    newDeparture !== oldDeparture ||
+    newDays !== oldDays ||
+    newActive !== existingRoute.isActive;
+
+  if (scheduleChanged) {
+    showConfirmationModal();
+  } else {
+    // No schedule impact — save directly without the scary warning
+    submitRouteUpdate();
   }
 }
 
