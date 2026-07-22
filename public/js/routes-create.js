@@ -2278,11 +2278,35 @@ function populateRouteStats(airport) {
         generic_leisure:'LEISURE', leisure:'LEISURE', business:'BUSINESS', flat:'YEAR-ROUND' };
       archetypeEl.textContent = arcLabels[seasonal.archetype] || seasonal.archetype || '';
     }
+    // Season badge in the header row
+    const seasonBadge = document.getElementById('selectedDestSeasonBadge');
+    if (seasonBadge) {
+      const arcInfo = {
+        ski:             { label: 'SKI',         desc: 'Alpine / snow gateway — strong winter peak' },
+        summer_sun:      { label: 'BEACH',       desc: 'Mediterranean / coastal leisure — strong summer peak' },
+        winter_sun:      { label: 'WINTER SUN',  desc: 'Tropical escape — winter peak from cold origins' },
+        mild_winter:     { label: 'SUNBELT',     desc: 'Warm-winter market (Florida / Arizona) — gentle winter lean' },
+        generic_leisure: { label: 'LEISURE',     desc: 'Temperate leisure destination — summer-biased' },
+        leisure:         { label: 'LEISURE',     desc: 'Mixed leisure traffic — mild summer bias' },
+        business:        { label: 'BUSINESS',    desc: 'Primarily business traffic — near year-round flat' },
+        flat:            { label: 'YEAR-ROUND',  desc: 'Consistent demand throughout the year' },
+      };
+      const info = arcInfo[seasonal.archetype];
+      if (info) {
+        seasonBadge.textContent = info.label;
+        seasonBadge.title = info.desc;
+        seasonBadge.style.display = '';
+      } else {
+        seasonBadge.style.display = 'none';
+      }
+    }
   } else {
     if (summerPaxEl) summerPaxEl.textContent = demand ?? '--';
     if (winterPaxEl) winterPaxEl.textContent = '';
     if (archetypeEl) archetypeEl.textContent = '';
     if (paxChartEl)  paxChartEl.innerHTML = '';
+    const seasonBadge = document.getElementById('selectedDestSeasonBadge');
+    if (seasonBadge) seasonBadge.style.display = 'none';
   }
 
   // Yield stat
@@ -2416,9 +2440,9 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
   const CHART_H = 100;
   const BAR_W = 13;
 
-  const bar = (h, bg) =>
-    `<div style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
-      ${h > 0 ? `<div style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
+  const bar = (h, bg, label, value) =>
+    `<div class="paxbar" data-label="${label}" data-value="${fmtTonnes(value)} t/day" data-color="${bg}" style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
+      ${h > 0 ? `<div class="paxbar-fill" style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
     </div>`;
   const lbl = (val, color) => val > 0
     ? `<div style="font-size:0.65rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtTonnes(val)}</div>`
@@ -2432,15 +2456,16 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
     return `
       <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
         <div style="display:flex;gap:2px;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerByDay[i],'#f59e0b')}${bar(suH,'#f59e0b')}</div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterByDay[i],'#38bdf8')}${bar(wiH,'#38bdf8')}</div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupply[i],'#6b7280')}${bar(totH,'#6b7280')}</div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCargoByDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)')}</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerByDay[i],'#f59e0b')}${bar(suH,'#f59e0b','Summer demand',summerByDay[i])}</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterByDay[i],'#38bdf8')}${bar(wiH,'#38bdf8','Winter demand',winterByDay[i])}</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupply[i],'#6b7280')}${bar(totH,'#6b7280','Total supply',totalSupply[i])}</div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCargoByDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)','My supply',myCargoByDay[i])}</div>
         </div>
         <div style="font-size:0.72rem;color:#888;">${dayLabel}</div>
       </div>`;
   }).join('');
 
+  _ensurePaxBarTooltip();
   chartEl.innerHTML = `
     <div style="display:flex;gap:5px;align-items:flex-end;">${chartHtml}</div>
     <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:8px;">
