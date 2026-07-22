@@ -144,12 +144,12 @@ class DemandCacheService {
       }
     }
 
-    // Overlay the UK domestic connectivity floor: guarantee a non-zero, era- &
-    // size-scaled demand for every ordered pair of commercial-civil UK / Crown-
-    // Dependency airports (the gravity model drops sub-threshold pairs and never
-    // saw the Channel Islands). Applied as max(gravity, floor) so busy routes
-    // keep their higher gravity values. See ukDomesticDemandFloor.js.
-    this._applyUkDomesticFloor(airports);
+    // Overlay UK domestic demand: (1) override gravity with real CAA-2024 data
+    // back-projected through the eras for routes that actually operate, then
+    // (2) apply a small connectivity floor to any remaining commercial-civil
+    // UK↔UK pair so "every civil pair, every era" holds. See
+    // ukDomesticDemandService.js.
+    this._applyUkDomesticDemand(airports);
 
     // Sort byOrigin arrays by demand2000 descending
     for (const [, records] of this.byOrigin) {
@@ -161,68 +161,112 @@ class DemandCacheService {
     console.log(`[DemandCache] Ready: ${loaded} pairs loaded in ${elapsed}s (${skipped} skipped — ICAO not in DB)`);
   }
 
+  // Decade → record field, index-aligned with ukDomesticDemandService.DECADES.
+  static get DECADE_FIELDS() {
+    return ['demand1950', 'demand1960', 'demand1970', 'demand1980',
+            'demand1990', 'demand2000', 'demand2010', 'demand2020'];
+  }
+
   /**
-   * Raise every commercial-civil UK↔UK pair to at least the domestic floor.
-   * Creates records for pairs the gravity model never produced (e.g. anything
-   * involving the Channel Islands) and lifts under-threshold pairs. Only ever
-   * increases scores. Called once during initialize().
+   * Fetch (or lazily create) the demand record for an ordered airport pair.
+   */
+  _ensureRecord(from, to) {
+    const uuidKey = `${from.id}_${to.id}`;
+    let record = this.demandMap.get(uuidKey);
+    let created = false;
+    if (!record) {
+      record = {
+        fromAirportId: from.id,
+        toAirportId: to.id,
+        demand1950: 0, demand1960: 0, demand1970: 0, demand1980: 0,
+        demand1990: 0, demand2000: 0, demand2010: 0, demand2020: 0,
+        baseDemand: 0,
+        demandCategory: 'very_low',
+        routeType: gravityModelService.determineRouteType(
+          from.type, to.type, 0, from.country, to.country
+        )
+      };
+      this.demandMap.set(uuidKey, record);
+      if (!this.byOrigin.has(from.id)) this.byOrigin.set(from.id, []);
+      this.byOrigin.get(from.id).push(record);
+      created = true;
+    }
+    return { record, created };
+  }
+
+  _refreshRecordSummary(record) {
+    record.baseDemand = record.demand2000;
+    record.demandCategory = gravityModelService.getDemandCategory(
+      Math.max(record.demand2000, record.demand2010, record.demand2020)
+    );
+  }
+
+  /**
+   * Two-layer UK domestic demand overlay (see ukDomesticDemandService.js):
+   *   1. Real CAA-2024 routes OVERRIDE the gravity model with history-shaped,
+   *      real-anchored per-decade scores (both directions).
+   *   2. Any remaining commercial-civil UK↔UK pair gets a small connectivity
+   *      floor so demand is non-zero in every era.
+   * Called once during initialize().
    * @param {Array} airports - the airport rows already loaded from the DB
    */
-  _applyUkDomesticFloor(airports) {
-    let ukFloor;
+  _applyUkDomesticDemand(airports) {
+    let svc;
     try {
-      ukFloor = require('./ukDomesticDemandFloor');
+      svc = require('./ukDomesticDemandService');
     } catch (err) {
-      console.warn(`[DemandCache] UK domestic floor unavailable (${err.message}) — skipping.`);
+      console.warn(`[DemandCache] UK domestic demand unavailable (${err.message}) — skipping.`);
       return;
     }
 
-    const inScope = airports.filter(a => ukFloor.isInScope(a));
-    const decadeFields = ['demand1950', 'demand1960', 'demand1970', 'demand1980',
-                          'demand1990', 'demand2000', 'demand2010', 'demand2020'];
-    let added = 0, raised = 0;
+    const fields = DemandCacheService.DECADE_FIELDS;
 
+    // Layer 1 — real-data overrides. Keys are undirected "ICAO_ICAO"; apply to
+    // both directions. Track covered pairs so the floor skips them.
+    const realCovered = new Set();
+    const real = svc.realRoutes();
+    let realApplied = 0, realSkipped = 0;
+    for (const pairKey in real) {
+      const us = pairKey.indexOf('_');
+      const icaoA = pairKey.slice(0, us), icaoB = pairKey.slice(us + 1);
+      const idA = this.icaoToId.get(icaoA), idB = this.icaoToId.get(icaoB);
+      if (!idA || !idB) { realSkipped++; continue; }
+      const airA = this.airportById.get(idA), airB = this.airportById.get(idB);
+      const scores = svc.realRouteScores(real[pairKey].pax, real[pairKey].arch);
+
+      for (const [from, to] of [[airA, airB], [airB, airA]]) {
+        const { record } = this._ensureRecord(from, to);
+        for (let d = 0; d < fields.length; d++) record[fields[d]] = scores[d]; // override
+        this._refreshRecordSummary(record);
+        realCovered.add(`${from.id}_${to.id}`);
+      }
+      realApplied++;
+    }
+
+    // Layer 2 — connectivity floor for in-scope pairs not covered by real data.
+    // REPLACES any gravity value (not max): now that real CAA data covers every
+    // UK route that actually operates, the gravity model must not drive UK↔UK
+    // demand — it wildly overestimates domestic pairs that aren't really flown
+    // (e.g. it rated Birmingham–Prestwick at 1,600/day, above real Birmingham–
+    // Glasgow). So UK domestic demand = real data where it exists, floor elsewhere.
+    const inScope = airports.filter(a => svc.isInScope(a));
+    let floored = 0;
     for (const from of inScope) {
       for (const to of inScope) {
         if (from.id === to.id) continue;
+        if (realCovered.has(`${from.id}_${to.id}`)) continue;
 
-        const scores = ukFloor.floorScores(from, to);
-        const uuidKey = `${from.id}_${to.id}`;
-        let record = this.demandMap.get(uuidKey);
-
-        if (!record) {
-          record = {
-            fromAirportId: from.id,
-            toAirportId: to.id,
-            demand1950: 0, demand1960: 0, demand1970: 0, demand1980: 0,
-            demand1990: 0, demand2000: 0, demand2010: 0, demand2020: 0,
-            baseDemand: 0,
-            demandCategory: 'very_low',
-            routeType: gravityModelService.determineRouteType(
-              from.type, to.type, 0, from.country, to.country
-            )
-          };
-          this.demandMap.set(uuidKey, record);
-          if (!this.byOrigin.has(from.id)) this.byOrigin.set(from.id, []);
-          this.byOrigin.get(from.id).push(record);
-          added++;
-        } else {
-          raised++;
+        const scores = svc.floorScores(from, to);
+        const { record } = this._ensureRecord(from, to);
+        for (let d = 0; d < fields.length; d++) {
+          record[fields[d]] = scores[d]; // replace gravity — suppress it on UK domestic
         }
-
-        // Lift each decade to the floor (never lowers gravity's own values)
-        for (let d = 0; d < decadeFields.length; d++) {
-          const f = decadeFields[d];
-          if (scores[d] > record[f]) record[f] = scores[d];
-        }
-        record.baseDemand = record.demand2000;
-        record.demandCategory = gravityModelService.getDemandCategory(
-          Math.max(record.demand2000, record.demand2010, record.demand2020)
-        );
+        this._refreshRecordSummary(record);
+        floored++;
       }
     }
 
-    console.log(`[DemandCache] UK domestic floor applied: ${added} new pairs, ${raised} existing pairs checked (${inScope.length} in-scope airports)`);
+    console.log(`[DemandCache] UK domestic: ${realApplied} real routes overridden (${realSkipped} skipped — ICAO not in DB), ${floored} pairs floored (${inScope.length} in-scope airports)`);
   }
 
   /**
