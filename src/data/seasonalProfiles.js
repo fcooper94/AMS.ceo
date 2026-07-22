@@ -83,4 +83,17 @@ const WINTER_SUN = new Set([
   'FALE','FACT'           // South Africa (N-winter = SA summer)
 ]);
 
-module.exports = { ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN };
+// UK / Crown-Dependency holiday destinations. Temperate summer-leisure islands &
+// coast — strongly summer-biased and weekend-heavy, NOT the flat business profile
+// their airport types would otherwise imply. Mapped to 'generic_leisure'.
+const DOMESTIC_LEISURE = new Set([
+  'EGJJ', // Jersey
+  'EGJB', // Guernsey
+  'EGJA', // Alderney
+  'EGHQ', // Newquay (Cornwall)
+  'EGNS', // Isle of Man
+  'EGHE', // Isles of Scilly (St Mary's)
+  'EGHC'  // Land's End
+]);
+
+module.exports = { ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE };

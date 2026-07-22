@@ -11,7 +11,7 @@
  */
 
 const {
-  ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN
+  ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE
 } = require('../data/seasonalProfiles');
 
 const TROPICAL_LAT = 23.5;
@@ -71,6 +71,10 @@ class SeasonalityService {
     if (rt !== 'business' && dLat < TROPICAL_LAT && oLat >= TEMPERATE_LAT) return 'winter_sun';
 
     if (SUMMER_SUN.has(oIcao) || SUMMER_SUN.has(dIcao)) return 'summer_sun';
+
+    // UK holiday islands/coast: temperate summer leisure, regardless of the
+    // business-looking route type their airport sizes imply (e.g. EGBB→EGJJ).
+    if (DOMESTIC_LEISURE.has(oIcao) || DOMESTIC_LEISURE.has(dIcao)) return 'generic_leisure';
 
     if (rt === 'business') return 'business';
     if (rt === 'regional' || rt === 'mixed') return 'leisure';
