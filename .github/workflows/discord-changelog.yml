@@ -1,0 +1,48 @@
+name: Discord Changelog
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build changelog and post to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+        run: |
+          # Get commits from this push
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+
+          # If before is all zeros (new branch), just show the latest commit
+          if echo "$BEFORE" | grep -q "^0\{40\}$"; then
+            COMMITS=$(git log --oneline -1 "$AFTER")
+          else
+            COMMITS=$(git log --oneline "$BEFORE..$AFTER")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to report"
+            exit 0
+          fi
+
+          # Build numbered list: 1. `abc1234` — Commit message
+          BODY=""
+          NUM=1
+          while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | cut -d' ' -f2-)
+            BODY="${BODY}${NUM}. \`${HASH}\`  — ${MSG}\n"
+            NUM=$((NUM + 1))
+          done <<< "$COMMITS"
+
+          # Post to Discord webhook
+          PAYLOAD=$(jq -n --arg content "$(echo -e "$BODY")" '{"content": $content}')
+          curl -s -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK"
+          echo "Posted to Discord"
