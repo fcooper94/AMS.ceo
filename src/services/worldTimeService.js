@@ -652,6 +652,53 @@ class WorldTimeService {
       const gameMinutes = currentGameTime.getMinutes();
       const currentMinutesOfDay = gameHours * 60 + gameMinutes;
 
+      // ── Pre-load caches for this flight-check cycle ──────────────────────
+      // These replace the per-flight N+1 queries in processFlightRevenue:
+      // competing routes, membership attributes, and competitor aircraft.
+      // Loaded once, passed via this._flightCycleCache, cleared after the cycle.
+
+      // All active routes in this world (for competitor lookups by airport pair)
+      const allActiveRoutes = await Route.findAll({
+        where: { worldMembershipId: { [Op.in]: membershipIds }, isActive: true },
+        attributes: ['id', 'departureAirportId', 'arrivalAirportId', 'economyPrice',
+          'worldMembershipId', 'assignedAircraftId', 'cargoRates']
+      });
+      // Key by "depId|arrId" (both directions) for O(1) competitor lookup
+      const routesByPair = new Map();
+      for (const r of allActiveRoutes) {
+        const k1 = `${r.departureAirportId}|${r.arrivalAirportId}`;
+        const k2 = `${r.arrivalAirportId}|${r.departureAirportId}`;
+        if (!routesByPair.has(k1)) routesByPair.set(k1, []);
+        routesByPair.get(k1).push(r);
+        if (k1 !== k2) {
+          if (!routesByPair.has(k2)) routesByPair.set(k2, []);
+          routesByPair.get(k2).push(r);
+        }
+      }
+
+      // All membership attributes (reputation, contractor tiers, isAI)
+      const allMemberships = await WorldMembership.findAll({
+        where: { worldId, isActive: true },
+        attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
+      });
+      const membershipAttrMap = new Map(allMemberships.map(m => [m.id, m]));
+
+      // All assigned aircraft with cargo/condition data (for competitor scoring)
+      const allAssignedAcIds = [...new Set(allActiveRoutes.map(r => r.assignedAircraftId).filter(Boolean))];
+      let competitorAcMap = {};
+      if (allAssignedAcIds.length > 0) {
+        const allCompAircraft = await UserAircraft.findAll({
+          where: { id: { [Op.in]: allAssignedAcIds } },
+          attributes: ['id', 'ageYears', 'conditionPercentage', 'cargoConfig',
+            'cargoLightKg', 'cargoStandardKg', 'cargoHeavyKg'],
+          include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }]
+        });
+        competitorAcMap = Object.fromEntries(allCompAircraft.map(a => [a.id, a]));
+      }
+
+      // Store on instance for processFlightRevenue to read (cleared below)
+      this._flightCycleCache = { routesByPair, membershipAttrMap, competitorAcMap };
+
       // 1. Find same-day templates (depart today, complete today) whose round-trip has finished
       const sameDayTemplates = await ScheduledFlight.findAll({
         where: {
@@ -742,6 +789,8 @@ class WorldTimeService {
       await this.processSightseeingTours(worldId, currentGameTime, gameDate, gameDayOfWeek, currentMinutesOfDay, membershipIds);
     } catch (error) {
       console.error('Error processing flights:', error.message);
+    } finally {
+      this._flightCycleCache = null; // clear per-cycle caches
     }
   }
 
@@ -1087,22 +1136,29 @@ class WorldTimeService {
         const { getContractor } = require('../data/contractorConfig');
 
         // Find all competing routes (both directions) on this airport pair
-        const competingRoutesList = await Route.findAll({
-          where: {
-            [Op.or]: [
-              { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
-              { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
-            ],
-            isActive: true,
-            worldMembershipId: { [Op.ne]: route.worldMembershipId }
-          },
-          attributes: ['economyPrice', 'worldMembershipId', 'assignedAircraftId', 'cargoRates']
-        });
+        // Uses pre-loaded cycle cache (3 queries at cycle start vs 100+ per-flight)
+        const cache = this._flightCycleCache;
+        const pairKey = `${route.departureAirportId}|${route.arrivalAirportId}`;
+        const competingRoutesList = cache
+          ? (cache.routesByPair.get(pairKey) || []).filter(r => r.worldMembershipId !== route.worldMembershipId)
+          : await Route.findAll({
+              where: {
+                [Op.or]: [
+                  { departureAirportId: route.departureAirportId, arrivalAirportId: route.arrivalAirportId },
+                  { departureAirportId: route.arrivalAirportId, arrivalAirportId: route.departureAirportId }
+                ],
+                isActive: true,
+                worldMembershipId: { [Op.ne]: route.worldMembershipId }
+              },
+              attributes: ['economyPrice', 'worldMembershipId', 'assignedAircraftId', 'cargoRates']
+            });
 
-        // Load our own membership data
-        const myMembership = await WorldMembership.findByPk(route.worldMembershipId, {
-          attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
-        });
+        // Load our own membership data (from cycle cache or DB fallback)
+        const myMembership = cache
+          ? cache.membershipAttrMap.get(route.worldMembershipId)
+          : await WorldMembership.findByPk(route.worldMembershipId, {
+              attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
+            });
         myMembershipRef = myMembership;
         const myRep = parseInt(myMembership?.reputation) || 50;
         isAIAirline = !!myMembership?.isAI;
@@ -1136,26 +1192,22 @@ class WorldTimeService {
 
         competitorCount = competingRoutesList.length;
         if (competitorCount > 0) {
-          // Batch load competitor memberships
-          const compMembershipIds = [...new Set(competingRoutesList.map(r => r.worldMembershipId))];
-          const compMemberships = await WorldMembership.findAll({
-            where: { id: { [Op.in]: compMembershipIds } },
-            attributes: ['id', 'reputation', 'cleaningContractor', 'groundContractor']
-          });
-          const mbrMap = Object.fromEntries(compMemberships.map(m => [m.id, m]));
+          // Competitor memberships + aircraft: use cycle cache (pre-loaded once)
+          const mbrMap = cache
+            ? Object.fromEntries([...cache.membershipAttrMap.entries()])
+            : Object.fromEntries((await WorldMembership.findAll({
+                where: { id: { [Op.in]: [...new Set(competingRoutesList.map(r => r.worldMembershipId))] } },
+                attributes: ['id', 'reputation', 'cleaningContractor', 'groundContractor']
+              })).map(m => [m.id, m]));
 
-          // Batch load competitor aircraft
-          const compAcIds = competingRoutesList.map(r => r.assignedAircraftId).filter(Boolean);
-          let acMap = {};
-          if (compAcIds.length > 0) {
-            const compAircraft = await UserAircraft.findAll({
-              where: { id: { [Op.in]: compAcIds } },
-              attributes: ['id', 'ageYears', 'conditionPercentage', 'cargoConfig',
-                'cargoLightKg', 'cargoStandardKg', 'cargoHeavyKg'],
-              include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }]
-            });
-            acMap = Object.fromEntries(compAircraft.map(a => [a.id, a]));
-          }
+          const acMap = cache
+            ? cache.competitorAcMap
+            : Object.fromEntries((await UserAircraft.findAll({
+                where: { id: { [Op.in]: competingRoutesList.map(r => r.assignedAircraftId).filter(Boolean) } },
+                attributes: ['id', 'ageYears', 'conditionPercentage', 'cargoConfig',
+                  'cargoLightKg', 'cargoStandardKg', 'cargoHeavyKg'],
+                include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }]
+              })).map(a => [a.id, a]));
 
           // Cargo fair-share: record each competing route's cargo allocation +
           // whether its aircraft carries passengers (belly-eligible). Freighters
@@ -2037,18 +2089,30 @@ class WorldTimeService {
         where: { worldId, isActive: true }
       });
 
+      const membershipIds = memberships.map(m => m.id);
+
+      // Batch-load all fleets and routes once (instead of N+N queries per membership)
+      const allFleet = await UserAircraft.findAll({
+        where: { worldMembershipId: { [Op.in]: membershipIds }, status: { [Op.notIn]: ['sold'] } },
+        include: [{ model: Aircraft, as: 'aircraft' }]
+      });
+      const fleetByMembership = {};
+      for (const ac of allFleet) {
+        (fleetByMembership[ac.worldMembershipId] || (fleetByMembership[ac.worldMembershipId] = [])).push(ac);
+      }
+
+      const allRoutes = await Route.findAll({
+        where: { worldMembershipId: { [Op.in]: membershipIds }, isActive: true }
+      });
+      const routesByMembership = {};
+      for (const r of allRoutes) {
+        (routesByMembership[r.worldMembershipId] || (routesByMembership[r.worldMembershipId] = [])).push(r);
+      }
+
       for (const membership of memberships) {
         try {
-          // Get fleet
-          const fleet = await UserAircraft.findAll({
-            where: { worldMembershipId: membership.id, status: { [Op.notIn]: ['sold'] } },
-            include: [{ model: Aircraft, as: 'aircraft' }]
-          });
-
-          // Get routes
-          const routes = await Route.findAll({
-            where: { worldMembershipId: membership.id, isActive: true }
-          });
+          const fleet = fleetByMembership[membership.id] || [];
+          const routes = routesByMembership[membership.id] || [];
 
           // No fleet or routes = keep starting reputation, don't recalculate
           if (fleet.length === 0 && routes.length === 0) continue;
@@ -2360,15 +2424,16 @@ class WorldTimeService {
           }
         });
 
+        // Batch-check which expired aircraft have active daily maintenance (1 query vs N)
+        const expiredIds = expiredAircraft.map(a => a.id);
+        const dailyMaintRecords = expiredIds.length > 0 ? await RecurringMaintenance.findAll({
+          where: { aircraftId: { [Op.in]: expiredIds }, checkType: 'daily', status: 'active' },
+          attributes: ['aircraftId']
+        }) : [];
+        const hasDailySet = new Set(dailyMaintRecords.map(m => m.aircraftId));
+
         for (const aircraft of expiredAircraft) {
-          // Check if this aircraft has any active daily maintenance scheduled
-          const hasDailyMaint = await RecurringMaintenance.findOne({
-            where: {
-              aircraftId: aircraft.id,
-              checkType: 'daily',
-              status: 'active'
-            }
-          });
+          const hasDailyMaint = hasDailySet.has(aircraft.id);
 
           if (hasDailyMaint) {
             // Daily checks are scheduled but lastDailyCheckDate fell behind - catch up
