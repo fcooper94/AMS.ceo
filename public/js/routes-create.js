@@ -1509,11 +1509,51 @@ function closeCapacityPanel() {
   if (p) p.style.display = 'none';
 }
 
-/** Convert a 0-100 demand score to estimated daily passengers for a given game year. */
-function demandToPax(score, year) {
+// Deterministic 0..1 hash from a string seed (an airport code). Stable per
+// airport, so derived figures don't flicker between renders.
+function _seedHash01(seed) {
+  let h = 2166136261;
+  const s = String(seed == null ? '' : seed);
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+// ±9% wobble — breaks up the identical pax figures that many low-/floor-demand
+// routes would otherwise show (all reading e.g. "20"), so the list looks organic.
+function _demandWobble(seed) {
+  if (!seed) return 1;
+  return 0.91 + _seedHash01(seed) * 0.18; // 0.91 .. 1.09
+}
+
+// Smallest daily passenger figure a route with ANY demand should ever display.
+// In early eras the world-pax scaling drags even real routes down to 1–4/day,
+// which reads as "not worth flying". Below the knee we remap (0, KNEE) → (MIN,
+// KNEE) — a continuous, monotonic lift, so a slightly busier route always stays
+// slightly busier (Jersey keeps ranking above Guernsey above Alderney) with no
+// discontinuity at the join. Only bites in early eras / very thin routes; a
+// modern score of 1 already yields ~80/day.
+const DEMAND_FLOOR_MIN = 7;
+const DEMAND_FLOOR_KNEE = 12;
+
+/**
+ * Convert a 0-100 demand score to estimated daily passengers for a given game
+ * year. Pass an airport code as `seed` for a small deterministic wobble (so
+ * identical scores don't all render the same) and the minimum-demand floor.
+ */
+function demandToPax(score, year, seed) {
   if (!score || score <= 0) return 0;
   const eraFactor = _interpWorldPax(year || 2020) / 1807;
-  return Math.round(score * PAX_SCORE100_2020 / 100 * eraFactor);
+  let pax = score * PAX_SCORE100_2020 / 100 * eraFactor;
+  // Only wobble modest figures. Big, well-differentiated routes (esp. those
+  // anchored to real CAA data) keep their exact value; the "everything reads 20"
+  // clustering only happens at the low end where many routes share one score.
+  if (seed && pax < 300) pax *= _demandWobble(seed);
+  // Monotonic minimum-demand lift (applied before rounding so the wobble's
+  // sub-integer differences survive as slight variety at the bottom).
+  if (pax > 0 && pax < DEMAND_FLOOR_KNEE) {
+    pax = DEMAND_FLOOR_MIN + pax * (DEMAND_FLOOR_KNEE - DEMAND_FLOOR_MIN) / DEMAND_FLOOR_KNEE;
+  }
+  return Math.round(pax);
 }
 
 function fmtPax(pax) {
@@ -1591,8 +1631,8 @@ function generateSupplyIndicator(airport) {
   const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020;
   const summerScoreByDay = mults.map(m => Math.min(100, Math.round((s?.summer || demand) * m)));
   const winterScoreByDay = mults.map(m => Math.min(100, Math.round((s?.winter || demand) * m)));
-  const summerPaxByDay = summerScoreByDay.map(sc => demandToPax(sc, gameYear));
-  const winterPaxByDay = winterScoreByDay.map(sc => demandToPax(sc, gameYear));
+  const summerPaxByDay = summerScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode));
+  const winterPaxByDay = winterScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode));
 
   // My supply: exact seats from actual configured cabin (economySeats + premium + business + first).
   const myCapDay = myCapacityByDay[airport.id] || [0, 0, 0, 0, 0, 0, 0];
@@ -1772,8 +1812,8 @@ function generateDemandIndicator(airport) {
   if (s) {
     const SUMMER = '#f59e0b', WINTER = '#38bdf8';
     const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020;
-    const summerPax = demandToPax(s.summer, gameYear);
-    const winterPax = demandToPax(s.winter, gameYear);
+    const summerPax = demandToPax(s.summer, gameYear, airport.icaoCode);
+    const winterPax = demandToPax(s.winter, gameYear, airport.icaoCode);
     const maxPax = Math.max(summerPax, winterPax, 1);
 
     const archetypeLabels = {
@@ -2061,8 +2101,8 @@ function populateRouteStats(airport) {
 
   if (seasonal && paxChartEl) {
     const mults = DOW_MULTIPLIERS[seasonal.archetype] || DOW_MULTIPLIERS.flat;
-    const summerPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.summer * m)), gameYear));
-    const winterPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.winter * m)), gameYear));
+    const summerPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.summer * m)), gameYear, airport.icaoCode));
+    const winterPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.winter * m)), gameYear, airport.icaoCode));
 
     const mktCapRaw = indicators?.marketCapacityByDay;
     const mktByDayRaw = indicators?.marketByDay;
