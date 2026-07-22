@@ -277,6 +277,31 @@ router.post('/local-login', requireDevUnlock, async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    // Support account: PIN-based login (no password hash)
+    if (email.toLowerCase() === 'support@ams.ceo') {
+      const supportPin = process.env.SUPPORT_PIN;
+      if (!supportPin || password !== supportPin) {
+        return res.status(401).json({ error: 'Invalid PIN' });
+      }
+      const user = await User.findOne({
+        where: { email: 'support@ams.ceo', authMethod: 'local' }
+      });
+      if (!user) {
+        return res.status(401).json({ error: 'Support account not found' });
+      }
+      await user.update({ lastLogin: new Date() });
+      const sessionUser = {
+        id: user.id, vatsimId: user.vatsimId,
+        firstName: user.firstName, lastName: user.lastName,
+        email: user.email, rating: 0, pilotRating: 0,
+        division: null, subdivision: null
+      };
+      return req.login(sessionUser, (err) => {
+        if (err) return res.status(500).json({ error: 'Login failed' });
+        res.json({ success: true, redirect: '/world-selection' });
+      });
+    }
+
     // Find local user by email
     const user = await User.findOne({
       where: { email: email.toLowerCase(), authMethod: 'local' }

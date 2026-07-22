@@ -107,6 +107,41 @@
     .link-btn { background: none; border: none; color: var(--accent-color); cursor: pointer; font-size: 0.82rem; padding: 0; }
     .link-btn:hover { text-decoration: underline; }
     #forgotBlock { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+
+    /* PIN popup overlay */
+    .pin-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    .pin-overlay.active { display: flex; }
+    .pin-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 2rem;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .pin-card h3 { color: var(--text-primary); margin: 0 0 0.25rem; font-size: 1rem; }
+    .pin-card .pin-sub { color: var(--text-muted); font-size: 0.75rem; margin-bottom: 1.25rem; }
+    .pin-digits {
+      display: flex; gap: 0.6rem; justify-content: center; margin-bottom: 1.25rem;
+    }
+    .pin-digits input {
+      width: 48px; height: 56px;
+      text-align: center; font-size: 1.4rem; font-weight: 700;
+      background: var(--surface); color: var(--text-primary);
+      border: 1px solid var(--border-color); border-radius: 6px;
+      outline: none; caret-color: var(--accent-color);
+    }
+    .pin-digits input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(59,130,246,0.25); }
+    .pin-error { color: #fca5a5; font-size: 0.8rem; margin-bottom: 0.75rem; min-height: 1.2em; }
+    .pin-cancel { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; margin-top: 0.5rem; }
+    .pin-cancel:hover { color: var(--text-secondary); }
   </style>
 </head>
 <body>
@@ -143,6 +178,23 @@
         <input type="email" id="forgotEmail" class="lp-input" placeholder="you@example.com">
       </div>
       <button id="forgotBtn" class="lp-btn lp-btn-primary" onclick="requestPasswordReset()">Send Reset Link</button>
+    </div>
+  </div>
+
+  <!-- PIN popup -->
+  <div class="pin-overlay" id="pinOverlay">
+    <div class="pin-card">
+      <h3>Support Login</h3>
+      <div class="pin-sub">Enter your 4-digit PIN</div>
+      <div class="pin-digits">
+        <input type="tel" maxlength="1" inputmode="numeric" class="pin-digit" data-idx="0" autocomplete="off">
+        <input type="tel" maxlength="1" inputmode="numeric" class="pin-digit" data-idx="1" autocomplete="off">
+        <input type="tel" maxlength="1" inputmode="numeric" class="pin-digit" data-idx="2" autocomplete="off">
+        <input type="tel" maxlength="1" inputmode="numeric" class="pin-digit" data-idx="3" autocomplete="off">
+      </div>
+      <div class="pin-error" id="pinError"></div>
+      <button class="lp-btn lp-btn-primary" id="pinSubmitBtn" onclick="submitPin()">Verify</button>
+      <button class="pin-cancel" onclick="closePin()">Cancel</button>
     </div>
   </div>
 
@@ -232,6 +284,89 @@
     document.getElementById('loginPassword').addEventListener('keydown', e => {
       if (e.key === 'Enter') localLogin();
     });
+
+    // ── PIN popup for support@ams.ceo ──
+    const pinOverlay = document.getElementById('pinOverlay');
+    const pinDigits = document.querySelectorAll('.pin-digit');
+    const pinError = document.getElementById('pinError');
+
+    document.getElementById('loginEmail').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const email = e.target.value.trim().toLowerCase();
+        if (email === 'support@ams.ceo') { e.preventDefault(); openPin(); }
+        else document.getElementById('loginPassword').focus();
+      }
+    });
+
+    document.getElementById('loginEmail').addEventListener('blur', () => {
+      const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      if (email === 'support@ams.ceo') openPin();
+    });
+
+    function openPin() {
+      pinError.textContent = '';
+      pinDigits.forEach(d => { d.value = ''; });
+      pinOverlay.classList.add('active');
+      setTimeout(() => pinDigits[0].focus(), 50);
+    }
+
+    function closePin() {
+      pinOverlay.classList.remove('active');
+      document.getElementById('loginEmail').focus();
+    }
+
+    // Auto-advance digits, handle backspace, paste
+    pinDigits.forEach((input, i) => {
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/\D/g, '').slice(-1);
+        if (input.value && i < 3) pinDigits[i + 1].focus();
+        if (i === 3 && input.value) submitPin();
+      });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Backspace' && !input.value && i > 0) pinDigits[i - 1].focus();
+        if (e.key === 'Enter') submitPin();
+        if (e.key === 'Escape') closePin();
+      });
+      input.addEventListener('paste', e => {
+        e.preventDefault();
+        const paste = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 4);
+        paste.split('').forEach((ch, j) => { if (pinDigits[j]) pinDigits[j].value = ch; });
+        if (paste.length === 4) submitPin();
+        else if (paste.length > 0) pinDigits[Math.min(paste.length, 3)].focus();
+      });
+    });
+
+    function submitPin() {
+      const pin = Array.from(pinDigits).map(d => d.value).join('');
+      if (pin.length < 4) { pinError.textContent = 'Enter all 4 digits'; return; }
+      pinError.textContent = '';
+      const btn = document.getElementById('pinSubmitBtn');
+      btn.disabled = true; btn.textContent = 'Verifying...';
+
+      fetch('/auth/local-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'support@ams.ceo', password: pin })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = data.redirect;
+          } else {
+            pinError.textContent = data.error || 'Invalid PIN';
+            btn.disabled = false; btn.textContent = 'Verify';
+            pinDigits.forEach(d => { d.value = ''; });
+            pinDigits[0].focus();
+          }
+        })
+        .catch(() => {
+          pinError.textContent = 'Network error';
+          btn.disabled = false; btn.textContent = 'Verify';
+        });
+    }
+
+    // Close overlay when clicking outside the card
+    pinOverlay.addEventListener('click', e => { if (e.target === pinOverlay) closePin(); });
   </script>
 </body>
 </html>
