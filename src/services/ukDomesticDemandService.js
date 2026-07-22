@@ -33,12 +33,12 @@
 
 // Back-projection anchors — mirror routes-create.js demandToPax so the scores we
 // store reproduce the intended per-era passenger figures:
-//   pax/day = score/100 × PAX_SCORE100 × (WORLD_PAX[decade] / WORLD_PAX[2020])
-// The absolute era growth of air travel lives in WORLD_PAX; a route's own history
-// (grew / peaked / declined) lives in HISTORY_PROFILES. Keeping them separate is
-// what avoids the double-era-scaling bug.
-const WORLD_PAX = { 1950: 31, 1960: 106, 1970: 310, 1980: 748, 1990: 1025, 2000: 1672, 2010: 2628, 2020: 1807 };
-const PAX_SCORE100 = 8000; // pax/day a demand score of 100 implies in 2020
+//   pax/day = score/100 × PAX_SCORE100 × DOMESTIC_ERA[decade]
+// A route's own history (grew / peaked / declined) lives in HISTORY_PROFILES; the
+// era factor keeps scores in range (see domesticEraScale.js). Keeping them
+// separate is what avoids the double-era-scaling bug.
+const DOMESTIC_ERA = require('../data/domesticEraScale');
+const PAX_SCORE100 = 8000; // pax/day a demand score of 100 implies at era factor 1
 
 // Archetype history: each route's daily pax as a fraction of its 2024 level, per
 // decade [1950..2020]. UK domestic did NOT grow ~58× like world travel — it was
@@ -208,8 +208,7 @@ function realRouteScores(pax, arch) {
   const profile = HISTORY_PROFILES[arch] || HISTORY_PROFILES.regional;
   return DECADES.map((decade, d) => {
     const targetPax = pax * profile[d];
-    const eraFactor = WORLD_PAX[decade] / WORLD_PAX[2020];
-    const score = Math.round(targetPax * 100 / (PAX_SCORE100 * eraFactor));
+    const score = Math.round(targetPax * 100 / (PAX_SCORE100 * DOMESTIC_ERA[decade]));
     return Math.max(1, Math.min(100, score));
   });
 }

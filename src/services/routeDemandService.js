@@ -124,7 +124,10 @@ class RouteDemandService {
         demandCategory: this.getCategoryFromDemand(adjustedDemand),
         routeType: record.routeType,
         baseDemand: record.baseDemand,
-        isFloor: record.isFloor === true
+        isFloor: record.isFloor === true,
+        // A record carries an isFloor flag (true or false) iff it's an anchored
+        // UK/US domestic route — those use the gentler DOMESTIC_ERA display curve.
+        isDomestic: record.isFloor !== undefined
       };
     });
   }

@@ -151,6 +151,10 @@ class DemandCacheService {
     // ukDomesticDemandService.js.
     this._applyUkDomesticDemand(airports);
 
+    // Same treatment for US domestic, anchored to BTS T-100 2024 (much larger:
+    // ~12.5k routes). See usDomesticDemandService.js.
+    this._applyUsDomesticDemand(airports);
+
     // Sort byOrigin arrays by demand2000 descending
     for (const [, records] of this.byOrigin) {
       records.sort((a, b) => (b.demand2000 || 0) - (a.demand2000 || 0));
@@ -269,6 +273,71 @@ class DemandCacheService {
     }
 
     console.log(`[DemandCache] UK domestic: ${realApplied} real routes overridden (${realSkipped} skipped — ICAO not in DB), ${floored} pairs floored (${inScope.length} in-scope airports)`);
+  }
+
+  /**
+   * US domestic overlay (see usDomesticDemandService.js): override gravity with
+   * real BTS T-100 2024 data for routes that operate, then suppress gravity on
+   * any remaining US↔US pair (it over-rates domestic pairs that aren't flown).
+   * Unlike the UK, the US pair space is far too large to enumerate, so the
+   * suppression scans the existing demand records instead.
+   * @param {Array} airports - the airport rows already loaded from the DB
+   */
+  _applyUsDomesticDemand(airports) {
+    let svc;
+    try {
+      svc = require('./usDomesticDemandService');
+    } catch (err) {
+      console.warn(`[DemandCache] US domestic demand unavailable (${err.message}) — skipping.`);
+      return;
+    }
+
+    const fields = DemandCacheService.DECADE_FIELDS;
+    const usIds = new Set();
+    for (const a of airports) if (svc.isUsAirport(a)) usIds.add(a.id);
+
+    // Layer 1 — real-data overrides (both directions).
+    const realCovered = new Set();
+    const real = svc.realRoutes();
+    let realApplied = 0, realSkipped = 0;
+    for (const pairKey in real) {
+      const us = pairKey.indexOf('_');
+      const idA = this.icaoToId.get(pairKey.slice(0, us)), idB = this.icaoToId.get(pairKey.slice(us + 1));
+      if (!idA || !idB) { realSkipped++; continue; }
+      const airA = this.airportById.get(idA), airB = this.airportById.get(idB);
+      const scores = svc.realRouteScores(real[pairKey].pax, real[pairKey].arch);
+      for (const [from, to] of [[airA, airB], [airB, airA]]) {
+        const { record } = this._ensureRecord(from, to);
+        for (let d = 0; d < fields.length; d++) record[fields[d]] = scores[d];
+        record.isFloor = false;
+        this._refreshRecordSummary(record);
+        realCovered.add(`${from.id}_${to.id}`);
+      }
+      realApplied++;
+    }
+
+    // Layer 2 — suppress gravity on US↔US pairs with no real service. Walk only
+    // US-origin records (via byOrigin) rather than scanning all ~5M, and reuse
+    // the constant floor summary instead of recomputing per record.
+    const floorSc = svc.floorScores();
+    const floorBase = floorSc[5];
+    const floorCat = gravityModelService.getDemandCategory(Math.max(floorSc[5], floorSc[6], floorSc[7]));
+    let suppressed = 0;
+    for (const usId of usIds) {
+      const recs = this.byOrigin.get(usId);
+      if (!recs) continue;
+      for (const record of recs) {
+        if (!usIds.has(record.toAirportId)) continue;
+        if (realCovered.has(`${record.fromAirportId}_${record.toAirportId}`)) continue;
+        for (let d = 0; d < fields.length; d++) record[fields[d]] = floorSc[d];
+        record.baseDemand = floorBase;
+        record.demandCategory = floorCat;
+        record.isFloor = true;
+        suppressed++;
+      }
+    }
+
+    console.log(`[DemandCache] US domestic: ${realApplied} real routes overridden (${realSkipped} skipped — ICAO not in DB), ${suppressed} gravity US↔US pairs suppressed to floor`);
   }
 
   /**
