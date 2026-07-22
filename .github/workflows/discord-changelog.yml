@@ -42,6 +42,6 @@ jobs:
           done <<< "$COMMITS"
 
           # Post to Discord webhook
-          PAYLOAD=$(jq -n --arg content "$(echo -e "$BODY")" '{"content": $content, "username": "AMS Updates Bot", "avatar_url": "https://ams.ceo/img/icon.png", "flags": 4}')
+          PAYLOAD=$(jq -n --arg content "$(echo -e "$BODY")" '{"content": $content, "username": "AMS Updates Bot", "avatar_url": "https://raw.githubusercontent.com/fcooper94/AMS.ceo/main/public/img/icon.png", "flags": 4}')
           curl -s -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK"
           echo "Posted to Discord"
