@@ -11,7 +11,8 @@
  */
 
 const {
-  ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE
+  ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE,
+  US_SNOWBIRD, US_SUMMER_BEACH
 } = require('../data/seasonalProfiles');
 
 const TROPICAL_LAT = 23.5;
@@ -24,10 +25,10 @@ const LEISURE_SUMMER_LAT = 40;
 // archetype swing is blended toward flat in early eras. 0.10 floor (not 0):
 // the few who flew to ski still did so in winter. Linear between breakpoints.
 const SEASONAL_MATURITY = [
-  [1950, 0.10],
-  [1960, 0.25],
-  [1970, 0.55],
-  [1980, 0.80],
+  [1950, 0.25],
+  [1960, 0.40],
+  [1970, 0.60],
+  [1980, 0.82],
   [1990, 1.00]
 ];
 
@@ -70,7 +71,14 @@ class SeasonalityService {
     // Cold/temperate origin → tropical destination, leisure-ish = winter escape
     if (rt !== 'business' && dLat < TROPICAL_LAT && oLat >= TEMPERATE_LAT) return 'winter_sun';
 
+    // US snowbird / Sunbelt markets (Florida, Arizona, desert SW) — gentle winter
+    // lean (mixed business + leisure, not a full tropical-escape swing).
+    if (US_SNOWBIRD.has(oIcao) || US_SNOWBIRD.has(dIcao)) return 'mild_winter';
+
     if (SUMMER_SUN.has(oIcao) || SUMMER_SUN.has(dIcao)) return 'summer_sun';
+
+    // US summer beaches — moderate summer bias.
+    if (US_SUMMER_BEACH.has(oIcao) || US_SUMMER_BEACH.has(dIcao)) return 'generic_leisure';
 
     // UK holiday islands/coast: temperate summer leisure, regardless of the
     // business-looking route type their airport sizes imply (e.g. EGBB→EGJJ).

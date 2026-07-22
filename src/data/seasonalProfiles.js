@@ -16,6 +16,7 @@ const ARCHETYPE_FACTORS = {
   ski:            { summer: 0.60, winter: 1.50 }, // Alpine/snow gateways
   summer_sun:     { summer: 1.60, winter: 0.55 }, // Med/beach leisure
   winter_sun:     { summer: 0.95, winter: 1.40 }, // cold origin → tropical escape
+  mild_winter:    { summer: 0.90, winter: 1.20 }, // US snowbird/Sunbelt — mixed business+leisure, gentle winter lean
   generic_leisure:{ summer: 1.35, winter: 0.75 }, // temperate leisure, summer-biased
   leisure:        { summer: 1.15, winter: 0.95 }, // visiting friends/relatives, mild
   business:       { summer: 1.05, winter: 0.95 }, // near-flat
@@ -83,6 +84,33 @@ const WINTER_SUN = new Set([
   'FALE','FACT'           // South Africa (N-winter = SA summer)
 ]);
 
+// US snowbird / warm-winter destinations — WINTER peak (northerners escaping the
+// cold: Florida, Arizona, the desert SW, south Texas). Mapped to 'winter_sun'.
+const US_SNOWBIRD = new Set([
+  // Florida (central & south — winter peak)
+  'KMCO', 'KMIA', 'KFLL', 'KTPA', 'KRSW', 'KPBI', 'KSFB', 'KPGD', 'KSRQ', 'KPIE',
+  'KAPF', 'KEYW', 'KFMY',
+  // Arizona
+  'KPHX', 'KTUS', 'KAZA', 'KIWA', 'KYUM',
+  // SoCal desert
+  'KPSP',
+  // South Texas (Rio Grande Valley)
+  'KHRL', 'KBRO', 'KMFE'
+]);
+
+// US summer-beach destinations — SUMMER peak. Mapped to 'generic_leisure' (a
+// moderate summer bias, not the strong Mediterranean 'summer_sun' swing).
+const US_SUMMER_BEACH = new Set([
+  'KMYR', // Myrtle Beach
+  'KHHH', // Hilton Head
+  'KACK', 'KMVY', 'KHYA', // Nantucket / Martha's Vineyard / Cape Cod
+  'KBHB', // Bar Harbor
+  'KTVC', // Traverse City
+  'KOAJ', // Jacksonville NC (beaches)
+  // Florida panhandle / Gulf beaches (summer, not snowbird winter)
+  'KECP', 'KVPS', 'KPNS', 'KDAB'
+]);
+
 // UK / Crown-Dependency holiday destinations. Temperate summer-leisure islands &
 // coast — strongly summer-biased and weekend-heavy, NOT the flat business profile
 // their airport types would otherwise imply. Mapped to 'generic_leisure'.
@@ -96,4 +124,4 @@ const DOMESTIC_LEISURE = new Set([
   'EGHC'  // Land's End
 ]);
 
-module.exports = { ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE };
+module.exports = { ARCHETYPE_FACTORS, SKI_GATEWAYS, SUMMER_SUN, WINTER_SUN, DOMESTIC_LEISURE, US_SNOWBIRD, US_SUMMER_BEACH };
