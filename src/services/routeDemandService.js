@@ -99,7 +99,13 @@ class RouteDemandService {
       demandCategory: category,
       routeType: record.routeType,
       confidence: 'seeded',
-      baseDemand: record.baseDemand
+      baseDemand: record.baseDemand,
+      isFloor: record.isFloor === true,
+      // A record carries an isFloor flag (true/false) iff it's an anchored UK/US
+      // domestic route — those use the gentler DOMESTIC_ERA curve. Mirrors the
+      // flags getTopDestinations exposes; cargoDemandService.demandToPax needs
+      // isDomestic to pick the right era curve.
+      isDomestic: record.isFloor !== undefined
     };
   }
 

@@ -109,35 +109,57 @@ on top of the gz gravity file — no regeneration):
   Consider making it directional.
 - **Tiny routes still round to 0** in some displays under a few pax/day.
 
-## Cargo demand — DISPLAY ONLY, does not yet drive revenue (2026-07)
+## Cargo demand — now drives revenue (2026-07)
 
-The per-route, per-type cargo figures shown in the route picker are **display /
-attractiveness only**. They do **NOT** feed revenue yet.
+The per-route, per-type cargo figures shown in the route picker are still the
+**display / attractiveness** layer, but cargo revenue is **now wired to the same
+market** (as of 2026-07 — replaced the old flat-`baseDemand` stub).
 
 - Cargo is **derived**, not stored (don't build a 30M per-type-per-route file):
   `route cargo = route pax (magnitude) × destination cargo character (mix)`.
   The destination mix/intensity is per-airport from `airportCargoService`
   (`cargoProfile`, era-RELATIVE 0–100 per type; absolute era growth is applied
-  once in the front-end tonnes conversion — do not double-scale).
-- Two pax-linked components in `routes-create.js`: **belly** (~20 kg/pax,
-  General — bags, present wherever there's pax, every era) + **commercial
-  freight** (~35 kg/pax matured over eras, split across types by the dest mix,
-  incl. per-type era availability e.g. no express pre-1971). Tonnage displays as
-  kg <1t, 0.1t from 1–5t, whole tonnes above (`fmtTonnes`; keep values
-  fractional — don't pre-round).
+  once in the tonnes conversion — do not double-scale).
+- Two pax-linked components: **belly** (~20 kg/pax, General — bags, present
+  wherever there's pax, every era) + **commercial freight** (~35 kg/pax matured
+  over eras, split across types by the dest mix, incl. per-type era availability
+  e.g. no express pre-1971). Front-end tonnage displays as kg <1t, 0.1t from
+  1–5t, whole tonnes above (`fmtTonnes`; keep values fractional — don't
+  pre-round).
 
-**Cargo revenue is the big TODO.** Currently `worldTimeService.processTemplate-
-Revenue` computes cargo revenue from `allocatedKg × rate × flat CARGO_TYPES
-baseDemand` — it ignores the route/type demand entirely and has no demand cap.
-Next steps to make cargo revenue real:
-- **Cap cargo carried by the per-type route demand** (belly + commercial),
-  per type, so you can't earn more than the market supports.
-- **Enforce belly vs freighter:** the belly (bags) portion rides only in
-  **passenger** aircraft holds — a pure **Cargo** aircraft on the route must NOT
-  get the belly bags, only the commercial freight. (This is the caveat the user
-  flagged: a freighter carrying only General-from-bags would be 0.)
-- Wire the `isFloor`/`isDomestic`/seasonal split through so cargo revenue tracks
-  the same demand the picker shows.
+**Server-side single source of truth: `src/services/cargoDemandService.js`**
+(new). Holds `demandToPax` (a **mirror** of the front-end `routes-create.js`
+one — reuses `gravityCalibration.worldPassengers` + `data/domesticEraScale`;
+keep the two in sync), `cargoEraMult`, `destCargoIntensity`, and
+`routeCargoMarket({routePax, year, cargoProfile}) → { bellyGeneral,
+commercialByType }` (kg/day). The revenue engine and the modal now compute the
+market the same way.
+
+**Revenue path** (`worldTimeService.processFlightRevenue`, the cargo block):
+1. Route daily cargo **market** = `demandToPax(routeDemandValue, year,
+   isDomestic)` × dest `cargoProfile` (via `computeAirportCargoDemand`).
+2. **Belly is pax-only:** belly General is added to the tappable market **only
+   if the aircraft carries passengers** (`aircraft.aircraft.type !== 'Cargo' &&
+   passengers > 0`). A pure **Cargo** aircraft taps the **commercial** market
+   only — incl. commercial-General (mail/freight), just not passenger bags.
+3. **Fair-share:** carried kg per type is capped at `market × (myAlloc /
+   Σ alloc across all routes on the pair)`. Undersupplied market → everyone
+   carries their full allocation; oversupplied → proportional slice. The
+   competitor allocations come from the **existing** `competingRoutesList` /
+   `compAircraft` queries, extended to also load `cargoConfig` + aircraft
+   `type` (hoisted into `cargoCompetitorAllocs`).
+4. **Rate elasticity:** over-priced cargo sells less vs an era-scaled benchmark
+   (`CARGO_TYPES[type].defaultRate × getEraMultiplier(year)`); below-market gets
+   a small bonus (capped, never exceeds allocation). The old **flat per-type
+   `baseDemand` fudge was dropped** (the cap + elasticity replace it).
+   `routeDemandService.getRouteDemand` now returns `isFloor`/`isDomestic`.
+
+**Open follow-ups:** AI airlines feed the fair-share denominator via their
+routes, but whether AI sets sensible `cargoConfig` allocations is unverified —
+if AI holds are empty they contribute 0 and players get the whole market.
+Seasonal split isn't yet threaded into cargo revenue (uses the annual demand
+score). Not browser-verified beyond confirming the `routeDemandValue`-scope
+crash is fixed.
 
 ## Local dev / offline mode (added 2026-05)
 

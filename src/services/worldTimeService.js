@@ -914,6 +914,12 @@ class WorldTimeService {
       let loadFactor = 0.7; // Default fallback
       let competitorCount = 0; // hoisted for yield pressure (used after the try block)
       let myMembershipRef = null; // hoisted for ground handler tier in cost calc
+      let routeIsDomestic = false; // hoisted for cargo market era curve (set from demand lookup)
+      let routeDemandValue = 50; // hoisted for cargo market sizing (set from demand lookup)
+      // Competitors' cargo capacity on this pair, for the cargo fair-share split
+      // (populated in the competition section below; empty = monopoly). Each entry
+      // is { config: {typeKey:kg}, isPax: bool } for a competing route's aircraft.
+      let cargoCompetitorAllocs = [];
       try {
         const routeDemandService = require('./routeDemandService');
 
@@ -923,12 +929,12 @@ class WorldTimeService {
         // 2. Demand factor: gentle curve — even low-demand routes fill well if right-sized
         //    demand 100 → 1.00, demand 50 → 0.91, demand 35 → 0.87, demand 0 → 0.78
         let demandFactor = 1.0;
-        let routeDemandValue = 50;
         try {
           const routeDemand = await routeDemandService.getRouteDemand(
             route.departureAirportId, route.arrivalAirportId, worldYear
           );
           routeDemandValue = routeDemand.demand;
+          routeIsDomestic = routeDemand.isDomestic === true;
           demandFactor = 0.78 + 0.22 * (routeDemandValue / 100);
         } catch (demandErr) {
           // Demand lookup failed, use defaults
@@ -1040,7 +1046,7 @@ class WorldTimeService {
             isActive: true,
             worldMembershipId: { [Op.ne]: route.worldMembershipId }
           },
-          attributes: ['economyPrice', 'worldMembershipId', 'assignedAircraftId']
+          attributes: ['economyPrice', 'worldMembershipId', 'assignedAircraftId', 'cargoRates']
         });
 
         // Load our own membership data
@@ -1094,9 +1100,22 @@ class WorldTimeService {
           if (compAcIds.length > 0) {
             const compAircraft = await UserAircraft.findAll({
               where: { id: { [Op.in]: compAcIds } },
-              attributes: ['id', 'ageYears', 'conditionPercentage']
+              attributes: ['id', 'ageYears', 'conditionPercentage', 'cargoConfig',
+                'cargoLightKg', 'cargoStandardKg', 'cargoHeavyKg'],
+              include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }]
             });
             acMap = Object.fromEntries(compAircraft.map(a => [a.id, a]));
+          }
+
+          // Cargo fair-share: record each competing route's cargo allocation +
+          // whether its aircraft carries passengers (belly-eligible). Freighters
+          // (type 'Cargo') tap only the commercial market, not the belly bags.
+          for (const cr of competingRoutesList) {
+            const ca = cr.assignedAircraftId ? acMap[cr.assignedAircraftId] : null;
+            if (!ca) continue;
+            const config = ca.cargoConfig
+              || migrateOldConfig(ca.cargoLightKg, ca.cargoStandardKg, ca.cargoHeavyKg);
+            cargoCompetitorAllocs.push({ config, isPax: (ca.aircraft?.type || '') !== 'Cargo' });
           }
 
           // Calculate each competitor's score
@@ -1234,7 +1253,11 @@ class WorldTimeService {
         first:       Math.round(passengers * firstFrac * firstPrice)
       };
 
-      // Cargo revenue — per-type calculation using actual allocations and demand factors
+      // Cargo revenue — carried tonnes are CAPPED by the per-type route cargo
+      // MARKET (belly bags + commercial freight, mirroring the route-picker modal
+      // via cargoDemandService), fair-shared against competitors on the pair, then
+      // priced with rate elasticity. Belly bags ride only in passenger aircraft;
+      // a pure freighter ('Cargo') taps the commercial market only.
       let cargoRevenue = 0;
       const cargoByType = {};
       const cargoConfig = aircraft?.cargoConfig
@@ -1243,20 +1266,51 @@ class WorldTimeService {
         || migrateOldRates(route.cargoLightRate, route.cargoStandardRate, route.cargoHeavyRate);
 
       if (cargoConfig) {
+        const cargoDemandService = require('./cargoDemandService');
+        const { computeAirportCargoDemand } = require('./airportCargoService');
+
+        // 1. Route daily cargo market (kg): route pax market × dest cargo character.
+        const routePax = cargoDemandService.demandToPax(routeDemandValue, worldYear, routeIsDomestic);
+        const cargoProfile = route.arrivalAirport
+          ? computeAirportCargoDemand(route.arrivalAirport, worldYear) : {};
+        const market = cargoDemandService.routeCargoMarket({ routePax, year: worldYear, cargoProfile });
+
+        // 2. Belly bags (General) ride only in passenger aircraft.
+        const myCarriesPax = (aircraft?.aircraft?.type || '') !== 'Cargo' && passengers > 0;
+        const tappable = {};
+        for (const typeKey of CARGO_TYPE_KEYS) tappable[typeKey] = market.commercialByType[typeKey] || 0;
+        if (myCarriesPax) tappable.general += market.bellyGeneral;
+
         // Distance modifier: short haul (<500nm) 0.80, medium 1.0, long (>2000nm) 1.15
-        let distanceModifier = 1.0;
-        if (distance < 500) distanceModifier = 0.80;
-        else if (distance > 2000) distanceModifier = 1.15;
-        else distanceModifier = 0.80 + 0.20 * ((distance - 500) / 1500);
+        const distanceModifier = distance < 500 ? 0.80
+          : distance > 2000 ? 1.15
+          : 0.80 + 0.20 * ((distance - 500) / 1500);
+        const eraMult = eraEconomicService.getEraMultiplier(worldYear);
 
         for (const typeKey of CARGO_TYPE_KEYS) {
           const allocatedKg = cargoConfig[typeKey] || 0;
           const rate = parseFloat(cargoRates[typeKey]) || 0;
           if (allocatedKg <= 0 || rate <= 0) continue;
-          const tons = allocatedKg / 1000;
+
+          // 3. Fair-share: my allocation vs total allocated on the pair for this
+          //    type. Undersupplied market → everyone carries their full allocation;
+          //    oversupplied → each route gets a proportional slice.
+          let offered = allocatedKg;
+          for (const comp of cargoCompetitorAllocs) offered += (comp.config?.[typeKey] || 0);
+          const share = offered > 0 ? allocatedKg / offered : 0;
+          let carriedKg = Math.min(allocatedKg, (tappable[typeKey] || 0) * share);
+          if (carriedKg <= 0) continue;
+
+          // 4. Rate elasticity: over-priced cargo sells less (era-scaled benchmark).
+          const benchmark = (CARGO_TYPES[typeKey].defaultRate || rate) * eraMult;
+          const priceRatio = benchmark > 0 ? rate / benchmark : 1.0;
+          const sellThrough = priceRatio <= 1.0
+            ? Math.min(1.15, 1.0 + (1.0 - priceRatio) * 0.30)
+            : Math.max(0.25, 1.0 - (priceRatio - 1.0) * 0.60);
+          carriedKg = Math.min(allocatedKg, carriedKg * sellThrough);
+
           const variance = 0.90 + Math.random() * 0.20; // ±10%
-          const demandFactor = CARGO_TYPES[typeKey].baseDemand * distanceModifier * variance;
-          const typeRevenue = Math.round(tons * rate * demandFactor);
+          const typeRevenue = Math.round((carriedKg / 1000) * rate * distanceModifier * variance);
           cargoRevenue += typeRevenue;
           if (typeRevenue > 0) cargoByType[typeKey] = typeRevenue;
         }
