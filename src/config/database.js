@@ -9,6 +9,25 @@ const sqlLogStream = fs.createWriteStream(path.join(logsDir, 'sql.log'), { flags
 const sqlLogger = (msg) => sqlLogStream.write(`${new Date().toISOString()} ${msg}\n`);
 
 // Support both Railway's DATABASE_URL and individual connection parameters
+// Auto-size pool: query Postgres max_connections at boot, reserve 80% for our
+// app (leaving 20% for Railway internal connections, pg_dump, manual psql, etc.)
+// Falls back to 15 if the query fails.
+let poolMax = parseInt(process.env.DB_POOL_MAX) || 15;
+async function autoSizePool(seq) {
+  try {
+    const [result] = await seq.query("SHOW max_connections", { type: 'SELECT' });
+    const maxConn = parseInt(result?.max_connections) || 100;
+    const target = Math.min(Math.floor(maxConn * 0.8), maxConn - 10); // 80%, but always leave 10
+    const clamped = Math.max(5, Math.min(target, 80)); // floor 5, cap 80 (diminishing returns)
+    if (clamped !== seq.config.pool.max) {
+      seq.config.pool.max = clamped;
+      console.log(`✓ DB pool auto-sized to ${clamped} (Postgres max_connections: ${maxConn})`);
+    }
+  } catch (err) {
+    console.log(`ℹ DB pool auto-size skipped (${err.message}), using ${seq.config.pool.max}`);
+  }
+}
+
 let sequelize;
 
 if (process.env.DATABASE_URL) {
@@ -92,6 +111,7 @@ const testConnection = async () => {
   try {
     await sequelize.authenticate();
     console.log('✓ Database connection established successfully');
+    await autoSizePool(sequelize);
   } catch (error) {
     console.error('✗ Unable to connect to database:', error.message);
   }
