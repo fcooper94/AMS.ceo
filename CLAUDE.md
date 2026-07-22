@@ -68,6 +68,77 @@ networks (VATSIM).
    (leisure air travel barely existed in 1950). It does **not** touch the
    load-factor/revenue math.
 
+## Real-data domestic demand anchoring (2026-07)
+
+UK **and** US domestic demand are now anchored to **real data**, overriding the
+gravity model for those pairs (applied at boot in `demandCacheService`, layered
+on top of the gz gravity file — no regeneration):
+
+- **UK:** CAA Table 12.2 annual-2024 (`src/data/caaDomestic2024.csv` →
+  `ukDomesticReal2024.json` via `generateUkDomesticData.js`); ~306 routes.
+- **US:** BTS T-100 Domestic Segment 2024 (`t100Domestic2024.csv` →
+  `usDomesticReal2024.json` via `generateUsDomesticData.js`); ~12,538 routes.
+  Codes resolve to ICAO by **`iataCode`** (handles Alaska `PA*`/Hawaii `PH*`/PR
+  `TJ*`). `usDomesticDemandService.js` / `ukDomesticDemandService.js` hold the
+  archetype **HISTORY_PROFILES** that back-project each route's real 2024 daily
+  pax through the eras (business/leisure/lifeline/regional; US is deregulation-
+  shaped, UK trunk/leisure/lifeline/regional).
+- Real data **overrides** gravity; remaining domestic gravity pairs are
+  **suppressed to a floor** (gravity over-rates domestic pairs that aren't
+  really flown — it rated e.g. Birmingham–Prestwick at 1,600/day). Every
+  commercial-civil UK pair still gets a non-zero floor. Records carry
+  `isFloor` (real vs floored) and `isDomestic`, exposed via
+  `getTopDestinations`.
+- **Early-era display curve:** anchored domestic routes use a gentler
+  `src/data/domesticEraScale.js` (`DOMESTIC_ERA`) curve in `demandToPax` instead
+  of the steep world-pax one, so big routes don't clamp at the score-100 ceiling
+  and read an identical ~137/day in 1950. It **cancels in display** (the
+  back-projection divides by the same factor), so magnitudes stay real; only
+  keep the front-end mirror in `routes-create.js` in sync with the data file.
+- Seasonal archetypes are curated in `data/seasonalProfiles.js` (UK holiday →
+  `generic_leisure`; US snowbird → `mild_winter`; US beach → `generic_leisure`;
+  ski already tagged). `demandToPax`/cargo need the pax `isFloor`/`isDomestic`
+  flags to scale correctly.
+
+**Known next steps / not-yet-done (do NOT assume these are done):**
+- **International & non-UK/US-domestic pax still run on raw gravity** — not
+  anchored, tends to overestimate (e.g. PHX–CYVR ~4,400/day). Anchor via T-100
+  international / other sources if realism there matters.
+- **Snowbird archetype is symmetric** — a route *from* a US snowbird base reads
+  `mild_winter` in both directions (e.g. showed SUNBELT on a Vancouver route).
+  Consider making it directional.
+- **Tiny routes still round to 0** in some displays under a few pax/day.
+
+## Cargo demand — DISPLAY ONLY, does not yet drive revenue (2026-07)
+
+The per-route, per-type cargo figures shown in the route picker are **display /
+attractiveness only**. They do **NOT** feed revenue yet.
+
+- Cargo is **derived**, not stored (don't build a 30M per-type-per-route file):
+  `route cargo = route pax (magnitude) × destination cargo character (mix)`.
+  The destination mix/intensity is per-airport from `airportCargoService`
+  (`cargoProfile`, era-RELATIVE 0–100 per type; absolute era growth is applied
+  once in the front-end tonnes conversion — do not double-scale).
+- Two pax-linked components in `routes-create.js`: **belly** (~20 kg/pax,
+  General — bags, present wherever there's pax, every era) + **commercial
+  freight** (~35 kg/pax matured over eras, split across types by the dest mix,
+  incl. per-type era availability e.g. no express pre-1971). Tonnage displays as
+  kg <1t, 0.1t from 1–5t, whole tonnes above (`fmtTonnes`; keep values
+  fractional — don't pre-round).
+
+**Cargo revenue is the big TODO.** Currently `worldTimeService.processTemplate-
+Revenue` computes cargo revenue from `allocatedKg × rate × flat CARGO_TYPES
+baseDemand` — it ignores the route/type demand entirely and has no demand cap.
+Next steps to make cargo revenue real:
+- **Cap cargo carried by the per-type route demand** (belly + commercial),
+  per type, so you can't earn more than the market supports.
+- **Enforce belly vs freighter:** the belly (bags) portion rides only in
+  **passenger** aircraft holds — a pure **Cargo** aircraft on the route must NOT
+  get the belly bags, only the commercial freight. (This is the caveat the user
+  flagged: a freighter carrying only General-from-bags would be 0.)
+- Wire the `isFloor`/`isDomestic`/seasonal split through so cargo revenue tracks
+  the same demand the picker shows.
+
 ## Local dev / offline mode (added 2026-05)
 
 The user flies on plane WiFi frequently. A local PostgreSQL 18 instance is set
