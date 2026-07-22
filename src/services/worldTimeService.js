@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 const path = require('path');
 const { STORAGE_AIRPORTS } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
-const { CARGO_TYPES, CARGO_TYPE_KEYS, migrateOldConfig, migrateOldRates } = require('../config/cargoTypes');
+const { CARGO_TYPES, CARGO_TYPE_KEYS, migrateOldConfig, migrateOldRates, defaultCargoRates } = require('../config/cargoTypes');
 
 // Verbose per-tick simulation logs (maintenance checks, template revenue,
 // refresh progress) are gated behind DEBUG_SIM to keep the console readable.
@@ -916,6 +916,7 @@ class WorldTimeService {
       let myMembershipRef = null; // hoisted for ground handler tier in cost calc
       let routeIsDomestic = false; // hoisted for cargo market era curve (set from demand lookup)
       let routeDemandValue = 50; // hoisted for cargo market sizing (set from demand lookup)
+      let routeRouteType = null; // hoisted for cargo seasonal adjustment (set from demand lookup)
       // Competitors' cargo capacity on this pair, for the cargo fair-share split
       // (populated in the competition section below; empty = monopoly). Each entry
       // is { config: {typeKey:kg}, isPax: bool } for a competing route's aircraft.
@@ -935,6 +936,7 @@ class WorldTimeService {
           );
           routeDemandValue = routeDemand.demand;
           routeIsDomestic = routeDemand.isDomestic === true;
+          routeRouteType = routeDemand.routeType || null;
           demandFactor = 0.78 + 0.22 * (routeDemandValue / 100);
         } catch (demandErr) {
           // Demand lookup failed, use defaults
@@ -1260,17 +1262,44 @@ class WorldTimeService {
       // a pure freighter ('Cargo') taps the commercial market only.
       let cargoRevenue = 0;
       const cargoByType = {};
-      const cargoConfig = aircraft?.cargoConfig
+      let cargoConfig = aircraft?.cargoConfig
         || (aircraft ? migrateOldConfig(aircraft.cargoLightKg, aircraft.cargoStandardKg, aircraft.cargoHeavyKg) : null);
-      const cargoRates = route.cargoRates
+      // Fallback: if cargoConfig is still null but the aircraft has cargo capacity,
+      // generate a sensible default (catches AI silent failures, old data, etc.)
+      if (!cargoConfig && aircraft?.aircraft) {
+        try {
+          const { configureCargo } = require('./aiFleetConfigService');
+          const generated = configureCargo(aircraft.aircraft);
+          if (generated) cargoConfig = generated.cargoConfig;
+        } catch (_) { /* no cargo capability or missing module */ }
+      }
+      let cargoRates = route.cargoRates
         || migrateOldRates(route.cargoLightRate, route.cargoStandardRate, route.cargoHeavyRate);
+      // Fallback: if all rates are zero (old route, no rates ever set), use era-scaled
+      // defaults so cargo revenue is neither inflated nor absent.
+      if (!cargoRates || CARGO_TYPE_KEYS.every(k => !(parseFloat(cargoRates[k]) > 0))) {
+        const eraMult = eraEconomicService.getEraMultiplier(worldYear);
+        cargoRates = defaultCargoRates(eraMult);
+      }
 
       if (cargoConfig) {
         const cargoDemandService = require('./cargoDemandService');
         const { computeAirportCargoDemand } = require('./airportCargoService');
+        const seasonalityService = require('./seasonalityService');
 
         // 1. Route daily cargo market (kg): route pax market × dest cargo character.
-        const routePax = cargoDemandService.demandToPax(routeDemandValue, worldYear, routeIsDomestic);
+        //    Seasonal adjustment: blend between summer/winter demand based on game month.
+        //    Cosine curve: peak summer = July (month 6), peak winter = January (month 0).
+        let cargoDemand = routeDemandValue;
+        try {
+          const seasonal = seasonalityService.computeSeasonal(
+            route.departureAirport, route.arrivalAirport, routeDemandValue, routeRouteType, worldYear
+          );
+          const gameMonth = currentGameTime.getMonth(); // 0-11
+          const summerBlend = (1 + Math.cos(Math.PI * (gameMonth - 6) / 6)) / 2; // 0=winter, 1=summer
+          cargoDemand = seasonal.winter * (1 - summerBlend) + seasonal.summer * summerBlend;
+        } catch (_) { /* archetype lookup failed, use annual demand */ }
+        const routePax = cargoDemandService.demandToPax(cargoDemand, worldYear, routeIsDomestic);
         const cargoProfile = route.arrivalAirport
           ? computeAirportCargoDemand(route.arrivalAirport, worldYear) : {};
         const market = cargoDemandService.routeCargoMarket({ routePax, year: worldYear, cargoProfile });
