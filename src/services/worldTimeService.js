@@ -2041,7 +2041,7 @@ class WorldTimeService {
         try {
           // Get fleet
           const fleet = await UserAircraft.findAll({
-            where: { worldMembershipId: membership.id, status: { [Op.notIn]: ['sold', 'returned'] } },
+            where: { worldMembershipId: membership.id, status: { [Op.notIn]: ['sold'] } },
             include: [{ model: Aircraft, as: 'aircraft' }]
           });
 
