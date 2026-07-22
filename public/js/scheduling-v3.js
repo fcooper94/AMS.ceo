@@ -3830,7 +3830,7 @@ function showTurnaroundModal(title, content) {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 2500;
+      z-index: 10001;
     " onclick="closeTurnaroundModal()">
       <div style="
         background: #161b22;
@@ -6360,9 +6360,11 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               const arrMins = arrH2 * 60 + arrM2;
               return maintMins > depMins && maintMins < arrMins;
             }
-            // Multi-day: DOW-based matching for turnaround/transit days
-            if (arrOffset === 0) return false;
-            const lastTurnaroundDay = arrOffset === 1 ? arrOffset : arrOffset - 1;
+            // Multi-day: DOW-based matching for transit days only (not arrival day).
+            // arrOffset === 1 (overnight): no transit days — aircraft arrives and is at base,
+            // so the daily check should render as a normal standalone block.
+            if (arrOffset <= 1) return false;
+            const lastTurnaroundDay = arrOffset - 1;
             for (let d = 1; d <= lastTurnaroundDay; d++) {
               if ((depDow + d) % 7 === maintDow) return true;
             }
