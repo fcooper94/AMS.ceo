@@ -20,21 +20,17 @@ class WorldTimeService {
     this.tickRate = 1000; // Update every 1 second (real time)
     this.worlds = new Map(); // Map of worldId -> { world, tickInterval, inMemoryTime, lastTickAt }
     // Throttle heavy DB queries to reduce load on remote databases
-    this.lastCreditCheck = 0; // Timestamp of last credit check
-    this.lastFlightCheck = 0; // Timestamp of last flight check
-    this.lastMaintenanceCheck = 0; // Timestamp of last maintenance check
+    // Per-world processing state so a slow world doesn't starve others
+    this._worldProcessing = new Map(); // worldId -> { lastCreditCheck, lastFlightCheck, ... }
     this.lastMaintenanceRefresh = {}; // Map of worldId -> last game week refreshed
     this.lastMaintenancePruneDay = {}; // Map of worldId -> last game date completed-record prune ran
     this.creditCheckInterval = 30000; // Check credits every 30 seconds (real time)
     this.flightCheckInterval = 5000; // Check flights every 5 seconds (real time)
     this.maintenanceCheckInterval = 10000; // Check maintenance every 10 seconds (real time)
-    this.isProcessingCredits = false; // Prevent overlapping credit queries
-    this.isProcessingFlights = false; // Prevent overlapping flight queries
-    this.isProcessingMaintenance = false; // Prevent overlapping maintenance queries
-    this.isRefreshingMaintenance = false; // Prevent overlapping maintenance refresh
-    this.lastListingCheck = 0; // Timestamp of last listing check
     this.listingCheckInterval = 60000; // Check listings every 60 seconds (real time)
-    this.isProcessingListings = false; // Prevent overlapping listing queries
+    this.recallCheckInterval = 30000; // Check recalls every 30 seconds (real time)
+    this.reputationCheckInterval = 60000; // Recalculate reputation every 60 seconds (real time)
+    this.notificationCheckInterval = 30000; // Emit notification refresh every 30 real seconds
     this.lastLeaseIncomeWeek = {}; // Map of worldId -> last game week processed for lease/storage income
     // AI decision processing
     this.lastAICheck = 0;
@@ -42,28 +38,82 @@ class WorldTimeService {
     this.isProcessingAI = false;
     // AI flight templates repeat weekly - no refresh needed
     // Notification refresh via Socket.IO
-    this.lastNotificationCheck = 0;
-    this.notificationCheckInterval = 30000; // Emit notification refresh every 30 real seconds
     this.lastNotificationDayEmitted = {}; // Map of worldId -> last game day where daily notification was emitted
-    // Recall processing
-    this.lastRecallCheck = 0;
-    this.recallCheckInterval = 30000; // Check recalls every 30 seconds (real time)
-    this.isProcessingRecalls = false;
-    // Reputation processing
-    this.lastReputationCheck = 0;
-    this.reputationCheckInterval = 60000; // Recalculate reputation every 60 seconds (real time)
-    this.isProcessingReputation = false;
     // Weekly overhead recording
     this.lastOverheadWeek = {}; // Map of worldId -> last game week (Monday date) overheads were recorded
-    this.isProcessingOverheads = false;
     // Marketing boost cache — Map<membershipId, boostPct> cleared at start of each flight-check cycle
     this.marketingBoostCache = new Map();
     // Weekly loan payment processing
     this.lastLoanWeek = {}; // Map of worldId -> last game week loans were processed
-    this.isProcessingLoans = false;
     // Weekly aircraft delivery processing
     this.lastDeliveryWeek = {};
-    this.isProcessingDeliveries = false;
+    // Membership ID cache: avoids re-querying every 5s per processing function
+    this._membershipCache = new Map(); // worldId -> { ids: [...], expiry: timestamp }
+    this._membershipCacheTTL = 30000; // 30 seconds
+  }
+
+  /**
+   * Get cached active membership IDs for a world. Refreshed every 30s.
+   * Called by every processing function — avoids 6+ identical queries per tick cycle.
+   */
+  async _getMembershipIds(worldId) {
+    const cached = this._membershipCache.get(worldId);
+    if (cached && Date.now() < cached.expiry) return cached.ids;
+    const memberships = await WorldMembership.findAll({
+      where: { worldId, isActive: true },
+      attributes: ['id']
+    });
+    const ids = memberships.map(m => m.id);
+    this._membershipCache.set(worldId, { ids, expiry: Date.now() + this._membershipCacheTTL });
+    this._updateIntervalScale(worldId, ids.length);
+    return ids;
+  }
+
+  /**
+   * Get per-world processing state (throttle timestamps + busy flags).
+   * Each world gets its own state so a slow world can't starve others.
+   * Intervals scale with world size — a world with 50 AI airlines doesn't
+   * need to check flights every 5s when processing takes 10s+.
+   */
+  _wp(worldId) {
+    let s = this._worldProcessing.get(worldId);
+    if (!s) {
+      s = {
+        lastCreditCheck: 0, isProcessingCredits: false,
+        lastFlightCheck: 0, isProcessingFlights: false,
+        lastMaintenanceCheck: 0, isProcessingMaintenance: false,
+        isRefreshingMaintenance: false,
+        lastListingCheck: 0, isProcessingListings: false,
+        lastNotificationCheck: 0,
+        lastRecallCheck: 0, isProcessingRecalls: false,
+        lastReputationCheck: 0, isProcessingReputation: false,
+        isProcessingOverheads: false,
+        isProcessingLoans: false,
+        isProcessingDeliveries: false,
+        // Adaptive multiplier — set once when memberships are first cached
+        intervalScale: 1,
+      };
+      this._worldProcessing.set(worldId, s);
+    }
+    return s;
+  }
+
+  /**
+   * Adaptive interval for a world: base interval × scale factor.
+   * Scale is based on membership count (proxy for world complexity).
+   * 1-5 memberships: 1x, 10: 1.5x, 20: 2x, 50+: 3x.
+   */
+  _interval(baseMs, wp) {
+    return Math.round(baseMs * wp.intervalScale);
+  }
+
+  /**
+   * Update the adaptive scale factor when membership count is known.
+   */
+  _updateIntervalScale(worldId, membershipCount) {
+    const wp = this._wp(worldId);
+    // Gentle ramp: 1x up to 5 members, then +0.1x per member, cap at 3x
+    wp.intervalScale = Math.min(3, 1 + Math.max(0, membershipCount - 5) * 0.1);
   }
 
   /**
@@ -356,64 +406,65 @@ class WorldTimeService {
     }
 
     const now = Date.now();
+    const wp = this._wp(worldId); // per-world processing state
 
     // Check for credit deductions (throttled to reduce DB load)
-    if (!this.isProcessingCredits && now - this.lastCreditCheck >= this.creditCheckInterval) {
-      this.lastCreditCheck = now;
-      this.isProcessingCredits = true;
+    if (!wp.isProcessingCredits && now - wp.lastCreditCheck >= this._interval(this.creditCheckInterval, wp)) {
+      wp.lastCreditCheck = now;
+      wp.isProcessingCredits = true;
       this.processCredits(worldId, gameTime)
         .catch(err => console.error('Error processing credits:', err.message))
-        .finally(() => { this.isProcessingCredits = false; });
+        .finally(() => { wp.isProcessingCredits = false; });
     }
 
     // Process flight statuses (throttled to reduce DB load)
-    if (!this.isProcessingFlights && now - this.lastFlightCheck >= this.flightCheckInterval) {
-      this.lastFlightCheck = now;
-      this.isProcessingFlights = true;
+    if (!wp.isProcessingFlights && now - wp.lastFlightCheck >= this._interval(this.flightCheckInterval, wp)) {
+      wp.lastFlightCheck = now;
+      wp.isProcessingFlights = true;
       // Clear marketing boost cache at the start of each flight-check cycle so it's fresh per cycle
       this.marketingBoostCache.clear();
       this.processFlights(worldId, gameTime)
         .catch(err => console.error('Error processing flights:', err.message))
-        .finally(() => { this.isProcessingFlights = false; });
+        .finally(() => { wp.isProcessingFlights = false; });
     }
 
     // Process maintenance checks (throttled to reduce DB load)
-    if (!this.isProcessingMaintenance && now - this.lastMaintenanceCheck >= this.maintenanceCheckInterval) {
-      this.lastMaintenanceCheck = now;
-      this.isProcessingMaintenance = true;
+    if (!wp.isProcessingMaintenance && now - wp.lastMaintenanceCheck >= this._interval(this.maintenanceCheckInterval, wp)) {
+      wp.lastMaintenanceCheck = now;
+      wp.isProcessingMaintenance = true;
       this.processMaintenance(worldId, gameTime)
         .catch(err => console.error('Error processing maintenance:', err.message))
-        .finally(() => { this.isProcessingMaintenance = false; });
+        .finally(() => { wp.isProcessingMaintenance = false; });
     }
 
     // Refresh auto-scheduled maintenance once per game day
     // This ensures daily checks never expire (they have ~1-2 day validity)
     const gameDay = Math.floor(gameTime.getTime() / (24 * 60 * 60 * 1000));
     const lastRefreshDay = this.lastMaintenanceRefresh[worldId] || 0;
-    if (!this.isRefreshingMaintenance && gameDay > lastRefreshDay) {
+    if (!wp.isRefreshingMaintenance && gameDay > lastRefreshDay) {
       this.lastMaintenanceRefresh[worldId] = gameDay;
-      this.isRefreshingMaintenance = true;
+      wp.isRefreshingMaintenance = true;
       this.refreshMaintenanceSchedules(worldId)
         .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
-        .finally(() => { this.isRefreshingMaintenance = false; });
+        .finally(() => { wp.isRefreshingMaintenance = false; });
     }
 
     // Process aircraft listings (NPC buyers/lessees) and lease-out income
-    if (!this.isProcessingListings && now - this.lastListingCheck >= this.listingCheckInterval) {
-      this.lastListingCheck = now;
-      this.isProcessingListings = true;
+    if (!wp.isProcessingListings && now - wp.lastListingCheck >= this._interval(this.listingCheckInterval, wp)) {
+      wp.lastListingCheck = now;
+      wp.isProcessingListings = true;
       this.processListings(worldId, gameTime)
         .catch(err => console.error('Error processing listings:', err.message))
-        .finally(() => { this.isProcessingListings = false; });
+        .finally(() => { wp.isProcessingListings = false; });
     }
 
     // Process aircraft recall completions (recalling -> active)
-    if (!this.isProcessingRecalls && now - this.lastRecallCheck >= this.recallCheckInterval) {
-      this.lastRecallCheck = now;
-      this.isProcessingRecalls = true;
+    if (!wp.isProcessingRecalls && now - wp.lastRecallCheck >= this._interval(this.recallCheckInterval, wp)) {
+      wp.lastRecallCheck = now;
+      wp.isProcessingRecalls = true;
       this.processRecalls(worldId, gameTime)
         .catch(err => console.error('Error processing recalls:', err.message))
-        .finally(() => { this.isProcessingRecalls = false; });
+        .finally(() => { wp.isProcessingRecalls = false; });
     }
 
     // Process AI airline decisions (SP worlds only)
@@ -427,52 +478,52 @@ class WorldTimeService {
     }
 
     // Recalculate airline reputation scores
-    if (!this.isProcessingReputation && now - this.lastReputationCheck >= this.reputationCheckInterval) {
-      this.lastReputationCheck = now;
-      this.isProcessingReputation = true;
+    if (!wp.isProcessingReputation && now - wp.lastReputationCheck >= this._interval(this.reputationCheckInterval, wp)) {
+      wp.lastReputationCheck = now;
+      wp.isProcessingReputation = true;
       this.processReputation(worldId, gameTime)
         .catch(err => console.error('Error processing reputation:', err.message))
-        .finally(() => { this.isProcessingReputation = false; });
+        .finally(() => { wp.isProcessingReputation = false; });
     }
 
     // Record weekly overhead costs (staff, leases, contractors) once per game week
     const WeeklyFinancial = require('../models/WeeklyFinancial');
     const currentWeekStart = WeeklyFinancial.getWeekStart(gameTime);
     const lastOverheadWeek = this.lastOverheadWeek[worldId] || '';
-    if (!this.isProcessingOverheads && currentWeekStart !== lastOverheadWeek) {
+    if (!wp.isProcessingOverheads && currentWeekStart !== lastOverheadWeek) {
       this.lastOverheadWeek[worldId] = currentWeekStart;
-      this.isProcessingOverheads = true;
+      wp.isProcessingOverheads = true;
       this.recordWeeklyOverheads(worldId, gameTime, currentWeekStart)
         .catch(err => console.error('Error recording weekly overheads:', err.message))
-        .finally(() => { this.isProcessingOverheads = false; });
+        .finally(() => { wp.isProcessingOverheads = false; });
     }
 
     // Process weekly loan payments once per game week
     const lastLoanWeek = this.lastLoanWeek[worldId] || '';
-    if (!this.isProcessingLoans && currentWeekStart !== lastLoanWeek) {
+    if (!wp.isProcessingLoans && currentWeekStart !== lastLoanWeek) {
       this.lastLoanWeek[worldId] = currentWeekStart;
-      this.isProcessingLoans = true;
+      wp.isProcessingLoans = true;
       this.processLoanPayments(worldId, gameTime)
         .catch(err => console.error('Error processing loan payments:', err.message))
-        .finally(() => { this.isProcessingLoans = false; });
+        .finally(() => { wp.isProcessingLoans = false; });
     }
 
     // Process aircraft deliveries once per game week
     const lastDeliveryWeek = this.lastDeliveryWeek[worldId] || '';
-    if (!this.isProcessingDeliveries && currentWeekStart !== lastDeliveryWeek) {
+    if (!wp.isProcessingDeliveries && currentWeekStart !== lastDeliveryWeek) {
       this.lastDeliveryWeek[worldId] = currentWeekStart;
-      this.isProcessingDeliveries = true;
+      wp.isProcessingDeliveries = true;
       this.processDeliveries(worldId, gameTime)
         .catch(err => console.error('Error processing deliveries:', err.message))
-        .finally(() => { this.isProcessingDeliveries = false; });
+        .finally(() => { wp.isProcessingDeliveries = false; });
     }
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
 
     // Emit notification refresh signal (throttled to every 30 real seconds)
     // Picks up computed notification changes from processing cycles above
-    if (global.io && now - this.lastNotificationCheck >= this.notificationCheckInterval) {
-      this.lastNotificationCheck = now;
+    if (global.io && now - wp.lastNotificationCheck >= this.notificationCheckInterval) {
+      wp.lastNotificationCheck = now;
       global.io.emit('notifications:refresh', { worldId: worldId });
     }
 
@@ -591,13 +642,8 @@ class WorldTimeService {
     if (!worldState) return;
 
     try {
-      // Get all memberships for this world
-      const memberships = await WorldMembership.findAll({
-        where: { worldId: worldId, isActive: true },
-        attributes: ['id']
-      });
-
-      const membershipIds = memberships.map(m => m.id);
+      // Get all memberships for this world (cached, refreshed every 30s)
+      const membershipIds = await this._getMembershipIds(worldId);
       if (membershipIds.length === 0) return;
 
       const gameDate = currentGameTime.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -644,6 +690,8 @@ class WorldTimeService {
 
         if (currentMinutesOfDay >= completionMinutes) {
           await this.processTemplateRevenue(template, worldId, currentGameTime, gameDate);
+        } else if (DEBUG_SIM) {
+          simLog(`⏳ Flight ${template.route?.routeNumber || '?'} not yet complete: now=${currentMinutesOfDay}min, completes=${completionMinutes}min (dep=${depMinutes}+dur=${totalDuration})`);
         }
       }
 
@@ -1440,7 +1488,7 @@ class WorldTimeService {
         await aircraft.save();
       }
     } catch (error) {
-      console.error('Error processing flight revenue:', error.message);
+      console.error(`Error processing flight revenue for route ${flight.route?.routeNumber || flight.route?.id || '?'}:`, error.message, error.stack?.split('\n').slice(0, 3).join(' '));
     }
   }
 
@@ -2147,13 +2195,8 @@ class WorldTimeService {
     if (!worldState) return;
 
     try {
-      // Get all memberships for this world
-      const memberships = await WorldMembership.findAll({
-        where: { worldId: worldId, isActive: true },
-        attributes: ['id']
-      });
-
-      const membershipIds = memberships.map(m => m.id);
+      // Get all memberships for this world (cached)
+      const membershipIds = await this._getMembershipIds(worldId);
       if (membershipIds.length === 0) return;
 
       // Get current game day of week (0 = Sunday, 6 = Saturday)
@@ -2551,13 +2594,8 @@ class WorldTimeService {
       // Import refreshAutoScheduledMaintenance from fleet routes
       const { refreshAutoScheduledMaintenance } = require('../routes/fleet');
 
-      // Get all memberships for this world
-      const memberships = await WorldMembership.findAll({
-        where: { worldId, isActive: true },
-        attributes: ['id']
-      });
-
-      const membershipIds = memberships.map(m => m.id);
+      // Get all memberships for this world (cached)
+      const membershipIds = await this._getMembershipIds(worldId);
       if (membershipIds.length === 0) return;
 
       // Get all aircraft with auto-scheduling enabled (exclude stored/sold/listed)
@@ -2804,13 +2842,8 @@ class WorldTimeService {
    */
   async processRecalls(worldId, currentGameTime) {
     try {
-      const memberships = await WorldMembership.findAll({
-        where: { worldId, isActive: true },
-        attributes: ['id']
-      });
-      if (memberships.length === 0) return;
-
-      const membershipIds = memberships.map(m => m.id);
+      const membershipIds = await this._getMembershipIds(worldId);
+      if (membershipIds.length === 0) return;
       const recallingAircraft = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
