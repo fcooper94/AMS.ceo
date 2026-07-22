@@ -36,8 +36,8 @@ if (process.env.DATABASE_URL) {
       idle_in_transaction_session_timeout: 60000
     },
     pool: {
-      max: 5,  // Reduced from 10 to prevent exhaustion
-      min: 0,
+      max: 15,  // 5 worlds tick processing + API requests need headroom
+      min: 2,
       acquire: 60000,
       idle: 10000,
       evict: 1000  // Check for stale connections every second
@@ -68,8 +68,8 @@ if (process.env.DATABASE_URL) {
       dialect: 'postgres',
       logging: false, // Disable all SQL query logging
       pool: {
-        max: 5,
-        min: 0,
+        max: 15,
+        min: 2,
         acquire: 60000,
         idle: 10000,
         evict: 1000
