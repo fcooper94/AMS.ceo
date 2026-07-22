@@ -975,6 +975,7 @@ async function loadAvailableAirports() {
                 demandCategory: dest.demandCategory,
                 routeType: dest.routeType,
                 isFloor: dest.isFloor === true,
+                isDomestic: dest.isDomestic === true,
                 indicators: dest.indicators || null,
                 cargoProfile: dest.cargoProfile || null,
                 seasonal: dest.seasonal || null,
@@ -1062,6 +1063,7 @@ async function loadDemandForAirports(airports) {
               demandCategory: dest.demandCategory,
               routeType: dest.routeType,
               isFloor: dest.isFloor === true,
+              isDomestic: dest.isDomestic === true,
               indicators: dest.indicators || null,
               cargoProfile: dest.cargoProfile || null,
               seasonal: dest.seasonal || null,
@@ -1312,7 +1314,6 @@ function generateYieldIndicator(airport) {
       </div>`;
     }).join('')}
     <div style="margin-top: 0.35rem; font-size: 0.6rem; color: #888;">
-      ${b.originCountry || '??'} ${formatCurrency(b.originGdp || 0)} / ${b.destCountry || '??'} ${formatCurrency(b.destGdp || 0)}<br>
       ${(b.distKm || 0).toLocaleString()} km
     </div>
   ` : '';
@@ -1480,9 +1481,51 @@ const DOW_MULTIPLIERS = {
   winter_sun:      [0.80, 0.75, 0.75, 0.85, 1.20, 1.35, 1.30],
   ski:             [0.80, 0.75, 0.75, 0.85, 1.20, 1.35, 1.30],
   generic_leisure: [0.82, 0.76, 0.76, 0.82, 1.20, 1.39, 1.25],
+  mild_winter:     [1.02, 1.00, 0.98, 1.00, 1.10, 0.98, 0.92], // mixed business+leisure, near-flat
   flat:            [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00],
 };
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Cargo is scaled to the ROUTE, not the whole airport. Two pax-linked components
+// (both track the route's passenger demand, so magnitudes are realistic per-route
+// and consistent with the pax figures, in every era):
+//   - Belly cargo: bags + belly freight in a pax aircraft's hold (~20 kg/pax,
+//     all General). Non-zero wherever there's pax. A pure freighter wouldn't get
+//     this — that distinction is a later revenue-engine step.
+//   - Commercial freight: the sellable freight/mail market on the route (~35
+//     kg/pax at full maturity), split across cargo types by the destination's
+//     cargo character/mix and modulated by how much of a cargo hub it is.
+// The airport cargo PROFILE (airportCargoService) is still used — but only for the
+// destination's cargo INTENSITY and the per-type MIX (incl. era availability,
+// e.g. no express pre-1971), NOT for absolute tonnage.
+const BELLY_KG_PER_PAX = 20;
+const COMMERCIAL_KG_PER_PAX = 35;
+
+// Freight-per-pax grew modestly as air freight industrialised (most freight
+// growth just tracked more flights/pax). ~0.55 in 1950 → 1.0 by 2000.
+function _cargoEraMult(year) {
+  const pts = [[1950, 0.55], [1970, 0.72], [1990, 0.90], [2000, 1.0]];
+  if (year <= pts[0][0]) return pts[0][1];
+  if (year >= 2000) return 1.0;
+  for (let i = 1; i < pts.length; i++) {
+    if (year <= pts[i][0]) {
+      const t = (year - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0]);
+      return pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t;
+    }
+  }
+  return 1.0;
+}
+// Destination cargo intensity from its General score (typical Major ≈ 0.9, hub ≈ 1.7).
+function _destCargoIntensity(cargoProfile) {
+  return Math.max(0.4, Math.min(1.7, ((cargoProfile && cargoProfile.general) || 0) / 60));
+}
+// Route passengers per weekday for a season ('summer'/'winter'), Mon-first.
+function _routePaxByDay(demandData, icao, year, seasonKey) {
+  const s = demandData && demandData.seasonal;
+  const mults = DOW_MULTIPLIERS[s && s.archetype] || DOW_MULTIPLIERS.flat;
+  const score = s ? s[seasonKey] : (demandData && demandData.demand) || 0;
+  return mults.map(m => demandToPax(Math.min(100, Math.round((score || 0) * m)), year, icao, demandData && demandData.isFloor, demandData && demandData.isDomestic));
+}
 
 // Cargo DOW multipliers — weekdays heavier (express/general), weekend lighter.
 // Seasonal swing is mild (~15% vs ~60% for leisure pax); applied at 20% of pax swing.
@@ -1504,6 +1547,25 @@ function _interpWorldPax(year) {
     }
   }
   return 1807;
+}
+
+// Gentler era curve for real-data-anchored UK/US domestic routes — MUST mirror
+// src/data/domesticEraScale.js. Busy domestic routes grew ~5×, not ~58×, since
+// 1950; using the steep world-pax curve for them makes early-era scores clamp at
+// the ceiling and read an identical ~137/day. This factor cancels against the
+// back-projection, so it just yields realistic, differentiated early-era pax.
+const DOMESTIC_ERA = { 1950:0.17, 1960:0.28, 1970:0.44, 1980:0.62, 1990:0.90, 2000:1.15, 2010:1.15, 2020:1.10 };
+function _interpDomesticEra(year) {
+  const keys = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020];
+  if (year <= 1950) return DOMESTIC_ERA[1950];
+  if (year >= 2020) return DOMESTIC_ERA[2020];
+  for (let i = 1; i < keys.length; i++) {
+    if (year <= keys[i]) {
+      const t = (year - keys[i - 1]) / (keys[i] - keys[i - 1]);
+      return DOMESTIC_ERA[keys[i - 1]] + (DOMESTIC_ERA[keys[i]] - DOMESTIC_ERA[keys[i - 1]]) * t;
+    }
+  }
+  return DOMESTIC_ERA[2020];
 }
 
 function closeCapacityPanel() {
@@ -1544,10 +1606,13 @@ const DEMAND_FLOOR_KNEE = 12;
  * `isFloor` marks a no-real-service route: its low figure gets a ±1 wobble so a
  * column of them doesn't all read "8". Real routes never get this, so their
  * exact ordering (e.g. Jersey > Guernsey) is preserved.
+ * `isDomestic` marks a UK/US real-data-anchored route: it uses the gentler
+ * DOMESTIC_ERA curve (matching how the score was back-projected) so big routes
+ * don't clamp/cluster in early eras.
  */
-function demandToPax(score, year, seed, isFloor) {
+function demandToPax(score, year, seed, isFloor, isDomestic) {
   if (!score || score <= 0) return 0;
-  const eraFactor = _interpWorldPax(year || 2020) / 1807;
+  const eraFactor = isDomestic ? _interpDomesticEra(year || 2020) : (_interpWorldPax(year || 2020) / 1807);
   let pax = score * PAX_SCORE100_2020 / 100 * eraFactor;
   // Only wobble modest figures. Big, well-differentiated routes (esp. those
   // anchored to real CAA data) keep their exact value; the "everything reads 20"
@@ -1594,9 +1659,58 @@ function cargoScoreToTonnes(score, year) {
   return Math.round(score * CARGO_SCORE100_2020 / 100 * eraFactor);
 }
 
+// Cargo tonnage display: kg below 1t (e.g. 700kg), one decimal from 1–5t (1.1t),
+// whole tonnes above 5t (147t), kt for very large. Expects a fractional tonne
+// value — callers must NOT pre-round to integer tonnes.
 function fmtTonnes(t) {
-  if (t >= 1000) return `${(t / 1000).toFixed(1)}kt`;
-  return `${t}t`;
+  if (!t || t <= 0) return '0';
+  if (t < 1)    return `${Math.round(t * 100) * 10}kg`; // nearest 10 kg
+  if (t < 5)    return `${t.toFixed(1)}t`;
+  if (t < 1000) return `${Math.round(t)}t`;
+  return `${(t / 1000).toFixed(1)}kt`;
+}
+
+// Hover tooltip + highlight for the demand/supply chart bars. Set up once;
+// works via document-level delegation on `.paxbar`, so it survives the charts
+// being re-rendered. Each bar carries data-label/data-value/data-color.
+let _paxTipInit = false;
+function _ensurePaxBarTooltip() {
+  if (_paxTipInit) return;
+  _paxTipInit = true;
+
+  const style = document.createElement('style');
+  style.textContent = `
+    .paxbar { outline: 1px solid transparent; outline-offset: -1px; transition: filter .1s ease, outline-color .1s ease; cursor: pointer; }
+    .paxbar:hover { outline-color: rgba(255,255,255,0.5); }
+    .paxbar:hover > .paxbar-fill { filter: brightness(1.4); }`;
+  document.head.appendChild(style);
+
+  const tip = document.createElement('div');
+  tip.id = 'paxBarTooltip';
+  tip.style.cssText = 'position:fixed; z-index:9500; pointer-events:none; display:none;'
+    + ' background:#141b2b; border:1px solid rgba(255,255,255,0.18); border-radius:6px;'
+    + ' padding:6px 9px; font-size:0.72rem; line-height:1.35; box-shadow:0 4px 14px rgba(0,0,0,0.55); white-space:nowrap;';
+  document.body.appendChild(tip);
+
+  document.addEventListener('mouseover', (e) => {
+    const bar = e.target.closest && e.target.closest('.paxbar');
+    if (!bar) return;
+    tip.innerHTML = `<span style="color:${bar.dataset.color || '#fff'}; font-weight:700;">${bar.dataset.label || ''}</span>`
+      + `<br><span style="color:#cbd5e1;">${bar.dataset.value || ''}</span>`;
+    tip.style.display = 'block';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (tip.style.display !== 'block') return;
+    let x = e.clientX + 12, y = e.clientY + 12;
+    if (x + tip.offsetWidth > window.innerWidth - 8) x = e.clientX - tip.offsetWidth - 12;
+    if (y + tip.offsetHeight > window.innerHeight - 8) y = e.clientY - tip.offsetHeight - 12;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  });
+  document.addEventListener('mouseout', (e) => {
+    const bar = e.target.closest && e.target.closest('.paxbar');
+    if (bar && !bar.contains(e.relatedTarget)) tip.style.display = 'none';
+  });
 }
 
 // Generate supply indicator: per-day chart in tooltip
@@ -1638,8 +1752,8 @@ function generateSupplyIndicator(airport) {
   const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020;
   const summerScoreByDay = mults.map(m => Math.min(100, Math.round((s?.summer || demand) * m)));
   const winterScoreByDay = mults.map(m => Math.min(100, Math.round((s?.winter || demand) * m)));
-  const summerPaxByDay = summerScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode, demandData?.isFloor));
-  const winterPaxByDay = winterScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode, demandData?.isFloor));
+  const summerPaxByDay = summerScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode, demandData?.isFloor, demandData?.isDomestic));
+  const winterPaxByDay = winterScoreByDay.map(sc => demandToPax(sc, gameYear, airport.icaoCode, demandData?.isFloor, demandData?.isDomestic));
 
   // My supply: exact seats from actual configured cabin (economySeats + premium + business + first).
   const myCapDay = myCapacityByDay[airport.id] || [0, 0, 0, 0, 0, 0, 0];
@@ -1657,9 +1771,9 @@ function generateSupplyIndicator(airport) {
   const CHART_H = 140;
   const BAR_W = 13;
 
-  const bar = (h, totalH, bg) => `
-    <div style="width:${BAR_W}px; height:${totalH}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
-      ${h > 0 ? `<div style="position:absolute; bottom:0; width:100%; height:${h}px; background:${bg}; border-radius:3px 3px 0 0;"></div>` : ''}
+  const bar = (h, totalH, bg, label, value) => `
+    <div class="paxbar" data-label="${label}" data-value="${fmtPax(value)} pax/day" data-color="${bg}" style="width:${BAR_W}px; height:${totalH}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
+      ${h > 0 ? `<div class="paxbar-fill" style="position:absolute; bottom:0; width:100%; height:${h}px; background:${bg}; border-radius:3px 3px 0 0;"></div>` : ''}
     </div>`;
 
   const chart = DOW_LABELS.map((label, i) => {
@@ -1677,19 +1791,19 @@ function generateSupplyIndicator(airport) {
         <div style="display:flex; gap:2px; align-items:flex-end; position:relative;">
           <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
             ${lbl(summerPaxByDay[i], '#f59e0b')}
-            ${bar(suH, CHART_H, '#f59e0b')}
+            ${bar(suH, CHART_H, '#f59e0b', 'Summer demand', summerPaxByDay[i])}
           </div>
           <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
             ${lbl(winterPaxByDay[i], '#38bdf8')}
-            ${bar(wiH, CHART_H, '#38bdf8')}
+            ${bar(wiH, CHART_H, '#38bdf8', 'Winter demand', winterPaxByDay[i])}
           </div>
           <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
             ${lbl(totalSupplyByDay[i], '#6b7280')}
-            ${bar(totH, CHART_H, '#6b7280')}
+            ${bar(totH, CHART_H, '#6b7280', 'Total supply', totalSupplyByDay[i])}
           </div>
           <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
             ${lbl(myCapDay[i], 'var(--accent-color)')}
-            ${bar(meH, CHART_H, 'var(--accent-color)')}
+            ${bar(meH, CHART_H, 'var(--accent-color)', 'My supply', myCapDay[i])}
           </div>
         </div>
         <div style="font-size:0.75rem; color:#888;">${label}</div>
@@ -1758,7 +1872,7 @@ function generateSupplyIndicator(airport) {
         </div>
         <div style="display:flex; flex-direction:column; gap:0.2rem;">${ptsHtml}</div>
         <div style="margin-top:0.3rem; font-size:0.72rem; color:#666;">
-          ${b.originCountry || '??'} ${formatCurrency(b.originGdp || 0)} · ${b.destCountry || '??'} ${formatCurrency(b.destGdp || 0)} · ${(dk).toLocaleString()} km
+          ${(dk).toLocaleString()} km
         </div>
       </div>`;
   }
@@ -1819,14 +1933,15 @@ function generateDemandIndicator(airport) {
   if (s) {
     const SUMMER = '#f59e0b', WINTER = '#38bdf8';
     const gameYear = worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020;
-    const summerPax = demandToPax(s.summer, gameYear, airport.icaoCode, demandData.isFloor);
-    const winterPax = demandToPax(s.winter, gameYear, airport.icaoCode, demandData.isFloor);
+    const summerPax = demandToPax(s.summer, gameYear, airport.icaoCode, demandData.isFloor, demandData.isDomestic);
+    const winterPax = demandToPax(s.winter, gameYear, airport.icaoCode, demandData.isFloor, demandData.isDomestic);
     const maxPax = Math.max(summerPax, winterPax, 1);
 
     const archetypeLabels = {
       ski:             { label: 'Ski',          desc: 'Alpine / snow gateway — strong winter peak' },
       summer_sun:      { label: 'Beach',         desc: 'Mediterranean / coastal leisure — strong summer peak' },
       winter_sun:      { label: 'Winter Sun',    desc: 'Tropical escape for cold-origin passengers — winter peak' },
+      mild_winter:     { label: 'Sunbelt',       desc: 'Warm-winter market (Florida / Arizona) — gentle winter lean' },
       generic_leisure: { label: 'Leisure',       desc: 'Temperate leisure destination — summer-biased' },
       leisure:         { label: 'Leisure',       desc: 'Mixed leisure traffic — mild summer bias' },
       business:        { label: 'Business',      desc: 'Primarily business traffic — near year-round flat' },
@@ -2108,8 +2223,8 @@ function populateRouteStats(airport) {
 
   if (seasonal && paxChartEl) {
     const mults = DOW_MULTIPLIERS[seasonal.archetype] || DOW_MULTIPLIERS.flat;
-    const summerPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.summer * m)), gameYear, airport.icaoCode, demandData?.isFloor));
-    const winterPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.winter * m)), gameYear, airport.icaoCode, demandData?.isFloor));
+    const summerPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.summer * m)), gameYear, airport.icaoCode, demandData?.isFloor, demandData?.isDomestic));
+    const winterPaxByDay = mults.map(m => demandToPax(Math.min(100, Math.round(seasonal.winter * m)), gameYear, airport.icaoCode, demandData?.isFloor, demandData?.isDomestic));
 
     const mktCapRaw = indicators?.marketCapacityByDay;
     const mktByDayRaw = indicators?.marketByDay;
@@ -2126,9 +2241,9 @@ function populateRouteStats(airport) {
     const CHART_H = 100;
     const BAR_W = 13;
 
-    const bar = (h, bg) =>
-      `<div style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
-        ${h > 0 ? `<div style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
+    const bar = (h, bg, label, value) =>
+      `<div class="paxbar" data-label="${label}" data-value="${fmtPax(value)} pax/day" data-color="${bg}" style="width:${BAR_W}px; height:${CHART_H}px; background:rgba(255,255,255,0.06); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex-shrink:0;">
+        ${h > 0 ? `<div class="paxbar-fill" style="position:absolute;bottom:0;width:100%;height:${h}px;background:${bg};border-radius:3px 3px 0 0;"></div>` : ''}
       </div>`;
     const lbl = (val, color) => val > 0
       ? `<div style="font-size:0.65rem;color:${color};text-align:center;line-height:1.2;white-space:nowrap;">${fmtPax(val)}</div>`
@@ -2142,15 +2257,16 @@ function populateRouteStats(airport) {
       return `
         <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
           <div style="display:flex;gap:2px;align-items:flex-end;">
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerPaxByDay[i],'#f59e0b')}${bar(suH,'#f59e0b')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterPaxByDay[i],'#38bdf8')}${bar(wiH,'#38bdf8')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupplyByDay[i],'#6b7280')}${bar(totH,'#6b7280')}</div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCapDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)')}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(summerPaxByDay[i],'#f59e0b')}${bar(suH,'#f59e0b','Summer demand',summerPaxByDay[i])}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(winterPaxByDay[i],'#38bdf8')}${bar(wiH,'#38bdf8','Winter demand',winterPaxByDay[i])}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(totalSupplyByDay[i],'#6b7280')}${bar(totH,'#6b7280','Total supply',totalSupplyByDay[i])}</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">${lbl(myCapDay[i],'var(--accent-color)')}${bar(meH,'var(--accent-color)','My supply',myCapDay[i])}</div>
           </div>
           <div style="font-size:0.72rem;color:#888;">${dayLabel}</div>
         </div>`;
     }).join('');
 
+    _ensurePaxBarTooltip();
     paxChartEl.innerHTML = `<div style="display:flex;gap:5px;align-items:flex-end;">${chartHtml}</div>`;
 
     const peakSummer = Math.max(...summerPaxByDay);
@@ -2158,7 +2274,7 @@ function populateRouteStats(airport) {
     if (summerPaxEl) summerPaxEl.textContent = fmtPax(peakSummer);
     if (winterPaxEl) winterPaxEl.textContent = fmtPax(peakWinter);
     if (archetypeEl) {
-      const arcLabels = { ski:'SKI', summer_sun:'BEACH', winter_sun:'WINTER SUN',
+      const arcLabels = { ski:'SKI', summer_sun:'BEACH', winter_sun:'WINTER SUN', mild_winter:'SUNBELT',
         generic_leisure:'LEISURE', leisure:'LEISURE', business:'BUSINESS', flat:'YEAR-ROUND' };
       archetypeEl.textContent = arcLabels[seasonal.archetype] || seasonal.archetype || '';
     }
@@ -2267,7 +2383,7 @@ function populateRouteStats(airport) {
 
   // Cargo 7-day chart + type grid
   renderCargoChart(airport, demandData, indicators, gameYear);
-  renderCargoDemand(demandData?.cargoProfile, demandData?.seasonal, gameYear);
+  renderCargoDemand(airport, demandData, gameYear);
 }
 
 function renderCargoChart(airport, demandData, indicators, gameYear) {
@@ -2283,21 +2399,12 @@ function renderCargoChart(airport, demandData, indicators, gameYear) {
   }
   if (section) section.style.display = 'flex';
 
-  // Total cargo demand score = sum of all type scores, capped at 100 for scaling
-  const totalScore = Math.min(100, Object.values(cargoProfile).reduce((a, b) => a + b, 0) / CARGO_TYPE_META.length);
-
-  // Seasonal swing: use pax archetype but dampen to 20% of pax swing
-  const s = demandData?.seasonal;
-  const paxSummerF = s ? (s.summer / 100) : 1;
-  const paxWinterF = s ? (s.winter / 100) : 1;
-  const avgF = (paxSummerF + paxWinterF) / 2;
-  const summerF = avgF + (paxSummerF - avgF) * 0.2;
-  const winterF = avgF + (paxWinterF - avgF) * 0.2;
-
-  // Per-day tonnes: base × seasonal factor × DOW multiplier
-  const baseTonnes = cargoScoreToTonnes(totalScore, gameYear);
-  const summerByDay = CARGO_DOW_MULTIPLIERS.map(m => Math.round(baseTonnes * summerF * m));
-  const winterByDay = CARGO_DOW_MULTIPLIERS.map(m => Math.round(baseTonnes * winterF * m));
+  // Route-scaled cargo: belly (bags) + commercial freight, both per passenger,
+  // modulated by the destination's cargo intensity. Tracks the route's pax, so
+  // magnitudes are route-level and realistic (not the airport's whole market).
+  const kgPerPax = BELLY_KG_PER_PAX + COMMERCIAL_KG_PER_PAX * _cargoEraMult(gameYear) * _destCargoIntensity(cargoProfile);
+  const summerByDay = _routePaxByDay(demandData, airport.icaoCode, gameYear, 'summer').map(p => p * kgPerPax / 1000);
+  const winterByDay = _routePaxByDay(demandData, airport.icaoCode, gameYear, 'winter').map(p => p * kgPerPax / 1000);
 
   // Supply
   const reorder = arr => arr ? [arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[0]] : null;
@@ -2361,31 +2468,32 @@ const CARGO_TYPE_META = [
   { key: 'highValue', code: 'VAL', label: 'High-Value', color: '#EC4899' },
 ];
 
-function renderCargoDemand(cargoProfile, seasonal, year) {
+function renderCargoDemand(airport, demandData, year) {
   const section = document.getElementById('selectedDestCargoTypeRow');
   const grid    = document.getElementById('cargoDemandGrid');
+  const cargoProfile = demandData?.cargoProfile;
+  const seasonal = demandData?.seasonal;
   if (!cargoProfile) { section.style.display = 'none'; return; }
   section.style.display = 'block';
 
   const gameYear = year || (worldInfo?.currentTime ? new Date(worldInfo.currentTime).getFullYear() : 2020);
 
-  // Compute peak-day total tonnes using same formula as renderCargoChart
-  const totalScore = Math.min(100, Object.values(cargoProfile).reduce((a, b) => a + b, 0) / CARGO_TYPE_META.length);
-  const baseTonnes = cargoScoreToTonnes(totalScore, gameYear);
-  const paxSummerF = seasonal ? (seasonal.summer / 100) : 1;
-  const paxWinterF = seasonal ? (seasonal.winter / 100) : 1;
-  const avgF = (paxSummerF + paxWinterF) / 2;
-  const summerF = avgF + (paxSummerF - avgF) * 0.2;
-  const peakTonnes = Math.round(baseTonnes * summerF * Math.max(...CARGO_DOW_MULTIPLIERS));
+  // Peak-day route passengers → belly cargo + commercial freight (route-scaled).
+  const peakPax = Math.max(0, ..._routePaxByDay(demandData, airport.icaoCode, gameYear, 'summer'));
+  const bellyTonnes = peakPax * BELLY_KG_PER_PAX / 1000;
+  const commercialPeak = peakPax * COMMERCIAL_KG_PER_PAX * _cargoEraMult(gameYear) * _destCargoIntensity(cargoProfile) / 1000;
 
-  // Distribute peakTonnes proportionally by raw score
+  // Split commercial freight across types by the destination's cargo mix (which
+  // includes per-type era availability), then add belly (all General). Kept
+  // fractional so fmtTonnes can show sub-tonne (kg) values.
   const rawScores = CARGO_TYPE_META.map(({ key }) => cargoProfile[key] ?? 0);
   const rawSum = rawScores.reduce((a, b) => a + b, 0) || 1;
-  const typeMaxTonnes = Math.max(...rawScores.map(s => Math.round(peakTonnes * s / rawSum)));
+  const typeTonnes = CARGO_TYPE_META.map(({ key }, i) =>
+    commercialPeak * rawScores[i] / rawSum + (key === 'general' ? bellyTonnes : 0));
+  const typeMaxTonnes = Math.max(0.001, ...typeTonnes);
 
   grid.innerHTML = CARGO_TYPE_META.map(({ key, code, label, color }, i) => {
-    const raw = rawScores[i];
-    const tonnes = Math.round(peakTonnes * raw / rawSum);
+    const tonnes = typeTonnes[i];
     const barPct = typeMaxTonnes > 0 ? (tonnes / typeMaxTonnes) * 100 : 0;
     return `
       <div class="cargo-demand-item" title="${label}: ${fmtTonnes(tonnes)}/day peak">
@@ -4388,6 +4496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!chartData) return;
 
     document.getElementById('capacityPanelTitle').textContent = btn.dataset.panelTitle || 'Demand vs Supply';
+    _ensurePaxBarTooltip();
     document.getElementById('capacityPanelBody').innerHTML = chartData.innerHTML;
     panel.style.display = 'block';
 
