@@ -32,13 +32,14 @@ jobs:
             exit 0
           fi
 
-          # Build numbered list: 1. `abc1234` — Commit message
+          # Build numbered list: 1. [`abc1234`](url) — Commit message
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
           BODY=""
           NUM=1
           while IFS= read -r line; do
             HASH=$(echo "$line" | cut -d' ' -f1)
             MSG=$(echo "$line" | cut -d' ' -f2-)
-            BODY="${BODY}${NUM}. \`${HASH}\`  — ${MSG}\n"
+            BODY="${BODY}${NUM}. [\`${HASH}\`](${REPO_URL}/commit/${HASH})  — ${MSG}\n"
             NUM=$((NUM + 1))
           done <<< "$COMMITS"
 
