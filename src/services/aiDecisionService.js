@@ -13,6 +13,10 @@
 
 const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification, Loan } = require('../models');
 const { Op } = require('sequelize');
+
+// AI decision logs gated behind DEBUG_AI (or DEBUG_SIM). Set DEBUG_AI=1 to see.
+const DEBUG_AI = process.env.DEBUG_AI === '1' || process.env.DEBUG_SIM === '1';
+const aiLog = (...args) => { if (DEBUG_AI) console.log(...args); };
 const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { getAllBanks, calculateOfferRate, calculateFixedPayment, calculateMaxLoanAmount, TERM_RANGES } = require('../data/bankConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
@@ -533,7 +537,7 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     }
 
     if (balance < -startingCapital * 1.5 || (routes.length === 0 && fleet.length === 0)) {
-      console.log(`[AI-DECISION] ${airline.airlineName} has gone bankrupt (balance: $${Math.round(balance)})`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} has gone bankrupt (balance: $${Math.round(balance)})`);
       airline.isActive = false;
       await airline.save();
 
@@ -810,7 +814,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
       await scheduleAIFlights(route, aircraft);
 
       const freqLabel = smartDays.length === 7 ? 'daily' : `${smartDays.length}x/week`;
-      console.log(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm, ${freqLabel})`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm, ${freqLabel})`);
 
       // Notify player if this competes with their routes
       const playerCompeting = await Route.findOne({
@@ -1221,7 +1225,7 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
       await airline.save();
       acqType = 'leased';
       acqDetail = `$${Math.round(leaseWeeklyPayment).toLocaleString()}/week`;
-      console.log(`[AI-DECISION] ${airline.airlineName} leased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${Math.round(leaseWeeklyPayment).toLocaleString()}/week`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} leased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${Math.round(leaseWeeklyPayment).toLocaleString()}/week`);
 
     } else if (method === 'finance') {
       await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice });
@@ -1230,7 +1234,7 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
       await airline.save();
       acqType = 'financed';
       acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M ($${(financePlan.deposit / 1000000).toFixed(1)}M down, $${Math.round(financePlan.loanAmount).toLocaleString()} loan via ${financePlan.bank.shortName})`;
-      console.log(`[AI-DECISION] ${airline.airlineName} financed ${chosen.manufacturer} ${chosen.model} (${reg}): $${(financePlan.deposit / 1000000).toFixed(1)}M down + $${Math.round(financePlan.loanAmount).toLocaleString()} loan @ ${financePlan.rate}% (${financePlan.bank.shortName}), $${Math.round(financePlan.weeklyPayment).toLocaleString()}/wk`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} financed ${chosen.manufacturer} ${chosen.model} (${reg}): $${(financePlan.deposit / 1000000).toFixed(1)}M down + $${Math.round(financePlan.loanAmount).toLocaleString()} loan @ ${financePlan.rate}% (${financePlan.bank.shortName}), $${Math.round(financePlan.weeklyPayment).toLocaleString()}/wk`);
 
     } else { // cash
       await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice });
@@ -1238,7 +1242,7 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
       await airline.save();
       acqType = 'purchased';
       acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M cash`;
-      console.log(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
     }
 
     await notifyPlayer(world.id,
@@ -1294,7 +1298,7 @@ async function tryContractNetwork(airline, routes, config, world, gameTime, opti
       where: { routeId: worstRoute.id }
     });
 
-    console.log(`[AI-DECISION] ${airline.airlineName} cancelled route ${worstRoute.routeNumber} (rev/cost ratio: ${worstRatio.toFixed(2)})`);
+    aiLog(`[AI-DECISION] ${airline.airlineName} cancelled route ${worstRoute.routeNumber} (rev/cost ratio: ${worstRatio.toFixed(2)})`);
 
     if (world && gameTime) {
       const depCode = worstRoute.departureAirport?.icaoCode || '???';
@@ -1663,7 +1667,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
         await ScheduledFlight.destroy({ where: { aircraftId: ua.id } });
         await RecurringMaintenance.destroy({ where: { aircraftId: ua.id } });
         await ua.destroy();
-        console.log(`[AI-DECISION] ${airline.airlineName} scrapped ${acType.manufacturer} ${acType.model} (${ua.registration}), got $${Math.round(scrapValue).toLocaleString()}`);
+        aiLog(`[AI-DECISION] ${airline.airlineName} scrapped ${acType.manufacturer} ${acType.model} (${ua.registration}), got $${Math.round(scrapValue).toLocaleString()}`);
       } else {
         // List for sale at the average used-market price for this type, adjusted
         // for this specific aircraft's wear: a better-than-average unit lists above
@@ -1680,11 +1684,11 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
           salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.5 * (condition / 100));
         }
         await ua.update({ status: 'listed_sale', listingPrice: salePrice, listedAt: now });
-        console.log(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
+        aiLog(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
       }
 
       const acqLabel = method === 'lease' ? 'leased' : method === 'finance' ? 'financed' : 'purchased';
-      console.log(`[AI-DECISION] ${airline.airlineName} upgraded: ${acType.manufacturer} ${acType.model} → ${replacement.aircraft.manufacturer} ${replacement.aircraft.model} (${acqLabel})`);
+      aiLog(`[AI-DECISION] ${airline.airlineName} upgraded: ${acType.manufacturer} ${acType.model} → ${replacement.aircraft.manufacturer} ${replacement.aircraft.model} (${acqLabel})`);
 
       await notifyPlayer(world.id,
         `${airline.airlineName} Fleet Upgrade`,
@@ -1924,7 +1928,7 @@ async function tryAcquireAirship(airline, world, worldYear, gameTime, currentFle
     airline.balance = balance - price;
     await airline.save();
 
-    console.log(`[AI-DECISION] ${airline.airlineName} purchased airship ${chosen.manufacturer} ${chosen.model} (${reg}) for sightseeing tours`);
+    aiLog(`[AI-DECISION] ${airline.airlineName} purchased airship ${chosen.manufacturer} ${chosen.model} (${reg}) for sightseeing tours`);
 
     // Create a sightseeing tour for the airship
     await createAISightseeingTour(airline, ua, chosen, world, worldYear);
@@ -2024,7 +2028,7 @@ async function createAISightseeingTour(airline, userAircraft, aircraftType, worl
       isActive: true
     });
 
-    console.log(`[AI-DECISION] ${airline.airlineName} created sightseeing tour "${tourName}" (${Math.round(distanceNm)}nm, ${durationMin}min, $${ticketPrice}/seat)`);
+    aiLog(`[AI-DECISION] ${airline.airlineName} created sightseeing tour "${tourName}" (${Math.round(distanceNm)}nm, ${durationMin}min, $${ticketPrice}/seat)`);
   } catch (err) {
     console.error(`[AI-DECISION] Sightseeing tour creation error for ${airline.airlineName}:`, err.message);
   }

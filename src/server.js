@@ -69,13 +69,21 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), requ
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Only use morgan logger in development mode
-if (process.env.NODE_ENV === 'development') {
+// Request logging: only log slow requests (>3s) as warnings.
+// Set HTTP_LOG=1 to see all requests (morgan 'dev' format).
+if (process.env.HTTP_LOG === '1') {
   app.use(morgan('dev'));
 } else {
-  app.use(morgan('combined', {
-    skip: () => true // Skip logging in production
-  }));
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const ms = Date.now() - start;
+      if (ms > 3000) {
+        console.warn(`⚠ SLOW ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+      }
+    });
+    next();
+  });
 }
 
 // Session configuration
@@ -140,26 +148,8 @@ app.use(express.static(path.join(__dirname, '../public'), {
 
 // Socket.IO connection handling with verbose logging
 io.on('connection', (socket) => {
-  // Only log in development mode
-  if (process.env.NODE_ENV === 'development') {
-    console.log('\n[Socket.IO] ✓ Client connected:', socket.id);
-    console.log('[Socket.IO] Transport:', socket.conn.transport.name);
-    console.log('[Socket.IO] Client IP:', socket.handshake.address);
-  }
-
-  // Log transport upgrades
-  socket.conn.on('upgrade', (transport) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Socket.IO] Transport upgraded to:', transport.name);
-    }
-  });
-
-  socket.on('disconnect', (reason) => {
-    // Only log in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Socket.IO] ✗ Client disconnected:', socket.id, '- Reason:', reason);
-    }
-  });
+  // Socket connect/disconnect logged only with DEBUG_SIM
+  socket.on('disconnect', () => {});
 
   socket.on('error', (error) => {
     if (process.env.NODE_ENV === 'development') {
@@ -812,7 +802,7 @@ server.listen(PORT, () => {
     World.findAll({ where: { status: 'active' }, attributes: ['id'] }).then(worlds => {
       for (const world of worlds) {
         airportCacheService.fetchAndCacheAirports(world.id).then(airports => {
-          console.log(`[Airport Cache] Pre-warmed ${airports.length} airports for world ${world.id}`);
+          // Airport cache warmed silently
         }).catch(err => {
           console.error(`[Airport Cache] Pre-warm failed for world ${world.id}:`, err.message);
         });

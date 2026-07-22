@@ -70,9 +70,7 @@ class AirportCacheService {
       timestamp: Date.now()
     });
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`✓ Cache SET for key: ${key} (${data.length} airports)`);
-    }
+    // Cache set silently
   }
 
   /**
