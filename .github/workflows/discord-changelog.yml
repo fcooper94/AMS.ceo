@@ -39,11 +39,11 @@ jobs:
           while IFS= read -r line; do
             HASH=$(echo "$line" | cut -d' ' -f1)
             MSG=$(echo "$line" | cut -d' ' -f2-)
-            BODY="${BODY}${NUM}. [\`${HASH}\`](${REPO_URL}/commit/${HASH})  — ${MSG}\n"
+            BODY="${BODY}${NUM}. [\`${HASH}\`](<${REPO_URL}/commit/${HASH}>)  — ${MSG}\n"
             NUM=$((NUM + 1))
           done <<< "$COMMITS"
 
           # Post to Discord webhook
-          PAYLOAD=$(jq -n --arg content "$(echo -e "$BODY")" '{"content": $content}')
+          PAYLOAD=$(jq -n --arg content "$(echo -e "$BODY")" '{"content": $content, "username": "AMS Bot", "flags": 4}')
           curl -s -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK"
           echo "Posted to Discord"
