@@ -561,6 +561,14 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     await tryUpgradeFleet(airline, world, config, fleet, routes, worldYear, gameTime);
   }
 
+  // 6b. Airship acquisition + sightseeing tour — personality-gated, max 1 per airline
+  if (airline.aiPersonality !== 'conservative' && fleet.length >= 3) {
+    const hasAirship = fleet.some(ua => ua.aircraft?.type === 'Airship');
+    if (!hasAirship && Math.random() < 0.08) { // ~8% per tick for aggressive/balanced
+      await tryAcquireAirship(airline, world, worldYear, gameTime, fleet);
+    }
+  }
+
   // 7. Competitive response (medium/hard only)
   if (routes.length > 0 && config.competitiveResponseChance > 0) {
     await checkCompetitiveResponse(airline, routes, config, world, gameTime, worldYear);
@@ -1044,7 +1052,7 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
     typeFiltered = eraAircraft.filter(ac => ac.type === 'Cargo' || ac.cargoCapacityKg > 10000);
     if (typeFiltered.length === 0) typeFiltered = eraAircraft.filter(ac => ac.cargoCapacityKg > 5000);
   } else {
-    typeFiltered = eraAircraft.filter(ac => ac.passengerCapacity > 0);
+    typeFiltered = eraAircraft.filter(ac => ac.passengerCapacity > 0 && ac.type !== 'Airship');  // airships handled separately in tryAcquireAirship
   }
   if (typeFiltered.length === 0) return;
   const paxAircraft = typeFiltered;
@@ -1543,7 +1551,8 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
     const replacements = await Aircraft.findAll({
       where: {
         availableFrom: { [Op.lte]: worldYear },
-        passengerCapacity: { [Op.gt]: 0 }
+        passengerCapacity: { [Op.gt]: 0 },
+        type: { [Op.ne]: 'Airship' }
       },
       order: [['passengerCapacity', 'ASC']]
     });
@@ -1852,6 +1861,173 @@ function getRegionFromCountry(country) {
     'Australia': 'Oceania', 'New Zealand': 'Oceania'
   };
   return regionMap[country] || 'Europe';
+}
+
+// ── Airship acquisition + sightseeing tour ──────────────────────────────
+
+/**
+ * Occasionally acquire a single airship and immediately create a sightseeing
+ * tour for it. Only called for aggressive/balanced personalities with ≥3
+ * aircraft and no existing airship. The tour uses a teardrop waypoint pattern
+ * generated from the base airport's coordinates.
+ */
+async function tryAcquireAirship(airline, world, worldYear, gameTime, currentFleet) {
+  try {
+    const airships = await Aircraft.findAll({
+      where: { type: 'Airship', availableFrom: { [Op.lte]: worldYear } }
+    });
+    const eraAirships = airships.filter(a => !a.availableUntil || a.availableUntil >= worldYear);
+    if (eraAirships.length === 0) return;
+
+    const chosen = eraAirships[Math.floor(Math.random() * eraAirships.length)];
+    const price = parseFloat(chosen.purchasePrice) || 500000;
+    const balance = parseFloat(airline.balance) || 0;
+
+    // Airships are cheap but still need affordability check (max 10% of balance)
+    if (price > balance * 0.10) return;
+
+    // Generate registration
+    const existingRegs = new Set(currentFleet.map(ac => ac.registration));
+    const prefixes = {
+      'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-',
+      'Japan': 'JA-', 'Australia': 'VH-', 'Canada': 'C-', 'Brazil': 'PT-'
+    };
+    const prefix = prefixes[airline.region] || 'XX-';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let reg = prefix;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      reg = prefix;
+      const suffLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
+      for (let j = 0; j < suffLen; j++) reg += chars[Math.floor(Math.random() * 26)];
+      if (!existingRegs.has(reg)) break;
+    }
+
+    const now = new Date(gameTime || new Date());
+    const ua = await UserAircraft.create({
+      worldMembershipId: airline.id,
+      aircraftId: chosen.id,
+      registration: reg,
+      totalFlightHours: 0,
+      status: 'active',
+      autoScheduleDaily: true,
+      autoScheduleWeekly: true,
+      lastDailyCheckDate: now,
+      lastWeeklyCheckDate: now,
+      lastACheckDate: now,
+      lastACheckHours: 0,
+      lastCCheckDate: now,
+      lastDCheckDate: now,
+      acquisitionType: 'purchase',
+      purchasePrice: price
+    });
+
+    airline.balance = balance - price;
+    await airline.save();
+
+    console.log(`[AI-DECISION] ${airline.airlineName} purchased airship ${chosen.manufacturer} ${chosen.model} (${reg}) for sightseeing tours`);
+
+    // Create a sightseeing tour for the airship
+    await createAISightseeingTour(airline, ua, chosen, world, worldYear);
+  } catch (err) {
+    console.error(`[AI-DECISION] Airship acquisition error for ${airline.airlineName}:`, err.message);
+  }
+}
+
+/**
+ * Generate a scenic teardrop loop from the airline's base airport and create
+ * a SightseeingTour. Waypoints are placed in a teardrop pattern: fly out on
+ * a heading, sweep around, and return. Distance stays within the airship's
+ * range (typically 50-120nm round trip).
+ */
+async function createAISightseeingTour(airline, userAircraft, aircraftType, world, worldYear) {
+  try {
+    const { SightseeingTour } = require('../models');
+    const baseAirport = airline.baseAirport || await Airport.findByPk(airline.baseAirportId);
+    if (!baseAirport) return;
+
+    const baseLat = parseFloat(baseAirport.latitude) || 0;
+    const baseLng = parseFloat(baseAirport.longitude) || 0;
+    const range = Math.min(aircraftType.rangeNm || 250, 200); // cap loop at 200nm
+    const loopRadius = Math.max(15, range * 0.15); // ~15-30nm from base
+
+    // Teardrop pattern: pick a random outbound heading, place 4 waypoints
+    // in a teardrop shape (out, sweep right, far point, sweep back).
+    const heading = Math.random() * 360; // random outbound direction
+    const toRad = d => d * Math.PI / 180;
+    const toDeg = r => r * 180 / Math.PI;
+
+    // Offset a point by distance (nm) and bearing from lat/lng
+    const offsetPoint = (lat, lng, distNm, bearingDeg) => {
+      const R = 3440.065; // earth radius in nm
+      const d = distNm / R;
+      const brng = toRad(bearingDeg);
+      const lat1 = toRad(lat);
+      const lng1 = toRad(lng);
+      const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
+      const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+      return { lat: +toDeg(lat2).toFixed(4), lng: +toDeg(lng2).toFixed(4) };
+    };
+
+    const wp1 = offsetPoint(baseLat, baseLng, loopRadius * 0.6, heading);          // out
+    const wp2 = offsetPoint(baseLat, baseLng, loopRadius,       heading + 30);      // sweep right
+    const wp3 = offsetPoint(baseLat, baseLng, loopRadius * 1.2, heading + 90);      // far point (apex)
+    const wp4 = offsetPoint(baseLat, baseLng, loopRadius * 0.8, heading + 150);     // sweep back
+
+    // Name the waypoints generically
+    const cityName = baseAirport.city || baseAirport.name || 'Local';
+    const waypoints = [
+      { ...wp1, name: `${cityName} Outskirts` },
+      { ...wp2, name: 'Scenic Overlook' },
+      { ...wp3, name: 'Vista Point' },
+      { ...wp4, name: 'Return Leg' }
+    ];
+
+    // Compute total distance: base → wp1 → wp2 → wp3 → wp4 → base
+    const haversineNm = (lat1, lng1, lat2, lng2) => {
+      const R = 3440.065;
+      const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const pts = [{ lat: baseLat, lng: baseLng }, ...waypoints, { lat: baseLat, lng: baseLng }];
+    let distanceNm = 0;
+    for (let i = 1; i < pts.length; i++) {
+      distanceNm += haversineNm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+    }
+    distanceNm = Math.round(distanceNm * 100) / 100;
+
+    const cruiseSpeed = aircraftType.cruiseSpeed || 50;
+    const durationMin = Math.max(15, Math.round(distanceNm / cruiseSpeed * 60));
+
+    // Era-scaled ticket price: ~$3/scenic-min × eraMultiplier
+    const eraMult = eraEconomicService.getEraMultiplier(worldYear);
+    const ticketPrice = Math.round(durationMin * 3 * eraMult * (0.85 + Math.random() * 0.30));
+
+    // Departure time: morning scenic flight (08:00-11:00)
+    const depHour = 8 + Math.floor(Math.random() * 3);
+    const scheduledDepartureTime = `${String(depHour).padStart(2, '0')}:00`;
+
+    const tourName = `${cityName} Scenic Tour`;
+
+    await SightseeingTour.create({
+      worldMembershipId: airline.id,
+      name: tourName,
+      baseAirportId: baseAirport.id,
+      waypoints,
+      distanceNm,
+      durationMin,
+      assignedAircraftId: userAircraft.id,
+      ticketPrice,
+      scheduledDepartureTime,
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6], // daily
+      isActive: true
+    });
+
+    console.log(`[AI-DECISION] ${airline.airlineName} created sightseeing tour "${tourName}" (${Math.round(distanceNm)}nm, ${durationMin}min, $${ticketPrice}/seat)`);
+  } catch (err) {
+    console.error(`[AI-DECISION] Sightseeing tour creation error for ${airline.airlineName}:`, err.message);
+  }
 }
 
 module.exports = {

@@ -204,8 +204,8 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
   // Size-appropriate, commonality-biased fleet.
   const maxPax = getMaxCapacityForAirport(baseAirport.type);
   const pool = (() => {
-    const fit = eraAircraft.filter(ac => ac.passengerCapacity > 0 && ac.passengerCapacity <= maxPax);
-    return fit.length > 0 ? fit : eraAircraft.filter(ac => ac.passengerCapacity > 0);
+    const fit = eraAircraft.filter(ac => ac.passengerCapacity > 0 && ac.passengerCapacity <= maxPax && ac.type !== 'Airship');
+    return fit.length > 0 ? fit : eraAircraft.filter(ac => ac.passengerCapacity > 0 && ac.type !== 'Airship');
   })();
   if (pool.length === 0) return 0;
 
