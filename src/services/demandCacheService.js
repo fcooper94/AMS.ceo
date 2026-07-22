@@ -237,6 +237,7 @@ class DemandCacheService {
       for (const [from, to] of [[airA, airB], [airB, airA]]) {
         const { record } = this._ensureRecord(from, to);
         for (let d = 0; d < fields.length; d++) record[fields[d]] = scores[d]; // override
+        record.isFloor = false; // real data — keep its exact order (Jersey > Guernsey…)
         this._refreshRecordSummary(record);
         realCovered.add(`${from.id}_${to.id}`);
       }
@@ -261,6 +262,7 @@ class DemandCacheService {
         for (let d = 0; d < fields.length; d++) {
           record[fields[d]] = scores[d]; // replace gravity — suppress it on UK domestic
         }
+        record.isFloor = true; // no real service — display may vary these ±1 for variety
         this._refreshRecordSummary(record);
         floored++;
       }

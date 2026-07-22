@@ -123,7 +123,8 @@ class RouteDemandService {
         demand: Math.min(100, adjustedDemand),
         demandCategory: this.getCategoryFromDemand(adjustedDemand),
         routeType: record.routeType,
-        baseDemand: record.baseDemand
+        baseDemand: record.baseDemand,
+        isFloor: record.isFloor === true
       };
     });
   }
