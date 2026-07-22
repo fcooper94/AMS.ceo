@@ -144,6 +144,13 @@ class DemandCacheService {
       }
     }
 
+    // Overlay the UK domestic connectivity floor: guarantee a non-zero, era- &
+    // size-scaled demand for every ordered pair of commercial-civil UK / Crown-
+    // Dependency airports (the gravity model drops sub-threshold pairs and never
+    // saw the Channel Islands). Applied as max(gravity, floor) so busy routes
+    // keep their higher gravity values. See ukDomesticDemandFloor.js.
+    this._applyUkDomesticFloor(airports);
+
     // Sort byOrigin arrays by demand2000 descending
     for (const [, records] of this.byOrigin) {
       records.sort((a, b) => (b.demand2000 || 0) - (a.demand2000 || 0));
@@ -152,6 +159,70 @@ class DemandCacheService {
     this._ready = true;
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[DemandCache] Ready: ${loaded} pairs loaded in ${elapsed}s (${skipped} skipped — ICAO not in DB)`);
+  }
+
+  /**
+   * Raise every commercial-civil UK↔UK pair to at least the domestic floor.
+   * Creates records for pairs the gravity model never produced (e.g. anything
+   * involving the Channel Islands) and lifts under-threshold pairs. Only ever
+   * increases scores. Called once during initialize().
+   * @param {Array} airports - the airport rows already loaded from the DB
+   */
+  _applyUkDomesticFloor(airports) {
+    let ukFloor;
+    try {
+      ukFloor = require('./ukDomesticDemandFloor');
+    } catch (err) {
+      console.warn(`[DemandCache] UK domestic floor unavailable (${err.message}) — skipping.`);
+      return;
+    }
+
+    const inScope = airports.filter(a => ukFloor.isInScope(a));
+    const decadeFields = ['demand1950', 'demand1960', 'demand1970', 'demand1980',
+                          'demand1990', 'demand2000', 'demand2010', 'demand2020'];
+    let added = 0, raised = 0;
+
+    for (const from of inScope) {
+      for (const to of inScope) {
+        if (from.id === to.id) continue;
+
+        const scores = ukFloor.floorScores(from, to);
+        const uuidKey = `${from.id}_${to.id}`;
+        let record = this.demandMap.get(uuidKey);
+
+        if (!record) {
+          record = {
+            fromAirportId: from.id,
+            toAirportId: to.id,
+            demand1950: 0, demand1960: 0, demand1970: 0, demand1980: 0,
+            demand1990: 0, demand2000: 0, demand2010: 0, demand2020: 0,
+            baseDemand: 0,
+            demandCategory: 'very_low',
+            routeType: gravityModelService.determineRouteType(
+              from.type, to.type, 0, from.country, to.country
+            )
+          };
+          this.demandMap.set(uuidKey, record);
+          if (!this.byOrigin.has(from.id)) this.byOrigin.set(from.id, []);
+          this.byOrigin.get(from.id).push(record);
+          added++;
+        } else {
+          raised++;
+        }
+
+        // Lift each decade to the floor (never lowers gravity's own values)
+        for (let d = 0; d < decadeFields.length; d++) {
+          const f = decadeFields[d];
+          if (scores[d] > record[f]) record[f] = scores[d];
+        }
+        record.baseDemand = record.demand2000;
+        record.demandCategory = gravityModelService.getDemandCategory(
+          Math.max(record.demand2000, record.demand2010, record.demand2020)
+        );
+      }
+    }
+
+    console.log(`[DemandCache] UK domestic floor applied: ${added} new pairs, ${raised} existing pairs checked (${inScope.length} in-scope airports)`);
   }
 
   /**
