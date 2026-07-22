@@ -84,12 +84,6 @@ router.get('/info', async (req, res) => {
           console.error('Failed to start world:', err.message);
         }
       });
-    } else if (process.env.NODE_ENV === 'development') {
-      // Log successful in-memory time fetch
-      const dbDiff = currentTime.getTime() - world.currentTime.getTime();
-      if (Math.abs(dbDiff) > 60000) { // More than 1 minute difference
-        console.log(`ℹ World ${world.name} in-memory time: ${currentTime.toISOString()}, DB time: ${world.currentTime.toISOString()} (diff: ${Math.round(dbDiff / 1000)}s)`);
-      }
     }
 
     // Calculate elapsed days based on the world's dates

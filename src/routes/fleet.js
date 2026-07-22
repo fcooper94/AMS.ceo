@@ -1166,7 +1166,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
 
             // Skip if still no slot found - don't place on top of flights
             if (!startTime) {
-              console.log(`[MAINT] No available slot for ${checkType} check on ${targetDateStr} - skipping`);
+              // No slot available — normal for busy schedules, skip silently
               // Advance expiry by interval so the loop progresses
               currentExpiryDate = new Date(currentExpiryDate);
               currentExpiryDate.setDate(currentExpiryDate.getDate() + checkInterval);
@@ -1530,7 +1530,7 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
     if (yesterdayCheck) {
       // We have coverage from yesterday - just delete this redundant check
       await maint.destroy();
-      console.log(`[MAINT] Deleted redundant daily check on ${scheduledDate} - covered by ${yesterdayStr}`);
+      // Redundant daily check deleted (covered by yesterday)
       return { success: true, newSlot: 'deleted (covered by previous day)', deleted: true };
     }
   }
@@ -1563,7 +1563,7 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
   if (efficientStart >= 0 && isSlotFree(efficientStart, flightStart)) {
     const newTime = `${Math.floor(efficientStart / 60).toString().padStart(2, '0')}:${(efficientStart % 60).toString().padStart(2, '0')}`;
     await maint.update({ startTime: newTime });
-    console.log(`[MAINT] Moved ${checkType} check to ${newTime} (right before flight)`);
+    // Maintenance rescheduled (right before flight)
     return { success: true, newSlot: newTime };
   }
 
@@ -1589,7 +1589,7 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
       const start = gap.end - duration;
       const newTime = `${Math.floor(start / 60).toString().padStart(2, '0')}:${(start % 60).toString().padStart(2, '0')}`;
       await maint.update({ startTime: newTime });
-      console.log(`[MAINT] Moved ${checkType} check to ${newTime} (gap before next activity)`);
+      // Maintenance rescheduled (gap before next activity)
       return { success: true, newSlot: newTime };
     }
   }
@@ -1608,7 +1608,7 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
     if (tomorrowCheck) {
       // Tomorrow has a check - we can delete this one
       await maint.destroy();
-      console.log(`[MAINT] Deleted daily check on ${scheduledDate} - will use ${tomorrowStr} check`);
+      // Daily check deleted (tomorrow's check covers it)
       return { success: true, newSlot: 'deleted (using next day)', deleted: true };
     }
 
@@ -1616,7 +1616,7 @@ async function attemptMaintenanceReschedule(maintenanceId, aircraftId, flightSta
     const tomorrowSlot = await findAvailableSlotOnDate(aircraftId, tomorrowStr, duration, checkType);
     if (tomorrowSlot) {
       await maint.update({ scheduledDate: tomorrowStr, startTime: tomorrowSlot });
-      console.log(`[MAINT] Moved ${checkType} check to ${tomorrowStr} @ ${tomorrowSlot}`);
+      // Maintenance moved to tomorrow
       return { success: true, newSlot: `${tomorrowStr} @ ${tomorrowSlot}` };
     }
   }

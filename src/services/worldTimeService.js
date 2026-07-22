@@ -2291,8 +2291,8 @@ class WorldTimeService {
         }]
       });
 
-      if (process.env.NODE_ENV === 'development' && maintenancePatterns.length > 0) {
-        console.log(`🔧 Processing ${maintenancePatterns.length} maintenance patterns for day ${gameDayOfWeek}, time ${gameTimeStr}`);
+      if (DEBUG_SIM && maintenancePatterns.length > 0) {
+        simLog(`🔧 Processing ${maintenancePatterns.length} maintenance patterns for day ${gameDayOfWeek}, time ${gameTimeStr}`);
       }
 
       for (const pattern of maintenancePatterns) {
@@ -2441,9 +2441,7 @@ class WorldTimeService {
             const yesterday = new Date(currentGameTime);
             yesterday.setDate(yesterday.getDate() - 1);
             await aircraft.update({ lastDailyCheckDate: yesterday });
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`🔧 Daily check catch-up for ${aircraft.registration}: set lastDailyCheckDate to ${yesterday.toISOString().split('T')[0]}`);
-            }
+            simLog(`🔧 Daily check catch-up for ${aircraft.registration}: set lastDailyCheckDate to ${yesterday.toISOString().split('T')[0]}`);
           }
         }
       } catch (catchupErr) {
@@ -2693,9 +2691,7 @@ class WorldTimeService {
         return;
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`📅 Refreshing maintenance schedules for ${aircraftToRefresh.length} aircraft in world ${worldId} (gameTime: ${gameTime?.toISOString()})`);
-      }
+      simLog(`📅 Refreshing maintenance schedules for ${aircraftToRefresh.length} aircraft in world ${worldId}`);
 
       // Refresh maintenance for each aircraft (with delay to avoid DB overload)
       // Process in smaller batches with longer delays to prevent connection exhaustion
@@ -2729,9 +2725,7 @@ class WorldTimeService {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`📅 Maintenance schedule refresh complete for world ${worldId}`);
-      }
+      simLog(`📅 Maintenance schedule refresh complete for world ${worldId}`);
     } catch (error) {
       console.error('Error refreshing maintenance schedules:', error);
     }
