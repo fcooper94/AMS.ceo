@@ -13,19 +13,13 @@
 const { CARGO_TYPES } = require('../config/cargoTypes');
 const CARGO_HUB_PROFILES = require('../data/cargoHubProfiles');
 
-/**
- * Overall era factor for air cargo.
- * Air freight was minimal pre-1955 and grew steadily through the widebody era.
- */
-function _eraFactor(year) {
-  if (year < 1945) return 0.08;
-  if (year < 1955) return 0.15;
-  if (year < 1965) return 0.30;
-  if (year < 1975) return 0.50;
-  if (year < 1985) return 0.70;
-  if (year < 1995) return 0.85;
-  return 1.0;
-}
+// NOTE: the overall "air freight grew over the eras" scaling is NOT applied here.
+// This service returns an era-RELATIVE 0-100 demand score; the absolute era
+// growth is applied downstream when the score is turned into tonnes
+// (routes-create.js cargoScoreToTonnes, via WORLD_CARGO_MT: 0.3 Mt in 1950 →
+// 58 Mt today). Applying an era factor here too double-counted and drove early
+// eras to ~0 tonnes. Per-TYPE era availability (below) is a different thing —
+// e.g. express didn't exist pre-1971 — and IS kept.
 
 /**
  * Type-specific era multiplier — some cargo categories only became viable
@@ -95,7 +89,6 @@ const TYPE_MULT = {
  *                            Each value is an integer 0–100
  */
 function computeAirportCargoDemand(airport, gameYear) {
-  const era     = _eraFactor(gameYear);
   const typeMult = TYPE_MULT[airport.type] || 1.0;
 
   // trafficDemand 1–20 → scale 0.55–1.45
@@ -112,8 +105,10 @@ function computeAirportCargoDemand(airport, gameYear) {
     const typeEra   = _typeEraFactor(key, gameYear);
     const hubMult   = profile[key] || 1.0;
 
-    // Base: use 60 as anchor so typical major hub ≈ 70–85 for general
-    let demand = type.baseDemand * 60 * era * typeEra * typeMult * trafficScale * hubMult;
+    // Base: use 60 as anchor so typical major hub ≈ 70–85 for general.
+    // Era-relative (no overall era factor — see note at top); tonnes conversion
+    // handles absolute era growth downstream.
+    let demand = type.baseDemand * 60 * typeEra * typeMult * trafficScale * hubMult;
     result[key] = Math.min(100, Math.max(0, Math.round(demand)));
   }
 
