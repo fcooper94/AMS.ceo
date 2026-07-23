@@ -333,8 +333,9 @@ async function fetchWorldInfo() {
     isSinglePlayer = data.worldType === 'singleplayer';
 
     // Pass game year to cabin configurator so era-locked classes are shown correctly
-    if (data.currentTime && typeof setCabinEraYear === 'function') {
-      setCabinEraYear(new Date(data.currentTime).getFullYear());
+    if (data.currentTime) {
+      marketplaceWorldYear = new Date(data.currentTime).getFullYear();
+      if (typeof setCabinEraYear === 'function') setCabinEraYear(marketplaceWorldYear);
     }
 
     // Balance display
@@ -903,12 +904,74 @@ async function fetchBankOffers() {
   return null;
 }
 
+// Bank brand badges: distinct colour + monogram per bank (procedural, no assets)
+const BANK_BRANDS = {
+  skyvault:      { color: '#4263eb', initials: 'SV' },
+  pacific:       { color: '#0ca678', initials: 'PW' },
+  atlas:         { color: '#868e96', initials: 'AT' },
+  meridian:      { color: '#f59f00', initials: 'MD' },
+  nordic:        { color: '#22b8cf', initials: 'NC' },
+  condor:        { color: '#e8590c', initials: 'CD' },
+  helvetia:      { color: '#fa5252', initials: 'HV' },
+  sakura:        { color: '#f06595', initials: 'SK' },
+  continental:   { color: '#495057', initials: 'CT' },
+  aurora:        { color: '#7950f2', initials: 'AU' },
+  liberty:       { color: '#1971c2', initials: 'LB' },
+  southerncross: { color: '#364fc7', initials: 'SX' }
+};
+
+// Global styled tooltip for .fb-info icons (position: fixed so it escapes the
+// modal's stacking/overflow; wired once via document-level delegation)
+(function wireInfoTooltips() {
+  let tip = null;
+  function ensureTip() {
+    if (tip) return tip;
+    tip = document.createElement('div');
+    tip.id = 'fbInfoTooltip';
+    tip.style.cssText = `
+      position: fixed; z-index: 3000; display: none; max-width: 250px;
+      padding: 0.5rem 0.65rem; background: var(--surface-elevated, #1a2332);
+      border: 1px solid var(--accent-color, #3b82f6); border-radius: 6px;
+      color: var(--text-secondary, #c8d2e1); font-size: 0.72rem; line-height: 1.45;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); pointer-events: none;
+    `;
+    document.body.appendChild(tip);
+    return tip;
+  }
+  document.addEventListener('mouseover', (e) => {
+    const icon = e.target.closest?.('.fb-info');
+    if (!icon) return;
+    const t = ensureTip();
+    t.textContent = icon.getAttribute('data-tooltip') || '';
+    t.style.display = 'block';
+    requestAnimationFrame(() => {
+      const r = icon.getBoundingClientRect();
+      const tr = t.getBoundingClientRect();
+      let left = r.left + r.width / 2 - tr.width / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
+      let top = r.top - tr.height - 8;
+      if (top < 8) top = r.bottom + 8;
+      t.style.left = left + 'px';
+      t.style.top = top + 'px';
+    });
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest?.('.fb-info') && tip) tip.style.display = 'none';
+  });
+})();
+
+function bankBadge(bankId, shortName, size = 24) {
+  const brand = BANK_BRANDS[bankId] || { color: '#5c7cfa', initials: (shortName || '?').replace(/[^A-Za-z]/g, '').substring(0, 2).toUpperCase() };
+  return `<span style="display: inline-flex; align-items: center; justify-content: center; width: ${size}px; height: ${size}px; flex: 0 0 ${size}px; border-radius: 6px; background: linear-gradient(135deg, ${brand.color} 0%, ${brand.color}bb 100%); color: #fff; font-size: ${Math.round(size * 0.38)}px; font-weight: 800; letter-spacing: 0.02em; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);">${brand.initials}</span>`;
+}
+
 // Selected financing state
 let selectedFinancingMethod = 'cash'; // 'cash' or 'loan'
 let selectedBankId = null;
 let selectedLoanTermWeeks = 156; // default 3 years
 let selectedRepaymentStrategy = 'fixed'; // 'fixed' | 'reducing' | 'interest_only'
 let playerBalance = 0; // Updated by fetchWorldInfo()
+let marketplaceWorldYear = null; // Updated by fetchWorldInfo(); leasing exists from 1970
 
 // Build compact acquisition buttons for the detail modal (ORDER + LEASE)
 function buildNewAircraftAcquisitionCards(aircraft) {
@@ -1059,7 +1122,7 @@ function showOrderDialog() {
           </div>
 
           <!-- Right Column -->
-          <div>
+          <div style="display: flex; flex-direction: column;">
             <!-- Order Terms -->
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-elevated); border-radius: 6px;">
               <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Order Terms</h4>
@@ -1072,6 +1135,10 @@ function showOrderDialog() {
 
             <!-- Order Summary -->
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; padding-bottom: 0.4rem; border-bottom: 1px solid rgba(16, 185, 129, 0.15);">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">My Balance</span>
+                <span style="color: var(--text-primary); font-weight: 600;">${formatCurrencyShort(playerBalance)}</span>
+              </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Aircraft</span>
                 <span style="color: var(--text-primary); font-weight: 600;">${fullName} ${orderQty > 1 ? '<span id="orderSummaryQty">x' + orderQty + '</span>' : ''}</span>
@@ -1090,27 +1157,27 @@ function showOrderDialog() {
               </div>
             </div>
 
-            <!-- Insufficient Funds Warning -->
-            <div id="orderFundsWarning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
-              <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;">
-                <span style="color: #EF4444; font-size: 1.1rem;">&#9888;</span>
-                <span style="color: #EF4444; font-weight: 700; font-size: 0.9rem;">Insufficient Funds</span>
-              </div>
-              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
-                <span>Your balance: </span><strong id="orderPlayerBalance" style="color: var(--text-primary);">$0</strong><br>
-                <span>Total cost (deposit + delivery): </span><strong id="orderTotalCost" style="color: #EF4444;">$0</strong><br>
-                <span>Shortfall: </span><strong id="orderShortfall" style="color: #EF4444;">$0</strong>
-              </div>
-              <div style="font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid rgba(239, 68, 68, 0.15); padding-top: 0.4rem; margin-top: 0.3rem;">
-                <span id="orderFundsSuggestion">Consider <strong style="color: #3b82f6; cursor: pointer;" id="orderSwitchToLoan">financing with a loan</strong> to spread the remaining 70% over weekly payments, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.</span>
-              </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div style="display: flex; gap: 0.75rem;">
+            <!-- Action Buttons (pinned to the bottom, level with the payment options) -->
+            <div style="display: flex; gap: 0.75rem; margin-top: auto;">
               <button id="orderConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">${orderFinancing === 'loan' ? 'Continue — Finance Details' : 'Continue — Registration'}</button>
               <button id="orderCancelBtn" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Cancel</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Insufficient Funds Warning (full width, below both columns) -->
+        <div id="orderFundsWarning" style="display: none; margin-top: 1rem; padding: 0.75rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
+          <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;">
+            <span style="color: #EF4444; font-size: 1.1rem;">&#9888;</span>
+            <span style="color: #EF4444; font-weight: 700; font-size: 0.9rem;">Insufficient Funds</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+            <span>Your balance: </span><strong id="orderPlayerBalance" style="color: var(--text-primary);">$0</strong><br>
+            <span>Total cost (deposit + delivery): </span><strong id="orderTotalCost" style="color: #EF4444;">$0</strong><br>
+            <span>Shortfall: </span><strong id="orderShortfall" style="color: #EF4444;">$0</strong>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid rgba(239, 68, 68, 0.15); padding-top: 0.4rem; margin-top: 0.3rem;">
+            <span id="orderFundsSuggestion"></span>
           </div>
         </div>
       </div>
@@ -1191,13 +1258,15 @@ function showOrderDialog() {
       const costLabelEl = costEl?.previousElementSibling;
       if (costLabelEl) costLabelEl.textContent = label + ': ';
       if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5'; }
-      // Update suggestion text based on financing mode
+      // Update suggestion text based on financing mode (leases only exist from 1970)
       const suggestionEl = document.getElementById('orderFundsSuggestion');
       if (suggestionEl) {
+        const leasingExists = marketplaceWorldYear === null || marketplaceWorldYear >= 1970;
+        const browseTail = `browse <strong>used aircraft</strong>${leasingExists ? ' and <strong>operating leases</strong>' : ''} for lower-cost options.`;
         if (orderFinancing === 'loan') {
-          suggestionEl.innerHTML = 'Reduce the order quantity, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.';
+          suggestionEl.innerHTML = `Reduce the order quantity, or ${browseTail}`;
         } else {
-          suggestionEl.innerHTML = 'Consider <strong style="color: #3b82f6; cursor: pointer;" id="orderSwitchToLoan">financing with a loan</strong> to spread the remaining 70% over weekly payments, or browse <strong>used aircraft</strong> and <strong>operating leases</strong> for lower-cost options.';
+          suggestionEl.innerHTML = `Consider <strong style="color: #3b82f6; cursor: pointer;" id="orderSwitchToLoan">financing with a loan</strong> to spread the remaining 70% over weekly payments, or ${browseTail}`;
           document.getElementById('orderSwitchToLoan')?.addEventListener('click', switchToLoan);
         }
       }
@@ -1316,7 +1385,8 @@ function showOrderDialog() {
         <div class="order-bank-card" data-bank-id="${bank.bankId}"
              style="padding: 0.45rem 0.6rem; border: 2px solid ${isSelected ? '#3b82f6' : 'var(--border-color)'}; border-radius: 6px; background: ${isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-elevated)'}; cursor: pointer; transition: border-color 0.15s, background 0.15s;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-            <div style="display: flex; align-items: center; gap: 0.4rem; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 0;">
+              ${bankBadge(bank.bankId, bank.shortName)}
               <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">${bank.shortName}</span>
               <span style="font-size: 0.55rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; background: ${risk.bg}; color: ${risk.color};">${risk.label}</span>
             </div>
@@ -1335,11 +1405,6 @@ function showOrderDialog() {
         </div>`;
     }
 
-    const hiddenCount = data.offers.length - eligible.length;
-    if (hiddenCount > 0 && eligible.length > 0) {
-      html += `<div style="font-size: 0.65rem; color: var(--text-muted); padding: 0.2rem 0.1rem;">${hiddenCount} bank${hiddenCount > 1 ? 's' : ''} not shown — can't fund this order (loan size or credit score)</div>`;
-    }
-
     container.innerHTML = html;
 
     // Show/hide the "no bank can cover this" warning
@@ -1352,6 +1417,11 @@ function showOrderDialog() {
   }
 
   // ── Step 2: Finance Details ────────────────────────────────────────────────
+  // Small ⓘ with a styled hover tooltip for the cost-breakdown rows
+  function fbInfo(text) {
+    return `<span class="fb-info" data-tooltip="${text.replace(/"/g, '&quot;')}" style="display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--text-muted); color: var(--text-muted); font-size: 0.55rem; font-weight: 700; cursor: help; vertical-align: 1px; margin-left: 0.15rem;">i</span>`;
+  }
+
   const STRATEGIES = [
     { id: 'fixed', label: 'FIXED', desc: 'Equal weekly payments for the whole term' },
     { id: 'reducing', label: 'REDUCING', desc: 'Starts higher, declines as principal shrinks' },
@@ -1410,28 +1480,28 @@ function showOrderDialog() {
             <div style="padding: 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px; margin-bottom: 1rem;">
               <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Cost Breakdown</h4>
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
-                <span style="color: var(--text-muted);">Deposit due now</span>
+                <span style="color: var(--text-muted);">Deposit due now ${fbInfo('Paid from your balance when you place the order. This is the only money you pay upfront.')}</span>
                 <strong id="fbDeposit" style="color: var(--text-primary);">—</strong>
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
-                <span style="color: var(--text-muted);">Loan principal</span>
+                <span style="color: var(--text-muted);">Loan principal ${fbInfo('The amount you borrow — the remaining 70% due at delivery. The bank pays it for you; you repay it through the weekly payments, not upfront.')}</span>
                 <strong id="fbPrincipal" style="color: var(--text-primary);">—</strong>
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
-                <span style="color: var(--text-muted);">Interest rate</span>
+                <span style="color: var(--text-muted);">Interest rate ${fbInfo('Annual rate charged on the outstanding loan balance. Varies by bank, your credit score and the era’s interest environment.')}</span>
                 <strong id="fbRate" style="color: var(--text-primary);">—</strong>
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.1rem; font-size: 0.85rem;">
-                <span style="color: var(--text-muted);">Weekly payment</span>
+                <span style="color: var(--text-muted);">Weekly payment ${fbInfo('Deducted from your balance each game week, starting when each aircraft is delivered.')}</span>
                 <strong id="fbWeekly" style="color: #3b82f6;">—</strong>
               </div>
               <div id="fbWeeklyNote" style="text-align: right; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 0.3rem;"></div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem; padding-top: 0.4rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
-                <span style="color: var(--text-muted);">Total interest</span>
+                <span style="color: var(--text-muted);">Total interest ${fbInfo('What the loan costs you on top of the aircraft price, over the full term.')}</span>
                 <strong id="fbInterest" style="color: var(--text-primary);">—</strong>
               </div>
               <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-                <span style="color: var(--text-primary); font-weight: 700;">Total cost (deposit + repayments)</span>
+                <span style="color: var(--text-primary); font-weight: 700;">Total cost (deposit + repayments) ${fbInfo('Everything you will pay for this order: deposit + loan principal + interest.')}</span>
                 <strong id="fbTotal" style="color: #3b82f6; font-size: 1.05rem;">—</strong>
               </div>
               ${orderQty > 1 ? '<div style="font-size: 0.62rem; color: var(--text-muted); margin-top: 0.4rem;">Figures are order totals; one loan starts per aircraft as each is delivered.</div>' : ''}
@@ -1611,28 +1681,28 @@ function showOrderRegistrationDialog() {
     for (let i = 0; i < qty; i++) {
       rows += `
         <tr>
-          <td style="padding: 0.4rem 0.5rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">${i + 1}</td>
-          <td style="padding: 0.4rem 0.5rem;">
+          <td style="padding: 0.3rem; color: var(--text-muted); font-size: 0.8rem; text-align: center;">${i + 1}</td>
+          <td style="padding: 0.3rem;">
             <div style="display: flex; align-items: stretch; border: 1px solid var(--border-color); overflow: hidden; background: var(--surface-elevated);" id="regContainer${i}">
-              <div style="padding: 0.4rem 0.6rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center;">${registrationPrefix}</div>
+              <div style="padding: 0.35rem 0.4rem; background: var(--surface); border-right: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; display: flex; align-items: center;">${registrationPrefix}</div>
               <input type="text" id="regSuffix${i}"
                 placeholder="${typeof getSuffixPlaceholder === 'function' ? getSuffixPlaceholder(registrationPrefix) : (registrationPrefix === 'N-' ? '12345' : 'ABCD')}"
                 maxlength="${typeof getExpectedSuffixLength === 'function' ? getExpectedSuffixLength(registrationPrefix) : 6}"
-                style="flex: 1; padding: 0.4rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.85rem; outline: none; text-transform: uppercase; min-width: 60px;" />
+                style="flex: 1; padding: 0.35rem; background: transparent; border: none; color: var(--text-primary); font-size: 0.8rem; outline: none; text-transform: uppercase; min-width: 0; width: 100%;" />
             </div>
           </td>
-          <td style="padding: 0.4rem 0.5rem; text-align: center;">
-            <span id="regStatus${i}" style="font-size: 0.8rem; color: var(--text-muted);">—</span>
+          <td style="padding: 0.3rem; text-align: center;">
+            <span id="regStatus${i}" style="font-size: 0.75rem; color: var(--text-muted);">—</span>
           </td>
         </tr>`;
     }
     return `
-      <table style="width: 100%; border-collapse: collapse;">
+      <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
         <thead>
           <tr style="border-bottom: 1px solid var(--border-color);">
-            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 30px;">#</th>
-            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: left;">Registration</th>
-            <th style="padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 60px;">Status</th>
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 24px;">#</th>
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: left;">Registration</th>
+            <th style="padding: 0.3rem 0.3rem; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; text-align: center; width: 36px;"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -1667,7 +1737,7 @@ function showOrderRegistrationDialog() {
         <!-- Registration Section -->
         <div>
           <label style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Aircraft Registration${qty > 1 ? 's' : ''}</label>
-          <div id="regSection" style="max-height: 320px; overflow-y: auto;">
+          <div id="regSection" style="max-height: 320px; overflow-y: auto; overflow-x: hidden;">
             ${buildRegInputs()}
           </div>
         </div>
@@ -1725,7 +1795,15 @@ function showOrderRegistrationDialog() {
     autoAllSlider.style.backgroundColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.12)';
     autoAllSlider.style.borderColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.15)';
   }
-  autoAll.addEventListener('change', () => { autoToggles.forEach(t => { if (!t) return; t.checked = autoAll.checked; t.dispatchEvent(new Event('change')); }); syncAutoAllColor(); });
+  autoAll.addEventListener('change', () => {
+    // Capture the target state first: dispatching 'change' on a child re-runs the
+    // child handler, which recomputes autoAll.checked mid-loop and would corrupt
+    // the remaining toggles (re-ticking All only enabled the first check).
+    const on = autoAll.checked;
+    autoToggles.forEach(t => { if (!t) return; t.checked = on; t.dispatchEvent(new Event('change')); });
+    autoAll.checked = on;
+    syncAutoAllColor();
+  });
   autoToggles.forEach(t => {
     if (!t) return;
     t.addEventListener('change', () => {
@@ -3393,7 +3471,15 @@ function showLeaseRegistrationDialog() {
     autoAllSlider.style.backgroundColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.12)';
     autoAllSlider.style.borderColor = autoAll.checked ? autoAllColor : 'rgba(255,255,255,0.15)';
   }
-  autoAll.addEventListener('change', () => { autoToggles.forEach(t => { if (!t) return; t.checked = autoAll.checked; t.dispatchEvent(new Event('change')); }); syncAutoAllColor(); });
+  autoAll.addEventListener('change', () => {
+    // Capture the target state first: dispatching 'change' on a child re-runs the
+    // child handler, which recomputes autoAll.checked mid-loop and would corrupt
+    // the remaining toggles (re-ticking All only enabled the first check).
+    const on = autoAll.checked;
+    autoToggles.forEach(t => { if (!t) return; t.checked = on; t.dispatchEvent(new Event('change')); });
+    autoAll.checked = on;
+    syncAutoAllColor();
+  });
   autoToggles.forEach(t => {
     if (!t) return;
     t.addEventListener('change', () => {
