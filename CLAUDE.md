@@ -154,12 +154,11 @@ market the same way.
    `baseDemand` fudge was dropped** (the cap + elasticity replace it).
    `routeDemandService.getRouteDemand` now returns `isFloor`/`isDomestic`.
 
-**Open follow-ups:** AI airlines feed the fair-share denominator via their
-routes, but whether AI sets sensible `cargoConfig` allocations is unverified —
-if AI holds are empty they contribute 0 and players get the whole market.
-Seasonal split isn't yet threaded into cargo revenue (uses the annual demand
-score). Not browser-verified beyond confirming the `routeDemandValue`-scope
-crash is fixed.
+**Resolved (2026-07):** AI `cargoConfig` allocations verified — set via
+`aiFleetConfigService.configureCargo()` at route creation; runtime fallback
+added for null configs. Seasonal split threaded into cargo revenue (cosine
+blend by game month). Era-scaled `defaultCargoRates` fallback for routes
+with no rates set. `isDomestic` flag correctly passed to cargo `demandToPax`.
 
 ## Local dev / offline mode (added 2026-05)
 
@@ -454,6 +453,58 @@ user chose clean separation over the (recommended, lower-effort)
   drag/render bugs were only found once running (e.g. `dragover` must call
   `preventDefault()` for tour drags or the drop is refused). Expect more edge
   cases here — test in the browser.
+
+## Aircraft leasing — era scaling (2026-07)
+
+Lease rates and purchase prices in the marketplace are now **era-scaled**
+(`purchasePrice × eraMultiplier`). Before this fix, aircraft cost 2024
+dollars in all eras — a 1950 airline earning 10% of modern revenue paid
+full-price leases, making every airline unprofitable.
+
+- **Marketplace** (`fleet.js`): `newPrice = rawPrice × eraMult` before
+  computing depreciated sale prices and lease rates (`usedPrice × 0.004`).
+- **AI acquisition** (`aiDecisionService.js`): `purchasePrice` and
+  `leaseWeekly` both era-scaled via `decideAIAcquisition(…, worldYear)`.
+- **Fix script** `src/scripts/fixLeaseRates.js`: recalculates existing
+  lease rates and reimburses overpayments. Run with `--dry-run` first.
+
+**Next step — historical lease availability curve (not yet implemented):**
+Aircraft leasing barely existed before 1973 (ILFC founded). The model
+should add a **lease availability gate + premium curve**:
+- **Pre-1970**: leasing unavailable (buy or don't fly)
+- **1970s–80s**: available but expensive (1.5–2% of value/month; immature
+  market, high risk premium)
+- **1990s**: rates dropping as GECAS/Aercap grow (~1.0–1.2%/month); ~25–30%
+  of world fleet leased
+- **2000s+**: mature market, competitive rates (~0.6–0.8%/month); ~45–50%
+  of fleet leased
+Implementation: a `leaseAvailabilityMultiplier(year)` curve that gates
+the lease option in the marketplace and scales the 0.4% rate. AI
+`decideAIAcquisition` should also respect the gate (no lease method
+pre-1970).
+
+## World tick processing — per-world isolation (2026-07)
+
+Processing flags (`isProcessingFlights`, `isProcessingMaintenance`, etc.)
+were **global singletons** — a large world (1700+ AI aircraft) blocked all
+other worlds from processing flights, maintenance, and revenue. Fixed:
+
+- **Per-world state** via `_wp(worldId)`: each world has its own busy
+  flags and throttle timestamps so they can't starve each other.
+- **Missing throttle intervals** (`recallCheckInterval`,
+  `reputationCheckInterval`, `notificationCheckInterval`) were never
+  defined — these ran every tick (1s) instead of every 30–60s.
+- **Membership ID cache** (`_getMembershipIds`): 30s TTL, replaces 6+
+  identical `WorldMembership.findAll` queries per tick cycle.
+- **Adaptive intervals** (`_interval`): worlds with more airlines get
+  proportionally longer intervals (1×–3× scaling) to prevent DB overload.
+- **Batch queries** in `processFlights`: all active routes, membership
+  attributes, and competitor aircraft pre-loaded once per cycle (3 queries
+  vs 100+ per-flight). Competitor lookup by airport-pair key in memory.
+  `processReputation` batch-loads fleets + routes (2 queries vs N+N).
+- **Connection pool** bumped from 5 → auto-sized (80% of Postgres
+  `max_connections`, cap 80). Was the primary bottleneck — 5 connections
+  shared between 5 worlds + API requests.
 
 ## AI aircraft financing variety (2026-07)
 
