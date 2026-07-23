@@ -409,6 +409,74 @@ in `world-selection.js`, not only at final submit. Steps are shown by
   parchment contract document; it was copy-pasted onto ~30 UI elements and
   inverted their dark-theme colours (cleaned up 2026-07).
 
+## Cabin outfitting costs & premium demand cap (2026-07)
+
+Premium cabins now cost real money to install AND premium fares are
+demand-capped — an all-First plane is allowed but is an economic decision, not
+an exploit.
+
+- **`public/js/cabin-outfitting.js`** (dual-environment, like name-filter.js) is
+  the single source of truth: per-seat costs Y $10k / Y+ $25k / J $150k / F
+  $400k (2024 USD), era-scaled by the caller (`getEraMultiplier` server-side,
+  `marketplaceEraMultiplier` from `/api/world/info` client-side).
+  `cabinOutfittingCost(seats, eraMult)` + `cabinRefitCost(new, old, eraMult)`.
+- **Charged everywhere seats are installed** (`src/routes/fleet.js`): purchase
+  (single + bulk — added AFTER the bulk discount), lease (one-off at signing;
+  lessor receives the lease payment only), and **cabin refit = DELTA-UP per
+  class** (pay for seats added, no credit for removals — so buy-cheap-then-refit
+  costs exactly the same as configuring at purchase; downsizing is free).
+  Player-listing sellers receive the **airframe price only**, never the buyer's
+  outfitting spend. Bulk-lease takes no cabin config → nothing to charge (later
+  config goes through the charging refit endpoint).
+- **Premium demand cap** in `processFlightRevenue`: when an aircraft has premium
+  seats, pax are allocated by `cabinClassService.computeClassMixForAirports`
+  (new helper; era/GDP/distance/hub-aware — First ~12% of pax in 1950 → ~1%
+  today, no J pre-1978, no Y+ pre-1992/short-haul). Premium seats beyond the
+  route's demand fill with **economy-fare op-ups**. Total pax carried unchanged;
+  only the fare split. Unconfigured/all-economy aircraft (incl. ALL AI) keep the
+  identical old proportional path. AI neither pays outfitting nor is capped —
+  net neutral.
+- **Configurator** (`cabin-configurator.js`): premium may fill the whole cabin
+  (`canAdd` is `<= totalSpace`, not `-1`); **economy is semi-manual** — it
+  auto-fills leftover space but `econCapOverride` lets − reduce it to 0 (freed
+  space stays empty), + restores toward auto; reduced counts survive re-opening.
+  WC control renders disabled "Aircraft too small" when `_toiletDefaults.max`
+  is 0 (≤19 pax). Modal width is **pinned after first render** (fit-content made
+  it jump as the mix changed; outgrown diagrams scroll inside).
+- **Marketplace modal**: `#costBreakdown` card (Airframe / Cabin fitting /
+  Total) between the config rows and the acquisition boxes, filled by
+  `updateConfigSummary()`; the box price (`.acq-total[data-base]`) becomes the
+  all-in total. Used PURCHASE box is gold (#F59E0B) matching ORDER NEW; modal
+  footer buttons removed (X + inline boxes only). **Lease UI is fully hidden
+  pre-1970** (`leasingAvailableNow()` mirrors `eraEconomicService
+  .leasingAvailable`): the list's LEASE/WK column (`.no-lease` 5-col grid
+  variant) and the modal lease boxes. Used detail modals show a **TAKE OUT
+  LOAN** card → `/loans` (used purchases aren't financed per-airframe — that's
+  new-orders only). Used-market generated ages are **never 0**: min 0.2y, one
+  decimal under 3y (`src/routes/aircraft.js`).
+
+## Aircraft loans & fleet capital in the P&L (2026-07)
+
+- **One loan per DELIVERED aircraft**: a financed order of 7 creates 7 loans,
+  each materialising at that airframe's delivery (`worldTimeService` delivery
+  block) — the order only takes the 30% deposit. **Delivery loans are
+  deliberately exempt from the one-loan-per-bank rule** (asset finance vs the
+  loans-page corporate credit line).
+- **`loans.reference` column** (additive guard in server.js) labels delivery
+  loans `"N-123AF Boeing 377 — ordered 1950-03-25"`; set at both delivery-loan
+  creation sites (chosen bank + insufficient-funds Condor fallback), shown as
+  a muted sub-line on the loans page. Generic bank loans have no reference.
+  Existing loans were backfilled by matching origination date to delivery date.
+- **`weekly_financials.fleet_capital_costs`** (additive guard) — the
+  **"Aircraft Purchases"** category on the finance report: its own top-level
+  OUTGOINGS line (not inside Overheads — large one-off sums). Recorded via
+  `WeeklyFinancial.addCost(membershipId, gameTime, field, amount)` at: order
+  deposits (single + bulk), cash delivery remainders, used purchases (incl.
+  outfitting), lease outfitting, refit outfitting. All wrapped in try/catch —
+  bookkeeping must never block a purchase. Loan-financed deliveries record
+  **nothing** here (no cash moves; repayments already show as Loan Payments).
+  Past order-deposit weeks were backfilled from `user_aircraft.deposit_paid`.
+
 ## Sightseeing Tours (new feature, 2026-07)
 
 A **scenic pleasure flight** that loops from/to one base airport over
@@ -486,7 +554,8 @@ Leasing is **hard-gated before 1970** (ILFC founded 1973) and priced from
 - **12 banks** in `data/bankConfig.js` (added Sakura/Continental/Aurora/
   Liberty/Southern Cross to the original 7), spanning 2.2%–6.5% base and
   350–700 credit-score entry. One active loan per bank still applies, so
-  more banks = more max concurrent player loans (~12).
+  more banks = more max concurrent player loans (~12). **Aircraft delivery
+  loans are exempt from this rule** — see "Aircraft loans & fleet capital".
 - **Max loan** = `netWorth × bank.maxLoanPct × leverage(creditScore)` —
   leverage runs 1× (score ≤500) to 3× (850). The old flat `× 10` fudge is
   gone (it offered a day-old 1950 airline £41M).
