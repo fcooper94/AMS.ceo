@@ -1666,8 +1666,8 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
       // Dispose of old aircraft — scrap if very old, sell if decent
       const condition = parseFloat(ua.conditionPercentage) || 50;
       if (acAge >= 20 || condition < 40) {
-        // Scrap — instant removal for AI (no ferry delay)
-        const scrapValue = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.15 * (condition / 100));
+        // Scrap — instant removal for AI (no ferry delay); era-scaled like player scrap offers
+        const scrapValue = Math.round((parseFloat(acType.purchasePrice) || 10000000) * eraEconomicService.getEraMultiplier(worldYear) * 0.15 * (condition / 100));
         airline.balance = (parseFloat(airline.balance) || 0) + scrapValue;
         await airline.save();
         await ScheduledFlight.destroy({ where: { aircraftId: ua.id } });
@@ -1687,7 +1687,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
           const wearRatio = Math.max(0.4, Math.min(1.5, condition / typeAvg.refCondition));
           salePrice = Math.round(typeAvg.avg * wearRatio);
         } else {
-          salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * 0.5 * (condition / 100));
+          salePrice = Math.round((parseFloat(acType.purchasePrice) || 10000000) * eraEconomicService.getEraMultiplier(worldYear) * 0.5 * (condition / 100));
         }
         await ua.update({ status: 'listed_sale', listingPrice: salePrice, listedAt: now });
         aiLog(`[AI-DECISION] ${airline.airlineName} listed ${acType.manufacturer} ${acType.model} (${ua.registration}) for sale at $${Math.round(salePrice).toLocaleString()}`);
