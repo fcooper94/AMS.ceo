@@ -1013,7 +1013,11 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 // ======================================================================
 // Refit confirmation modal — shown over the cabin configurator overlay
 // ======================================================================
-function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, result) {
+function _ccMoney(v) {
+  return typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Math.round(v).toLocaleString('en-US');
+}
+
+function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, result, refitCost) {
   const { registration, days, aircraftName } = confirmInfo;
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;justify-content:center;align-items:center;padding:1rem;';
@@ -1031,6 +1035,13 @@ function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, resul
         <p style="margin:0 0 0.75rem 0;color:var(--text-secondary);font-size:0.85rem;line-height:1.5;">
           ${aircraftName || 'This aircraft'} will be taken <strong style="color:var(--warning-color);">out of service for ${days} day${days > 1 ? 's' : ''}</strong> (game time) while the cabin is reconfigured.
         </p>
+        ${refitCost != null ? (refitCost > 0 ? `
+        <p style="margin:0 0 0.75rem 0;color:var(--text-secondary);font-size:0.85rem;line-height:1.5;">
+          Cabin outfitting for new seats: <strong style="color:#f59e0b;">${_ccMoney(refitCost)}</strong> — charged when the refit begins.
+        </p>` : `
+        <p style="margin:0 0 0.75rem 0;color:var(--text-muted);font-size:0.8rem;line-height:1.5;">
+          No outfitting cost — no seats are being added.
+        </p>`) : ''}
         <p style="margin:0 0 0.75rem 0;color:var(--text-secondary);font-size:0.85rem;line-height:1.5;">
           During the refit, <strong>${registration}</strong> cannot be assigned to routes or fly.
         </p>
@@ -1297,7 +1308,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           ${options?.refitWarning ? `
           <div style="padding: 0.4rem 0.6rem; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-left: 3px solid #f59e0b; border-radius: 4px; display: flex; align-items: center; gap: 0.4rem;">
             <span style="font-size: 0.85rem; flex-shrink: 0;">&#9888;</span>
-            <span style="font-size: 0.6rem; color: var(--warning-color); line-height: 1.2;">${options.refitWarning}</span>
+            <span style="font-size: 0.6rem; color: var(--warning-color); line-height: 1.2;">${options.refitWarning}<span id="cabinRefitCostNote" style="display:block;margin-top:0.15rem;font-weight:700;"></span></span>
           </div>
           ` : ''}
 
@@ -1567,6 +1578,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const tPlus = overlay.querySelector('.toilet-adj-btn[data-delta="1"]');
     if (tMin) { tMin.style.opacity = toilets > toiletInfo.min ? '1' : '0.3'; tMin.style.cursor = toilets > toiletInfo.min ? 'pointer' : 'default'; }
     if (tPlus) { tPlus.style.opacity = toilets < toiletInfo.max ? '1' : '0.3'; tPlus.style.cursor = toilets < toiletInfo.max ? 'pointer' : 'default'; }
+    // Live outfitting cost for seats being added (delta-up vs current config)
+    const refitCostEl = document.getElementById('cabinRefitCostNote');
+    if (refitCostEl && options?.refitCostFn) {
+      const liveCost = options.refitCostFn({
+        economySeats: config.economy, economyPlusSeats: config.economyPlus,
+        businessSeats: config.business, firstSeats: config.first
+      });
+      refitCostEl.textContent = liveCost > 0
+        ? `New-seat outfitting cost: ${_ccMoney(liveCost)} (charged on apply)`
+        : 'No outfitting cost — no seats added';
+    }
     ensureMidPositions();
     renderDiagram();
     setupMidDragHandles();
@@ -1633,7 +1655,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       midPositions: midPositions.length > 0 ? [...midPositions] : undefined
     };
     if (options?.refitConfirm) {
-      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result);
+      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result,
+        options.refitCostFn ? options.refitCostFn(result) : null);
     } else {
       document.body.removeChild(overlay);
       if (onApply) onApply(result);
@@ -1964,6 +1987,17 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
       economyPlus: upperConfig.economyPlus + mainConfig.economyPlus,
       economy: upperConfig.economy + mainConfig.economy
     };
+    // Live outfitting cost for seats being added (delta-up vs current config)
+    const ddRefitCostEl = document.getElementById('cabinRefitCostNote');
+    if (ddRefitCostEl && options?.refitCostFn) {
+      const liveCost = options.refitCostFn({
+        economySeats: total.economy, economyPlusSeats: total.economyPlus,
+        businessSeats: total.business, firstSeats: total.first
+      });
+      ddRefitCostEl.textContent = liveCost > 0
+        ? `New-seat outfitting cost: ${_ccMoney(liveCost)} (charged on apply)`
+        : 'No outfitting cost — no seats added';
+    }
     const legendEl = document.getElementById('ddLegend');
     if (legendEl) {
       let lh = '';
@@ -2063,7 +2097,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
       toilets: toilets
     };
     if (options?.refitConfirm) {
-      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result);
+      _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result,
+        options.refitCostFn ? options.refitCostFn(result) : null);
     } else {
       document.body.removeChild(overlay);
       if (onApply) onApply(result);

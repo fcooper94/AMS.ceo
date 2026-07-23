@@ -340,7 +340,7 @@ async function showAircraftDetails(userAircraftId) {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:2000;display:flex;justify-content:center;align-items:center;padding:1rem;';
 
   overlay.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:950px;max-height:95vh;overflow-y:auto;display:flex;flex-direction:column;">
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:880px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;">
 
       <!-- Header Bar -->
       <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1rem;border-bottom:1px solid var(--border-color);flex-shrink:0;">
@@ -483,7 +483,7 @@ async function showAircraftDetails(userAircraftId) {
               const _hasDualDeck = ua.mainDeckCargoConfig || ua.mainDeckLightKg != null;
               const _renderCargoRows = (cfg) => {
                 if (!cfg) return '';
-                return CARGO_TYPE_KEYS.filter(k => (cfg[k] || 0) > 0).map(k => {
+                const rows = CARGO_TYPE_KEYS.filter(k => (cfg[k] || 0) > 0).map(k => {
                   const ct = CARGO_TYPES[k];
                   const val = cfg[k];
                   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.15rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">
@@ -494,6 +494,8 @@ async function showAircraftDetails(userAircraftId) {
                     <span style="font-weight:700;font-size:0.75rem;">${(val / 1000).toFixed(1)}t</span>
                   </div>`;
                 }).join('');
+                // Two columns keeps 8 cargo types to 4 rows of height
+                return `<div style="display:grid;grid-template-columns:1fr 1fr;column-gap:0.75rem;align-content:start;">${rows}</div>`;
               };
               if (_hasDualDeck) {
                 const mdConfig = ua.mainDeckCargoConfig || (ua.mainDeckLightKg != null ? {
@@ -1904,14 +1906,6 @@ function reconfigureCabin(userAircraftId) {
 
   showCabinConfigurator(aircraft, async (config) => {
     try {
-      // Outfitting cost for seats ADDED per class (delta-up, era-scaled) —
-      // mirrors the server charge in /reconfig-cabin (cabin-outfitting.js).
-      if (typeof cabinRefitCost === 'function') {
-        const refitCost = cabinRefitCost(config, existingConfig || {}, fleetEraMultiplier);
-        if (refitCost > 0 && !confirm(
-          `New seats for this refit cost ${typeof formatCurrency === 'function' ? formatCurrency(refitCost) : '$' + refitCost.toLocaleString('en-US')} in cabin outfitting (charged now). Proceed?`
-        )) return;
-      }
       const res = await fetch(`/api/fleet/${userAircraftId}/reconfig-cabin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1933,7 +1927,12 @@ function reconfigureCabin(userAircraftId) {
     }
   }, existingConfig, {
     refitWarning: `Cabin refit will take ${ua.registration} out of service for ${days} day${days > 1 ? 's' : ''} (game time).`,
-    refitConfirm: { registration: ua.registration, days, aircraftName: acName }
+    refitConfirm: { registration: ua.registration, days, aircraftName: acName },
+    // Live + confirm-time outfitting cost: seats ADDED per class (delta-up,
+    // era-scaled) — mirrors the server charge in /reconfig-cabin.
+    refitCostFn: (seats) => (typeof cabinRefitCost === 'function'
+      ? cabinRefitCost(seats, existingConfig || {}, fleetEraMultiplier)
+      : null)
   });
 }
 

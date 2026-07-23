@@ -11120,7 +11120,7 @@ async function showAircraftDetails(userAircraftId) {
               const _types = typeof CARGO_TYPES !== 'undefined' ? CARGO_TYPES : {};
               const _renderCargoRows = (cfg) => {
                 if (!cfg) return '';
-                return _keys.filter(k => (cfg[k] || 0) > 0).map(k => {
+                const rows = _keys.filter(k => (cfg[k] || 0) > 0).map(k => {
                   const ct = _types[k] || {};
                   const clr = ct.color || 'var(--text-muted)';
                   const lbl = ct.label || k;
@@ -11133,6 +11133,8 @@ async function showAircraftDetails(userAircraftId) {
                     <span style="font-weight:700;font-size:0.8rem;">${(val / 1000).toFixed(1)}t</span>
                   </div>`;
                 }).join('');
+                // Two columns keeps 8 cargo types to 4 rows of height
+                return `<div style="display:grid;grid-template-columns:1fr 1fr;column-gap:0.75rem;align-content:start;">${rows}</div>`;
               };
               const _hasDualDeck = ua.mainDeckCargoConfig || ua.mainDeckLightKg != null;
               if (_hasDualDeck) {
