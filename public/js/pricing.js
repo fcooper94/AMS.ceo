@@ -457,7 +457,7 @@ function displayRoutes() {
           <button onclick="event.stopPropagation(); toggleRoutePricing('${route.id}')" class="btn btn-secondary save-btn-small">EDIT</button>
         </div>
 
-        <div id="route-pricing-${route.id}" class="route-pricing-panel">
+        <div id="route-pricing-${route.id}" class="route-pricing-panel" onclick="event.stopPropagation()">
           <div class="pricing-row-label">Passengers</div>
           <div class="pricing-row">
             <div class="price-field">
