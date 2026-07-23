@@ -686,6 +686,9 @@ server.listen(PORT, () => {
       `);
     } catch (_) { /* routes table may not exist yet — sync will create it */ }
     try {
+      await sequelize.query(`ALTER TABLE user_aircraft ADD COLUMN IF NOT EXISTS financing_repayment_strategy VARCHAR(20)`);
+    } catch (_) { /* user_aircraft table may not exist yet — sync will create it */ }
+    try {
       await sequelize.query(`
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE
       `);

@@ -2151,7 +2151,8 @@ router.post('/purchase', async (req, res) => {
       // Financing (new aircraft orders only)
       financingMethod,  // 'cash' or 'loan'
       financingBankId,
-      financingTermWeeks
+      financingTermWeeks,
+      financingRepaymentStrategy
     } = req.body;
     // Resolve cargo config: prefer JSON, fall back to old individual fields
     let cargoConfig = _cargoConfig || null;
@@ -2223,6 +2224,9 @@ router.post('/purchase', async (req, res) => {
         const termWeeks = parseInt(financingTermWeeks);
         if (!termWeeks || termWeeks < TERM_RANGES.fleet_expansion.min || termWeeks > TERM_RANGES.fleet_expansion.max) {
           return res.status(400).json({ error: `Loan term must be between ${TERM_RANGES.fleet_expansion.min} and ${TERM_RANGES.fleet_expansion.max} weeks` });
+        }
+        if (financingRepaymentStrategy && !['fixed', 'reducing', 'interest_only'].includes(financingRepaymentStrategy)) {
+          return res.status(400).json({ error: 'Invalid repayment strategy' });
         }
       }
     } else {
@@ -2321,6 +2325,7 @@ router.post('/purchase', async (req, res) => {
         financingMethod: financingMethod || 'cash',
         financingBankId: financingMethod === 'loan' ? financingBankId : null,
         financingTermWeeks: financingMethod === 'loan' ? parseInt(financingTermWeeks) : null,
+        financingRepaymentStrategy: financingMethod === 'loan' ? (financingRepaymentStrategy || 'fixed') : null,
         transactionDiscount: discountPct,
         bulkOrderIndex: 0,
         // Auto-schedule preferences (applied at delivery)
@@ -2550,7 +2555,8 @@ router.post('/bulk-purchase', async (req, res) => {
       // Financing (new aircraft orders)
       financingMethod,
       financingBankId,
-      financingTermWeeks
+      financingTermWeeks,
+      financingRepaymentStrategy
     } = req.body;
     // Resolve cargo config
     let cargoConfig = _blkCargoConfig || null;
@@ -2666,6 +2672,9 @@ router.post('/bulk-purchase', async (req, res) => {
       if (!termWeeks || termWeeks < TERM_RANGES.fleet_expansion.min || termWeeks > TERM_RANGES.fleet_expansion.max) {
         return res.status(400).json({ error: `Loan term must be between ${TERM_RANGES.fleet_expansion.min} and ${TERM_RANGES.fleet_expansion.max} weeks` });
       }
+      if (financingRepaymentStrategy && !['fixed', 'reducing', 'interest_only'].includes(financingRepaymentStrategy)) {
+        return res.status(400).json({ error: 'Invalid repayment strategy' });
+      }
     }
 
     // Get world time
@@ -2727,6 +2736,7 @@ router.post('/bulk-purchase', async (req, res) => {
           financingMethod: financingMethod || 'cash',
           financingBankId: financingMethod === 'loan' ? financingBankId : null,
           financingTermWeeks: financingMethod === 'loan' ? parseInt(financingTermWeeks) : null,
+          financingRepaymentStrategy: financingMethod === 'loan' ? (financingRepaymentStrategy || 'fixed') : null,
           transactionDiscount: discountPct,
           bulkOrderIndex: i,
           // Auto-schedule (applied at delivery)

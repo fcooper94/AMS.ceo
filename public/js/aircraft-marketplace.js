@@ -907,6 +907,7 @@ async function fetchBankOffers() {
 let selectedFinancingMethod = 'cash'; // 'cash' or 'loan'
 let selectedBankId = null;
 let selectedLoanTermWeeks = 156; // default 3 years
+let selectedRepaymentStrategy = 'fixed'; // 'fixed' | 'reducing' | 'interest_only'
 let playerBalance = 0; // Updated by fetchWorldInfo()
 
 // Build compact acquisition buttons for the detail modal (ORDER + LEASE)
@@ -918,14 +919,14 @@ function buildNewAircraftAcquisitionCards(aircraft) {
   return `
     <div style="display: grid; grid-template-columns: ${aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
       <!-- ORDER NEW button -->
-      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); showOrderDialog()">
+      <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%); border: 2px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#F59E0B'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); showOrderDialog()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
           <div>
-            <div style="color: #10b981; font-weight: 700; font-size: 0.85rem;">ORDER NEW</div>
+            <div style="color: #F59E0B; font-weight: 700; font-size: 0.85rem;">ORDER NEW</div>
             <div style="color: var(--text-muted); font-size: 0.6rem;">Own outright · Available immediately</div>
           </div>
           <div style="text-align: right;">
-            <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(listPrice)}</div>
+            <div style="color: #F59E0B; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(listPrice)}</div>
             <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
           </div>
         </div>
@@ -977,6 +978,7 @@ function showOrderDialog() {
   let orderFinancing = 'cash';
   let orderBankId = null;
   let orderTermWeeks = 156;
+  let orderStrategy = 'fixed';
 
   function discPct() { return transactionDiscountPercent(orderQty); }
   function unitPrice() { return transactionUnitPrice(listPrice, orderQty); }
@@ -1014,20 +1016,20 @@ function showOrderDialog() {
 
             <!-- Pricing -->
             <div style="margin-bottom: 1rem; padding: 0.75rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px;">
-              <div id="orderListPriceRow" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <div id="orderListPriceRow" style="display: flex; visibility: ${discPct() > 0 ? 'visible' : 'hidden'}; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span style="color: var(--text-muted); font-size: 0.8rem;">List Price</span>
-                <span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">${formatCurrencyShort(listPrice)}</span>
+                <span><span style="color: var(--text-muted); font-size: 0.9rem; text-decoration: line-through;">${formatCurrencyShort(listPrice)}</span><span style="display: inline-block; min-width: 2.2rem; margin-left: 0.3rem;"></span></span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span id="orderPriceLabel" style="color: var(--text-primary); font-weight: 600; font-size: 0.9rem;">Unit Price</span>
                 <div style="text-align: right;">
                   <span id="orderUnitPrice" style="color: #10b981; font-weight: 700; font-size: 1.3rem;">${formatCurrencyShort(unitPrice())}</span>
-                  <span id="orderDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: none;"></span>
+                  <span id="orderDiscBadge" style="color: #F59E0B; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; display: inline-block; min-width: 2.2rem; text-align: left; visibility: ${discPct() > 0 ? 'visible' : 'hidden'};"></span>
                 </div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
                 <span style="color: var(--text-secondary); font-size: 0.85rem;">30% Deposit</span>
-                <span id="orderDepositDisplay" style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(totalDeposit())}</span>
+                <span><span id="orderDepositDisplay" style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(totalDeposit())}</span><span style="display: inline-block; min-width: 2.2rem; margin-left: 0.3rem;"></span></span>
               </div>
             </div>
 
@@ -1078,6 +1080,10 @@ function showOrderDialog() {
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Payment Method</span>
                 <span id="orderSummaryFinancing" style="color: var(--text-primary); font-weight: 600;">${orderFinancing === 'loan' ? 'Loan' : 'Cash at Delivery'}</span>
               </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Total Order Cost</span>
+                <span id="orderSummaryTotal" style="color: var(--text-primary); font-weight: 600;">${formatCurrencyShort(unitPrice() * orderQty)}</span>
+              </div>
               <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.4rem; border-top: 1px solid rgba(16, 185, 129, 0.15);">
                 <span style="color: var(--text-primary); font-weight: 700; font-size: 0.95rem;">Deposit Due Now</span>
                 <span id="orderSummaryDeposit" style="color: #10b981; font-weight: 700; font-size: 1.2rem;">${formatCurrencyShort(totalDeposit())}</span>
@@ -1102,46 +1108,8 @@ function showOrderDialog() {
 
             <!-- Action Buttons -->
             <div style="display: flex; gap: 0.75rem;">
-              <button id="orderConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Continue — Registration</button>
+              <button id="orderConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">${orderFinancing === 'loan' ? 'Continue — Finance Details' : 'Continue — Registration'}</button>
               <button id="orderCancelBtn" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Cancel</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Loan Details Panel (full width, below the grid) -->
-        <div id="orderLoanPanel" style="display: ${orderFinancing === 'loan' ? 'block' : 'none'}; margin-top: 1rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px;">
-          <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.4rem; font-weight: 600;">Select Bank</label>
-
-          <!-- No bank can cover warning -->
-          <div id="orderNoBankWarning" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3);">
-            <div style="display: flex; align-items: center; gap: 0.3rem;">
-              <span style="color: #EF4444; font-size: 1rem;">&#9888;</span>
-              <span style="color: #EF4444; font-weight: 700; font-size: 0.8rem;">No bank can cover this loan</span>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-              Loan needed: <strong id="orderLoanNeeded" style="color: #EF4444;">$0</strong>.
-              Reduce quantity or consider cash / used aircraft.
-            </div>
-          </div>
-
-          <!-- Bank cards grid (full width, 3 columns) -->
-          <div id="orderBankCards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.6rem;">
-            <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 0.6rem; font-size: 0.8rem;">Loading banks...</div>
-          </div>
-
-          <!-- Term slider + preview row -->
-          <div style="display: flex; gap: 1rem; align-items: center;">
-            <div style="flex: 1;">
-              <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.3rem;">Term (weeks)</label>
-              <input id="orderTermInput" type="range" min="104" max="260" value="${orderTermWeeks}" step="26" style="width: 100%; accent-color: #3b82f6;">
-              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">
-                <span>2 yr</span>
-                <span id="orderTermDisplay" style="color: #3b82f6; font-weight: 600;">${(orderTermWeeks / 52).toFixed(1)} yr</span>
-                <span>5 yr</span>
-              </div>
-            </div>
-            <div id="orderLoanPreview" style="color: #3b82f6; font-weight: 600; text-align: center; padding: 0.5rem 1rem; background: rgba(59, 130, 246, 0.1); font-size: 0.85rem; min-width: 200px;">
-              Calculating...
             </div>
           </div>
         </div>
@@ -1176,22 +1144,22 @@ function showOrderDialog() {
     const confirmBtn = document.getElementById('orderConfirmBtn');
 
     if (unitPriceEl) unitPriceEl.textContent = formatCurrencyShort(unitPrice());
-    if (listPriceRow) listPriceRow.style.display = hasDiscount ? 'flex' : 'none';
+    if (listPriceRow) listPriceRow.style.visibility = hasDiscount ? 'visible' : 'hidden';
     if (priceLabelEl) priceLabelEl.textContent = hasDiscount ? 'Discounted Unit Price' : 'Unit Price';
-    if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.display = hasDiscount ? 'inline' : 'none'; }
+    if (discBadgeEl) { discBadgeEl.textContent = '-' + discPct() + '%'; discBadgeEl.style.visibility = hasDiscount ? 'visible' : 'hidden'; }
     if (depositEl) depositEl.textContent = formatCurrencyShort(totalDeposit());
     if (qtyEl) qtyEl.textContent = orderQty;
     if (deliveryEl) deliveryEl.textContent = deliveryNote;
     // Update summary section
     const summaryQty = document.getElementById('orderSummaryQty');
     const summaryFinancing = document.getElementById('orderSummaryFinancing');
+    const summaryTotal = document.getElementById('orderSummaryTotal');
     const summaryDeposit = document.getElementById('orderSummaryDeposit');
     if (summaryQty) summaryQty.textContent = 'x' + orderQty;
     if (summaryFinancing) summaryFinancing.textContent = orderFinancing === 'loan' ? 'Loan' : 'Cash at Delivery';
+    if (summaryTotal) summaryTotal.textContent = formatCurrencyShort(unitPrice() * orderQty);
     if (summaryDeposit) summaryDeposit.textContent = formatCurrencyShort(totalDeposit());
 
-    if (orderFinancing === 'loan' && cachedBankOffers) renderBankCards();
-    else updateLoanPreviewLocal();
     updateFundsWarning();
   }
 
@@ -1207,13 +1175,6 @@ function showOrderDialog() {
     // Loan mode: only need the deposit (loan covers the rest)
     const amountNeeded = orderFinancing === 'loan' ? deposit : unitPrice() * orderQty;
     const label = orderFinancing === 'loan' ? 'Deposit due now' : 'Total cost (deposit + delivery)';
-
-    // Hide/show loan panel based on deposit affordability
-    const loanPanel = document.getElementById('orderLoanPanel');
-    const cantAffordDeposit = playerBalance < deposit;
-    if (loanPanel && orderFinancing === 'loan') {
-      loanPanel.style.display = cantAffordDeposit ? 'none' : 'block';
-    }
 
     if (playerBalance >= amountNeeded) {
       warningEl.style.display = 'none';
@@ -1243,54 +1204,76 @@ function showOrderDialog() {
     }
   }
 
-  // --- Quantity ---
-  document.getElementById('orderQtyDown').addEventListener('click', () => {
-    if (orderQty <= 1) return;
-    orderQty--;
-    purchaseQuantity = orderQty;
-    updatePricing();
-  });
-  document.getElementById('orderQtyUp').addEventListener('click', () => {
-    if (orderQty >= 10) return;
-    orderQty++;
-    purchaseQuantity = orderQty;
-    updatePricing();
-  });
-
-  // --- Financing ---
-  document.getElementById('orderCashBtn').addEventListener('click', () => {
-    orderFinancing = 'cash';
-    selectedFinancingMethod = 'cash';
-    const cashBtn = document.getElementById('orderCashBtn');
-    const loanBtn = document.getElementById('orderLoanBtn');
-    const loanPanel = document.getElementById('orderLoanPanel');
-    cashBtn.style.border = '2px solid #10b981'; cashBtn.style.background = 'rgba(16, 185, 129, 0.1)'; cashBtn.style.color = '#10b981';
-    loanBtn.style.border = '2px solid var(--border-color)'; loanBtn.style.background = 'transparent'; loanBtn.style.color = 'var(--text-muted)';
-    if (loanPanel) loanPanel.style.display = 'none';
-    updateFundsWarning();
-    updatePricing();
-  });
-
   function switchToLoan() {
     document.getElementById('orderLoanBtn')?.click();
   }
 
-  document.getElementById('orderLoanBtn').addEventListener('click', () => {
-    orderFinancing = 'loan';
-    selectedFinancingMethod = 'loan';
-    const cashBtn = document.getElementById('orderCashBtn');
-    const loanBtn = document.getElementById('orderLoanBtn');
-    const loanPanel = document.getElementById('orderLoanPanel');
-    loanBtn.style.border = '2px solid #3b82f6'; loanBtn.style.background = 'rgba(59, 130, 246, 0.1)'; loanBtn.style.color = '#3b82f6';
-    cashBtn.style.border = '2px solid var(--border-color)'; cashBtn.style.background = 'transparent'; cashBtn.style.color = 'var(--text-muted)';
-    if (loanPanel) loanPanel.style.display = 'block';
-    loadBankSelectorLocal();
-    updateFundsWarning();
-    updatePricing();
-  });
+  // Step-1 listeners — re-wired every time the order step is (re)rendered
+  function wireStep1() {
+    // --- Quantity ---
+    document.getElementById('orderQtyDown').addEventListener('click', () => {
+      if (orderQty <= 1) return;
+      orderQty--;
+      purchaseQuantity = orderQty;
+      updatePricing();
+    });
+    document.getElementById('orderQtyUp').addEventListener('click', () => {
+      if (orderQty >= 10) return;
+      orderQty++;
+      purchaseQuantity = orderQty;
+      updatePricing();
+    });
 
-  // Wire "financing with a loan" link in the funds warning
-  document.getElementById('orderSwitchToLoan')?.addEventListener('click', switchToLoan);
+    // --- Financing ---
+    document.getElementById('orderCashBtn').addEventListener('click', () => {
+      orderFinancing = 'cash';
+      selectedFinancingMethod = 'cash';
+      const cashBtn = document.getElementById('orderCashBtn');
+      const loanBtn = document.getElementById('orderLoanBtn');
+      cashBtn.style.border = '2px solid #10b981'; cashBtn.style.background = 'rgba(16, 185, 129, 0.1)'; cashBtn.style.color = '#10b981';
+      loanBtn.style.border = '2px solid var(--border-color)'; loanBtn.style.background = 'transparent'; loanBtn.style.color = 'var(--text-muted)';
+      const confirmBtn = document.getElementById('orderConfirmBtn');
+      if (confirmBtn) confirmBtn.textContent = 'Continue — Registration';
+      updateFundsWarning();
+      updatePricing();
+    });
+
+    document.getElementById('orderLoanBtn').addEventListener('click', () => {
+      orderFinancing = 'loan';
+      selectedFinancingMethod = 'loan';
+      const cashBtn = document.getElementById('orderCashBtn');
+      const loanBtn = document.getElementById('orderLoanBtn');
+      loanBtn.style.border = '2px solid #3b82f6'; loanBtn.style.background = 'rgba(59, 130, 246, 0.1)'; loanBtn.style.color = '#3b82f6';
+      cashBtn.style.border = '2px solid var(--border-color)'; cashBtn.style.background = 'transparent'; cashBtn.style.color = 'var(--text-muted)';
+      const confirmBtn = document.getElementById('orderConfirmBtn');
+      if (confirmBtn) confirmBtn.textContent = 'Continue — Finance Details';
+      fetchBankOffers(); // pre-warm for the Finance Details step
+      updateFundsWarning();
+      updatePricing();
+    });
+
+    // Wire "financing with a loan" link in the funds warning
+    document.getElementById('orderSwitchToLoan')?.addEventListener('click', switchToLoan);
+
+    // --- Confirm / Cancel ---
+    const confirmBtn = document.getElementById('orderConfirmBtn');
+    confirmBtn.addEventListener('click', () => {
+      if (confirmBtn.disabled) return;
+      purchaseQuantity = orderQty;
+      selectedFinancingMethod = orderFinancing;
+      if (orderFinancing === 'loan') {
+        renderFinanceStep();
+      } else {
+        document.body.removeChild(overlay);
+        showOrderRegistrationDialog();
+      }
+    });
+    document.getElementById('orderCancelBtn').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+    });
+
+    updateFundsWarning();
+  }
 
   // --- Bank/Loan ---
   const riskColors = {
@@ -1312,190 +1295,282 @@ function showOrderDialog() {
     }
 
     const totalLoanNeeded = (unitPrice() - depositPer()) * orderQty;
-    let anyAvailable = false;
-    let html = '';
 
-    for (const bank of data.offers) {
+    // Ensure a valid selection before painting (auto-select first eligible bank)
+    const eligible = data.offers.filter(b => b.meetsRequirement && totalLoanNeeded <= b.maxLoanAmount);
+    if (!eligible.find(b => b.bankId === orderBankId)) {
+      orderBankId = eligible.length ? eligible[0].bankId : null;
+      selectedBankId = orderBankId;
+    }
+
+    // Only offer banks that can fund the full order at your credit score
+    let html = '';
+    for (const bank of eligible) {
       const fleetType = bank.loanTypes?.find(lt => lt.type === 'fleet_expansion');
       const rate = fleetType?.rate || bank.loanTypes?.[1]?.rate || 0;
-      const exceedsLimit = totalLoanNeeded > bank.maxLoanAmount;
-      const creditTooLow = !bank.meetsRequirement;
-      const disabled = exceedsLimit || creditTooLow;
       const isSelected = bank.bankId === orderBankId;
-      if (!disabled) anyAvailable = true;
-
       const risk = riskColors[bank.riskAppetite] || riskColors.moderate;
 
+      // Compact row; the selected bank expands to show its full details
       html += `
-        <div class="order-bank-card${disabled ? ' disabled' : ''}" data-bank-id="${bank.bankId}"
-             style="padding: 0.5rem 0.6rem; border: 2px solid ${isSelected && !disabled ? '#3b82f6' : disabled ? 'rgba(255,255,255,0.05)' : 'var(--border-color)'}; border-radius: 6px; background: ${isSelected && !disabled ? 'rgba(59, 130, 246, 0.08)' : disabled ? 'rgba(255,255,255,0.02)' : 'var(--surface-elevated)'}; cursor: ${disabled ? 'not-allowed' : 'pointer'}; opacity: ${disabled ? '0.45' : '1'}; transition: border-color 0.15s, background 0.15s;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-            <div style="display: flex; align-items: center; gap: 0.4rem;">
-              <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">${bank.shortName}</span>
+        <div class="order-bank-card" data-bank-id="${bank.bankId}"
+             style="padding: 0.45rem 0.6rem; border: 2px solid ${isSelected ? '#3b82f6' : 'var(--border-color)'}; border-radius: 6px; background: ${isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-elevated)'}; cursor: pointer; transition: border-color 0.15s, background 0.15s;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.4rem; min-width: 0;">
+              <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">${bank.shortName}</span>
               <span style="font-size: 0.55rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 600; background: ${risk.bg}; color: ${risk.color};">${risk.label}</span>
             </div>
-            <span style="font-weight: 700; font-size: 0.9rem; color: ${disabled ? 'var(--text-muted)' : '#3b82f6'}; font-family: 'Courier New', monospace;">${rate.toFixed(1)}%</span>
+            <span style="font-weight: 700; font-size: 0.9rem; color: #3b82f6; font-family: 'Courier New', monospace; white-space: nowrap;">${rate.toFixed(1)}%</span>
           </div>
-          <div style="display: flex; gap: 0.7rem; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.2rem;">
-            <span>Max: <strong style="color: var(--text-primary);">${formatCurrencyShort(bank.maxLoanAmount)}</strong></span>
-            <span>Early fee: <strong style="color: var(--text-primary);">${bank.earlyRepaymentFee > 0 ? bank.earlyRepaymentFee + '%' : 'None'}</strong></span>
-            <span>Holidays: <strong style="color: var(--text-primary);">${bank.paymentHolidays}</strong></span>
-          </div>
-          <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
-            ${(bank.features || []).map(f => `<span style="font-size: 0.55rem; padding: 0.08rem 0.3rem; border-radius: 3px; background: rgba(200,210,225,0.08); color: var(--text-secondary); font-weight: 600;">${f}</span>`).join('')}
-          </div>
-          ${exceedsLimit ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: #EF4444; font-weight: 600;">&#9888; Exceeds max loan: ${formatCurrencyShort(bank.maxLoanAmount)} (need ${formatCurrencyShort(totalLoanNeeded)})</div>` : ''}
-          ${creditTooLow ? `<div style="margin-top: 0.25rem; font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">&#128274; Requires credit score ${bank.minCreditScore}+</div>` : ''}
+          ${isSelected ? `
+          <div style="margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
+            <div style="display: flex; gap: 0.7rem; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+              <span>Early fee: <strong style="color: var(--text-primary);">${bank.earlyRepaymentFee > 0 ? bank.earlyRepaymentFee + '%' : 'None'}</strong></span>
+              <span>Payment holidays: <strong style="color: var(--text-primary);">${bank.paymentHolidays}</strong></span>
+            </div>
+            <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+              ${(bank.features || []).map(f => `<span style="font-size: 0.55rem; padding: 0.08rem 0.3rem; border-radius: 3px; background: rgba(200,210,225,0.08); color: var(--text-secondary); font-weight: 600;">${f}</span>`).join('')}
+            </div>
+          </div>` : ''}
         </div>`;
+    }
+
+    const hiddenCount = data.offers.length - eligible.length;
+    if (hiddenCount > 0 && eligible.length > 0) {
+      html += `<div style="font-size: 0.65rem; color: var(--text-muted); padding: 0.2rem 0.1rem;">${hiddenCount} bank${hiddenCount > 1 ? 's' : ''} not shown — can't fund this order (loan size or credit score)</div>`;
     }
 
     container.innerHTML = html;
 
     // Show/hide the "no bank can cover this" warning
     if (warningEl) {
-      warningEl.style.display = anyAvailable ? 'none' : 'block';
+      warningEl.style.display = eligible.length > 0 ? 'none' : 'block';
       if (loanNeededEl) loanNeededEl.textContent = formatCurrencyShort(totalLoanNeeded);
     }
 
-    // If current selection is now invalid, auto-select first available
-    const currentValid = data.offers.find(b => b.bankId === orderBankId && b.meetsRequirement && totalLoanNeeded <= b.maxLoanAmount);
-    if (!currentValid) {
-      const firstValid = data.offers.find(b => b.meetsRequirement && totalLoanNeeded <= b.maxLoanAmount);
-      if (firstValid) {
-        orderBankId = firstValid.bankId;
-        selectedBankId = firstValid.bankId;
-        // Re-highlight the new selection
-        container.querySelectorAll('.order-bank-card').forEach(c => {
-          const id = c.getAttribute('data-bank-id');
-          if (id === firstValid.bankId) {
-            c.style.borderColor = '#3b82f6';
-            c.style.background = 'rgba(59, 130, 246, 0.08)';
-          }
-        });
-      } else {
-        orderBankId = null;
-        selectedBankId = null;
-      }
-    }
-
-    updateLoanPreviewLocal();
+    updateFinanceBreakdown();
   }
 
-  let bankCardsWired = false;
-  async function loadBankSelectorLocal() {
-    const container = document.getElementById('orderBankCards');
-    if (!container) return;
-    const data = await fetchBankOffers();
-    if (!data || !data.offers) return;
+  // ── Step 2: Finance Details ────────────────────────────────────────────────
+  const STRATEGIES = [
+    { id: 'fixed', label: 'FIXED', desc: 'Equal weekly payments for the whole term' },
+    { id: 'reducing', label: 'REDUCING', desc: 'Starts higher, declines as principal shrinks' },
+    { id: 'interest_only', label: 'INTEREST ONLY', desc: 'Lowest weekly cost; principal due at term end' }
+  ];
 
-    renderBankCards();
+  function renderFinanceStep() {
+    overlay.innerHTML = `
+      <div style="background: var(--surface); border: 1px solid var(--accent-color); border-radius: 8px; padding: 1.5rem; width: 95%; max-width: 1050px; margin: auto;">
+        <h2 style="margin: 0 0 0.25rem 0; color: #3b82f6; text-align: center; font-size: 1.2rem;">FINANCE DETAILS</h2>
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1.25rem;">
+          ${fullName}${orderQty > 1 ? ' &times;' + orderQty : ''} &middot; ${formatCurrencyShort(totalDeposit())} deposit now &middot; loan covers the remaining 70% at delivery
+        </div>
 
-    // Wire event delegation once
-    if (!bankCardsWired) {
-      bankCardsWired = true;
-      container.addEventListener('click', (e) => {
-        const card = e.target.closest('.order-bank-card:not(.disabled)');
-        if (!card) return;
-        const bankId = card.getAttribute('data-bank-id');
+        <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.5rem;">
+          <!-- Left: bank selection -->
+          <div>
+            <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.4rem; font-weight: 600;">Select Bank</label>
 
-        container.querySelectorAll('.order-bank-card').forEach(c => {
-          if (!c.classList.contains('disabled')) {
-            c.style.borderColor = 'var(--border-color)';
-            c.style.background = 'var(--surface-elevated)';
-          }
-        });
+            <div id="orderNoBankWarning" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3);">
+              <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <span style="color: #EF4444; font-size: 1rem;">&#9888;</span>
+                <span style="color: #EF4444; font-weight: 700; font-size: 0.8rem;">No bank can cover this loan</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                Loan needed: <strong id="orderLoanNeeded" style="color: #EF4444;">$0</strong>.
+                Reduce quantity or consider cash / used aircraft.
+              </div>
+            </div>
 
-        card.style.borderColor = '#3b82f6';
-        card.style.background = 'rgba(59, 130, 246, 0.08)';
+            <div id="orderBankCards" style="display: grid; grid-template-columns: 1fr; gap: 0.4rem; align-content: start; max-height: 60vh; overflow-y: auto;">
+              <div style="text-align: center; color: var(--text-muted); padding: 0.6rem; font-size: 0.8rem;">Loading banks...</div>
+            </div>
+          </div>
 
-        orderBankId = bankId;
-        selectedBankId = bankId;
-        updateLoanPreviewLocal();
+          <!-- Right: repayment schedule + breakdown -->
+          <div>
+            <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.3rem; font-weight: 600;">Term</label>
+            <input id="orderTermInput" type="range" min="104" max="260" value="${orderTermWeeks}" step="26" style="width: 100%; accent-color: #3b82f6;">
+            <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem; margin-bottom: 0.75rem;">
+              <span>2 yr</span>
+              <span id="orderTermDisplay" style="color: #3b82f6; font-weight: 600;">${(orderTermWeeks / 52).toFixed(1)} yr</span>
+              <span>5 yr</span>
+            </div>
+
+            <label style="color: var(--text-secondary); font-size: 0.8rem; display: block; margin-bottom: 0.4rem; font-weight: 600;">Repayment Schedule</label>
+            <div id="orderStrategyCards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.75rem;">
+              ${STRATEGIES.map(s => `
+                <div class="order-strategy-card" data-strategy="${s.id}" style="padding: 0.45rem 0.5rem; border: 2px solid ${orderStrategy === s.id ? '#3b82f6' : 'var(--border-color)'}; border-radius: 6px; background: ${orderStrategy === s.id ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-elevated)'}; cursor: pointer; transition: border-color 0.15s, background 0.15s;">
+                  <div style="font-weight: 700; font-size: 0.7rem; color: ${orderStrategy === s.id ? '#3b82f6' : 'var(--text-primary)'};">${s.label}</div>
+                  <div style="font-size: 0.58rem; color: var(--text-muted); margin-top: 0.15rem; line-height: 1.3;">${s.desc}</div>
+                </div>`).join('')}
+            </div>
+
+            <!-- Cost breakdown -->
+            <div style="padding: 0.75rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px; margin-bottom: 1rem;">
+              <h4 style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase;">Cost Breakdown</h4>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
+                <span style="color: var(--text-muted);">Deposit due now</span>
+                <strong id="fbDeposit" style="color: var(--text-primary);">—</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
+                <span style="color: var(--text-muted);">Loan principal</span>
+                <strong id="fbPrincipal" style="color: var(--text-primary);">—</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem;">
+                <span style="color: var(--text-muted);">Interest rate</span>
+                <strong id="fbRate" style="color: var(--text-primary);">—</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.1rem; font-size: 0.85rem;">
+                <span style="color: var(--text-muted);">Weekly payment</span>
+                <strong id="fbWeekly" style="color: #3b82f6;">—</strong>
+              </div>
+              <div id="fbWeeklyNote" style="text-align: right; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 0.3rem;"></div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem; font-size: 0.85rem; padding-top: 0.4rem; border-top: 1px solid rgba(59, 130, 246, 0.15);">
+                <span style="color: var(--text-muted);">Total interest</span>
+                <strong id="fbInterest" style="color: var(--text-primary);">—</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                <span style="color: var(--text-primary); font-weight: 700;">Total cost (deposit + repayments)</span>
+                <strong id="fbTotal" style="color: #3b82f6; font-size: 1.05rem;">—</strong>
+              </div>
+              ${orderQty > 1 ? '<div style="font-size: 0.62rem; color: var(--text-muted); margin-top: 0.4rem;">Figures are order totals; one loan starts per aircraft as each is delivered.</div>' : ''}
+            </div>
+
+            <div style="display: flex; gap: 0.75rem;">
+              <button id="financeBackBtn" class="btn btn-secondary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Back</button>
+              <button id="financeContinueBtn" class="btn btn-primary" style="flex: 1; padding: 0.75rem; font-size: 0.95rem;">Continue — Registration</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Bank card selection (fresh container each render, so wire directly).
+    // Re-render on select so the chosen bank expands accordion-style.
+    const bankContainer = document.getElementById('orderBankCards');
+    bankContainer.addEventListener('click', (e) => {
+      const card = e.target.closest('.order-bank-card:not(.disabled)');
+      if (!card) return;
+      orderBankId = card.getAttribute('data-bank-id');
+      selectedBankId = orderBankId;
+      renderBankCards();
+    });
+
+    // Strategy selection
+    const strategyContainer = document.getElementById('orderStrategyCards');
+    strategyContainer.addEventListener('click', (e) => {
+      const card = e.target.closest('.order-strategy-card');
+      if (!card) return;
+      orderStrategy = card.getAttribute('data-strategy');
+      strategyContainer.querySelectorAll('.order-strategy-card').forEach(c => {
+        const active = c.getAttribute('data-strategy') === orderStrategy;
+        c.style.borderColor = active ? '#3b82f6' : 'var(--border-color)';
+        c.style.background = active ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-elevated)';
+        c.querySelector('div').style.color = active ? '#3b82f6' : 'var(--text-primary)';
       });
-    }
+      updateFinanceBreakdown();
+    });
+
+    // Term slider
+    const termInput = document.getElementById('orderTermInput');
+    termInput.addEventListener('input', updateFinanceBreakdown);
+    termInput.addEventListener('change', updateFinanceBreakdown);
+
+    // Back / Continue
+    document.getElementById('financeBackBtn').addEventListener('click', () => {
+      renderDialog();
+      wireStep1();
+    });
+    document.getElementById('financeContinueBtn').addEventListener('click', () => {
+      const btn = document.getElementById('financeContinueBtn');
+      if (btn.disabled) return;
+      purchaseQuantity = orderQty;
+      selectedFinancingMethod = 'loan';
+      selectedBankId = orderBankId;
+      selectedLoanTermWeeks = orderTermWeeks;
+      selectedRepaymentStrategy = orderStrategy;
+      document.body.removeChild(overlay);
+      showOrderRegistrationDialog();
+    });
+
+    // Load offers, then paint cards + breakdown
+    fetchBankOffers().then(() => {
+      renderBankCards();
+      updateFinanceBreakdown();
+    });
+    updateFinanceBreakdown();
   }
 
-  function updateLoanPreviewLocal() {
+  function updateFinanceBreakdown() {
     const termInput = document.getElementById('orderTermInput');
-    const termDisplay = document.getElementById('orderTermDisplay');
-    const preview = document.getElementById('orderLoanPreview');
-    const confirmBtn = document.getElementById('orderConfirmBtn');
-    if (!termInput) return;
+    if (!termInput) return; // not on the finance step
 
     orderTermWeeks = parseInt(termInput.value);
     selectedLoanTermWeeks = orderTermWeeks;
     const years = (orderTermWeeks / 52).toFixed(1);
+    const termDisplay = document.getElementById('orderTermDisplay');
     if (termDisplay) termDisplay.textContent = `${years} yr`;
 
-    const remainingPerUnit = unitPrice() - depositPer();
-    const totalLoanNeeded = remainingPerUnit * orderQty;
-    let rate = 6.0;
-    let earlyFee = 0;
-    let holidays = 0;
-    let bankName = '';
+    const principal = (unitPrice() - depositPer()) * orderQty;
+    let rate = null;
     let exceedsLimit = false;
-
     if (cachedBankOffers && cachedBankOffers.offers && orderBankId) {
       const bank = cachedBankOffers.offers.find(b => b.bankId === orderBankId);
       if (bank) {
         const fleetType = bank.loanTypes?.find(lt => lt.type === 'fleet_expansion');
-        rate = fleetType?.rate || bank.loanTypes?.[1]?.rate || 6.0;
-        earlyFee = bank.earlyRepaymentFee || 0;
-        holidays = bank.paymentHolidays || 0;
-        bankName = bank.shortName;
-        exceedsLimit = totalLoanNeeded > bank.maxLoanAmount;
+        rate = fleetType?.rate || bank.loanTypes?.[1]?.rate || null;
+        exceedsLimit = principal > bank.maxLoanAmount;
       }
     }
 
-    const weeklyPayment = calculateWeeklyLoanPayment(remainingPerUnit, rate, orderTermWeeks);
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('fbDeposit', formatCurrencyShort(totalDeposit()));
+    set('fbPrincipal', formatCurrencyShort(principal));
 
-    if (preview) {
-      if (!orderBankId || exceedsLimit) {
-        preview.innerHTML = '<span style="color: var(--text-muted);">Select an eligible bank above</span>';
-      } else {
-        let detailParts = [`${bankName} @ ${rate.toFixed(1)}%`];
-        if (earlyFee > 0) detailParts.push(`${earlyFee}% early fee`);
-        if (holidays > 0) detailParts.push(`${holidays} payment holiday${holidays > 1 ? 's' : ''}`);
-        preview.innerHTML = `
-          <div style="font-size: 0.95rem;">~${formatCurrencyShort(weeklyPayment)}/wk for ${years} years</div>
-          <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.15rem;">${detailParts.join(' &middot; ')}</div>`;
-      }
+    const continueBtn = document.getElementById('financeContinueBtn');
+    const valid = rate !== null && !exceedsLimit;
+    if (continueBtn) {
+      continueBtn.disabled = !valid;
+      continueBtn.style.opacity = valid ? '1' : '0.5';
     }
 
-    // Manage confirm button for loan mode
-    if (orderFinancing === 'loan' && confirmBtn) {
-      const canAffordDeposit = playerBalance >= totalDeposit();
-      const validSelection = orderBankId && !exceedsLimit && canAffordDeposit;
-      confirmBtn.disabled = !validSelection;
-      confirmBtn.style.opacity = validSelection ? '1' : '0.5';
+    if (!valid) {
+      set('fbRate', '—');
+      set('fbWeekly', 'Select a bank');
+      set('fbWeeklyNote', '');
+      set('fbInterest', '—');
+      set('fbTotal', '—');
+      return;
     }
+
+    const r52 = rate / 100 / 52;
+    let weeklyText, weeklyNote = '', totalInterest;
+    if (orderStrategy === 'reducing') {
+      const firstWeek = principal / orderTermWeeks + principal * r52;
+      totalInterest = principal * r52 * (orderTermWeeks + 1) / 2;
+      weeklyText = `${formatCurrencyShort(firstWeek)}/wk`;
+      weeklyNote = 'first week — declines as principal shrinks';
+    } else if (orderStrategy === 'interest_only') {
+      const weekly = principal * r52;
+      totalInterest = weekly * orderTermWeeks;
+      weeklyText = `${formatCurrencyShort(weekly)}/wk`;
+      weeklyNote = `+ ${formatCurrencyShort(principal)} principal due at term end`;
+    } else {
+      const weekly = calculateWeeklyLoanPayment(principal, rate, orderTermWeeks);
+      totalInterest = weekly * orderTermWeeks - principal;
+      weeklyText = `${formatCurrencyShort(weekly)}/wk`;
+      weeklyNote = `for ${years} years`;
+    }
+
+    set('fbRate', rate.toFixed(2) + '%');
+    set('fbWeekly', weeklyText);
+    set('fbWeeklyNote', weeklyNote);
+    set('fbInterest', formatCurrencyShort(totalInterest));
+    set('fbTotal', formatCurrencyShort(totalDeposit() + principal + totalInterest));
   }
 
-  const termInput = document.getElementById('orderTermInput');
-  if (termInput) {
-    termInput.addEventListener('input', updateLoanPreviewLocal);
-    termInput.addEventListener('change', updateLoanPreviewLocal);
-  }
-
-  // Initial funds check
-  updateFundsWarning();
-
-  // --- Confirm: sync state and open registration dialog (step 2) ---
-  const confirmBtn = document.getElementById('orderConfirmBtn');
-  confirmBtn.addEventListener('click', () => {
-    if (confirmBtn.disabled) return;
-    purchaseQuantity = orderQty;
-    selectedFinancingMethod = orderFinancing;
-    selectedBankId = orderBankId;
-    selectedLoanTermWeeks = orderTermWeeks;
-    document.body.removeChild(overlay);
-    showOrderRegistrationDialog();
-  });
-
-  // --- Cancel ---
-  document.getElementById('orderCancelBtn').addEventListener('click', () => {
-    document.body.removeChild(overlay);
-  });
+  wireStep1();
 }
 
 // Step 2: Registration + Maintenance dialog (called after order config)
@@ -2427,6 +2502,7 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
       if (selectedFinancingMethod === 'loan') {
         payload.financingBankId = selectedBankId;
         payload.financingTermWeeks = selectedLoanTermWeeks;
+        payload.financingRepaymentStrategy = selectedRepaymentStrategy;
       }
     }
 
@@ -2499,6 +2575,7 @@ async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
     if (selectedFinancingMethod === 'loan') {
       payload.financingBankId = selectedBankId;
       payload.financingTermWeeks = selectedLoanTermWeeks;
+      payload.financingRepaymentStrategy = selectedRepaymentStrategy;
     }
 
     const response = await fetch('/api/fleet/bulk-purchase', {

@@ -2015,7 +2015,17 @@ class WorldTimeService {
               const bank = getBank(ua.financingBankId);
               const rate = bank ? calculateOfferRate(ua.financingBankId, 500, 'fleet_expansion', now.getFullYear()) : 7.0;
               const termWeeks = ua.financingTermWeeks || 156;
-              const weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
+              const strategy = ['fixed', 'reducing', 'interest_only'].includes(ua.financingRepaymentStrategy)
+                ? ua.financingRepaymentStrategy : 'fixed';
+              // First-week payment per strategy (mirrors loans.js /apply)
+              let weeklyPayment;
+              if (strategy === 'reducing') {
+                weeklyPayment = Math.round((remaining / termWeeks + remaining * (rate / 100 / 52)) * 100) / 100;
+              } else if (strategy === 'interest_only') {
+                weeklyPayment = Math.round(remaining * (rate / 100 / 52) * 100) / 100;
+              } else {
+                weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
+              }
 
               await Loan.create({
                 worldMembershipId: membership.id,
@@ -2027,7 +2037,7 @@ class WorldTimeService {
                 interestRate: rate,
                 termWeeks,
                 weeksRemaining: termWeeks,
-                repaymentStrategy: 'fixed',
+                repaymentStrategy: strategy,
                 weeklyPayment,
                 earlyRepaymentFee: bank?.earlyRepaymentFee || 0,
                 paymentHolidaysTotal: bank?.paymentHolidays || 0,

@@ -370,6 +370,12 @@ const UserAircraft = sequelize.define('UserAircraft', {
     field: 'financing_term_weeks',
     comment: 'Loan term in game weeks if financing with loan'
   },
+  financingRepaymentStrategy: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    field: 'financing_repayment_strategy',
+    comment: 'Loan repayment strategy if financing: fixed, reducing or interest_only'
+  },
   transactionDiscount: {
     type: DataTypes.DECIMAL(5, 2),
     defaultValue: 0,
