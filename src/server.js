@@ -197,7 +197,7 @@ async function renderPage(pagePath, requestPath) {
   try {
     // Determine which sidebar to use based on the request path
     // Use simplified sidebar for admin, world selection, and public pages
-    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/faqs', '/privacy', '/data-handling'];
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/faqs', '/privacy', '/data-handling', '/changelog'];
     const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
@@ -361,6 +361,7 @@ app.use('/api/airspace', requireWorld, airspaceRoutes);
 app.use('/api/marketing', requireWorld, marketingRoutes);
 app.use('/api/sightseeing-tours', requireWorld, sightseeingRoutes);
 app.use('/api/billing', requireAuth, require('./routes/billing'));
+app.use('/api/changelog', require('./routes/changelog')); // public
 
 // Page routes
 app.get('/', redirectIfAuth, (req, res) => {
@@ -401,6 +402,18 @@ app.get('/dashboard', requireWorld, async (req, res) => {
 
 app.get('/admin', requireAuth, async (req, res) => {
   try {
+    // 2FA step-up gate: an admin with TOTP enabled gets the verify page —
+    // the panel itself is never served until the session has passed 2FA.
+    try {
+      const { User } = require('./models');
+      const me = await User.findOne({
+        where: req.user.id ? { id: req.user.id } : { vatsimId: req.user.vatsimId },
+        attributes: ['totpEnabled']
+      });
+      if (me && me.totpEnabled && !(req.session && req.session.adminTwoFA)) {
+        return res.sendFile(path.join(__dirname, '../public/admin-2fa.html'));
+      }
+    } catch (_) { /* fall through — the API layer still enforces 2FA */ }
     const html = await renderPage(path.join(__dirname, '../public/admin.html'), '/admin');
     res.send(html);
   } catch (error) {
@@ -582,6 +595,15 @@ app.get('/wiki', async (req, res) => {
 app.get('/faqs', async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/faqs.html'), '/faqs');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/changelog', async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/changelog.html'), '/changelog');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
@@ -798,10 +820,35 @@ server.listen(PORT, () => {
   // Initialize airway routing graph (non-blocking, loads in background)
   airwayService.initialize();
 
-  // Start world time service for all active worlds
-  const worldStarted = await worldTimeService.startAll();
-  if (!worldStarted && process.env.NODE_ENV === 'development') {
-    console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
+  // Start world time service for all active worlds.
+  // TTY-gated prompt (like the demand-data one): on local dev the simulation is
+  // usually already running on the production server — running it here too
+  // floods the remote DB (every request queues 5-8s behind tick queries) and
+  // double-ticks the same worlds. Headless (Railway/CI) always starts it.
+  // `npm run go` answers this via SIM_AUTOSTART (Test data → 1, Real data → 0);
+  // a bare `npm run dev` in a terminal still gets the prompt.
+  let runSimulation = true;
+  if (process.env.SIM_AUTOSTART === '1') {
+    runSimulation = true;
+  } else if (process.env.SIM_AUTOSTART === '0') {
+    runSimulation = false;
+  } else if (process.stdin.isTTY) {
+    const readline = require('readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const simAnswer = await new Promise(resolve => {
+      rl.question('Start world simulation? Skip when the production server is already ticking these worlds. (y/N): ', ans => { rl.close(); resolve(ans); });
+    });
+    runSimulation = simAnswer.toLowerCase() === 'y';
+  }
+
+  let worldStarted = false;
+  if (runSimulation) {
+    worldStarted = await worldTimeService.startAll();
+    if (!worldStarted && process.env.NODE_ENV === 'development') {
+      console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
+    }
+  } else {
+    console.log('[WorldTime] Simulation skipped — this server is UI/API only (worlds tick elsewhere)');
   }
 
   // Pre-warm airport cache for all active worlds (non-blocking)

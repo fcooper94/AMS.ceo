@@ -18,10 +18,10 @@ console.log('');
 console.log('  AMS — Airline Management Simulation');
 console.log('  ────────────────────────────────────');
 console.log('');
-console.log('  1) Railway (Production)  — Live DB + VATSIM auth');
-console.log('  2) Local   (Offline Dev) — Local Postgres, no VATSIM needed');
+console.log('  1) Test data (Local)    — seeded dev worlds, fast, sim runs locally');
+console.log('  2) Real data (Railway)  — production DB, slow from localhost, sim stays off');
 console.log('');
-console.log(`  Current: ${currentMode === 'local' ? 'Local' : 'Railway'}`);
+console.log(`  Current: ${currentMode === 'local' ? 'Test data (Local)' : 'Real data (Railway)'}`);
 console.log('');
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -32,14 +32,18 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
 
   let dbUrl;
   let modeName;
+  let simAutostart;
 
-  if (choice === '2' || (choice === '' && currentMode === 'local')) {
+  if (choice === '1' || (choice === '' && currentMode === 'local')) {
     if (!LOCAL_DB_URL) {
-      console.error('\n  LOCAL_DATABASE_URL is not set in .env — cannot start in local mode.\n');
+      console.error('\n  LOCAL_DATABASE_URL is not set in .env — cannot start in local mode.');
+      console.error('  Add it (postgresql://postgres:<password>@localhost:5432/airline_control),');
+      console.error('  then seed test worlds with: npm run db:seed-dev\n');
       process.exit(1);
     }
     dbUrl = LOCAL_DB_URL;
-    modeName = 'Local (Offline)';
+    modeName = 'Test data (Local)';
+    simAutostart = '1'; // dev worlds only tick here — always run the sim
   } else {
     // Restore original Railway URL from .env (find the non-commented DATABASE_URL or the backed-up one)
     const railwayLine = envContent.split('\n').find(l =>
@@ -50,7 +54,8 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
     dbUrl = railwayLine
       ? railwayLine.replace(/^#?DATABASE_URL=/, '')
       : null;
-    modeName = 'Railway';
+    modeName = 'Real data (Railway)';
+    simAutostart = '0'; // production server already ticks these worlds — don't double-tick
   }
 
   // Rewrite DATABASE_URL line in .env
@@ -67,12 +72,13 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
   require('fs').writeFileSync(envPath, newEnv);
 
   console.log('');
-  console.log(`  Starting in ${modeName} mode...`);
+  console.log(`  Starting in ${modeName} mode${simAutostart === '0' ? ' (simulation off — worlds tick on the production server)' : ''}...`);
   console.log('');
 
   const child = spawn('npx', ['nodemon', 'src/server.js'], {
     stdio: 'inherit',
-    shell: true
+    shell: true,
+    env: { ...process.env, SIM_AUTOSTART: simAutostart }
   });
 
   child.on('exit', (code) => process.exit(code ?? 0));

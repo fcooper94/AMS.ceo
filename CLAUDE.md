@@ -160,33 +160,58 @@ added for null configs. Seasonal split threaded into cargo revenue (cosine
 blend by game month). Era-scaled `defaultCargoRates` fallback for routes
 with no rates set. `isDomestic` flag correctly passed to cargo `demandToPax`.
 
-## Local dev / offline mode (added 2026-05)
+## Local dev — test-data environment (reworked 2026-07-24)
 
-The user flies on plane WiFi frequently. A local PostgreSQL 18 instance is set
-up on this machine for offline dev:
+Local dev runs against a **local PostgreSQL with seeded test worlds only** —
+NOT copies of production. Two machines exist; on the current one PostgreSQL
+**18 is on port 5433** (17 also installed on 5432 — unused, safe to remove).
+Railway itself runs PG 18.4, so pg_dump must be v18+ (`pullLocalDb.js`
+auto-detects the newest installed version's binaries).
 
-- **Local DB:** local PostgreSQL on `localhost:5432`, user `postgres`.
-  Connection string is in `.env` as `LOCAL_DATABASE_URL` (not committed).
-- **Switching:** `npm run go` — interactive prompt picks Railway (prod) or
-  Local (offline). Rewrites `DATABASE_URL` in `.env` and starts nodemon.
-- **Refreshing local data:** `npm run db:pull` (`src/scripts/pullLocalDb.js`)
-  — drops and rebuilds `airline_control` from Railway. Excludes most of
-  `airport_route_demands` (keeps EGLL only) and truncates `weekly_financials`
-  to 2023+. Run this on good WiFi before a flight.
-- **SSL:** `config/database.js` skips SSL for localhost/127.0.0.1 URLs
-  (added 2026-05). Railway public proxy still uses SSL; private `.railway.internal`
-  URLs skip it too.
-- **Schema sync:** local DB was seeded via `pg_dump` from Railway — schema
-  matches production. Normal sync rules apply (opt-in `DB_AUTO_SYNC=true`).
-- If you see `SequelizeConnectionRefusedError` on the local URL, the
-  PostgreSQL 18 service may not be running — check Services (`postgresql-x64-18`).
+- **Mode switch:** `npm run go` asks **"Test data (Local)"** vs **"Real data
+  (Railway)"**, rewrites `DATABASE_URL` in `.env` and starts nodemon. It also
+  sets `SIM_AUTOSTART` for the server: Test → `1` (sim ticks the Dev worlds
+  locally), Real → `0` (sim OFF — the production server already ticks those
+  worlds; running it locally double-ticks them and drowns every request in
+  pool-queue latency, the "everything takes 5-8s" symptom). A bare
+  `npm run dev` prompts "Start world simulation?" on a TTY instead.
+- **Setting up a machine from scratch:**
+  1. `winget install PostgreSQL.PostgreSQL.18` (18+, matching Railway)
+  2. `.env`: `LOCAL_DATABASE_URL=postgresql://postgres:<pw>@localhost:<port>/airline_control`
+     and `RAILWAY_DATABASE_URL=<the Railway URL>` (db:pull needs both)
+  3. `npm run db:pull` — drops/recreates the local DB with **reference data
+     only** (schema, airports, aircraft types, users, settings). Production
+     worlds/fleets/routes are excluded by default;
+     `-- --with-worlds` copies them too and auto-pauses them locally.
+  4. `npm run db:seed-dev` — creates the test worlds.
+- **Test worlds (`src/scripts/seedDevWorld.js`):** Dev SP 1950 / Dev SP 1980 /
+  Dev SP 2010 (singleplayer) + Dev MP 1950 (multiplayer). Each has a
+  "Dev Airways" (DEV/DV, base KPHX, 10× era starting capital, branding,
+  3 owned era-appropriate aircraft, 2 routes with era ticket prices, 8 weeks
+  of financials). Idempotent; `-- --fresh` destroys + recreates. Hard guard:
+  refuses to run unless DATABASE_URL is localhost. **Ownership/login:** the
+  seeder attaches the dev worlds to **`support@ams.ceo`** when it exists (the
+  user's actual local login, PIN via `SUPPORT_PIN`); it only creates/uses
+  `dev@local.test` / `devpass` as a fallback on a DB without that account.
+- **db:pull is Windows-safe (2026-07):** passwords via a temp `PGPASSFILE`
+  (never `PGPASSWORD=x cmd` prefixes — Unix-only, breaks under cmd.exe), and
+  it verifies `airports` is non-empty after restore because cmd.exe pipelines
+  only report the LAST command's exit code (a pg_dump version-mismatch abort
+  otherwise looks like success with an empty DB).
+- **SSL:** `config/database.js` skips SSL for localhost/127.0.0.1 URLs.
+  Railway public proxy still uses SSL; private `.railway.internal` too.
+- **Schema sync:** local schema comes from `pg_dump` — matches production.
+  Normal sync rules apply (opt-in `DB_AUTO_SYNC=true`).
+- If `SequelizeConnectionRefusedError` on the local URL: check the service
+  (`postgresql-x64-18`) and that the port in `LOCAL_DATABASE_URL` matches the
+  installed instance (5433 on this machine).
 
 ## Database rules (read before touching the DB)
 
 - **Default to Railway Postgres for production.** Use `npm run go` to switch.
-  If you see `SequelizeConnectionRefusedError` on a Railway URL, fix the URL
-  — do **not** suggest installing local Postgres (it's already there).
-  `config/database.js` applies SSL for the public Railway proxy.
+  If you see `SequelizeConnectionRefusedError` on a Railway URL, fix the URL.
+  `config/database.js` applies SSL for the public Railway proxy. Local
+  Postgres setup is per-machine — see "Local dev — test-data environment".
 - **Schema sync is opt-in (changed 2026-05).** Boot (`server.js`) now does
   `sequelize.authenticate()` + idempotent `ADD COLUMN IF NOT EXISTS` guards
   only. `sequelize.sync({ alter: true })` runs **only when

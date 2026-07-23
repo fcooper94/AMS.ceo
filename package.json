@@ -8,6 +8,7 @@
     "dev": "nodemon --exec \"node --max-old-space-size=4096\" src/server.js",
     "go": "node start.js",
     "db:pull": "node src/scripts/pullLocalDb.js",
+    "db:seed-dev": "node src/scripts/seedDevWorld.js",
     "db:sync": "node src/scripts/syncDb.js",
     "db:fix-maintenance-schema": "node src/scripts/fixRecurringMaintenanceSchema.js",
     "db:seed-aircraft": "node src/scripts/seedAircraft.js",
