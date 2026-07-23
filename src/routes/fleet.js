@@ -2049,6 +2049,12 @@ router.get('/:aircraftId/details', async (req, res) => {
       mostProfitable,
       leastProfitable,
       totalProfit,
+      // Lifetime actuals across this aircraft's assigned routes (0 flights = not flown yet)
+      actuals: {
+        totalFlights: routesWithProfit.reduce((s, r) => s + r.totalFlights, 0),
+        totalCosts: routesWithProfit.reduce((s, r) => s + r.totalCosts, 0),
+        totalRevenue: routesWithProfit.reduce((s, r) => s + r.totalRevenue, 0)
+      },
       maintenance: {
         lastCCheck: aircraft.lastCCheckDate,
         lastDCheck: aircraft.lastDCheckDate,
@@ -5615,9 +5621,18 @@ router.get('/:aircraftId/scrap-offers', async (req, res) => {
     }
 
     const acData = aircraft.aircraft;
-    const newPrice = parseFloat(acData?.purchasePrice || aircraft.purchasePrice) || 10000000;
-    const condition = parseFloat(aircraft.conditionPercentage) || 50;
-    const age = parseFloat(aircraft.ageYears) || 10;
+    // Era-scale the base value — offers must be in the world's era dollars,
+    // or scrapping pays out more than the era-scaled purchase price
+    const world = await World.findByPk(req.session?.activeWorldId);
+    const worldYear = world ? new Date(world.currentTime).getFullYear() : 2020;
+    const eraMult = eraEconomicService.getEraMultiplier(worldYear);
+    const newPrice = (parseFloat(acData?.purchasePrice || aircraft.purchasePrice) || 10000000) * eraMult;
+    // Number.isFinite guards: 0 is a valid age/condition — `|| default` treated a
+    // brand-new (0y) aircraft as 10 years old and penalised its offers
+    const condRaw = parseFloat(aircraft.conditionPercentage);
+    const condition = Number.isFinite(condRaw) ? condRaw : 50;
+    const ageRaw = parseFloat(aircraft.ageYears);
+    const age = Number.isFinite(ageRaw) ? ageRaw : 10;
     const flightHours = parseFloat(aircraft.totalFlightHours) || 0;
 
     // Get aircraft location for distance calculation
@@ -5629,8 +5644,6 @@ router.get('/:aircraftId/scrap-offers', async (req, res) => {
     }
 
     // Filter scrapyards by era and pick 2-4
-    const world = await World.findByPk(req.session?.activeWorldId);
-    const worldYear = world ? new Date(world.currentTime).getFullYear() : 2020;
     const eraFiltered = scrapyardCompanies.filter(c => !c.availableFrom || c.availableFrom <= worldYear);
     if (eraFiltered.length === 0) {
       return res.status(400).json({ error: 'No scrapyards available in this era' });
@@ -5701,7 +5714,9 @@ router.get('/:aircraftId/scrap-offers', async (req, res) => {
         type: acData ? `${acData.manufacturer} ${acData.model}${acData.variant ? ' ' + acData.variant : ''}` : 'Unknown',
         condition: Math.round(condition),
         ageYears: Math.round(age),
-        flightHours: Math.round(flightHours)
+        flightHours: Math.round(flightHours),
+        purchasePrice: aircraft.purchasePrice ? Math.round(parseFloat(aircraft.purchasePrice)) : null,
+        purchasedDate: aircraft.orderDate || null
       },
       offers
     });
@@ -5743,16 +5758,21 @@ router.post('/:aircraftId/scrap', async (req, res) => {
 
     // Re-fetch offers (same logic as GET endpoint, but simplified)
     const acData = aircraft.aircraft;
-    const newPrice = parseFloat(acData?.purchasePrice || aircraft.purchasePrice) || 10000000;
-    const condition = parseFloat(aircraft.conditionPercentage) || 50;
-    const age = parseFloat(aircraft.ageYears) || 10;
+    const scrapWorld = await World.findByPk(activeWorldId);
+    const scrapYear = scrapWorld ? new Date(scrapWorld.currentTime).getFullYear() : 2020;
+    const scrapEraMult = eraEconomicService.getEraMultiplier(scrapYear);
+    const newPrice = (parseFloat(acData?.purchasePrice || aircraft.purchasePrice) || 10000000) * scrapEraMult;
+    const condRaw = parseFloat(aircraft.conditionPercentage);
+    const condition = Number.isFinite(condRaw) ? condRaw : 50;
+    const ageRaw = parseFloat(aircraft.ageYears);
+    const age = Number.isFinite(ageRaw) ? ageRaw : 10;
     const price = parseFloat(req.body.price);
 
     if (!price || price <= 0) {
       return res.status(400).json({ error: 'Invalid scrap price' });
     }
 
-    // Sanity: price shouldn't exceed 40% of new value
+    // Sanity: price shouldn't exceed ~half the era-scaled new value
     if (price > newPrice * 0.5) {
       return res.status(400).json({ error: 'Scrap price exceeds maximum' });
     }

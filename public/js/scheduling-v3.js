@@ -10923,12 +10923,13 @@ async function showAircraftDetails(userAircraftId) {
   const isLeased = ua.acquisitionType === 'lease';
   const cond = ua.conditionPercentage || 100;
 
-  // Calculate costs (era-scaled: fuel uses fuel multiplier, maintenance uses era multiplier)
+  // Calculate costs — mirror eraEconomicService.calculateFlightCosts:
+  // fuel price = base × fuelMult × eraMult; maintenance × eraMult
   const burnRate = parseFloat(ua.fuelBurnPerHour) || 0;
   const eraM = typeof fleetEraMultiplier !== 'undefined' ? fleetEraMultiplier : 1.0;
   const fuelM = typeof fleetFuelMultiplier !== 'undefined' ? fleetFuelMultiplier : 1.0;
   const maintHr = (parseFloat(ua.maintenanceCostPerHour) || 0) * eraM;
-  const fuelHr = burnRate * 0.75 * fuelM;
+  const fuelHr = burnRate * 0.75 * fuelM * eraM;
   const totalHr = fuelHr + maintHr;
   const leaseWk = parseFloat(ua.leaseWeeklyPayment) || 0;
   const weeklyOps = totalHr * 8 * 7 + (isLeased ? leaseWk : 0);
@@ -11019,7 +11020,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Range</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrencyValue(ac.rangeNm)}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${Math.round(ac.rangeNm || 0).toLocaleString()}<span style="font-size:0.5rem;font-weight:400;">nm</span></div>
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Speed</div>
@@ -11027,7 +11028,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Fuel</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrencyValue(burnRate)}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${Math.round(burnRate).toLocaleString()}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cargo</div>
@@ -11068,7 +11069,7 @@ async function showAircraftDetails(userAircraftId) {
               <span style="color:var(--text-muted);">Location:</span> <strong style="color:var(--accent-color);">${ua.currentAirport || 'N/A'}</strong>
             </div>
             <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
-              <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${formatCurrencyValue(parseFloat(ua.totalFlightHours) || 0)}</strong>
+              <span style="color:var(--text-muted);">Flight Hrs:</span> <strong>${Math.round(parseFloat(ua.totalFlightHours) || 0).toLocaleString()}</strong>
             </div>
             <div style="flex:1;padding:0.2rem 0.4rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;">
               <span style="color:var(--text-muted);">Routes:</span> <strong id="routeCount">...</strong>
@@ -11165,8 +11166,8 @@ async function showAircraftDetails(userAircraftId) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
 
           <!-- Operating Costs -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
-            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Operating Costs</div>
+          <div id="opCostsPanel" style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
+            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;" title="Projected at typical utilisation (~8 flight hrs/day). Replaced by actual figures once this aircraft has flown.">Operating Costs · Estimated</div>
             <div style="font-size:0.8rem;">
               <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / hr</span><span style="font-weight:600;">${formatCurrencyValue(fuelHr)}</span></div>
               <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / hr</span><span style="font-weight:600;">${formatCurrencyValue(maintHr)}</span></div>
@@ -11180,11 +11181,11 @@ async function showAircraftDetails(userAircraftId) {
           <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
             <div style="margin-bottom:0.3rem;">
               <div style="color:var(--success-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Route Performance</div>
-              <div id="routeInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
+              <div id="routeInfo" style="color:var(--text-muted);font-size:0.75rem;min-height:2.9rem;">Loading...</div>
             </div>
             <div style="border-top:1px solid var(--border-color);padding-top:0.25rem;">
               <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Heavy Checks</div>
-              <div id="maintInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
+              <div id="maintInfo" style="color:var(--text-muted);font-size:0.75rem;min-height:2.9rem;">Loading...</div>
             </div>
           </div>
         </div>
@@ -11211,7 +11212,8 @@ async function showAircraftDetails(userAircraftId) {
       let rh = '';
       if (details.mostProfitable) {
         const mp = details.mostProfitable;
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">${formatCurrencyValue(mp.profit)}</span></div>`;
+        const mc = mp.profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:${mc};font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:${mc};">${formatCurrencyValue(mp.profit)}</span></div>`;
       }
       if (details.leastProfitable && details.leastProfitable.id !== details.mostProfitable?.id) {
         const lp = details.leastProfitable;
@@ -11249,6 +11251,24 @@ async function showAircraftDetails(userAircraftId) {
       mh += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0.15rem 0;border-top:1px solid var(--border-color);margin-top:0.1rem;padding-top:0.15rem;"><span style="color:var(--text-muted);">D-Check</span><span>N/A${dCost}</span></div>`;
     }
     maintInfoEl.innerHTML = mh;
+
+    // Swap estimated operating costs for actuals once the aircraft has flown
+    const opPanel = document.getElementById('opCostsPanel');
+    const actuals = details.actuals;
+    if (opPanel && actuals && actuals.totalFlights > 0) {
+      const avgCost = actuals.totalCosts / actuals.totalFlights;
+      const lifetimeProfit = actuals.totalRevenue - actuals.totalCosts;
+      const leaseWkA = parseFloat(ua.leaseWeeklyPayment) || 0;
+      opPanel.innerHTML = `
+        <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;" title="Averages from this aircraft's routes' flight history.">Operating Costs · Actual</div>
+        <div style="font-size:0.8rem;">
+          <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Flights flown</span><span style="font-weight:600;">${actuals.totalFlights.toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Avg cost / flight</span><span style="font-weight:600;">${formatCurrencyValue(Math.round(avgCost))}</span></div>
+          ${ua.acquisitionType === 'lease' ? `<div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lease Payment</span><span style="font-weight:600;">${formatCurrencyValue(leaseWkA)}/wk</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lifetime costs</span><span style="font-weight:600;color:var(--danger-color);">${formatCurrencyValue(Math.round(actuals.totalCosts))}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span style="color:var(--text-muted);">Lifetime profit</span><span style="font-weight:600;color:${lifetimeProfit >= 0 ? 'var(--success-color)' : 'var(--danger-color)'};">${formatCurrencyValue(Math.round(lifetimeProfit))}</span></div>
+        </div>`;
+    }
 
     // Populate C/D check cells in condition row
     const cCheckEl = document.getElementById('cCheckValue');

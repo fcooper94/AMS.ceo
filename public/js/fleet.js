@@ -295,10 +295,11 @@ async function showAircraftDetails(userAircraftId) {
   const isLeased = ua.acquisitionType === 'lease';
   const cond = ua.conditionPercentage || 100;
 
-  // Calculate costs (era-scaled: fuel uses fuel multiplier, maintenance uses era multiplier)
+  // Calculate costs — mirror eraEconomicService.calculateFlightCosts:
+  // fuel price = base × fuelMult × eraMult; maintenance × eraMult
   const burnRate = parseFloat(ua.fuelBurnPerHour) || 0;
   const maintHr = (parseFloat(ua.maintenanceCostPerHour) || 0) * fleetEraMultiplier;
-  const fuelHr = burnRate * 0.75 * fleetFuelMultiplier;
+  const fuelHr = burnRate * 0.75 * fleetFuelMultiplier * fleetEraMultiplier;
   const totalHr = fuelHr + maintHr;
   const leaseWk = parseFloat(ua.leaseWeeklyPayment) || 0;
   const weeklyOps = totalHr * 8 * 7 + (isLeased ? leaseWk : 0);
@@ -391,7 +392,7 @@ async function showAircraftDetails(userAircraftId) {
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Fuel</div>
-                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${formatCurrency(burnRate)}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
+                <div style="color:var(--text-primary);font-weight:700;font-size:0.8rem;">${Math.round(burnRate).toLocaleString()}<span style="font-size:0.5rem;font-weight:400;">L/h</span></div>
               </div>
               <div style="padding:0.15rem 0.25rem;background:var(--surface);border-radius:3px;">
                 <div style="color:var(--text-muted);font-size:0.5rem;text-transform:uppercase;">Cargo</div>
@@ -525,8 +526,8 @@ async function showAircraftDetails(userAircraftId) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
 
           <!-- Operating Costs -->
-          <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
-            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;">Operating Costs</div>
+          <div id="opCostsPanel" style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
+            <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;" title="Projected at typical utilisation (~8 flight hrs/day). Replaced by actual figures once this aircraft has flown.">Operating Costs · Estimated</div>
             <div style="font-size:0.75rem;">
               <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Fuel / wk</span><span style="font-weight:600;">${formatCurrency(Math.round(fuelHr * 56))}</span></div>
               <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Maintenance / wk</span><span style="font-weight:600;">${formatCurrency(Math.round(maintHr * 56))}</span></div>
@@ -539,11 +540,11 @@ async function showAircraftDetails(userAircraftId) {
           <div style="background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.35rem 0.5rem;">
             <div style="margin-bottom:0.3rem;">
               <div style="color:var(--success-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Route Performance</div>
-              <div id="routeInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
+              <div id="routeInfo" style="color:var(--text-muted);font-size:0.75rem;min-height:2.9rem;">Loading...</div>
             </div>
             <div style="border-top:1px solid var(--border-color);padding-top:0.25rem;">
               <div style="color:var(--accent-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.15rem;">Heavy Checks</div>
-              <div id="maintInfo" style="color:var(--text-muted);font-size:0.75rem;">Loading...</div>
+              <div id="maintInfo" style="color:var(--text-muted);font-size:0.75rem;min-height:2.9rem;">Loading...</div>
             </div>
           </div>
         </div>
@@ -570,7 +571,8 @@ async function showAircraftDetails(userAircraftId) {
       let rh = '';
       if (details.mostProfitable) {
         const mp = details.mostProfitable;
-        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:var(--success-color);font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:var(--success-color);">${formatCurrency(mp.profit)}</span></div>`;
+        const mc = mp.profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        rh += `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;"><span style="color:${mc};font-weight:600;">${mp.origin}-${mp.destination}</span><span style="color:${mc};">${formatCurrency(mp.profit)}</span></div>`;
       }
       if (details.leastProfitable && details.leastProfitable.id !== details.mostProfitable?.id) {
         const lp = details.leastProfitable;
@@ -626,6 +628,24 @@ async function showAircraftDetails(userAircraftId) {
       </div>`;
     }
     maintInfoEl.innerHTML = mh;
+
+    // Swap estimated operating costs for actuals once the aircraft has flown
+    const opPanel = document.getElementById('opCostsPanel');
+    const actuals = details.actuals;
+    if (opPanel && actuals && actuals.totalFlights > 0) {
+      const avgCost = actuals.totalCosts / actuals.totalFlights;
+      const lifetimeProfit = actuals.totalRevenue - actuals.totalCosts;
+      const leaseWkA = parseFloat(ua.leaseWeeklyPayment) || 0;
+      opPanel.innerHTML = `
+        <div style="color:var(--warning-color);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:0.2rem;" title="Averages from this aircraft's routes' flight history.">Operating Costs · Actual</div>
+        <div style="font-size:0.75rem;">
+          <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Flights flown</span><span style="font-weight:600;">${actuals.totalFlights.toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Avg cost / flight</span><span style="font-weight:600;">${formatCurrency(Math.round(avgCost))}</span></div>
+          ${ua.acquisitionType === 'lease' ? `<div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lease / wk</span><span style="font-weight:600;">${formatCurrency(leaseWkA)}</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;padding:0.12rem 0;border-bottom:1px solid var(--border-color);"><span style="color:var(--text-muted);">Lifetime costs</span><span style="font-weight:600;color:var(--danger-color);">${formatCurrency(Math.round(actuals.totalCosts))}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0.12rem 0;"><span style="color:var(--text-muted);">Lifetime profit</span><span style="font-weight:600;color:${lifetimeProfit >= 0 ? 'var(--success-color)' : 'var(--danger-color)'};">${formatCurrency(Math.round(lifetimeProfit))}</span></div>
+        </div>`;
+    }
 
     // Populate C/D check cells in condition row
     const cCheckEl = document.getElementById('cCheckValue');
@@ -743,7 +763,7 @@ function buildActionButtons(ua) {
     }
   }
   if (status === 'active') {
-    html += `<button class="btn" onclick="event.stopPropagation(); confirmPutInStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #64748b; border-color: #64748b; color: #fff;">STORE</button>`;
+    html += `<button class="btn" onclick="event.stopPropagation(); confirmPutInStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: #64748b; border-color: #64748b; color: #fff;">SEND TO STORAGE</button>`;
   }
   if (status === 'storage') {
     html += `<button class="btn" onclick="event.stopPropagation(); confirmTakeOutOfStorage('${ua.id}', '${ua.registration}')" style="flex:1; padding: 0.5rem; font-size: 0.9rem; cursor: pointer; background: var(--success-color); border-color: var(--success-color); color: #fff;">RECALL FROM STORAGE</button>`;
@@ -1150,8 +1170,12 @@ async function showScrapDialog(aircraftId, registration) {
     document.querySelector('.fleet-modal-backdrop')?.remove();
 
     // Build offers HTML
+    const boughtBits = [];
+    if (data.aircraft.purchasedDate) boughtBits.push(`Purchased: <strong>${new Date(data.aircraft.purchasedDate).toLocaleDateString('en-GB')}</strong>`);
+    if (data.aircraft.purchasePrice) boughtBits.push(`Bought for: <strong>${formatCurrency(data.aircraft.purchasePrice)}</strong>`);
     let offersHtml = `
-      <p style="margin-bottom: 0.5rem;">Aircraft: <strong>${data.aircraft.type}</strong> — Condition: ${data.aircraft.condition}%, Age: ${data.aircraft.ageYears}yrs, Hours: ${data.aircraft.flightHours.toLocaleString()}</p>
+      <p style="margin-bottom: 0.25rem;">Aircraft: <strong>${data.aircraft.type}</strong> — Condition: ${data.aircraft.condition}%, Age: ${data.aircraft.ageYears}yrs, Hours: ${data.aircraft.flightHours.toLocaleString()}</p>
+      ${boughtBits.length ? `<p style="margin-bottom: 0.5rem; font-size: 0.85rem;">${boughtBits.join(' &middot; ')}</p>` : ''}
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">Select a scrapyard to send your aircraft for dismantling. Payment is received after ferry.</p>
       <div id="scrapOffers" style="display: flex; flex-direction: column; gap: 0.5rem;">
     `;
