@@ -31,37 +31,9 @@ Integrated with [VATSIM](https://vatsim.net) for live flight simulation network 
 | **Backend** | Node.js, Express, Socket.IO |
 | **Database** | PostgreSQL (Sequelize 6), hosted on Railway |
 | **Frontend** | Vanilla JS, server-rendered HTML/CSS (no framework, no build step) |
-| **Auth** | VATSIM OAuth 2.0 + local email/password |
+| **Auth** | Local email/password |
 | **Payments** | Stripe Checkout (credit packs) |
 | **Hosting** | Railway |
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL 14+
-- VATSIM developer account (optional — local auth works without it)
-
-### Setup
-
-```bash
-git clone https://github.com/fcooper94/AMS.ceo.git
-cd AMS.ceo
-npm install
-cp .env.example .env  # Configure your database URL and secrets
-npm run go            # Interactive prompt: pick Railway or Local DB
-```
-
-### Running
-
-```bash
-npm run go    # Interactive DB selector + nodemon
-npm run dev   # Direct nodemon (uses whatever DATABASE_URL is in .env)
-npm start     # Production start
-```
-
-The server gates page requests behind a loading screen until the database is ready and the demand cache is loaded (~2-3 seconds).
 
 ## Time System
 
