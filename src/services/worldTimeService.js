@@ -1971,7 +1971,7 @@ class WorldTimeService {
                 // Insufficient funds: auto-create loan with Condor (penalty bank)
                 const fallbackBankId = 'condor';
                 const bank = getBank(fallbackBankId);
-                const rate = calculateOfferRate(fallbackBankId, 400, 'fleet_expansion');
+                const rate = calculateOfferRate(fallbackBankId, 400, 'fleet_expansion', now.getFullYear());
                 const termWeeks = 156; // 3 years
                 const weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
 
@@ -2013,7 +2013,7 @@ class WorldTimeService {
             } else if (ua.financingMethod === 'loan') {
               // Create the pre-selected loan
               const bank = getBank(ua.financingBankId);
-              const rate = bank ? calculateOfferRate(ua.financingBankId, 500, 'fleet_expansion') : 7.0;
+              const rate = bank ? calculateOfferRate(ua.financingBankId, 500, 'fleet_expansion', now.getFullYear()) : 7.0;
               const termWeeks = ua.financingTermWeeks || 156;
               const weeklyPayment = calculateFixedPayment(remaining, rate, termWeeks);
 

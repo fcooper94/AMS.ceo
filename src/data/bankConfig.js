@@ -133,6 +133,16 @@ const LOAN_TYPES = {
   infrastructure: { label: 'Infrastructure', description: 'Long-term investment in routes, facilities, and growth' }
 };
 
+// Era interest-rate environment — percentage points ADDED to every bank's base
+// rate, loosely tracking the US prime rate through the eras (cheap money in the
+// 1950s, the Volcker spike around 1981, near-zero 2010s, post-2022 hikes).
+// Linearly interpolated between anchor years so rates drift, not jump.
+const ERA_RATE_ANCHORS = [
+  [1950, 1.0], [1960, 1.5], [1970, 3.5], [1975, 4.5], [1981, 9.0],
+  [1987, 4.5], [1995, 3.0], [2005, 1.5], [2010, 0.5], [2015, 0.0],
+  [2021, 0.0], [2023, 2.5], [2025, 1.5]
+];
+
 // Credit score rating labels
 const CREDIT_RATINGS = [
   { min: 750, label: 'Excellent', color: '#2ea043' },
@@ -157,15 +167,36 @@ function getAllBanks() {
 }
 
 /**
+ * Era rate adjustment (percentage points) for a given game year.
+ * Linear interpolation between ERA_RATE_ANCHORS; clamped outside the range.
+ */
+function getEraRateAdjustment(year) {
+  if (!year || isNaN(year)) return 0;
+  const anchors = ERA_RATE_ANCHORS;
+  if (year <= anchors[0][0]) return anchors[0][1];
+  if (year >= anchors[anchors.length - 1][0]) return anchors[anchors.length - 1][1];
+  for (let i = 1; i < anchors.length; i++) {
+    if (year <= anchors[i][0]) {
+      const [y0, r0] = anchors[i - 1];
+      const [y1, r1] = anchors[i];
+      const t = (year - y0) / (y1 - y0);
+      return Math.round((r0 + (r1 - r0) * t) * 100) / 100;
+    }
+  }
+  return 0;
+}
+
+/**
  * Calculate the offered interest rate for a specific bank, credit score, and loan type
  * Better credit scores get rate discounts (0.25% per 50pts above minimum, max 1.5% off)
+ * When worldYear is given, the era rate environment is added on top (see ERA_RATE_ANCHORS).
  */
-function calculateOfferRate(bankId, creditScore, loanType) {
+function calculateOfferRate(bankId, creditScore, loanType, worldYear) {
   const bank = BANKS[bankId];
   if (!bank) return null;
 
   const typeAdj = LOAN_TYPE_ADJUSTMENTS[loanType] || 0;
-  let rate = bank.baseRate + typeAdj;
+  let rate = bank.baseRate + typeAdj + getEraRateAdjustment(worldYear);
 
   // Credit score discount: 0.25% per 50 points above minimum, max 1.5%
   const pointsAbove = Math.max(0, creditScore - bank.minCreditScore);
@@ -176,12 +207,18 @@ function calculateOfferRate(bankId, creditScore, loanType) {
 }
 
 /**
- * Calculate the maximum loan amount for a bank given airline net worth
+ * Calculate the maximum loan amount for a bank given airline net worth and
+ * credit score. maxLoanPct is the bank's leverage appetite as a multiple of
+ * net worth for a borderline borrower (score ≤500); creditworthiness scales
+ * it up to 3× that at a perfect 850 — so a fresh airline gets roughly its
+ * net worth from an aggressive bank, while an established profitable one
+ * can lever up to ~3× from the same bank.
  */
-function calculateMaxLoanAmount(bankId, netWorth) {
+function calculateMaxLoanAmount(bankId, netWorth, creditScore = 500) {
   const bank = BANKS[bankId];
   if (!bank) return 0;
-  return Math.max(0, Math.round(netWorth * bank.maxLoanPct * 10));
+  const leverage = 1 + (Math.max(0, Math.min(850, creditScore) - 500) / 350) * 2;
+  return Math.max(0, Math.round(netWorth * bank.maxLoanPct * leverage));
 }
 
 /**
@@ -212,8 +249,10 @@ module.exports = {
   TERM_RANGES,
   LOAN_TYPES,
   CREDIT_RATINGS,
+  ERA_RATE_ANCHORS,
   getBank,
   getAllBanks,
+  getEraRateAdjustment,
   calculateOfferRate,
   calculateMaxLoanAmount,
   calculateFixedPayment,

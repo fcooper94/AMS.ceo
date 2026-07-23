@@ -117,8 +117,9 @@ async function calculateCreditScore(membership) {
 
   const score = Math.min(850, 300 + earned);
   const rating = getCreditRating(score);
+  const worldYear = gameTime.getFullYear();
 
-  return { score, rating, factors, netWorth, totalDebt, fleetValue };
+  return { score, rating, factors, netWorth, totalDebt, fleetValue, worldYear };
 }
 
 // ── GET / — Active loans + credit score + summary ────────────────────────────
@@ -203,10 +204,10 @@ router.get('/offers', async (req, res) => {
       .filter(bank => !banksWithActiveLoan.has(bank.id))
       .map(bank => {
         const meetsRequirement = credit.score >= bank.minCreditScore;
-        const maxAmount = calculateMaxLoanAmount(bank.id, credit.netWorth);
+        const maxAmount = calculateMaxLoanAmount(bank.id, credit.netWorth, credit.score);
 
         const loanTypes = Object.entries(LOAN_TYPES).map(([type, info]) => {
-          const rate = calculateOfferRate(bank.id, credit.score, type);
+          const rate = calculateOfferRate(bank.id, credit.score, type, credit.worldYear);
           const termRange = TERM_RANGES[type];
           const midTerm = Math.round((termRange.min + termRange.max) / 2);
           const exampleWeekly = maxAmount > 0 ? calculateFixedPayment(maxAmount, rate, midTerm) : 0;
@@ -302,14 +303,14 @@ router.post('/apply', async (req, res) => {
     }
 
     // Amount validation
-    const maxAmount = calculateMaxLoanAmount(bank.id, credit.netWorth);
+    const maxAmount = calculateMaxLoanAmount(bank.id, credit.netWorth, credit.score);
     if (amount <= 0) return res.status(400).json({ error: 'Amount must be positive' });
     if (amount > maxAmount) {
       return res.status(400).json({ error: `Maximum loan from ${bank.name}: $${maxAmount.toLocaleString()}` });
     }
 
     // Calculate rate and payment
-    const rate = calculateOfferRate(bankId, credit.score, loanType);
+    const rate = calculateOfferRate(bankId, credit.score, loanType, credit.worldYear);
     let weeklyPayment = 0;
     if (repaymentStrategy === 'fixed') {
       weeklyPayment = calculateFixedPayment(amount, rate, termWeeks);

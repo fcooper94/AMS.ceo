@@ -273,7 +273,7 @@ router.post('/join', async (req, res) => {
 
       const starterAmount = eraEconomicService.convertToEraPrice(STARTER_LOAN_BASE_2024, worldYear);
       const starterBank = getBank(starterBankId);
-      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType);
+      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType, worldYear);
       const starterPayment = calculateFixedPayment(starterAmount, starterRate, starterTermWeeks);
 
       const gameDate = world.currentTime
@@ -931,7 +931,7 @@ router.post('/rejoin-sp', async (req, res) => {
 
       const starterAmount = eraEconomicService.convertToEraPrice(STARTER_LOAN_BASE_2024, worldYear);
       const starterBank = getBank(starterBankId);
-      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType);
+      const starterRate = calculateOfferRate(starterBankId, starterCreditScore, starterLoanType, worldYear);
       const starterPayment = calculateFixedPayment(starterAmount, starterRate, starterTermWeeks);
 
       const gameDate = new Date(world.currentTime).toISOString().split('T')[0];
