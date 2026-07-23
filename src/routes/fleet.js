@@ -1831,11 +1831,13 @@ router.get('/market-averages/:aircraftTypeId', async (req, res) => {
     const baseAircraft = await Aircraft.findByPk(aircraftTypeId);
     if (!baseAircraft) return res.status(404).json({ error: 'Aircraft type not found' });
 
-    const newPrice = parseFloat(baseAircraft.purchasePrice) || 0;
+    const rawNewPrice = parseFloat(baseAircraft.purchasePrice) || 0;
 
     // 2. Get current world year for era filtering
     const world = await World.findByPk(activeWorldId);
     const currentYear = world?.currentTime ? new Date(world.currentTime).getFullYear() : 2010;
+    const eraMult = eraEconomicService.getEraMultiplier(currentYear);
+    const newPrice = Math.round(rawNewPrice * eraMult);
     let maxAge = 25;
     if (baseAircraft.availableFrom) {
       maxAge = Math.min(25, currentYear - baseAircraft.availableFrom);

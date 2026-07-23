@@ -989,11 +989,12 @@ function pickWeightedMethod(personality, feasible) {
 
 // Decide how the AI pays for `purchasePrice`. Returns { method, leaseWeekly, financePlan }.
 // method === null means "can't afford any method — skip this acquisition".
-async function decideAIAcquisition(airline, purchasePrice, balance, hasRoutes) {
+async function decideAIAcquisition(airline, purchasePrice, balance, hasRoutes, worldYear) {
   const maxPurchase = balance * (hasRoutes ? 0.4 : 0.7);
   const cashFeasible = purchasePrice <= maxPurchase;
 
-  const leaseWeekly = Math.round(purchasePrice * 0.01);
+  const eraMult = eraEconomicService.getEraMultiplier(worldYear || 2010);
+  const leaseWeekly = Math.round(purchasePrice * eraMult * 0.01);
   const leaseFeasible = balance >= leaseWeekly * 8;
 
   const activeLoans = await Loan.findAll({
@@ -1160,11 +1161,12 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   const topN = scored.slice(0, Math.min(5, scored.length));
   const chosen = topN[Math.floor(Math.random() * topN.length)].aircraft;
 
-  const purchasePrice = parseFloat(chosen.purchasePrice) || 50000000;
+  const rawPrice = parseFloat(chosen.purchasePrice) || 50000000;
+  const purchasePrice = Math.round(rawPrice * eraEconomicService.getEraMultiplier(worldYear));
 
   // Decide how to pay: cash outright / finance (deposit + bank loan) / lease.
   // Weighted by personality and constrained by what the airline can afford.
-  const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, purchasePrice, balance, hasRoutes);
+  const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, purchasePrice, balance, hasRoutes, worldYear);
   if (!method) return; // can't sensibly afford any acquisition method right now
   const leaseWeeklyPayment = leaseWeekly;
   const leaseDurationMonths = 36;
@@ -1583,7 +1585,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
       const yearsNew = worldYear - ac.availableFrom;
       if (yearsNew <= 5) score += 10; // Brand new type
       else if (yearsNew <= 15) score += 5;
-      const price = parseFloat(ac.purchasePrice) || 50000000;
+      const price = Math.round((parseFloat(ac.purchasePrice) || 50000000) * eraEconomicService.getEraMultiplier(worldYear));
       if (price <= balance * 0.4) score += 5; // Can afford to buy
       return { aircraft: ac, score, price };
     });
@@ -1594,7 +1596,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
 
     // Decide how to pay for the replacement: cash / finance / lease (a renewing
     // airline has routes, so use the with-routes cash budget).
-    const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, replacement.price, balance, true);
+    const { method, leaseWeekly, financePlan } = await decideAIAcquisition(airline, replacement.price, balance, true, worldYear);
     if (!method) continue;
 
     // Acquire replacement (reuse tryBuyAircraft logic is complex, do inline)
