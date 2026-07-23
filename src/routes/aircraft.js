@@ -117,7 +117,8 @@ router.get('/', async (req, res) => {
             cargoHoldCapacityKg: variant.cargoHoldCapacityKg || null,
             fuelCapacityLiters: variant.fuelCapacityLiters,
             purchasePrice: parseFloat(listing.purchasePrice),
-            leasePrice: listing.leasePrice ? parseFloat(listing.leasePrice) : null,
+            // Hide stored lease prices when the lease market doesn't exist yet (pre-1970)
+            leasePrice: listing.leasePrice && eraEconomicService.leasingAvailable(currentYear) ? parseFloat(listing.leasePrice) : null,
             maintenanceCostPerHour: parseFloat(variant.maintenanceCostPerHour),
             maintenanceCostPerMonth: variant.maintenanceCostPerMonth ? parseFloat(variant.maintenanceCostPerMonth) : null,
             fuelBurnPerHour: parseFloat(variant.fuelBurnPerHour),
@@ -308,8 +309,8 @@ router.get('/', async (req, res) => {
         acData.seller = lessor;
         // Apply era multiplier to prices
         acData.purchasePrice = Math.round(parseFloat(ac.purchasePrice) * eraMultiplier);
-        // Compute weekly lease rate: 0.2% of era-adjusted list price per week
-        acData.leasePrice = Math.round(acData.purchasePrice * 0.002);
+        // Weekly lease rate from the historical lease market curve (null pre-1970 — no leasing yet)
+        acData.leasePrice = eraEconomicService.getWeeklyLeaseRate(acData.purchasePrice, currentYear);
         // Era-scale maintenance check costs
         if (acData.dailyCheckCost) acData.dailyCheckCost = Math.round(parseFloat(acData.dailyCheckCost) * eraMultiplier);
         if (acData.weeklyCheckCost) acData.weeklyCheckCost = Math.round(parseFloat(acData.weeklyCheckCost) * eraMultiplier);
@@ -442,9 +443,9 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         parseFloat(variant.purchasePrice || 50000000);
       const usedPrice = basePrice * depreciationFactor * eraMultiplier;
 
-      // Generate lease price (typically 0.07-0.12% of used price per week)
-      const leaseMultiplier = (0.003 + (Math.random() * 0.002)) / 4.33;
-      const leasePrice = usedPrice * leaseMultiplier;
+      // Lease price from the historical market curve ±10% per-listing variance (null pre-1970)
+      const baseWeeklyLease = eraEconomicService.getWeeklyLeaseRate(usedPrice, currentYear);
+      const leasePrice = baseWeeklyLease !== null ? baseWeeklyLease * (0.9 + Math.random() * 0.2) : null;
 
       // Create used aircraft object
       const usedAc = {
@@ -464,7 +465,7 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         cargoHoldCapacityKg: variant.cargoHoldCapacityKg || null,
         fuelCapacityLiters: variant.fuelCapacityLiters,
         purchasePrice: parseFloat(usedPrice.toFixed(2)), // Depreciated price
-        leasePrice: parseFloat(leasePrice.toFixed(2)),
+        leasePrice: leasePrice !== null ? parseFloat(leasePrice.toFixed(2)) : null,
         maintenanceCostPerHour: parseFloat(variant.maintenanceCostPerHour) * (1.2 - (conditionPercentage/200)), // Slightly higher for older aircraft
         maintenanceCostPerMonth: variant.maintenanceCostPerMonth ? parseFloat(variant.maintenanceCostPerMonth) * (1.2 - (conditionPercentage/200)) : null,
         fuelBurnPerHour: parseFloat(variant.fuelBurnPerHour) * (0.95 + (age * 0.01)), // Slightly higher fuel burn for older aircraft

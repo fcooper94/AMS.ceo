@@ -39,6 +39,48 @@ class EraEconomicService {
   }
 
   /**
+   * Whether aircraft operating leases exist at all in a given year.
+   * The leasing industry effectively started with ILFC (1973); we gate at 1970.
+   */
+  leasingAvailable(year) {
+    return !year || year >= 1970;
+  }
+
+  /**
+   * Monthly operating-lease rate as a % of aircraft value, tracking the
+   * historical lease market: immature and expensive in the 1970s, maturing
+   * through GECAS/AerCap in the 90s, competitive from the 2000s.
+   * Linearly interpolated between anchors; null before 1970 (no lease market).
+   *
+   * @param {number} year - Game year (falsy = modern default)
+   * @returns {number|null} - %/month of value, or null if leasing unavailable
+   */
+  getLeaseMonthlyRatePct(year) {
+    if (!year) return 0.7; // No world year: modern mature market
+    if (year < 1970) return null;
+    const anchors = [[1970, 1.8], [1980, 1.4], [1990, 1.1], [2000, 0.85], [2010, 0.7]];
+    if (year >= anchors[anchors.length - 1][0]) return anchors[anchors.length - 1][1];
+    for (let i = 1; i < anchors.length; i++) {
+      if (year <= anchors[i][0]) {
+        const [y0, r0] = anchors[i - 1];
+        const [y1, r1] = anchors[i];
+        return r0 + (r1 - r0) * ((year - y0) / (y1 - y0));
+      }
+    }
+    return 0.7;
+  }
+
+  /**
+   * Weekly lease payment for an aircraft of the given (already era-scaled)
+   * value in the given year. Null before 1970 — leasing doesn't exist yet.
+   */
+  getWeeklyLeaseRate(value, year) {
+    const monthlyPct = this.getLeaseMonthlyRatePct(year);
+    if (monthlyPct === null || !value || value <= 0) return null;
+    return Math.round(value * (monthlyPct / 100) / 4.33);
+  }
+
+  /**
    * Convert a 2024 USD price to era-appropriate display value
    *
    * @param {number} price2024USD - Price in 2024 dollars

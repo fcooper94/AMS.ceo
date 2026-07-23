@@ -8,6 +8,7 @@ const { sendEmail } = require('../utils/mailer');
 const { User, WorldMembership, World, Aircraft, Airport, SystemSettings, UserAircraft, UsedAircraftForSale, Route, ScheduledFlight, PricingDefault, WeeklyFinancial, Loan, Notification, AirspaceRestriction, MarketingCampaign, RecurringMaintenance, Payment } = require('../models');
 const { getStripe } = require('../config/billingConfig');
 const airportCacheService = require('../services/airportCacheService');
+const eraEconomicService = require('../services/eraEconomicService');
 const { sellingAirlines, leasingCompanies, aircraftBrokers } = require('../data/aircraftSellers');
 
 /**
@@ -1577,7 +1578,10 @@ router.delete('/airlines/fleet/:aircraftId', async (req, res) => {
       depreciationFactor = Math.max(depreciationFactor, 0.03);
 
       const usedPrice = basePrice * depreciationFactor;
-      const leasePrice = usedPrice * ((0.003 + Math.random() * 0.002) / 4.33);
+      // Lease from the historical market curve (null pre-1970 — sale-only listing)
+      const listingWorld = await World.findByPk(userAircraft.membership.worldId);
+      const listingYear = listingWorld?.currentTime ? new Date(listingWorld.currentTime).getFullYear() : null;
+      const leasePrice = eraEconomicService.getWeeklyLeaseRate(usedPrice, listingYear);
 
       // Calculate check validity (randomized)
       const cCheckRemainingDays = 180 + Math.floor(Math.random() * 365);
@@ -1603,7 +1607,7 @@ router.delete('/airlines/fleet/:aircraftId', async (req, res) => {
         ageYears: age,
         totalFlightHours: parseFloat(userAircraft.totalFlightHours) || 0,
         purchasePrice: usedPrice.toFixed(2),
-        leasePrice: leasePrice.toFixed(2),
+        leasePrice: leasePrice !== null ? leasePrice.toFixed(2) : null,
         cCheckRemainingDays,
         dCheckRemainingDays,
         status: 'available'

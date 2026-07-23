@@ -1876,8 +1876,9 @@ router.get('/market-averages/:aircraftTypeId', async (req, res) => {
       const usedPrice = Math.round(newPrice * depFactor);
       salePrices.push(usedPrice);
 
-      // Lease: 0.3-0.5% of used price per month (use 0.4% as mid)
-      leaseRates.push(Math.round(usedPrice * 0.004));
+      // Weekly lease from the historical market curve (null pre-1970 — no lease market)
+      const weeklyLease = eraEconomicService.getWeeklyLeaseRate(usedPrice, currentYear);
+      if (weeklyLease !== null) leaseRates.push(weeklyLease);
     }
 
     // 4. Add persistent UsedAircraftForSale listings for this type
@@ -2867,6 +2868,12 @@ router.post('/lease', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Aircraft leasing didn't exist before 1970 (ILFC founded 1973)
+    const leaseGameTime = worldTimeService.getCurrentTime(activeWorldId);
+    if (leaseGameTime && !eraEconomicService.leasingAvailable(leaseGameTime.getFullYear())) {
+      return res.status(400).json({ error: 'Aircraft leasing is not available before 1970 — buy outright or finance with a bank loan.' });
+    }
+
     // Enforce 3-12 year lease duration (36-144 months)
     const durationMonths = parseInt(leaseDurationMonths);
     if (durationMonths < 36 || durationMonths > 144) {
@@ -3188,6 +3195,12 @@ router.post('/bulk-lease', async (req, res) => {
     }
     if (registrations.length > 10) {
       return res.status(400).json({ error: 'Maximum 10 aircraft per bulk lease' });
+    }
+
+    // Aircraft leasing didn't exist before 1970 (ILFC founded 1973)
+    const blkLeaseGameTime = worldTimeService.getCurrentTime(activeWorldId);
+    if (blkLeaseGameTime && !eraEconomicService.leasingAvailable(blkLeaseGameTime.getFullYear())) {
+      return res.status(400).json({ error: 'Aircraft leasing is not available before 1970 — buy outright or finance with a bank loan.' });
     }
 
     const durationMonths = parseInt(leaseDurationMonths);
@@ -5167,6 +5180,11 @@ router.post('/:aircraftId/lease-out', async (req, res) => {
     }
 
     const gameTime = worldTimeService.getCurrentTime(activeWorldId) || new Date();
+
+    // Aircraft leasing didn't exist before 1970 (ILFC founded 1973)
+    if (!eraEconomicService.leasingAvailable(gameTime.getFullYear())) {
+      return res.status(400).json({ error: 'Aircraft leasing is not available before 1970 — you can only sell outright.' });
+    }
 
     await clearAircraftSchedule(aircraft.id);
     await aircraft.update({

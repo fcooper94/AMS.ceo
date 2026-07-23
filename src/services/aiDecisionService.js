@@ -934,7 +934,7 @@ const AI_ACQ_WEIGHTS = {
 
 // Build a concrete finance plan (bank, deposit, loan, weekly payment) for a
 // purchase, or return null if the AI can't sensibly finance it right now.
-function buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoanCount) {
+function buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoanCount, worldYear, fleetValue = 0) {
   if (activeLoanCount >= AI_MAX_ACTIVE_LOANS) return null;
   if (purchasePrice > aiFinanceMaxPrice(airline, balance)) return null;
 
@@ -951,7 +951,7 @@ function buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds
   // Cheapest offered rate in the pool.
   let best = null;
   for (const b of pool) {
-    const rate = calculateOfferRate(b.id, score, 'fleet_expansion');
+    const rate = calculateOfferRate(b.id, score, 'fleet_expansion', worldYear);
     if (best === null || rate < best.rate) best = { bank: b, rate };
   }
   if (!best) return null;
@@ -959,8 +959,8 @@ function buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds
   const deposit = Math.round(purchasePrice * AI_FINANCE_DEPOSIT_PCT);
   const loanAmount = purchasePrice - deposit;
 
-  // Respect the bank's max loan sizing (net worth proxied by cash balance).
-  const maxLoan = calculateMaxLoanAmount(best.bank.id, balance);
+  // Respect the bank's max loan sizing (same net-worth basis as players).
+  const maxLoan = calculateMaxLoanAmount(best.bank.id, balance + fleetValue, score);
   if (maxLoan > 0 && loanAmount > maxLoan) return null;
 
   const termWeeks = Math.max(TERM_RANGES.fleet_expansion.min,
@@ -993,16 +993,20 @@ async function decideAIAcquisition(airline, purchasePrice, balance, hasRoutes, w
   const maxPurchase = balance * (hasRoutes ? 0.4 : 0.7);
   const cashFeasible = purchasePrice <= maxPurchase;
 
-  const eraMult = eraEconomicService.getEraMultiplier(worldYear || 2010);
-  const leaseWeekly = Math.round(purchasePrice * eraMult * 0.01);
-  const leaseFeasible = balance >= leaseWeekly * 8;
+  // Historical lease market curve (purchasePrice is already era-scaled; null pre-1970 = no leasing)
+  const leaseWeekly = eraEconomicService.getWeeklyLeaseRate(purchasePrice, worldYear || 2010);
+  const leaseFeasible = leaseWeekly !== null && balance >= leaseWeekly * 8;
 
   const activeLoans = await Loan.findAll({
     where: { worldMembershipId: airline.id, status: 'active' },
     attributes: ['bankId']
   });
   const existingLoanBankIds = new Set(activeLoans.map(l => l.bankId));
-  const financePlan = buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoans.length);
+  // Owned-fleet value so AI net worth matches the player formula (leased = null, ignored by sum)
+  const fleetValue = (await UserAircraft.sum('purchasePrice', {
+    where: { worldMembershipId: airline.id }
+  })) || 0;
+  const financePlan = buildAIFinancePlan(airline, purchasePrice, balance, existingLoanBankIds, activeLoans.length, worldYear, fleetValue);
 
   const method = pickWeightedMethod(airline.aiPersonality, {
     cash: cashFeasible, lease: leaseFeasible, finance: !!financePlan
