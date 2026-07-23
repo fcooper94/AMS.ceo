@@ -454,34 +454,98 @@ user chose clean separation over the (recommended, lower-effort)
   `preventDefault()` for tour drags or the drop is refused). Expect more edge
   cases here — test in the browser.
 
-## Aircraft leasing — era scaling (2026-07)
+## Aircraft leasing — hard gate + historical curve (2026-07, IMPLEMENTED)
 
-Lease rates and purchase prices in the marketplace are now **era-scaled**
-(`purchasePrice × eraMultiplier`). Before this fix, aircraft cost 2024
-dollars in all eras — a 1950 airline earning 10% of modern revenue paid
-full-price leases, making every airline unprofitable.
+Leasing is **hard-gated before 1970** (ILFC founded 1973) and priced from
+**one curve** in `eraEconomicService`: `leasingAvailable(year)`,
+`getLeaseMonthlyRatePct(year)` (null pre-1970; 1.8%/mo of value in 1970 →
+0.7%/mo from 2010, interpolated) and `getWeeklyLeaseRate(value, year)`
+(÷4.33; value is the already-era-scaled price — don't double-scale).
 
-- **Marketplace** (`fleet.js`): `newPrice = rawPrice × eraMult` before
-  computing depreciated sale prices and lease rates (`usedPrice × 0.004`).
-- **AI acquisition** (`aiDecisionService.js`): `purchasePrice` and
-  `leaseWeekly` both era-scaled via `decideAIAcquisition(…, worldYear)`.
-- **Fix script** `src/scripts/fixLeaseRates.js`: recalculates existing
-  lease rates and reimburses overpayments. Run with `--dry-run` first.
+- **All five lease-price producers use the curve** (replaced four
+  inconsistent formulas): new listings (`aircraft.js`), generated used
+  listings (±10% variance), the price-guide stats (`fleet.js`),
+  admin-created listings (`admin.js`), and AI (`decideAIAcquisition` —
+  this also fixed a double-era-scaling bug that made 1950 AI leases 10×
+  too cheap, and the old 1%/wk AI rate that was ~6× too expensive in
+  modern eras).
+- **Pre-1970 UX**: server returns `leasePrice: null` (frontend hides the
+  lease column/buttons automatically — it already handled null); stored
+  DB listings are masked when served; the lease, bulk-lease and lease-out
+  endpoints reject server-side with a clear message.
+- **Existing contracts were honoured, not cancelled**:
+  `src/scripts/repriceLeasesToCurve.js` (idempotent — only ever lowers
+  toward the curve; pre-1970 worlds priced at the 1970 anchor) was run on
+  Railway 2026-07-23: 5,513 leases repriced, ~$28.5B reimbursed. Many AI
+  airlines went from negative to positive balances — expect AI expansion
+  after such a run. `fixLeaseRates.js` (old ×eraMult approach) is
+  superseded; don't run it.
 
-**Next step — historical lease availability curve (not yet implemented):**
-Aircraft leasing barely existed before 1973 (ILFC founded). The model
-should add a **lease availability gate + premium curve**:
-- **Pre-1970**: leasing unavailable (buy or don't fly)
-- **1970s–80s**: available but expensive (1.5–2% of value/month; immature
-  market, high risk premium)
-- **1990s**: rates dropping as GECAS/Aercap grow (~1.0–1.2%/month); ~25–30%
-  of world fleet leased
-- **2000s+**: mature market, competitive rates (~0.6–0.8%/month); ~45–50%
-  of fleet leased
-Implementation: a `leaseAvailabilityMultiplier(year)` curve that gates
-the lease option in the marketplace and scales the 0.4% rate. AI
-`decideAIAcquisition` should also respect the gate (no lease method
-pre-1970).
+## Banks & loans — era rates + credit-scaled caps (2026-07)
+
+- **12 banks** in `data/bankConfig.js` (added Sakura/Continental/Aurora/
+  Liberty/Southern Cross to the original 7), spanning 2.2%–6.5% base and
+  350–700 credit-score entry. One active loan per bank still applies, so
+  more banks = more max concurrent player loans (~12).
+- **Max loan** = `netWorth × bank.maxLoanPct × leverage(creditScore)` —
+  leverage runs 1× (score ≤500) to 3× (850). The old flat `× 10` fudge is
+  gone (it offered a day-old 1950 airline £41M).
+- **Era interest rates**: `ERA_RATE_ANCHORS` / `getEraRateAdjustment(year)`
+  in bankConfig — percentage points added to every bank's base rate,
+  interpolated (+1% 1950 → +9% at the 1981 Volcker peak → ~0% 2010s →
+  +2% post-2022). `calculateOfferRate(bank, score, type, worldYear)` —
+  all call sites pass the year (offers/apply, starter loans, delivery
+  loans, AI).
+- **AI parity**: AI caps use `balance + owned fleet value` with the AI
+  credit score, same formula as players.
+
+## Order flow — Finance Details step + repayment strategy (2026-07)
+
+New-aircraft ordering is a 3-step flow in `aircraft-marketplace.js`:
+**Order** (qty, cash/loan; cash skips ahead) → **Finance Details** (loan
+only: compact accordion bank list showing *only* banks that can fund the
+whole order, procedural colour/monogram `bankBadge()` per bank, term
+slider, repayment strategy fixed/reducing/interest_only, cost breakdown
+with styled `.fb-info` tooltips) → **Registration** (compact fixed-layout
+reg table + auto-maintenance toggles).
+
+- **`user_aircraft.financing_repayment_strategy`** column (additive ALTER
+  guard in server.js) stores the chosen strategy; the delivery loan in
+  `worldTimeService` is created with it and the correct first-week payment
+  (`processLoanPayments` already handled all three strategies).
+- Known trust hole (pre-existing): the order endpoints don't validate the
+  loan amount against the bank cap server-side — only the client does.
+
+## Scrap & fleet-modal displays (2026-07)
+
+- **Scrap offers are era-scaled** (`fleet.js` GET `/scrap-offers` + POST
+  `/scrap` cap): base = `purchasePrice × eraMult`. Before this, a 1950
+  B377 bought for £1.6M scrapped for £4M (free money). AI scrap values
+  and fallback sale prices in `aiDecisionService` era-scaled too.
+- **Falsy-zero traps**: `parseFloat(x) || default` treated a brand-new
+  aircraft (age 0) as 10 years old — use `Number.isFinite` guards for
+  age/condition-style values where 0 is legitimate.
+- **Fleet/scheduling detail modals**: Operating Costs shows *lifetime
+  actuals* (flights, avg cost/flight, lifetime costs/profit from the
+  details endpoint's `actuals` block) once flown, labelled "Estimated"
+  (with tooltip) until then. NB route lifetime totals move with a route
+  if it's reassigned to another aircraft, and totals from before the
+  2026-07 economy fixes are polluted by old costs/fares — they dilute
+  but never wash out.
+- **Display-mirrors-engine rule**: weekly fuel estimate is
+  `burn × 0.75 × fuelMult × eraMult` (both multipliers — omitting eraMult
+  showed 10× in 1950). Any client-side cost estimate must mirror
+  `eraEconomicService.calculateFlightCosts`.
+
+**⚠ Open calibration issue — fuel too cheap in early eras:**
+`getFuelCostMultiplier` values are authored as *absolute* price ratios
+("0.08 = $0.15/gal") but `calculateFlightCosts` multiplies them by
+`eraMult` as well, so 1950 fuel is ~7× under-priced (An-2 fuel ≈ £1/hr).
+Historically maintenance-vs-fuel for a 1950 Stratocruiser was roughly
+1:1, not 10:1. The fix is to recalibrate the fuel table to be *relative*
+to the era (1950 ≈ 0.6–0.7), but that's an economy-tuning decision —
+raises all early/mid-era fuel bills right after the 2026-07 rebalance.
+Deliberately parked; get sign-off before changing.
 
 ## World tick processing — per-world isolation (2026-07)
 
