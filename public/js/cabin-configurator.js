@@ -1943,7 +1943,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
           recalcDeckEconomy(dc, layout, ts, penalty);
         }
       } else if (delta < 0 && dc[cls] > 0) {
-        dc[cls] = Math.max(0, dc[cls] - perRow);
+        // If remaining seats are fewer than a full row, snap to 0
+        dc[cls] = dc[cls] <= perRow ? 0 : dc[cls] - perRow;
         if (cls !== 'economy') {
           recalcDeckEconomy(dc, layout, ts, penalty);
         }
