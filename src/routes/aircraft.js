@@ -348,8 +348,11 @@ function generateUsedAircraft(variants, currentYear = null, eraMultiplier = 1.0)
         maxAge = Math.min(25, currentYear - variant.availableFrom);
       }
 
-      // Generate random age (0-maxAge years)
-      const age = Math.floor(Math.random() * (maxAge + 1));
+      // Generate random age (0.2-maxAge years). A used airframe is never
+      // factory-fresh — even a just-released type has flown a few months.
+      // Under 3 years keep one decimal (0.2y, 1.4y); older round to whole years.
+      const rawAge = 0.2 + Math.random() * Math.max(0.3, maxAge - 0.2);
+      const age = rawAge < 3 ? Math.round(rawAge * 10) / 10 : Math.round(rawAge);
 
       // Calculate condition based on age (with some randomness)
       let condition;
