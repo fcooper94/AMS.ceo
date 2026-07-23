@@ -1158,13 +1158,23 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     return 0;
   }
 
+  // Economy auto-fills the space premium classes leave over — but the user can
+  // cap it below that (down to 0, e.g. an all-First cabin) with the − button;
+  // freed space simply stays empty. null = pure auto-fill.
+  let econCapOverride = null;
+  let autoEconomy = 0;
+
   function recalcEconomy() {
     const usedSpace = calcSpaceUsed(config.first, 'first')
                     + calcSpaceUsed(config.business, 'business')
                     + calcSpaceUsed(config.economyPlus, 'economyPlus')
                     + midToiletRows() * PITCH.economy;
     const remainingSpace = Math.max(0, totalSpace - usedSpace);
-    config.economy = Math.floor(remainingSpace) * econPerRow;
+    autoEconomy = Math.floor(remainingSpace) * econPerRow;
+    if (econCapOverride != null && econCapOverride >= autoEconomy) econCapOverride = null; // stepped back up to auto
+    config.economy = econCapOverride != null
+      ? Math.min(autoEconomy, Math.max(0, econCapOverride))
+      : autoEconomy;
   }
 
   function calcSpaceUsed(seatCount, cabinClass) {
@@ -1194,7 +1204,10 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
                    + (['first','business','economyPlus'].filter(c => c !== cabinClass)
                        .reduce((s, c) => s + calcSpaceUsed(config[c], c), 0))
                    + toiletSpace;
-    return testUsed <= totalSpace - 1;
+    // <= totalSpace (not totalSpace - 1): premium classes may fill the entire
+    // cabin — an all-First / all-Business / all-Plus aircraft is allowed, and
+    // economy simply derives to 0 rows.
+    return testUsed <= totalSpace;
   }
 
   function canRemove(cabinClass) {
@@ -1202,6 +1215,16 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   }
 
   recalcEconomy();
+
+  // Restore a deliberately reduced economy count (e.g. a saved all-premium
+  // cabin) — only when the stored value is below what auto-fill would give.
+  if (existingConfig?.economySeats != null) {
+    const wanted = roundToRow(existingConfig.economySeats, 'economy');
+    if (wanted < config.economy) {
+      econCapOverride = wanted;
+      recalcEconomy();
+    }
+  }
 
   const overlay = document.createElement('div');
   overlay.id = 'cabinConfigOverlay';
@@ -1247,6 +1270,13 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           ${buildClassCtrl('economyPlus')}
           ${buildEconDisp()}
 
+          ${toiletInfo.max === 0 ? `
+          <div style="padding: 0.5rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); opacity: 0.38; cursor: not-allowed; display: flex; flex-direction: column; justify-content: center;"
+               title="This aircraft is too small to fit a lavatory.">
+            <div style="font-size: 0.65rem; font-weight: 600; color: rgba(148,163,184,0.8); margin-bottom: 0.15rem;">WC</div>
+            <div style="font-size: 0.5rem; color: var(--text-muted); font-style: italic; white-space: nowrap;">Aircraft too small</div>
+          </div>
+          ` : `
           <div style="padding: 0.5rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid rgba(148,163,184,0.5); display: flex; flex-direction: column; justify-content: center;">
             <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.2rem;">
               <span style="font-size: 0.65rem; font-weight: 600; color: rgba(148,163,184,0.8);">WC</span>
@@ -1262,6 +1292,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
             </div>
             <div id="toiletNote" style="font-size: 0.5rem; color: var(--text-muted); white-space: nowrap;">Pairs · nose/tail</div>
           </div>
+          `}
 
           ${options?.refitWarning ? `
           <div style="padding: 0.4rem 0.6rem; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-left: 3px solid #f59e0b; border-radius: 4px; display: flex; align-items: center; gap: 0.4rem;">
@@ -1327,8 +1358,18 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     return `
       <div style="padding: 0.4rem 0.6rem; background: var(--surface-elevated); border-radius: 6px; border-left: 3px solid ${cc.bg}; min-width: 120px;">
         <div style="font-size: 0.65rem; font-weight: 600; color: ${cc.bg}; margin-bottom: 0.2rem;">ECONOMY</div>
-        <span id="cabinCount_economy" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary);">${config.economy}</span>
-        <div style="font-size: 0.45rem; color: var(--text-muted); margin-top: 0.15rem;">${layouts.economy.join('-')} · ${econPerRow}/row · auto</div>
+        <div style="display: flex; align-items: center; gap: 0.3rem;">
+          <button class="cabin-adj-btn" data-class="economy" data-delta="-1"
+            style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">−</button>
+          <span id="cabinCount_economy" style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); min-width: 1.8rem; text-align: center;">${config.economy}</span>
+          <button class="cabin-adj-btn" data-class="economy" data-delta="1"
+            style="width: 22px; height: 22px; border: 1px solid var(--border-color); border-radius: 4px;
+                   background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.8rem;
+                   display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
+        </div>
+        <div id="econAutoNote" style="font-size: 0.45rem; color: var(--text-muted); margin-top: 0.15rem;">${layouts.economy.join('-')} · ${econPerRow}/row · auto</div>
       </div>
     `;
   }
@@ -1494,6 +1535,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
         plusBtn.style.cursor = canAdd(cls) ? 'pointer' : 'default';
       }
     }
+    // Economy buttons: − active while any economy remains; + only while capped
+    // below the auto-fill amount
+    const eMinus = overlay.querySelector('[data-class="economy"][data-delta="-1"]');
+    const ePlus = overlay.querySelector('[data-class="economy"][data-delta="1"]');
+    const eCanRemove = config.economy > 0;
+    const eCanAdd = econCapOverride != null && config.economy < autoEconomy;
+    if (eMinus) { eMinus.style.opacity = eCanRemove ? '1' : '0.3'; eMinus.style.cursor = eCanRemove ? 'pointer' : 'default'; }
+    if (ePlus) { ePlus.style.opacity = eCanAdd ? '1' : '0.3'; ePlus.style.cursor = eCanAdd ? 'pointer' : 'default'; }
+    const econNote = document.getElementById('econAutoNote');
+    if (econNote) econNote.textContent =
+      `${layouts.economy.join('-')} · ${econPerRow}/row · ${econCapOverride != null ? 'reduced' : 'auto'}`;
     // Toilet count + note
     const tcEl = document.getElementById('toiletCount');
     if (tcEl) tcEl.textContent = toilets;
@@ -1540,6 +1592,18 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       const cls = btn.dataset.class;
       const delta = parseInt(btn.dataset.delta);
       const perRow = classPerRow(cls);
+      if (cls === 'economy') {
+        // Economy auto-fills leftover space; − caps it below the auto amount
+        // (freed space stays empty — enables all-premium cabins), + restores
+        // toward auto (recalcEconomy clears the cap once it reaches auto).
+        if (delta < 0 && config.economy > 0) {
+          econCapOverride = Math.max(0, config.economy - perRow);
+        } else if (delta > 0 && econCapOverride != null) {
+          econCapOverride = config.economy + perRow;
+        }
+        updateUI();
+        return;
+      }
       if (delta > 0 && canAdd(cls)) {
         config[cls] += perRow;
       } else if (delta < 0 && canRemove(cls)) {
@@ -1581,6 +1645,15 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   });
 
   updateUI();
+
+  // Pin the modal width after the first render — the diagram's drawn length
+  // varies with the seat mix (First rows are longer than economy rows), and a
+  // fit-content modal makes the whole dialog jump as classes change. Pinned,
+  // an outgrown diagram just scrolls inside #cabinDiagramScroll instead.
+  const modalBox = overlay.firstElementChild;
+  if (modalBox) {
+    modalBox.style.width = Math.ceil(modalBox.getBoundingClientRect().width) + 'px';
+  }
 
   // Auto-scroll diagram container to show nose of aircraft on open
   requestAnimationFrame(() => {

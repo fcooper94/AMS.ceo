@@ -107,6 +107,25 @@ class CabinClassService {
   }
 
   /**
+   * Convenience: compute class mix straight from Airport model instances,
+   * resolving country GDP internally (same lookup as routeIndicatorService).
+   * Used by the revenue engine's premium-demand cap.
+   */
+  computeClassMixForAirports(depAirport, arrAirport, distKm, year) {
+    const zoneAssignmentService = require('./zoneAssignmentService');
+    const countryEconomics = require('../data/countryEconomics');
+    const gdp = (airport) => {
+      const code = zoneAssignmentService.countryNameToCode(airport?.country);
+      if (!code || !countryEconomics[code] || !countryEconomics[code].gdpPerCapita) return 5000;
+      return gravityModelService.interpolateDecadeValue(countryEconomics[code].gdpPerCapita, year);
+    };
+    return this.computeClassMix(
+      gdp(depAirport), gdp(arrAirport), distKm,
+      depAirport?.type, arrAirport?.type, year
+    );
+  }
+
+  /**
    * Business propensity: multiplicative score from GDP, distance, and airport types.
    * Centered around 1.0 for a "typical" route.
    */

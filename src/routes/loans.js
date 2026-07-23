@@ -167,7 +167,8 @@ router.get('/', async (req, res) => {
         isOnHoliday: l.isOnHoliday,
         missedPayments: l.missedPayments,
         originationGameDate: l.originationGameDate,
-        creditScoreAtOrigin: l.creditScoreAtOrigin
+        creditScoreAtOrigin: l.creditScoreAtOrigin,
+        reference: l.reference || null
       })),
       summary: {
         totalDebt: Math.round(totalDebt),

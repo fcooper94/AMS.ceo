@@ -83,7 +83,7 @@ function renderActiveLoans(data) {
 
     rows += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
       <td style="padding:0.45rem 0.6rem;">${l.bankName}</td>
-      <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}</td>
+      <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}${l.reference ? `<div style="font-size:0.62rem;color:var(--text-muted);margin-top:0.1rem;">${l.reference}</div>` : ''}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${fmtNum(l.remainingPrincipal)}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.interestRate}%</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${fmtNum(l.weeklyPayment)}</td>
@@ -103,7 +103,7 @@ function renderActiveLoans(data) {
     const statusLabel = l.status === 'paid_off' ? 'Paid Off' : 'Defaulted';
     rows += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);opacity:0.5;">
       <td style="padding:0.45rem 0.6rem;">${l.bankName}</td>
-      <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}</td>
+      <td style="padding:0.45rem 0.6rem;font-size:0.75rem;">${l.loanTypeLabel}${l.reference ? `<div style="font-size:0.62rem;color:var(--text-muted);margin-top:0.1rem;">${l.reference}</div>` : ''}</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">$0</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">${l.interestRate}%</td>
       <td style="padding:0.45rem 0.6rem;text-align:right;" class="mono">-</td>

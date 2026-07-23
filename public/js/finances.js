@@ -178,6 +178,10 @@ function renderWeeklyPL() {
     rows += wkRow('Marketing', weeks, 'marketingCosts', true, 'outgoing');
   }
 
+  // Aircraft purchases: deposits, delivery payments, used purchases, cabin
+  // outfitting/refits — its own category (large one-off capital sums)
+  rows += wkRow('Aircraft Purchases', weeks, 'fleetCapitalCosts', true, 'outgoing');
+
   // Total Outgoings
   rows += wkTotal('Total Outgoings', weeks, 'totalCosts', true, 'outgoing');
 

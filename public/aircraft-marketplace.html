@@ -1,6 +1,6 @@
 <!-- TITLE: Aircraft Marketplace - AMS.ceo -->
 <!-- SUBTITLE: Aircraft Marketplace -->
-<!-- SCRIPTS: /js/registrationPrefixes.js,/js/cabin-configurator.js,/js/cargo-types.js,/js/cargo-configurator.js,/js/aircraft-marketplace.js -->
+<!-- SCRIPTS: /js/registrationPrefixes.js,/js/cabin-configurator.js,/js/cabin-outfitting.js,/js/cargo-types.js,/js/cargo-configurator.js,/js/aircraft-marketplace.js -->
 
 <style>
   .market-grid-wrapper {
@@ -68,6 +68,12 @@
     padding: 0.4rem 0.75rem;
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
+  }
+
+  /* Pre-1970 worlds: leasing doesn't exist yet — 5 columns, no LEASE/WK */
+  .market-header.no-lease,
+  .market-row.no-lease {
+    grid-template-columns: 1fr 0.6fr 0.7fr 1fr 50px;
     transition: background 0.15s;
   }
 
@@ -358,11 +364,6 @@
       <div id="aircraftDetailContent">
         <!-- Aircraft details will be loaded here -->
       </div>
-    </div>
-    <div class="modal-footer" style="justify-content: center; gap: 0.75rem;">
-      <button class="btn btn-secondary" onclick="closeAircraftDetailModal()" style="min-width: 120px;">Close</button>
-      <button class="btn btn-primary" id="buyAircraftBtn" onclick="closeAircraftDetailModal(); processPurchase()" style="min-width: 120px; background: #10b981; border-color: #10b981;">Buy Aircraft</button>
-      <button class="btn btn-primary" id="purchaseAircraftBtn" onclick="purchaseAircraft()" style="display: none;">Purchase Aircraft</button>
     </div>
   </div>
 </div>

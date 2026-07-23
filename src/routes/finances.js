@@ -61,9 +61,12 @@ router.get('/', async (req, res) => {
       const corpAdmin = parseFloat(w.corporateAdminCosts) || 0;
       const loanPay = parseFloat(w.loanPayments) || 0;
       const marketing = parseFloat(w.marketingCosts) || 0;
+      const fleetCapital = parseFloat(w.fleetCapitalCosts) || 0;
       const opCosts = fuel + crew + maint + fees + ground + paxSvc;
       const overheads = staff + leases + contractors + commonality + insurance + corpAdmin + loanPay + marketing;
-      const totalCosts = opCosts + overheads;
+      // Fleet capital (deposits, delivery payments, used purchases, outfitting)
+      // is its own category — big one-off sums that would distort overheads
+      const totalCosts = opCosts + overheads + fleetCapital;
       const netProfit = rev - totalCosts;
 
       return {
@@ -84,6 +87,7 @@ router.get('/', async (req, res) => {
         corporateAdminCosts: Math.round(corpAdmin),
         loanPayments: Math.round(loanPay),
         marketingCosts: Math.round(marketing),
+        fleetCapitalCosts: Math.round(fleetCapital),
         overheads: Math.round(overheads),
         totalCosts: Math.round(totalCosts),
         netProfit: Math.round(netProfit),

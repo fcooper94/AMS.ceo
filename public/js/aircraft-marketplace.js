@@ -337,6 +337,8 @@ async function fetchWorldInfo() {
       marketplaceWorldYear = new Date(data.currentTime).getFullYear();
       if (typeof setCabinEraYear === 'function') setCabinEraYear(marketplaceWorldYear);
     }
+    // Era price scaling — used to display the cabin outfitting cost line
+    if (data.eraMultiplier) marketplaceEraMultiplier = data.eraMultiplier;
 
     // Balance display
     const balanceEl = document.getElementById('marketplaceBalance');
@@ -518,14 +520,15 @@ function displayAircraft(aircraftArray) {
       </div>
     `;
 
-    // Column headers
+    // Column headers (LEASE/WK only once leasing exists, from 1970)
+    const leasingExists = marketplaceWorldYear === null || marketplaceWorldYear >= 1970;
     html += `
-      <div class="market-header">
+      <div class="market-header${leasingExists ? '' : ' no-lease'}">
         <span>VARIANT</span>
         <span>AGE</span>
         <span>COND</span>
         <span>PURCHASE</span>
-        <span>LEASE/WK</span>
+        ${leasingExists ? '<span>LEASE/WK</span>' : ''}
         <span></span>
       </div>
     `;
@@ -557,7 +560,7 @@ function displayAircraft(aircraftArray) {
       const leaseColor = aircraft.leasePrice ? 'var(--accent-color)' : 'var(--text-muted)';
 
       html += `
-        <div class="market-row" onclick="showAircraftDetails('${aircraft.id}')"${isPlayer ? ' style="border-left: 2px solid ' + (playerType === 'sale' ? '#f59e0b' : '#a855f7') + ';"' : ''}>
+        <div class="market-row${leasingExists ? '' : ' no-lease'}" onclick="showAircraftDetails('${aircraft.id}')"${isPlayer ? ' style="border-left: 2px solid ' + (playerType === 'sale' ? '#f59e0b' : '#a855f7') + ';"' : ''}>
           <div class="market-cell market-variant" style="flex-direction: column; align-items: flex-start;">
             <div>
               ${variantName}
@@ -570,7 +573,7 @@ function displayAircraft(aircraftArray) {
             <span class="status-badge ${getConditionClass(conditionPercent)}">${conditionPercent}%</span>
           </div>
           <div class="market-cell" style="color: ${purchaseColor}; font-weight: 600;">${purchaseDisplay}</div>
-          <div class="market-cell" style="color: ${leaseColor}; font-weight: 600;">${leaseDisplay}${aircraft.leasePrice ? '<span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 400;">/wk</span>' : ''}</div>
+          ${leasingExists ? `<div class="market-cell" style="color: ${leaseColor}; font-weight: 600;">${leaseDisplay}${aircraft.leasePrice ? '<span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 400;">/wk</span>' : ''}</div>` : ''}
           <div class="market-cell">
             <button class="btn btn-primary" style="padding: 0.2rem 0.4rem; font-size: 0.65rem;" onclick="event.stopPropagation(); showAircraftDetails('${aircraft.id}')">VIEW</button>
           </div>
@@ -813,23 +816,25 @@ function showAircraftDetails(aircraftId) {
 
     ${aircraft.cargoCapacityKg > 0 ? cargoConfigRowsHtml(aircraft) : ''}
 
-    <!-- Live configuration summary (populated as sections are configured) -->
-    <div id="configSummary" style="display: none; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.5rem;"></div>
+    <!-- Cost breakdown: airframe + cabin fitting + total (filled by updateConfigSummary) -->
+    <div id="costBreakdown" style="display: none; background: rgba(245, 158, 11, 0.04); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.5rem;"></div>
 
     <!-- Bottom: Purchase & Lease side by side -->
     ${isNew && !aircraft.isPlayerListing ? `
     ${buildNewAircraftAcquisitionCards(aircraft)}
     ` : `
-    <div style="display: grid; grid-template-columns: ${aircraft.purchasePrice && aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
+    <div style="display: grid; grid-template-columns: repeat(${(aircraft.purchasePrice ? 1 : 0) + (aircraft.leasePrice && leasingAvailableNow() ? 1 : 0) + 1}, 1fr); gap: 0.5rem;">
       ${aircraft.purchasePrice ? `
-      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="processPurchase()">
+      <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%); border: 2px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#F59E0B'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.3)'; this.style.transform='none'" onclick="processPurchase()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
           <div>
-            <div style="color: #10b981; font-weight: 700; font-size: 0.8rem;">PURCHASE</div>
+            <div style="color: #F59E0B; font-weight: 700; font-size: 0.8rem;">PURCHASE</div>
             <div style="color: var(--text-muted); font-size: 0.6rem;">${aircraft.isPlayerListing ? 'Buy from ' + (aircraft.seller?.name || 'player') : 'Own outright'}</div>
             ${aircraft.seller ? `<div style="color: var(--text-muted); font-size: 0.55rem;">From: <strong style="color: var(--text-primary);">${aircraft.seller.shortName}</strong> ${aircraft.seller.country ? `<span style="font-size: 0.5rem;">${aircraft.seller.country}</span>` : ''}</div>` : ''}
           </div>
-          <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(aircraft.purchasePrice)}</div>
+          <div style="text-align: right;">
+            <div class="acq-total" data-base="${aircraft.purchasePrice}" style="color: #F59E0B; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(aircraft.purchasePrice)}</div>
+          </div>
         </div>
         <div style="font-size: 0.55rem; color: var(--text-secondary);">
           ✓ Full ownership &nbsp; ✓ No weekly fees &nbsp; ✓ Sell anytime
@@ -837,7 +842,7 @@ function showAircraftDetails(aircraftId) {
       </div>
       ` : ''}
 
-      ${aircraft.leasePrice ? `
+      ${aircraft.leasePrice && leasingAvailableNow() ? `
       <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="processLease()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
           <div>
@@ -852,11 +857,27 @@ function showAircraftDetails(aircraftId) {
           ${aircraft.lessor.country ? `<span style="color: var(--text-muted); font-size: 0.5rem;">${aircraft.lessor.country}</span>` : ''}
         </div>
         ` : ''}
+        <div class="outfitting-note" style="font-size: 0.55rem; color: #3b82f6; opacity: 0.85; margin-bottom: 0.2rem;"></div>
         <div style="font-size: 0.55rem; color: var(--text-secondary);">
           ✓ Lower upfront &nbsp; ✓ Flexible &nbsp; ✓ Available now
         </div>
       </div>
       ` : ''}
+
+      <!-- TAKE OUT LOAN: used purchases aren't financed per-aircraft — borrow
+           a general bank loan from the Loans page, then buy with cash -->
+      <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.5rem 0.6rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(16, 185, 129, 0.3)'; this.style.transform='none'" onclick="window.location.href='/loans'">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+          <div>
+            <div style="color: #10b981; font-weight: 700; font-size: 0.8rem;">TAKE OUT LOAN</div>
+            <div style="color: var(--text-muted); font-size: 0.6rem;">Borrow from a bank, then buy</div>
+          </div>
+          <div style="color: #10b981; font-weight: 700; font-size: 1.1rem;">→</div>
+        </div>
+        <div style="font-size: 0.55rem; color: var(--text-secondary);">
+          ✓ Cash injection &nbsp; ✓ Buy anything &nbsp; ✓ Loans page
+        </div>
+      </div>
     </div>
     `}
   `;
@@ -864,6 +885,10 @@ function showAircraftDetails(aircraftId) {
   const fullName = `${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''}`;
   document.getElementById('detailModalTitle').textContent = fullName;
   document.getElementById('aircraftDetailModal').style.display = 'flex';
+
+  // Show the cost breakdown card immediately (airframe row; cabin line joins
+  // once the cabin is configured)
+  updateConfigSummary();
 
   // Hide the default purchase button since we have inline buttons now
   const purchaseBtn = document.getElementById('purchaseAircraftBtn');
@@ -972,6 +997,13 @@ let selectedLoanTermWeeks = 156; // default 3 years
 let selectedRepaymentStrategy = 'fixed'; // 'fixed' | 'reducing' | 'interest_only'
 let playerBalance = 0; // Updated by fetchWorldInfo()
 let marketplaceWorldYear = null; // Updated by fetchWorldInfo(); leasing exists from 1970
+let marketplaceEraMultiplier = 1.0; // Updated by fetchWorldInfo(); scales outfitting cost display
+
+// Aircraft leasing didn't exist before 1970 (ILFC founded 1973) — mirrors the
+// server-side eraEconomicService.leasingAvailable gate.
+function leasingAvailableNow() {
+  return marketplaceWorldYear === null || marketplaceWorldYear >= 1970;
+}
 
 // Build compact acquisition buttons for the detail modal (ORDER + LEASE)
 function buildNewAircraftAcquisitionCards(aircraft) {
@@ -980,7 +1012,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
   const discPct = transactionDiscountPercent(1);
 
   return `
-    <div style="display: grid; grid-template-columns: ${aircraft.leasePrice ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
+    <div style="display: grid; grid-template-columns: ${aircraft.leasePrice && leasingAvailableNow() ? '1fr 1fr' : '1fr'}; gap: 0.5rem;">
       <!-- ORDER NEW button -->
       <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%); border: 2px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#F59E0B'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(245, 158, 11, 0.3)'; this.style.transform='none'" onclick="closeAircraftDetailModal(); showOrderDialog()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
@@ -989,7 +1021,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
             <div style="color: var(--text-muted); font-size: 0.6rem;">Own outright · Available immediately</div>
           </div>
           <div style="text-align: right;">
-            <div style="color: #F59E0B; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(listPrice)}</div>
+            <div class="acq-total" data-base="${listPrice}" style="color: #F59E0B; font-weight: 700; font-size: 1.1rem;">${formatCurrencyShort(listPrice)}</div>
             <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
           </div>
         </div>
@@ -998,7 +1030,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
         </div>
       </div>
 
-      ${aircraft.leasePrice ? `
+      ${aircraft.leasePrice && leasingAvailableNow() ? `
       <!-- OPERATING LEASE button -->
       <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 2px solid rgba(59, 130, 246, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='none'" onclick="processLease()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
@@ -1011,6 +1043,7 @@ function buildNewAircraftAcquisitionCards(aircraft) {
             <div style="color: var(--text-muted); font-size: 0.55rem;">Bulk discounts available</div>
           </div>
         </div>
+        <div class="outfitting-note" style="font-size: 0.55rem; color: #3b82f6; opacity: 0.85; margin-bottom: 0.2rem;"></div>
         <div style="font-size: 0.55rem; color: var(--text-secondary);">
           ✓ No deposit &nbsp; ✓ Flexible &nbsp; ✓ Lower capital
         </div>
@@ -2103,54 +2136,47 @@ function _cargoTotalKg(cargoCfg) {
 function _fmtCargoKg(kg) {
   return kg >= 1000 ? (kg / 1000).toFixed(1) + 't' : Math.round(kg) + 'kg';
 }
-function _configSummaryRow(label, total, detail) {
-  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.75rem;font-size:0.66rem;margin-top:0.12rem;">
-    <span style="color:var(--text-primary);font-weight:600;white-space:nowrap;">${label}: <span style="color:#10B981;">${total}</span></span>
-    <span style="color:var(--text-secondary);font-size:0.6rem;text-align:right;">${detail || ''}</span>
-  </div>`;
-}
-
-// Rebuild the summary card from whatever's configured so far (partial is fine).
+// Update the cost displays once the cabin is configured. Cost comes from the
+// shared cabin-outfitting.js module (per-seat by class, era-scaled) — the
+// server charges the same amount.
+// #costBreakdown card: Airframe / Cabin fitting / Total section.
+// Buy boxes (.acq-total): big figure becomes the all-in total.
+// Lease boxes (.outfitting-note): one-off note (weekly price can't absorb it).
 function updateConfigSummary() {
-  const el = document.getElementById('configSummary');
-  if (!el || !selectedAircraft) return;
-  const rows = [];
-  const cabinSum = (c) => (typeof cabinConfigSummary === 'function' ? (cabinConfigSummary(c) || '') : '');
+  const cost = (typeof cabinOutfittingCost === 'function' && selectedCabinConfig)
+    ? cabinOutfittingCost(selectedCabinConfig, marketplaceEraMultiplier) : 0;
 
-  // Cabin
-  if (selectedAircraft.type !== 'Cargo' && selectedAircraft.passengerCapacity > 0) {
-    if (isDoubleDeckAircraft(selectedAircraft)) {
-      if (selectedCabinConfigUpper || selectedCabinConfigMain) {
-        const parts = [];
-        if (selectedCabinConfigUpper) parts.push('Upper ' + cabinSum(selectedCabinConfigUpper));
-        if (selectedCabinConfigMain) parts.push('Main ' + cabinSum(selectedCabinConfigMain));
-        const seats = _seatTotal(selectedCabinConfigUpper) + _seatTotal(selectedCabinConfigMain);
-        rows.push(_configSummaryRow('Cabin', seats + ' seats', parts.join('  ·  ')));
-      }
-    } else if (selectedCabinConfig) {
-      rows.push(_configSummaryRow('Cabin', _seatTotal(selectedCabinConfig) + ' seats', cabinSum(selectedCabinConfig)));
-    }
+  document.querySelectorAll('#aircraftDetailContent .acq-total').forEach(el => {
+    const base = Number(el.getAttribute('data-base')) || 0;
+    el.textContent = formatCurrencyShort(base + cost);
+  });
+  document.querySelectorAll('#aircraftDetailContent .outfitting-note').forEach(el => {
+    el.textContent = cost > 0 ? `+ ${formatCurrencyShort(cost)} cabin fitting (one-off)` : '';
+  });
+
+  const card = document.getElementById('costBreakdown');
+  if (!card) return;
+  const row = (label, val, o = {}) =>
+    `<div style="display:flex;justify-content:space-between;font-size:0.68rem;margin-top:0.15rem;${o.top ? 'border-top:1px solid rgba(245,158,11,0.2);margin-top:0.35rem;padding-top:0.3rem;' : ''}">
+      <span style="color:var(--text-secondary);">${label}</span>
+      <span style="color:${o.color || 'var(--text-primary)'};font-weight:${o.bold ? 700 : 500};">${val}</span>
+    </div>`;
+  const header = `<div style="font-size:0.58rem;font-weight:700;color:#F59E0B;letter-spacing:0.05em;margin-bottom:0.2rem;">COST BREAKDOWN</div>`;
+  const base = Number(selectedAircraft?.purchasePrice) || 0;
+  if (base > 0) {
+    card.style.display = 'block';
+    card.innerHTML = header
+      + row('Airframe', formatCurrencyShort(base))
+      + (cost > 0 ? row('Cabin fitting', '+ ' + formatCurrencyShort(cost)) : '')
+      + row('Total', formatCurrencyShort(base + cost), { top: true, bold: true, color: '#F59E0B' });
+  } else if (cost > 0) {
+    // Lease-only listing: no airframe purchase, just the one-off fitting
+    card.style.display = 'block';
+    card.innerHTML = header
+      + row('Cabin fitting (one-off at lease signing)', formatCurrencyShort(cost), { bold: true, color: '#F59E0B' });
+  } else {
+    card.style.display = 'none';
   }
-
-  // Cargo
-  if (selectedAircraft.cargoCapacityKg > 0) {
-    if (isCombiCargoAircraft(selectedAircraft)) {
-      if (selectedCargoConfigMainDeck || selectedCargoConfigHold) {
-        const mdKg = _cargoTotalKg(selectedCargoConfigMainDeck && selectedCargoConfigMainDeck.cargoConfig);
-        const chKg = _cargoTotalKg(selectedCargoConfigHold && selectedCargoConfigHold.cargoConfig);
-        const parts = [];
-        if (selectedCargoConfigMainDeck) parts.push('Main Deck ' + _fmtCargoKg(mdKg));
-        if (selectedCargoConfigHold) parts.push('Hold ' + _fmtCargoKg(chKg));
-        rows.push(_configSummaryRow('Cargo', _fmtCargoKg(mdKg + chKg), parts.join('  ·  ')));
-      }
-    } else if (selectedCargoConfig) {
-      rows.push(_configSummaryRow('Cargo', _fmtCargoKg(_cargoTotalKg(selectedCargoConfig.cargoConfig)), ''));
-    }
-  }
-
-  if (rows.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  el.style.display = 'block';
-  el.innerHTML = `<div style="font-size:0.58rem;font-weight:700;color:#10B981;letter-spacing:0.05em;margin-bottom:0.15rem;">CONFIGURATION SUMMARY</div>${rows.join('')}`;
 }
 
 // Turn a config row green + show its seat summary once configured.

@@ -127,6 +127,11 @@ const Loan = sequelize.define('Loan', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     field: 'credit_score_at_origin'
+  },
+  reference: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'What the loan was for, e.g. "N-123AF Boeing 377 — ordered 1950-03-18" (aircraft delivery financing)'
   }
 }, {
   tableName: 'loans',

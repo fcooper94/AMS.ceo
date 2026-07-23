@@ -3,11 +3,12 @@ const router = express.Router();
 const path = require('path');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
-const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale } = require('../models');
+const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale, WeeklyFinancial } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
 const { migrateOldConfig } = require('../config/cargoTypes');
 const { STORAGE_AIRPORTS, calculateStorageDistanceNm, calculateRecallDays } = require(path.join(__dirname, '../../public/js/storageAirports.js'));
+const { cabinOutfittingCost, cabinRefitCost } = require(path.join(__dirname, '../../public/js/cabin-outfitting.js'));
 const { getBank, calculateOfferRate, calculateFixedPayment, TERM_RANGES } = require('../data/bankConfig');
 const eraEconomicService = require('../services/eraEconomicService');
 
@@ -2207,10 +2208,19 @@ router.post('/purchase', async (req, res) => {
     const isNewOrder = category === 'new' && !playerListingId;
     const listPrice = Number(purchasePrice);
 
+    // Cabin outfitting: one-off interior cost for the chosen config (era-scaled).
+    // Charged on top of the airframe price; for player listings the seller
+    // receives the airframe price only (the outfitter gets the rest).
+    const purchaseGameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const purchaseEraMult = eraEconomicService.getEraMultiplier(
+      purchaseGameTime ? purchaseGameTime.getFullYear() : 2024);
+    const outfittingCost = cabinOutfittingCost(
+      { economySeats, economyPlusSeats, businessSeats, firstSeats }, purchaseEraMult);
+
     let price, deposit, remaining, discountPct;
     if (isNewOrder) {
       discountPct = transactionDiscountPercent(1);
-      price = transactionPrice(listPrice, 1);
+      price = transactionPrice(listPrice, 1) + outfittingCost;
       deposit = Math.round(price * 0.30);
       remaining = price - deposit;
 
@@ -2236,8 +2246,8 @@ router.post('/purchase', async (req, res) => {
         }
       }
     } else {
-      // Used aircraft or player listing: full price, instant delivery
-      price = listPrice;
+      // Used aircraft or player listing: full price + outfitting, instant delivery
+      price = listPrice + outfittingCost;
       if (membership.balance < price) {
         return res.status(400).json({
           error: 'Insufficient funds',
@@ -2366,6 +2376,11 @@ router.post('/purchase', async (req, res) => {
       membership.balance -= deposit;
       await membership.save();
 
+      // Record in weekly P&L (Aircraft Purchases) — bookkeeping only, never blocks
+      try {
+        await WeeklyFinancial.addCost(membership.id, purchaseGameTime, 'fleetCapitalCosts', deposit);
+      } catch (wfErr) { console.error('Weekly financial record failed (order deposit):', wfErr.message); }
+
       const result = await UserAircraft.findByPk(userAircraft.id, {
         include: [{ model: Aircraft, as: 'aircraft' }]
       });
@@ -2379,6 +2394,7 @@ router.post('/purchase', async (req, res) => {
         deposit,
         remaining,
         transactionDiscount: discountPct,
+        outfittingCost,
         newBalance: membership.balance
       });
     } else {
@@ -2473,6 +2489,11 @@ router.post('/purchase', async (req, res) => {
       membership.balance -= price;
       await membership.save();
 
+      // Record in weekly P&L (Aircraft Purchases) — bookkeeping only, never blocks
+      try {
+        await WeeklyFinancial.addCost(membership.id, purchaseGameTime, 'fleetCapitalCosts', price);
+      } catch (wfErr) { console.error('Weekly financial record failed (used purchase):', wfErr.message); }
+
       // Handle player-to-player sale
       if (playerListingId) {
         try {
@@ -2480,15 +2501,18 @@ router.post('/purchase', async (req, res) => {
             include: [{ model: WorldMembership, as: 'membership' }]
           });
           if (sellerAircraft && sellerAircraft.status === 'listed_sale') {
+            // Seller receives the airframe price only — the buyer's cabin
+            // outfitting spend goes to the outfitter, not the seller.
+            const sellerProceeds = price - outfittingCost;
             const sellerMembership = sellerAircraft.membership;
-            sellerMembership.balance = parseFloat(sellerMembership.balance) + price;
+            sellerMembership.balance = parseFloat(sellerMembership.balance) + sellerProceeds;
             await sellerMembership.save();
             await Notification.create({
               worldMembershipId: sellerMembership.id,
               type: 'aircraft_sold',
               icon: 'plane',
               title: 'Aircraft Sold',
-              message: `${sellerAircraft.registration} has been purchased by another airline for $${Number(price).toLocaleString('en-US')}`,
+              message: `${sellerAircraft.registration} has been purchased by another airline for $${Number(sellerProceeds).toLocaleString('en-US')}`,
               priority: 2,
               gameTime: now
             });
@@ -2507,6 +2531,7 @@ router.post('/purchase', async (req, res) => {
         message: 'Aircraft purchased successfully',
         aircraft: result,
         orderType: 'instant',
+        outfittingCost,
         newBalance: membership.balance
       });
     }
@@ -2662,9 +2687,16 @@ router.post('/bulk-purchase', async (req, res) => {
 
     const qty = normalizedRegs.length;
     const listPrice = Number(purchasePrice);
+    // Cabin outfitting per unit (era-scaled). Added after the bulk discount —
+    // the discount applies to the airframe only; seats cost what they cost.
+    const blkGameTime = worldTimeService.getCurrentTime(activeWorldId);
+    const blkEraMult = eraEconomicService.getEraMultiplier(
+      blkGameTime ? blkGameTime.getFullYear() : 2024);
+    const outfittingPerUnit = cabinOutfittingCost(
+      { economySeats, economyPlusSeats, businessSeats, firstSeats }, blkEraMult);
     // Transaction discount: 30% (qty 1) scaling to 55% (qty 10)
     const discountPct = transactionDiscountPercent(qty);
-    const discountedUnit = transactionPrice(listPrice, qty);
+    const discountedUnit = transactionPrice(listPrice, qty) + outfittingPerUnit;
     const totalPrice = discountedUnit * qty;
     const depositPerUnit = Math.round(discountedUnit * 0.30);
     const remainingPerUnit = discountedUnit - depositPerUnit;
@@ -2778,6 +2810,11 @@ router.post('/bulk-purchase', async (req, res) => {
       await lockedMembership.save({ transaction: t });
 
       await t.commit();
+
+      // Record in weekly P&L (Aircraft Purchases) — bookkeeping only, never blocks
+      try {
+        await WeeklyFinancial.addCost(membership.id, blkGameTime, 'fleetCapitalCosts', totalDeposit);
+      } catch (wfErr) { console.error('Weekly financial record failed (bulk deposit):', wfErr.message); }
     } catch (txError) {
       await t.rollback();
       throw txError;
@@ -2794,6 +2831,7 @@ router.post('/bulk-purchase', async (req, res) => {
       })),
       transactionDiscount: discountPct,
       unitPrice: discountedUnit,
+      outfittingPerUnit,
       depositPerUnit,
       totalDeposit,
       totalRemaining: remainingPerUnit * qty,
@@ -2910,12 +2948,19 @@ router.post('/lease', async (req, res) => {
       return res.status(404).json({ error: 'Not a member of this world' });
     }
 
-    // Check if user can afford first month's payment
+    // Cabin outfitting: one-off interior cost, paid by the lessee at signing
+    // (real airlines pay for interiors on leased frames too). Era-scaled.
+    const leaseEraMult = eraEconomicService.getEraMultiplier(
+      leaseGameTime ? leaseGameTime.getFullYear() : 2024);
+    const leaseOutfittingCost = cabinOutfittingCost(
+      { economySeats, economyPlusSeats, businessSeats, firstSeats }, leaseEraMult);
+
+    // Check if user can afford first payment + cabin outfitting
     const weeklyPayment = Number(leaseWeeklyPayment);
-    if (membership.balance < weeklyPayment) {
+    if (membership.balance < weeklyPayment + leaseOutfittingCost) {
       return res.status(400).json({
-        error: 'Insufficient funds for first lease payment',
-        required: weeklyPayment,
+        error: 'Insufficient funds for first lease payment and cabin outfitting',
+        required: weeklyPayment + leaseOutfittingCost,
         available: membership.balance
       });
     }
@@ -3087,9 +3132,16 @@ router.post('/lease', async (req, res) => {
       await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
     }
 
-    // Deduct first month's payment
-    membership.balance -= weeklyPayment;
+    // Deduct first payment + one-off cabin outfitting (lessor receives the
+    // lease payment only — the outfitting spend goes to the outfitter)
+    membership.balance -= weeklyPayment + leaseOutfittingCost;
     await membership.save();
+
+    // Record outfitting in weekly P&L (Aircraft Purchases) — the weekly lease
+    // payment itself is tracked separately as lease costs
+    try {
+      await WeeklyFinancial.addCost(membership.id, leaseGameTime, 'fleetCapitalCosts', leaseOutfittingCost);
+    } catch (wfErr) { console.error('Weekly financial record failed (lease outfitting):', wfErr.message); }
 
     // Handle player-to-player lease: update owner's aircraft and notify
     if (playerListingId) {
@@ -3141,6 +3193,7 @@ router.post('/lease', async (req, res) => {
     res.json({
       message: 'Aircraft leased successfully',
       aircraft: result,
+      outfittingCost: leaseOutfittingCost,
       newBalance: membership.balance
     });
   } catch (error) {
@@ -5544,7 +5597,7 @@ router.post('/:aircraftId/reconfig-cargo', async (req, res) => {
  */
 router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
   try {
-    const { aircraft, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
+    const { aircraft, membership, activeWorldId } = await getOwnedAircraft(req, req.params.aircraftId);
 
     if (aircraft.status !== 'active') {
       return res.status(400).json({ error: 'Aircraft must be active to start a cabin refit' });
@@ -5573,6 +5626,28 @@ router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
     const world = await World.findByPk(activeWorldId);
     const gameNow = world ? new Date(world.currentTime) : new Date();
 
+    // Refit outfitting cost: pay for seats ADDED in each class (delta-up, no
+    // credit for removals) — so buy-cheap-then-refit costs the same as
+    // configuring at purchase, and downsizing tweaks are free. Era-scaled.
+    const refitEraMult = eraEconomicService.getEraMultiplier(gameNow.getFullYear());
+    const refitCost = cabinRefitCost(
+      { economySeats, economyPlusSeats, businessSeats, firstSeats },
+      {
+        economySeats: aircraft.economySeats,
+        economyPlusSeats: aircraft.economyPlusSeats,
+        businessSeats: aircraft.businessSeats,
+        firstSeats: aircraft.firstSeats
+      },
+      refitEraMult
+    );
+    if (refitCost > 0 && parseFloat(membership.balance) < refitCost) {
+      return res.status(400).json({
+        error: 'Insufficient funds for cabin outfitting',
+        required: refitCost,
+        available: membership.balance
+      });
+    }
+
     const cabinRefitEndDate = new Date(gameNow.getTime() + refitDays * 24 * 60 * 60 * 1000);
 
     const updateData = {
@@ -5587,11 +5662,21 @@ router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
 
     await aircraft.update(updateData);
 
-    console.log(`Cabin refit started: ${aircraft.registration} - ${refitDays} days (${acType}, ${passengerCapacity} pax) - ends ${cabinRefitEndDate.toISOString()}`);
+    if (refitCost > 0) {
+      membership.balance = parseFloat(membership.balance) - refitCost;
+      await membership.save();
+      // Record in weekly P&L (Aircraft Purchases) — bookkeeping only, never blocks
+      try {
+        await WeeklyFinancial.addCost(membership.id, gameNow, 'fleetCapitalCosts', refitCost);
+      } catch (wfErr) { console.error('Weekly financial record failed (refit outfitting):', wfErr.message); }
+    }
+
+    console.log(`Cabin refit started: ${aircraft.registration} - ${refitDays} days, $${refitCost} outfitting (${acType}, ${passengerCapacity} pax) - ends ${cabinRefitEndDate.toISOString()}`);
     res.json({
-      message: `Cabin refit started. Aircraft will be available in ${refitDays} game day${refitDays > 1 ? 's' : ''}.`,
+      message: `Cabin refit started${refitCost > 0 ? ` — $${Number(refitCost).toLocaleString('en-US')} outfitting` : ''}. Aircraft will be available in ${refitDays} game day${refitDays > 1 ? 's' : ''}.`,
       aircraft,
       refitDays,
+      refitCost,
       cabinRefitEndDate: cabinRefitEndDate.toISOString(),
       newStatus: 'cabin_refit'
     });

@@ -1904,6 +1904,14 @@ function reconfigureCabin(userAircraftId) {
 
   showCabinConfigurator(aircraft, async (config) => {
     try {
+      // Outfitting cost for seats ADDED per class (delta-up, era-scaled) —
+      // mirrors the server charge in /reconfig-cabin (cabin-outfitting.js).
+      if (typeof cabinRefitCost === 'function') {
+        const refitCost = cabinRefitCost(config, existingConfig || {}, fleetEraMultiplier);
+        if (refitCost > 0 && !confirm(
+          `New seats for this refit cost ${typeof formatCurrency === 'function' ? formatCurrency(refitCost) : '$' + refitCost.toLocaleString('en-US')} in cabin outfitting (charged now). Proceed?`
+        )) return;
+      }
       const res = await fetch(`/api/fleet/${userAircraftId}/reconfig-cabin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

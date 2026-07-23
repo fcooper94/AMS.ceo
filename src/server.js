@@ -661,7 +661,8 @@ server.listen(PORT, () => {
           ADD COLUMN IF NOT EXISTS ground_handling_costs DECIMAL(15,2) DEFAULT 0,
           ADD COLUMN IF NOT EXISTS pax_service_costs DECIMAL(15,2) DEFAULT 0,
           ADD COLUMN IF NOT EXISTS insurance_costs DECIMAL(15,2) DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS corporate_admin_costs DECIMAL(15,2) DEFAULT 0
+          ADD COLUMN IF NOT EXISTS corporate_admin_costs DECIMAL(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS fleet_capital_costs DECIMAL(15,2) DEFAULT 0
       `);
     } catch (_) { /* table may not exist yet — sync will create it */ }
     try {
@@ -688,6 +689,10 @@ server.listen(PORT, () => {
     try {
       await sequelize.query(`ALTER TABLE user_aircraft ADD COLUMN IF NOT EXISTS financing_repayment_strategy VARCHAR(20)`);
     } catch (_) { /* user_aircraft table may not exist yet — sync will create it */ }
+    try {
+      // Loan reference — labels aircraft-delivery loans with reg + order date
+      await sequelize.query(`ALTER TABLE loans ADD COLUMN IF NOT EXISTS reference VARCHAR(255)`);
+    } catch (_) { /* loans table may not exist yet — sync will create it */ }
     try {
       await sequelize.query(`
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE

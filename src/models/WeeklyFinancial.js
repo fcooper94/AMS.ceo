@@ -136,6 +136,14 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     comment: 'Weekly marketing campaign spend across all active campaigns'
   },
 
+  // Fleet capital spend (one-off, recorded at payment time)
+  fleetCapitalCosts: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 0,
+    field: 'fleet_capital_costs',
+    comment: 'Aircraft purchases: order deposits, delivery payments, used purchases, cabin outfitting/refits'
+  },
+
   // Stats
   flights: {
     type: DataTypes.INTEGER,
@@ -159,6 +167,21 @@ const WeeklyFinancial = sequelize.define('WeeklyFinancial', {
     }
   ]
 });
+
+/**
+ * Increment a single cost column on the week record for a game date. Used for
+ * one-off charges (aircraft deposits, delivery payments, cabin outfitting)
+ * recorded outside the flight/overhead processors.
+ */
+WeeklyFinancial.addCost = async function(worldMembershipId, gameTime, field, amount) {
+  if (!amount || amount <= 0) return;
+  const weekStart = WeeklyFinancial.getWeekStart(gameTime || new Date());
+  const [rec] = await WeeklyFinancial.findOrCreate({
+    where: { worldMembershipId, weekStart },
+    defaults: { worldMembershipId, weekStart }
+  });
+  await rec.increment(field, { by: amount });
+};
 
 /**
  * Get the Monday date string for a given game time

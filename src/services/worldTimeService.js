@@ -1337,23 +1337,66 @@ class WorldTimeService {
       }
       const totalSeats = ecoSeats + ecoPlusSeats + bizSeats + firstSeats || paxCapacity;
 
-      // Distribute passengers proportionally to configured seats
-      const ecoFrac = totalSeats > 0 ? ecoSeats / totalSeats : 1;
-      const ecoPlusFrac = totalSeats > 0 ? ecoPlusSeats / totalSeats : 0;
-      const bizFrac = totalSeats > 0 ? bizSeats / totalSeats : 0;
-      const firstFrac = totalSeats > 0 ? firstSeats / totalSeats : 0;
+      // Premium demand cap: only a route-dependent slice of passengers will buy
+      // premium cabins (cabinClassService class mix — era/GDP/distance/hub aware;
+      // no business class pre-1978, First ~12% of pax in 1950 → ~1% today).
+      // Premium seats beyond that demand fill with economy-fare passengers
+      // (op-ups) rather than printing premium fares — so an over-premiumed cabin
+      // genuinely underearns. Unconfigured/all-economy aircraft (incl. all AI)
+      // keep the original proportional path.
+      let ticketRevenue, cabinRevenue;
+      let premiumCapped = false;
+      if (ecoPlusSeats + bizSeats + firstSeats > 0) {
+        try {
+          const cabinClassService = require('./cabinClassService');
+          const mix = cabinClassService.computeClassMixForAirports(
+            route.departureAirport, route.arrivalAirport, distance * 1.852, worldYear
+          );
+          // Demand-limited premium pax (never more than the configured seats)
+          const firstPax = Math.min(firstSeats, Math.round(passengers * mix.first / 100));
+          const bizPax = Math.min(bizSeats, Math.round(passengers * mix.business / 100));
+          const ecoPlusPax = Math.min(ecoPlusSeats, Math.round(passengers * mix.premiumEconomy / 100));
+          // Everyone else wants economy; cap at economy seats, overflow op-ups
+          // into empty premium seats at the economy fare (beyond that the plane
+          // is physically full).
+          let remaining = passengers - firstPax - bizPax - ecoPlusPax;
+          const ecoPax = Math.max(0, Math.min(ecoSeats, remaining));
+          remaining -= ecoPax;
+          const emptyPremium = (firstSeats - firstPax) + (bizSeats - bizPax) + (ecoPlusSeats - ecoPlusPax);
+          const opUpPax = Math.max(0, Math.min(remaining, emptyPremium));
 
-      const avgTicketPrice = (economyPrice * ecoFrac) + (economyPlusPrice * ecoPlusFrac) +
-                             (businessPrice * bizFrac) + (firstPrice * firstFrac);
-      const ticketRevenue = Math.round(passengers * avgTicketPrice);
+          cabinRevenue = {
+            economy:     Math.round((ecoPax + opUpPax) * economyPrice),
+            economyPlus: Math.round(ecoPlusPax * economyPlusPrice),
+            business:    Math.round(bizPax * businessPrice),
+            first:       Math.round(firstPax * firstPrice)
+          };
+          ticketRevenue = cabinRevenue.economy + cabinRevenue.economyPlus +
+                          cabinRevenue.business + cabinRevenue.first;
+          premiumCapped = true;
+        } catch (mixErr) {
+          // Class-mix computation failed — fall through to proportional split
+        }
+      }
+      if (!premiumCapped) {
+        // Distribute passengers proportionally to configured seats
+        const ecoFrac = totalSeats > 0 ? ecoSeats / totalSeats : 1;
+        const ecoPlusFrac = totalSeats > 0 ? ecoPlusSeats / totalSeats : 0;
+        const bizFrac = totalSeats > 0 ? bizSeats / totalSeats : 0;
+        const firstFrac = totalSeats > 0 ? firstSeats / totalSeats : 0;
 
-      // Per-cabin breakdown based on actual seat distribution
-      const cabinRevenue = {
-        economy:     Math.round(passengers * ecoFrac * economyPrice),
-        economyPlus: Math.round(passengers * ecoPlusFrac * economyPlusPrice),
-        business:    Math.round(passengers * bizFrac * businessPrice),
-        first:       Math.round(passengers * firstFrac * firstPrice)
-      };
+        const avgTicketPrice = (economyPrice * ecoFrac) + (economyPlusPrice * ecoPlusFrac) +
+                               (businessPrice * bizFrac) + (firstPrice * firstFrac);
+        ticketRevenue = Math.round(passengers * avgTicketPrice);
+
+        // Per-cabin breakdown based on actual seat distribution
+        cabinRevenue = {
+          economy:     Math.round(passengers * ecoFrac * economyPrice),
+          economyPlus: Math.round(passengers * ecoPlusFrac * economyPlusPrice),
+          business:    Math.round(passengers * bizFrac * businessPrice),
+          first:       Math.round(passengers * firstFrac * firstPrice)
+        };
+      }
 
       // Cargo revenue — carried tonnes are CAPPED by the per-type route cargo
       // MARKET (belly bags + commercial freight, mirroring the route-picker modal
@@ -1957,6 +2000,12 @@ class WorldTimeService {
                 await ua.save();
                 await membership.save();
 
+                // Record in weekly P&L (Aircraft Purchases) — bookkeeping only
+                try {
+                  const WeeklyFinancial = require('../models/WeeklyFinancial');
+                  await WeeklyFinancial.addCost(membership.id, now, 'fleetCapitalCosts', remaining);
+                } catch (wfErr) { console.error('Weekly financial record failed (delivery payment):', wfErr.message); }
+
                 await Notification.create({
                   worldMembershipId: membership.id,
                   type: 'aircraft_delivered',
@@ -1990,7 +2039,8 @@ class WorldTimeService {
                   earlyRepaymentFee: bank.earlyRepaymentFee,
                   paymentHolidaysTotal: bank.paymentHolidays,
                   originationGameDate: now.toISOString().split('T')[0],
-                  creditScoreAtOrigin: 400
+                  creditScoreAtOrigin: 400,
+                  reference: `${ua.registration} ${acName}${ua.orderDate ? ` — ordered ${new Date(ua.orderDate).toISOString().split('T')[0]}` : ''}`
                 });
 
                 ua.status = 'active';
@@ -2042,7 +2092,8 @@ class WorldTimeService {
                 earlyRepaymentFee: bank?.earlyRepaymentFee || 0,
                 paymentHolidaysTotal: bank?.paymentHolidays || 0,
                 originationGameDate: now.toISOString().split('T')[0],
-                creditScoreAtOrigin: 500
+                creditScoreAtOrigin: 500,
+                reference: `${ua.registration} ${acName}${ua.orderDate ? ` — ordered ${new Date(ua.orderDate).toISOString().split('T')[0]}` : ''}`
               });
 
               ua.status = 'active';
