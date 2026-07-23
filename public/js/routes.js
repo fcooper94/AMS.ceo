@@ -178,6 +178,7 @@ function displayAllRoutes(routes) {
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; color: ${profitColor}; font-weight: 600; white-space: nowrap;">
                 ${profit >= 0 ? '+' : ''}${formatCurrency(profit)}
+                <button onclick="showRouteFinancials('${route.id}')" title="Financial stats" style="background: transparent; border: none; cursor: pointer; padding: 0 0.15rem; font-size: 0.85rem; line-height: 1; vertical-align: -1px; opacity: 0.6; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">📊</button>
               </td>
               <td style="padding: 0.4rem 0.5rem; text-align: center; color: var(--text-primary); white-space: nowrap;">
                 ${(route.averageLoadFactor * 100).toFixed(1)}%
@@ -206,6 +207,76 @@ function displayAllRoutes(routes) {
   `;
 
   container.innerHTML = tableHtml;
+}
+
+// Financial stats modal for a route (mirrors the scheduling page's version)
+function showRouteFinancials(routeId) {
+  const r = allRoutes.find(x => x.id === routeId);
+  if (!r) return;
+
+  const num = v => parseFloat(v) || 0;
+  const flights = num(r.totalFlights);
+  const revenue = num(r.totalRevenue);
+  const costs = num(r.totalCosts);
+  const profit = (r.profit !== undefined && r.profit !== null) ? num(r.profit) : (revenue - costs);
+  const pax = num(r.totalPassengers);
+  const loadPct = num(r.averageLoadFactor) * 100;
+  const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+  const avgRev = flights > 0 ? revenue / flights : 0;
+  const avgProf = flights > 0 ? profit / flights : 0;
+
+  const routeLabel = `${r.routeNumber}${r.returnRouteNumber ? ' / ' + r.returnRouteNumber : ''}`;
+  const dep = r.departureAirport?.icaoCode || '';
+  const arr = r.arrivalAirport?.icaoCode || '';
+
+  const money = v => `${v < 0 ? '-' : ''}${formatCurrency(Math.abs(v))}`;
+  const profitColor = profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+  const row = (label, value, color) => `
+    <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border-color);">
+      <span style="color:var(--text-muted);">${label}</span>
+      <span style="color:${color || 'var(--text-primary)'};font-weight:600;">${value}</span>
+    </div>`;
+
+  let content;
+  if (flights === 0) {
+    content = `
+      <div style="margin-bottom:0.5rem;color:var(--accent-color);font-weight:600;">${dep} ↔ ${arr}</div>
+      <div style="color:var(--text-muted);font-size:0.9rem;line-height:1.5;">
+        This route hasn't completed any flights yet, so there's no financial history to show.
+        Stats will appear here once it has flown.
+      </div>`;
+  } else {
+    content = `
+      <div style="margin-bottom:0.75rem;color:var(--accent-color);font-weight:600;">${dep} ↔ ${arr}</div>
+      ${row('Flights flown', flights.toLocaleString())}
+      ${row('Total revenue', money(revenue), 'var(--success-color)')}
+      ${row('Total costs', money(costs), 'var(--warning-color)')}
+      ${row('Net profit', money(profit), profitColor)}
+      ${row('Profit margin', margin.toFixed(1) + '%', profitColor)}
+      ${row('Avg revenue / flight', money(avgRev))}
+      ${row('Avg profit / flight', money(avgProf), profitColor)}
+      ${row('Total passengers', pax.toLocaleString())}
+      ${row('Avg load factor', loadPct.toFixed(1) + '%')}`;
+  }
+
+  closeRouteFinancials();
+  const overlay = document.createElement('div');
+  overlay.id = 'routeFinModal';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:2000;display:flex;justify-content:center;align-items:center;padding:1rem;';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRouteFinancials(); });
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--accent-color);border-radius:8px;padding:1.25rem;width:100%;max-width:420px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <h3 style="margin:0;color:var(--accent-color);font-size:1rem;">Financial Stats — ${routeLabel}</h3>
+        <button onclick="closeRouteFinancials()" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
+      </div>
+      <div style="font-size:0.85rem;">${content}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function closeRouteFinancials() {
+  document.getElementById('routeFinModal')?.remove();
 }
 
 // Toggle select all routes
