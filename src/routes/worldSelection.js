@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
+const sequelize = require('../config/database');
 const { World, WorldMembership, User, Airport, UserAircraft, Route, Loan, Notification } = require('../models');
 const eraEconomicService = require('../services/eraEconomicService');
 const { getAICount } = require('../data/aiDifficultyConfig');
@@ -82,11 +83,26 @@ router.get('/available', async (req, res) => {
 
     const membershipMap = new Map(userMemberships.map(m => [m.worldId, m]));
 
+    // Member counts for all worlds in ONE grouped query (was 1-2 COUNTs per world —
+    // painful over the Railway proxy from local dev)
+    const countRows = worlds.length > 0 ? await WorldMembership.findAll({
+      attributes: ['worldId', 'isAI', [fn('COUNT', col('id')), 'c']],
+      where: { worldId: { [Op.in]: worlds.map(w => w.id) } },
+      group: ['world_id', 'is_ai'],
+      raw: true
+    }) : [];
+    const counts = new Map(); // worldId → { human, ai }
+    for (const r of countRows) {
+      const entry = counts.get(r.worldId) || { human: 0, ai: 0 };
+      entry[r.isAI ? 'ai' : 'human'] = parseInt(r.c) || 0;
+      counts.set(r.worldId, entry);
+    }
+
     // Enhance worlds with membership status
-    const worldsWithStatus = await Promise.all(worlds.map(async (world) => {
+    const worldsWithStatus = worlds.map((world) => {
       const isSP = world.worldType === 'singleplayer';
-      const humanCount = await WorldMembership.count({ where: { worldId: world.id, isAI: false } });
-      const aiCount = isSP ? await WorldMembership.count({ where: { worldId: world.id, isAI: true } }) : 0;
+      const humanCount = counts.get(world.id)?.human || 0;
+      const aiCount = isSP ? (counts.get(world.id)?.ai || 0) : 0;
       const membership = membershipMap.get(world.id);
 
       // Calculate the decade from currentTime (e.g., 1995 -> "90's")
@@ -106,7 +122,7 @@ router.get('/available', async (req, res) => {
         lastVisited: membership?.lastVisited || null,
         joinedAt: membership?.joinedAt || null
       };
-    }));
+    });
 
     res.json(worldsWithStatus);
   } catch (error) {
@@ -1006,23 +1022,26 @@ router.get('/global-stats', async (req, res) => {
       return res.json({ totalAircraft: 0, totalRoutes: 0, totalAirlines: 0 });
     }
 
-    const activeMembershipIds = (await WorldMembership.findAll({
-      attributes: ['id'],
-      where: { worldId: { [Op.in]: activeWorldIds } }
-    })).map(m => m.id);
+    // Joined counts — do NOT materialise the ~4K membership IDs and ship them
+    // back in a giant IN() clause (that made this endpoint take seconds over
+    // the Railway proxy)
+    const [totalAirlines, [[{ ac }]], [[{ rt }]]] = await Promise.all([
+      WorldMembership.count({ where: { worldId: { [Op.in]: activeWorldIds } } }),
+      sequelize.query(
+        `SELECT COUNT(*)::int AS ac FROM user_aircraft ua
+         JOIN world_memberships wm ON wm.id = ua.world_membership_id
+         WHERE wm.world_id IN (:ids) AND ua.status NOT IN ('sold')`,
+        { replacements: { ids: activeWorldIds } }
+      ),
+      sequelize.query(
+        `SELECT COUNT(*)::int AS rt FROM routes r
+         JOIN world_memberships wm ON wm.id = r.world_membership_id
+         WHERE wm.world_id IN (:ids) AND r.is_active = true`,
+        { replacements: { ids: activeWorldIds } }
+      )
+    ]);
 
-    const [totalAircraft, totalRoutes] = activeMembershipIds.length > 0
-      ? await Promise.all([
-          UserAircraft.count({
-            where: { worldMembershipId: { [Op.in]: activeMembershipIds }, status: { [Op.notIn]: ['sold'] } }
-          }),
-          Route.count({
-            where: { worldMembershipId: { [Op.in]: activeMembershipIds }, isActive: true }
-          })
-        ])
-      : [0, 0];
-
-    res.json({ totalAircraft, totalRoutes, totalAirlines: activeMembershipIds.length });
+    res.json({ totalAircraft: ac, totalRoutes: rt, totalAirlines });
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Error fetching global stats:', error);
