@@ -80,6 +80,13 @@ app.use(express.urlencoded({ extended: true }));
 // trivial endpoints simultaneously, the process itself is stalling (blocked
 // event loop / CPU starvation), not the endpoints. This logs the stalls with
 // their magnitude so the culprit window is visible in Railway logs.
+// During the demand-cache load the JSON.parse of a 172MB string blocks the
+// loop for several seconds ONCE PER BOOT — expected, not broken. Both
+// monitors below label that window as boot work instead of warning, so a ⚠
+// in the logs always means something genuinely unexpected.
+const _demandCacheLoading = () => {
+  try { return require('./services/demandCacheService').isLoading(); } catch (_) { return false; }
+};
 {
   const CHECK_MS = 500;
   let last = Date.now();
@@ -90,7 +97,11 @@ app.use(express.urlencoded({ extended: true }));
     last = now;
     if (lag > 1000 && now - lastLogged > 10000) {
       lastLogged = now;
-      console.warn(`⚠ EVENT-LOOP STALL ~${Math.round(lag)}ms (process blocked — check tick/refresh work around this timestamp)`);
+      if (_demandCacheLoading()) {
+        console.log(`[BOOT] event loop busy ~${Math.round(lag)}ms (demand-cache decompress/parse — expected once per boot)`);
+      } else {
+        console.warn(`⚠ EVENT-LOOP STALL ~${Math.round(lag)}ms (process blocked — check tick/refresh work around this timestamp)`);
+      }
     }
   }, CHECK_MS);
 }
@@ -105,7 +116,11 @@ if (process.env.HTTP_LOG === '1') {
     res.on('finish', () => {
       const ms = Date.now() - start;
       if (ms > 3000) {
-        console.warn(`⚠ SLOW ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+        if (_demandCacheLoading()) {
+          console.log(`[BOOT] ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms (queued behind demand-cache load — expected once per boot)`);
+        } else {
+          console.warn(`⚠ SLOW ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+        }
       }
     });
     next();

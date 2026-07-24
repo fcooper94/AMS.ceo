@@ -22,10 +22,17 @@ class DemandCacheService {
     // key: icaoCode → airportId
     this.icaoToId = new Map();
     this._ready = false;
+    this._loading = false;
   }
 
   isReady() {
     return this._ready;
+  }
+
+  // True while initialize() is running — the server's stall/slow-request
+  // monitors use this to label boot-load hiccups as expected instead of ⚠
+  isLoading() {
+    return this._loading;
   }
 
   /**
@@ -33,6 +40,15 @@ class DemandCacheService {
    * Loads airports from DB (single query), then reads the static demand file.
    */
   async initialize() {
+    this._loading = true;
+    try {
+      await this._initialize();
+    } finally {
+      this._loading = false;
+    }
+  }
+
+  async _initialize() {
     const startTime = Date.now();
     console.log('[DemandCache] Loading demand data...');
 

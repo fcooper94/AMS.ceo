@@ -2876,6 +2876,27 @@ class WorldTimeService {
         (routesByMembership[r.worldMembershipId] || (routesByMembership[r.worldMembershipId] = [])).push(r);
       }
 
+      // Operating age in GAME-weeks per airline = its weekly_financials row
+      // count. NB joinedAt is a REAL-world timestamp — subtracting it from
+      // game time made establishment hugely negative in every historical-era
+      // world (game year < join year), which clamped raw reputation to 1 and
+      // dragged everyone's score down 10% per pass.
+      let weeksByMembership = {};
+      if (membershipIds.length > 0) {
+        try {
+          const sequelize = require('../config/database');
+          const [wfCounts] = await sequelize.query(
+            `SELECT world_membership_id AS mid, COUNT(*)::int AS weeks
+             FROM weekly_financials WHERE world_membership_id IN (:ids)
+             GROUP BY world_membership_id`,
+            { replacements: { ids: membershipIds } }
+          );
+          weeksByMembership = Object.fromEntries(wfCounts.map(r => [r.mid, r.weeks]));
+        } catch (wfErr) {
+          console.error('Error loading operating-age weeks for reputation:', wfErr.message);
+        }
+      }
+
       for (const membership of memberships) {
         try {
           const fleet = fleetByMembership[membership.id] || [];
@@ -2885,14 +2906,11 @@ class WorldTimeService {
           if (fleet.length === 0 && routes.length === 0) continue;
 
           // 1. Establishment score (0-20): airlines naturally gain reputation over time
-          //    Uses joinedAt (when they joined the world) vs current game time
+          //    Age = operating weeks in GAME time (weekly_financials rows) —
+          //    never real-vs-game date arithmetic (see weeksByMembership above)
           //    Week 0: 0, Week 4: ~7, Week 8: ~11, Week 16: ~15, Week 24+: ~18-20
-          let establishmentScore = 0;
-          if (membership.joinedAt) {
-            const ageMs = currentGameTime.getTime() - new Date(membership.joinedAt).getTime();
-            const ageWeeks = ageMs / (7 * 24 * 60 * 60 * 1000);
-            establishmentScore = Math.min(20, 20 * (1 - Math.exp(-ageWeeks / 10)));
-          }
+          const ageWeeks = Math.max(0, weeksByMembership[membership.id] || 0);
+          const establishmentScore = Math.min(20, 20 * (1 - Math.exp(-ageWeeks / 10)));
 
           // 2. Fleet age score (0-20): newer fleet = higher score
           let fleetAgeScore = 0;
