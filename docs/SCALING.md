@@ -65,14 +65,24 @@ Original design notes:
 - **Determinism note:** window passes must not double-settle — every settler
   needs an idempotence key like `lastRevenueGameDay` (most already have one).
 
-### Phase 2 — hot/cold scheduling (still one process)
-- `worlds.temperature` derived, not stored: hot = MP, or any member's
-  `lastSeen` within ~15 min (an in-memory presence map fed by the heartbeat
-  endpoint already exists: `onlineUsers`).
-- Scheduler loop: hot worlds every few seconds; cold worlds queued round-robin,
-  each processed every 30–60 real min.
-- Ship this while still on ONE service — at current world counts it simply
-  makes the process near-idle, and it proves the window engine.
+### Phase 2 — hot/cold scheduling — CODE COMPLETE 2026-07-24 (harness-tested, pending live verify)
+
+Shipped in `worldTimeService`: `_temperature` (hot = MP, or SP owner
+heartbeat within 15 min, or world created <15 min ago), 15s sweep
+(`_hotColdSweep`), cold worlds lose their 1s tick entirely and get one
+`_advanceAndSettle` (clock jump + window pass, `stateless:true`) every
+30–60 min (45±15 jitter), budgeted 3 cold passes per sweep. Promotion
+settles the gap FIRST, then restarts the tick — a returning player is
+current within ~30-45s of their first heartbeat (web clocks look right
+immediately via mirror extrapolation). Demotion is free (a ticking world
+is already settled). **Rollback: `HOT_COLD=0`** (also implied by
+`WINDOW_ENGINE=0`). Presence source is `worlds.last_active_at` — the
+heartbeat route now writes it directly with a `worldType='singleplayer'`
+WHERE clause (post-split regression fixed: it used to consult the web
+role's EMPTY in-memory world map, so heartbeats never reached the DB and
+pauseOnSessionEnd worlds auto-paused under the player). Also fixed:
+`stopWorld` now removes tick-less (cold) worlds; `stopAll` advances stale
+cold clocks before saving so shutdown doesn't swallow the cold span.
 
 ### Phase 3 — split web / sim (two services)
 Trigger: steady-state `EVENT-LOOP STALL` returns, or before the player-count

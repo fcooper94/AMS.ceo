@@ -643,19 +643,34 @@ Deliberately parked; get sign-off before changing.
 
 ## Scaling roadmap — hot/cold worlds (see docs/SCALING.md)
 
-**STATUS (2026-07-24): Phase 3 (web/sim split) is DEPLOYED on Railway and
-verified** — `ams` web-only (`SIM_AUTOSTART=0`) + `ams-sim` (`=1`, no public
-domain) + Redis. **Env parity rule: any new env var added to the web service
-must also be added to `ams-sim`** (same image/boot path; deploy broke on
-missing VATSIM keys — passport is now env-gated, f1181b6, and VATSIM OAuth
-login is no longer used; full rip-out pending). Phases 1-2 (window-based
-engine refactor + hot/cold scheduler) are NOT started — do them in a
-dedicated session; sim steady-state TICK-SLOW on the big AI worlds
-(maintenance 4-8s/cycle, one 100s flights spike) is the Phase 1 baseline.
-Key split mechanics: web role serves game time from a 15s DB
-mirror in `worldTimeService.getCurrentTime`; sim role reconciles world
-create/pause/resume/accel/delete from the DB every 15s; sim emits sockets
-via `@socket.io/redis-emitter`, web fans out via the Redis adapter.
+**STATUS (2026-07-24): Phases 0, 1 and 3 are DONE and LIVE on Railway.**
+- **Phase 3 (web/sim split) deployed + verified** — `ams` web-only
+  (`SIM_AUTOSTART=0`) + `ams-sim` (`=1`, no public domain) + Redis. **Env
+  parity rule: any new env var added to the web service must also be added
+  to `ams-sim`** (same image/boot path; deploy broke on missing VATSIM keys
+  — passport is now env-gated, f1181b6, and VATSIM OAuth login is no longer
+  used; full rip-out pending). Key split mechanics: web role serves game
+  time from a 15s DB mirror in `worldTimeService.getCurrentTime`; sim role
+  reconciles world create/pause/resume/accel/delete from the DB every 15s;
+  sim emits sockets via `@socket.io/redis-emitter`, web fans out via the
+  Redis adapter.
+- **Phase 1 (window engine) deployed, boot verified** (fd95baf) —
+  `processWorldWindow` settles `(worlds.last_processed_at → now]` in one
+  pass; hot ticks call it with tiny windows on the flight cadence
+  (`[TICK-SLOW] processWindow` replaces the separate flights entries).
+  Boot catch-up settles deploy gaps from the SECOND post-deploy restart on
+  (first pass only stamps the new column — history is never back-settled).
+  Rollback: `WINDOW_ENGINE=0` (legacy dispatch intact, keeps the anchor
+  current so re-enabling never double-settles). Details in docs/SCALING.md.
+- **Phase 2 (hot/cold scheduler) CODE COMPLETE, harness-tested** — hot =
+  MP / owner heartbeat <15 min / world <15 min old; cold worlds stop
+  ticking, get clock-jump + window pass every 30-60 min (3 per 15s sweep
+  max); promotion settles before restarting the tick. Rollback
+  `HOT_COLD=0`. Includes post-split heartbeat regression fix (web role
+  wrote last_active_at via the EMPTY in-memory map check — heartbeats
+  never hit the DB, so pauseOnSessionEnd auto-paused under active
+  players). Remaining: Phase 4 (sharded sim workers) only when one sim
+  can't hold the load; sessions MemoryStore → Redis before web replicas.
 
 Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
 ~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any
