@@ -1,7 +1,9 @@
 /**
  * AI Difficulty Configuration
  * Defines behaviour parameters for each difficulty level.
- * Spawning volume is the SAME across all difficulties (~800 airlines).
+ * Spawning volume is the SAME across all difficulties (capped at 200 airlines
+ * per SP world — see SPAWN_TIERS; reduced from ~740 on 2026-07-24 for the
+ * many-worlds scaling plan, docs/SCALING.md Phase 5).
  * Difficulty only affects AI behaviour (pricing, aggression, efficiency).
  */
 
@@ -103,12 +105,16 @@ function pickArchetype(year) {
   return 'fullService';
 }
 
-// Shared spawning config — same for all difficulties
-// ~790 airlines: 60×4 + 100×3 + 200×1 = 240+300+200 = 740, plus base airport extras
+// Shared spawning config — same for all difficulties.
+// Capped at 200 airlines per SP world: 25×3 + 50×2 + 25×1 = 75+100+25 = 200
+// (plus base-airport competitor extras). Concentrated at the top ~100 airports
+// by type + traffic_demand, with REGION_WEIGHTS biasing Europe/North America —
+// so busy places (UK, US, EU hubs) stay densely competitive while the long
+// tail of small airports is left open for the player.
 const SPAWN_TIERS = [
-  { airports: 60,  aiPerAirport: 4, fleetSize: { min: 3, max: 6 } },
-  { airports: 100, aiPerAirport: 3, fleetSize: { min: 2, max: 4 } },
-  { airports: 200, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
+  { airports: 25, aiPerAirport: 3, fleetSize: { min: 3, max: 6 } },
+  { airports: 50, aiPerAirport: 2, fleetSize: { min: 2, max: 4 } },
+  { airports: 25, aiPerAirport: 1, fleetSize: { min: 1, max: 2 } }
 ];
 
 // Regional airport slot distribution (% of total airports per region)

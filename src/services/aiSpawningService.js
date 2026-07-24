@@ -101,9 +101,11 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
   const existingIATA = new Set(existingMembers.map(m => m.iataCode).filter(Boolean));
   const existingNames = new Set(existingMembers.map(m => m.airlineName).filter(Boolean));
 
-  // Get airports with region-weighted selection
-  // Sort by type priority (International Hub first) then by traffic_demand
-  // This ensures major hubs get tier 1 (most AI airlines) while small airports get tier 3
+  // Airport selection is anchored on the PLAYER'S BASE so their game feels
+  // real: ~40% of slots go to airports within the player's operating theatre
+  // (their base airport leading, so home is busy), the rest to top airports
+  // around the world (region-weighted). Both pools are woven together so the
+  // dense tier-1 slots are shared between local and global hubs.
   const TYPE_PRIORITY = { 'International Hub': 3, 'Major': 2, 'Regional': 1 };
   const regionWeights = config.regionWeights;
   const allEligible = await Airport.findAll({
@@ -112,53 +114,103 @@ async function spawnAIAirlines(world, difficulty, humanBaseAirport) {
     },
     order: [['traffic_demand', 'DESC']]
   });
-  // Sort by type priority first, then traffic_demand (DB sort alone isn't enough
-  // because traffic_demand has many ties — 3000+ airports all at 10)
-  allEligible.sort((a, b) => {
+  // Rank airports by REAL demand mass — the sum of the era's demand scores
+  // across every pair from that airport (from the in-memory demand cache).
+  // The airports table can't rank: traffic_demand is a flat 10 for all 8K
+  // airports and `type` mislabels minor fields as International Hubs (Nauru,
+  // Thule…), which used to hand tier-1 slots to arbitrary airports.
+  const byTypeTraffic = (a, b) => {
     const typeDiff = (TYPE_PRIORITY[b.type] || 0) - (TYPE_PRIORITY[a.type] || 0);
     if (typeDiff !== 0) return typeDiff;
     return (b.trafficDemand || 0) - (a.trafficDemand || 0);
-  });
+  };
+  const massOf = new Map();
+  try {
+    const demandCacheService = require('./demandCacheService');
+    if (demandCacheService.isReady()) {
+      const decade = Math.min(2020, Math.max(1950, Math.floor(worldYear / 10) * 10));
+      const decadeField = `demand${decade}`;
+      for (const ap of allEligible) {
+        const dests = demandCacheService.getDestinations(ap.id) || [];
+        let mass = 0;
+        for (const r of dests) mass += (r[decadeField] || 0);
+        massOf.set(ap.id, mass);
+      }
+      console.log(`[AI-SPAWN] Ranked ${massOf.size} airports by ${decadeField} demand mass`);
+    }
+  } catch (e) {
+    console.warn('[AI-SPAWN] Demand cache unavailable — falling back to type/traffic ranking');
+  }
+  // Demand mass first (real-world importance), type/traffic as tie-break/fallback
+  const byImportance = (a, b) => {
+    const massDiff = (massOf.get(b.id) || 0) - (massOf.get(a.id) || 0);
+    if (massDiff !== 0) return massDiff;
+    return byTypeTraffic(a, b);
+  };
+  allEligible.sort(byImportance);
 
-  // Group airports by region
+  // ── Local pool: the player's theatre ──────────────────────────────────────
+  const LOCAL_RADIUS_NM = 1500;
+  const LOCAL_SHARE = 0.4;
+  const baseLat = parseFloat(humanBaseAirport?.latitude);
+  const baseLon = parseFloat(humanBaseAirport?.longitude);
+  const hasBaseCoords = Number.isFinite(baseLat) && Number.isFinite(baseLon);
+  const distFromBaseNm = (ap) => {
+    const lat = parseFloat(ap.latitude), lon = parseFloat(ap.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return Infinity;
+    const R = 3440.065;
+    const dLat = (lat - baseLat) * Math.PI / 180;
+    const dLon = (lon - baseLon) * Math.PI / 180;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(baseLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
+
+  const localTarget = Math.round(totalAirports * LOCAL_SHARE);
+  let localList = hasBaseCoords
+    ? allEligible.filter(ap => distFromBaseNm(ap) <= LOCAL_RADIUS_NM).slice(0, localTarget)
+    : [];
+  // The player's own base airport always leads the local pool (tier-1 density
+  // at home, on top of the guaranteed base competitors below)
+  if (humanBaseAirport) {
+    localList = [humanBaseAirport, ...localList.filter(a => a.id !== humanBaseAirport.id)]
+      .slice(0, Math.max(localTarget, 1));
+  }
+  const localIds = new Set(localList.map(a => a.id));
+
+  // ── Global pool: region-weighted top airports elsewhere ───────────────────
+  const globalEligible = allEligible.filter(a => !localIds.has(a.id));
   const byRegion = {};
-  for (const ap of allEligible) {
+  for (const ap of globalEligible) {
     const region = getRegionFromCountry(ap.country);
     (byRegion[region] = byRegion[region] || []).push(ap);
   }
-
-  // Allocate airport slots per region based on weights
-  const airports = [];
-  let remaining = totalAirports;
+  const globalTarget = totalAirports - localList.length;
+  const globalList = [];
+  let remaining = globalTarget;
   const regionEntries = Object.entries(regionWeights).sort((a, b) => b[1] - a[1]);
   for (const [region, weight] of regionEntries) {
-    const quota = Math.round(totalAirports * weight / 100);
+    const quota = Math.round(globalTarget * weight / 100);
     const available = byRegion[region] || [];
     const take = Math.min(quota, available.length, remaining);
-    airports.push(...available.slice(0, take));
+    globalList.push(...available.slice(0, take));
     remaining -= take;
   }
-
-  // Fill any remaining slots (from rounding) with top airports not yet selected
   if (remaining > 0) {
-    const used = new Set(airports.map(a => a.id));
-    const extras = allEligible.filter(a => !used.has(a.id)).slice(0, remaining);
-    airports.push(...extras);
+    const used = new Set(globalList.map(a => a.id));
+    globalList.push(...globalEligible.filter(a => !used.has(a.id)).slice(0, remaining));
+  }
+  globalList.sort(byImportance);
+
+  // ── Weave: 2 local + 3 global per 5 slots so both pools share the dense
+  //    top tiers (list order determines tier assignment below) ───────────────
+  const airports = [];
+  let li = 0, gi = 0;
+  while (airports.length < totalAirports && (li < localList.length || gi < globalList.length)) {
+    for (let k = 0; k < 2 && li < localList.length; k++) airports.push(localList[li++]);
+    for (let k = 0; k < 3 && gi < globalList.length; k++) airports.push(globalList[gi++]);
   }
 
-  // Ensure the player's base airport is in the list (even if it didn't make the region quota)
-  if (humanBaseAirport && !airports.find(a => a.id === humanBaseAirport.id)) {
-    airports.push(humanBaseAirport);
-  }
-
-  // Re-sort by type priority then traffic_demand so tier assignment gives major hubs more airlines
-  airports.sort((a, b) => {
-    const typeDiff = (TYPE_PRIORITY[b.type] || 0) - (TYPE_PRIORITY[a.type] || 0);
-    if (typeDiff !== 0) return typeDiff;
-    return (b.trafficDemand || 0) - (a.trafficDemand || 0);
-  });
-
-  console.log(`[AI-SPAWN] Region distribution: ${regionEntries.map(([r, w]) => `${r}: ${(byRegion[r] || []).length} eligible, ${Math.round(totalAirports * w / 100)} slots`).join(', ')}`);
+  console.log(`[AI-SPAWN] Base-proximity split: ${localList.length} airports within ${LOCAL_RADIUS_NM}nm of ${humanBaseAirport?.icaoCode || '?'}, ${globalList.length} global (region-weighted)`);
 
   if (airports.length === 0) {
     console.warn('[AI-SPAWN] No airports found, aborting');
