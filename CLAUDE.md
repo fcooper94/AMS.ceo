@@ -643,6 +643,17 @@ Deliberately parked; get sign-off before changing.
 
 ## Scaling roadmap — hot/cold worlds (see docs/SCALING.md)
 
+**STATUS (2026-07-24): Phase 3 (web/sim split) is CODE-COMPLETE and pushed;
+Railway UI steps NOT yet done** — the exact runbook is in docs/SCALING.md
+("Phase 3 — CODE SHIPPED"). The split activates only via env vars
+(`SIM_AUTOSTART` + `REDIS_URL`); until the user does the Railway steps,
+production runs combined exactly as before. Phases 1-2 (window-based engine
+refactor + hot/cold scheduler) are NOT started — do them in a dedicated
+session. Key split mechanics: web role serves game time from a 15s DB
+mirror in `worldTimeService.getCurrentTime`; sim role reconciles world
+create/pause/resume/accel/delete from the DB every 15s; sim emits sockets
+via `@socket.io/redis-emitter`, web fans out via the Redis adapter.
+
 Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
 ~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any
 architecture work. Core decision (2026-07-24): worlds always *advance* but

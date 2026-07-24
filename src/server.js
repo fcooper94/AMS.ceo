@@ -827,6 +827,37 @@ server.listen(PORT, () => {
     await demandCacheService.initialize();
   }
 
+  // Redis bridge (service split): with REDIS_URL set, the web service's
+  // Socket.IO attaches a Redis adapter so events published by the sim service
+  // reach connected players; a sim-role process swaps global.io for a Redis
+  // emitter. Without REDIS_URL everything behaves exactly as before (single
+  // combined process, local emits).
+  const SERVICE_ROLE = process.env.SIM_AUTOSTART === '1' ? 'sim'
+    : process.env.SIM_AUTOSTART === '0' ? 'web' : 'combined';
+  if (process.env.REDIS_URL) {
+    try {
+      const { createClient } = require('redis');
+      const { createAdapter } = require('@socket.io/redis-adapter');
+      const pubClient = createClient({ url: process.env.REDIS_URL });
+      const subClient = pubClient.duplicate();
+      pubClient.on('error', (e) => console.error('[Redis] pub error:', e.message));
+      subClient.on('error', (e) => console.error('[Redis] sub error:', e.message));
+      await Promise.all([pubClient.connect(), subClient.connect()]);
+      io.adapter(createAdapter(pubClient, subClient));
+      if (SERVICE_ROLE === 'sim') {
+        const { Emitter } = require('@socket.io/redis-emitter');
+        global.io = new Emitter(pubClient);
+        console.log('[Redis] Sim role — global.io is a Redis emitter (events fan out via web service)');
+      } else {
+        console.log('[Redis] Socket.IO Redis adapter attached');
+      }
+    } catch (e) {
+      console.error('[Redis] Setup failed — continuing with local Socket.IO only:', e.message);
+    }
+  } else if (SERVICE_ROLE !== 'combined') {
+    console.warn(`[Redis] REDIS_URL not set on a ${SERVICE_ROLE}-role service — sim-emitted events will NOT reach players`);
+  }
+
   // DB is ready (health endpoint goes healthy); the request gate stays closed
   // through the warming phase until the worlds have started and settled
   dbReady = true;
@@ -878,15 +909,20 @@ server.listen(PORT, () => {
     }
   } else {
     console.log('[WorldTime] Simulation skipped — this server is UI/API only (worlds tick elsewhere)');
+    // Web role: serve game time from the DB mirror (sim persists clocks every
+    // ~10s). Loaded before the gate opens so no request ever sees a null
+    // clock and falls into a real-date fallback.
+    await worldTimeService.startTimeMirror();
   }
 
   // Open the request gate. When the simulation is running headless (Railway),
   // hold a short warm-up after the worlds start so the first users don't land
   // in the initial processing burst (5-8s responses). Interactive local dev
-  // (TTY) skips the wait; WARMUP_SECONDS overrides either way.
+  // (TTY) skips the wait, as does a sim-role service (no users to protect);
+  // WARMUP_SECONDS overrides either way.
   const warmupSeconds = process.env.WARMUP_SECONDS !== undefined
     ? Math.max(0, parseInt(process.env.WARMUP_SECONDS) || 0)
-    : (worldStarted && !process.stdin.isTTY ? 30 : 0);
+    : (worldStarted && SERVICE_ROLE === 'combined' && !process.stdin.isTTY ? 30 : 0);
   if (warmupSeconds > 0) {
     console.log(`⏳ Warming up for ${warmupSeconds}s before opening to traffic...`);
     setTimeout(() => {

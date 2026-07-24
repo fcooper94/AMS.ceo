@@ -150,6 +150,12 @@ class WorldTimeService {
         console.log(`✓ World Time Service started for ${activeWorlds.length} world(s)`);
       }
 
+      // Service-split control plane: worlds are created/paused/resumed/deleted
+      // by the WEB service via the DB — this loop keeps the sim's in-memory
+      // state in sync (picks up new worlds, applies pause/accel, drops
+      // deleted ones). Cheap: one narrow findAll every 15s.
+      this.startReconciler();
+
       return true;
     } catch (error) {
       console.error('✗ Failed to start World Time Service:', error.message);
@@ -160,8 +166,19 @@ class WorldTimeService {
   /**
    * Start time progression for a specific world
    */
+  // Role helper for the web/sim service split: SIM_AUTOSTART=0 marks a
+  // web-only process — it must never tick worlds; the sim service picks new
+  // worlds up via its reconciler within ~15s.
+  _isWebRole() {
+    return process.env.SIM_AUTOSTART === '0';
+  }
+
   async startWorld(worldId) {
     try {
+      if (this._isWebRole()) {
+        console.log(`[WorldTime] Web role — world ${worldId} will be started by the sim service`);
+        return true;
+      }
       // Don't start if already running
       if (this.worlds.has(worldId)) {
         return true;
@@ -2829,7 +2846,106 @@ class WorldTimeService {
       // Return a new Date object to prevent external modifications
       return new Date(worldState.inMemoryTime.getTime());
     }
+    // Web role (service split): extrapolate from the DB time mirror — the sim
+    // persists current_time/last_tick_at every ~10s, so mirror + elapsed×accel
+    // is accurate to within seconds.
+    const m = this.dbTimeMirror?.get(worldId);
+    if (m) {
+      if (m.isPaused || !m.lastTickAt) return new Date(m.currentTimeMs);
+      const elapsed = Date.now() - m.lastTickAtMs;
+      return new Date(m.currentTimeMs + elapsed * (m.timeAcceleration || 60));
+    }
     return null;
+  }
+
+  /**
+   * Web-role time mirror: periodically snapshot every active world's clock
+   * fields so getCurrentTime() works without the sim running in this process.
+   * Called at boot on web-role processes (before the request gate opens).
+   */
+  async startTimeMirror() {
+    const refresh = async () => {
+      try {
+        const rows = await World.findAll({
+          attributes: ['id', 'currentTime', 'lastTickAt', 'timeAcceleration', 'isPaused'],
+          where: { status: 'active' },
+          raw: true
+        });
+        const mirror = new Map();
+        for (const r of rows) {
+          mirror.set(r.id, {
+            currentTimeMs: new Date(r.currentTime).getTime(),
+            lastTickAt: r.lastTickAt,
+            lastTickAtMs: r.lastTickAt ? new Date(r.lastTickAt).getTime() : null,
+            timeAcceleration: parseFloat(r.timeAcceleration) || 60,
+            isPaused: !!r.isPaused
+          });
+        }
+        this.dbTimeMirror = mirror;
+      } catch (err) {
+        console.error('[WorldTime] Time mirror refresh failed:', err.message);
+      }
+    };
+    await refresh();
+    if (!this._timeMirrorInterval) {
+      this._timeMirrorInterval = setInterval(refresh, 15000);
+    }
+    console.log(`[WorldTime] DB time mirror active (${this.dbTimeMirror?.size || 0} worlds, 15s refresh)`);
+  }
+
+  /**
+   * Sim-role reconciler: sync in-memory world state with the DB every 15s so
+   * control actions taken on the web service (create / pause / resume /
+   * accel change / delete) take effect here without cross-service RPC.
+   */
+  startReconciler() {
+    if (this._reconcilerInterval || this._isWebRole()) return;
+    this._reconcilerInterval = setInterval(async () => {
+      if (this._reconciling) return;
+      this._reconciling = true;
+      try {
+        const rows = await World.findAll({
+          attributes: ['id', 'isPaused', 'timeAcceleration', 'currentTime', 'pauseOnSessionEnd', 'lastActiveAt'],
+          where: { status: 'active' },
+          raw: true
+        });
+        const activeIds = new Set(rows.map(r => r.id));
+
+        for (const r of rows) {
+          const ws = this.worlds.get(r.id);
+          if (!ws) {
+            // New world created on the web service
+            console.log(`[WorldTime] Reconciler: starting new world ${r.id}`);
+            await this.startWorld(r.id);
+            continue;
+          }
+          // Pause transition from web: honour the frozen time
+          if (r.isPaused && !ws.world.isPaused) {
+            ws.world.isPaused = true;
+            ws.inMemoryTime = new Date(r.currentTime);
+            ws.world.currentTime = new Date(r.currentTime);
+          } else if (!r.isPaused && ws.world.isPaused) {
+            ws.world.isPaused = false;
+            ws.lastTickAt = new Date(); // don't catch up the paused span
+          }
+          ws.world.timeAcceleration = parseFloat(r.timeAcceleration) || ws.world.timeAcceleration;
+          ws.world.pauseOnSessionEnd = !!r.pauseOnSessionEnd;
+          if (r.lastActiveAt) ws.world.lastActiveAt = new Date(r.lastActiveAt);
+        }
+
+        // Worlds deleted/completed on the web service
+        for (const worldId of [...this.worlds.keys()]) {
+          if (!activeIds.has(worldId)) {
+            console.log(`[WorldTime] Reconciler: stopping removed/inactive world ${worldId}`);
+            this.stopWorld(worldId);
+          }
+        }
+      } catch (err) {
+        console.error('[WorldTime] Reconciler failed:', err.message);
+      } finally {
+        this._reconciling = false;
+      }
+    }, 15000);
   }
 
   /**

@@ -68,6 +68,36 @@ push. Groundwork already exists (`SIM_AUTOSTART`).
   express-session currently uses MemoryStore, which doesn't survive restarts
   or multiple web instances. Use `connect-redis` + `@socket.io/redis-adapter`.
 
+### Phase 3 — CODE SHIPPED 2026-07-24; deployment runbook
+
+The code side is done: Redis Socket.IO adapter (web) + emitter (sim role),
+DB time mirror for web-role `getCurrentTime()` (15s refresh, extrapolated
+from `last_tick_at`), sim reconciler (15s: starts worlds created on web,
+applies pause/resume/accel from DB, stops deleted ones), web-role
+`startWorld()` no-op. No `REDIS_URL` → identical single-process behaviour.
+
+**To deploy the split on Railway (exact UI steps):**
+0. Push this code and wait for the deploy to go GREEN before touching env
+   vars (behaviour is unchanged while combined — the split only activates
+   via the vars below).
+1. **+ New → Database → Redis** in the project. Copy its `REDIS_URL` —
+   prefer the private/internal one (`redis.railway.internal`) if offered.
+2. Existing `ams` service → Variables → add:
+   `REDIS_URL = <step 1>` and `SIM_AUTOSTART = 0`. It redeploys as web-only.
+   From this moment world time is FROZEN (nobody ticking) — expected; move
+   to step 3 promptly. Logs must show "Simulation skipped — this server is
+   UI/API only" and "DB time mirror active".
+3. **+ New → GitHub Repo → fcooper94/AMS.ceo** (same repo), name `ams-sim`.
+   Variables: `DATABASE_URL = <same as web>`, `REDIS_URL = <step 1>`,
+   `SIM_AUTOSTART = 1`. Do NOT generate a public domain (Settings →
+   Networking: leave unexposed). Logs must show worlds starting/ticking.
+4. Verify (~2 min): world clock advances in the browser (proves the Redis
+   bridge end-to-end); pause a world from the UI → sim logs pick it up
+   within ~15s; web logs stay free of EVENT-LOOP STALL while sim churns.
+
+**Rollback:** delete/stop `ams-sim`, remove `SIM_AUTOSTART` from the web
+service (unset = combined mode), redeploy.
+
 ### Phase 4 — sharded sim workers
 Trigger: one sim worker can't hold all hot worlds + cold queue.
 - Workers claim worlds via a **DB lease**: `worlds.assigned_worker` +
