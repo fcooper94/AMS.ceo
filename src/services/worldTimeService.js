@@ -103,6 +103,16 @@ class WorldTimeService {
    * Scale is based on membership count (proxy for world complexity).
    * 1-5 memberships: 1x, 10: 1.5x, 20: 2x, 50+: 3x.
    */
+  // Run a tick phase with duration logging — phases that take seconds are the
+  // prime suspects for the event-loop stalls the server monitor reports.
+  _timedPhase(name, worldId, promise) {
+    const t0 = Date.now();
+    return promise.finally(() => {
+      const ms = Date.now() - t0;
+      if (ms > 3000) console.warn(`[TICK-SLOW] ${name} took ${(ms / 1000).toFixed(1)}s (world ${worldId})`);
+    });
+  }
+
   _interval(baseMs, wp) {
     return Math.round(baseMs * wp.intervalScale);
   }
@@ -423,7 +433,7 @@ class WorldTimeService {
       wp.isProcessingFlights = true;
       // Clear marketing boost cache at the start of each flight-check cycle so it's fresh per cycle
       this.marketingBoostCache.clear();
-      this.processFlights(worldId, gameTime)
+      this._timedPhase('processFlights', worldId, this.processFlights(worldId, gameTime))
         .catch(err => console.error('Error processing flights:', err.message))
         .finally(() => { wp.isProcessingFlights = false; });
     }
@@ -432,7 +442,7 @@ class WorldTimeService {
     if (!wp.isProcessingMaintenance && now - wp.lastMaintenanceCheck >= this._interval(this.maintenanceCheckInterval, wp)) {
       wp.lastMaintenanceCheck = now;
       wp.isProcessingMaintenance = true;
-      this.processMaintenance(worldId, gameTime)
+      this._timedPhase('processMaintenance', worldId, this.processMaintenance(worldId, gameTime))
         .catch(err => console.error('Error processing maintenance:', err.message))
         .finally(() => { wp.isProcessingMaintenance = false; });
     }
@@ -444,7 +454,7 @@ class WorldTimeService {
     if (!wp.isRefreshingMaintenance && gameDay > lastRefreshDay) {
       this.lastMaintenanceRefresh[worldId] = gameDay;
       wp.isRefreshingMaintenance = true;
-      this.refreshMaintenanceSchedules(worldId)
+      this._timedPhase('refreshMaintenanceSchedules', worldId, this.refreshMaintenanceSchedules(worldId))
         .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
         .finally(() => { wp.isRefreshingMaintenance = false; });
     }
@@ -453,7 +463,7 @@ class WorldTimeService {
     if (!wp.isProcessingListings && now - wp.lastListingCheck >= this._interval(this.listingCheckInterval, wp)) {
       wp.lastListingCheck = now;
       wp.isProcessingListings = true;
-      this.processListings(worldId, gameTime)
+      this._timedPhase('processListings', worldId, this.processListings(worldId, gameTime))
         .catch(err => console.error('Error processing listings:', err.message))
         .finally(() => { wp.isProcessingListings = false; });
     }
@@ -472,7 +482,7 @@ class WorldTimeService {
       this.lastAICheck = now;
       this.isProcessingAI = true;
       const aiDecisionService = require('./aiDecisionService');
-      aiDecisionService.processAIDecisions(worldId, gameTime)
+      this._timedPhase('processAIDecisions', worldId, aiDecisionService.processAIDecisions(worldId, gameTime))
         .catch(err => console.error('Error processing AI decisions:', err.message))
         .finally(() => { this.isProcessingAI = false; });
     }
@@ -481,7 +491,7 @@ class WorldTimeService {
     if (!wp.isProcessingReputation && now - wp.lastReputationCheck >= this._interval(this.reputationCheckInterval, wp)) {
       wp.lastReputationCheck = now;
       wp.isProcessingReputation = true;
-      this.processReputation(worldId, gameTime)
+      this._timedPhase('processReputation', worldId, this.processReputation(worldId, gameTime))
         .catch(err => console.error('Error processing reputation:', err.message))
         .finally(() => { wp.isProcessingReputation = false; });
     }
