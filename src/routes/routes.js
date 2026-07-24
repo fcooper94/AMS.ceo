@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Route, WorldMembership, Airport, UserAircraft, Aircraft, User, AirspaceRestriction } = require('../models');
+const { Route, WorldMembership, Airport, UserAircraft, Aircraft, User, AirspaceRestriction, ScheduledFlight } = require('../models');
 const { Op } = require('sequelize');
 const airportSlotService = require('../services/airportSlotService');
 const { migrateOldRates } = require('../config/cargoTypes');
@@ -972,6 +972,11 @@ router.delete('/bulk', async (req, res) => {
       return res.status(404).json({ error: 'No routes found to delete' });
     }
 
+    // Delete the routes' flight templates first — the FK is SET NULL, so
+    // without this they survive as invisible active templates that still
+    // block the scheduling conflict check
+    await ScheduledFlight.destroy({ where: { routeId: routes.map(r => r.id) } });
+
     // Delete all matching routes
     const deletedCount = await Route.destroy({
       where: {
@@ -1025,6 +1030,10 @@ router.delete('/:id', async (req, res) => {
     if (!route) {
       return res.status(404).json({ error: 'Route not found' });
     }
+
+    // Delete the route's flight templates first (FK is SET NULL — orphans
+    // would keep blocking the scheduling conflict check invisibly)
+    await ScheduledFlight.destroy({ where: { routeId: route.id } });
 
     // Delete the route
     await route.destroy();

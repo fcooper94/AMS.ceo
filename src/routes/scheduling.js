@@ -651,7 +651,9 @@ router.post('/flight', async (req, res) => {
     const existingTemplates = await ScheduledFlight.findAll({
       where: { aircraftId, isActive: true, dayOfWeek: { [Op.in]: [...daysToCheck] } },
       include: [
-        { model: Route, as: 'route', include: [{ model: Airport, as: 'departureAirport' }, { model: Airport, as: 'arrivalAirport' }] },
+        // required: orphaned templates (route deleted → route_id NULL) must not
+        // block scheduling — the grid can't even show them
+        { model: Route, as: 'route', required: true, include: [{ model: Airport, as: 'departureAirport' }, { model: Airport, as: 'arrivalAirport' }] },
         { model: UserAircraft, as: 'aircraft', include: [{ model: Aircraft, as: 'aircraft' }] }
       ]
     });
@@ -790,6 +792,7 @@ router.post('/flights/batch', async (req, res) => {
       include: [
         {
           model: Route, as: 'route',
+          required: true, // ignore orphaned templates (route deleted)
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' }
@@ -1567,6 +1570,7 @@ router.post('/maintenance', async (req, res) => {
         {
           model: Route,
           as: 'route',
+          required: true, // ignore orphaned templates (route deleted)
           include: [
             { model: Airport, as: 'departureAirport' },
             { model: Airport, as: 'arrivalAirport' }
