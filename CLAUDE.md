@@ -641,6 +641,19 @@ to the era (1950 ≈ 0.6–0.7), but that's an economy-tuning decision —
 raises all early/mid-era fuel bills right after the 2026-07 rebalance.
 Deliberately parked; get sign-off before changing.
 
+## Scaling roadmap — hot/cold worlds (see docs/SCALING.md)
+
+Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
+~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any
+architecture work. Core decision (2026-07-24): worlds always *advance* but
+only **hot** worlds (human online / MP) tick finely; **cold** worlds are
+batch-processed in elapsed-time windows every 30-60 real min. Phases:
+window-based engine refactor → hot/cold scheduler → web/sim service split
+(`SIM_AUTOSTART` groundwork exists; needs Redis for Socket.IO + sessions) →
+lease-sharded sim workers. Databases do NOT split — single Postgres + Redis.
+The event-loop stall monitor + `[TICK-SLOW]` logs are the tripwire for
+starting the service split.
+
 ## World tick processing — per-world isolation (2026-07)
 
 Processing flags (`isProcessingFlights`, `isProcessingMaintenance`, etc.)
