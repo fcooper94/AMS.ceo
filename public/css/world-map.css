@@ -1207,10 +1207,12 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
+  padding: 0.45rem 0.55rem;
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
+  /* Hairline divider keeps dense rows readable */
+  box-shadow: 0 1px 0 rgba(128, 128, 128, 0.12);
   border: 1px solid transparent;
 }
 
@@ -1264,6 +1266,9 @@
   color: var(--accent-color, var(--gh-accent));
   font-family: 'Courier New', monospace;
   letter-spacing: 0.05em;
+  /* Fixed column so the DEP ▸ ARR pairs line up down the list */
+  min-width: 3.6rem;
+  flex-shrink: 0;
 }
 
 .fl-entry.other-airline .fl-route-num {
@@ -1287,14 +1292,16 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   color: var(--text-muted, var(--gh-muted));
+  min-width: 0;
+  /* Align under the airport pair, past the route-number column */
+  padding-left: calc(3.6rem + 0.4rem);
 }
 
 .fl-aircraft {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fl-airline-name {
@@ -1303,7 +1310,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100px;
+  /* Fill the remaining row and ellipsize against a clean right edge */
+  flex: 1 1 auto;
+  text-align: right;
 }
 
 .fl-separator {

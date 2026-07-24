@@ -78,6 +78,11 @@
     return neg + sym + digits;
   };
 
+  // Stable alias for the FULL form — page scripts sometimes declare their own
+  // formatCurrency() (shadowing the global), which made shared UI like the
+  // navbar balance abbreviate on some pages. Shared code should use this.
+  window.formatCurrencyFull = window.formatCurrency;
+
   // Short form: "£41.9M" / "£990K" / "£120".
   window.formatCurrencyShort = function (usd) {
     const sym = SYMBOLS[current] || '$';

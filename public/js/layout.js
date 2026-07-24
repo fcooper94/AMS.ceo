@@ -351,7 +351,9 @@ function applyWorldInfo(worldInfo) {
   const worldBalanceEl = document.getElementById('worldBalance');
   if (worldBalanceEl) {
     const balance = Number(worldInfo.balance) || 0;
-    worldBalanceEl.textContent = formatCurrency(balance);
+    // formatCurrencyFull: shadow-proof — page scripts (competition.js) declare
+    // their own formatCurrency() which would abbreviate the navbar balance
+    worldBalanceEl.textContent = (window.formatCurrencyFull || formatCurrency)(balance);
     if (balance < 0) {
       worldBalanceEl.style.color = 'var(--warning-color)';
     } else if (balance < 100000) {

@@ -8,9 +8,8 @@
     <!-- Airline Filter Dropdown -->
     <div class="map-filter-dropdown">
       <select id="airlineFilter">
-        <option value="mine">My Airline</option>
-        <option value="hq" id="hqFilterOption">HQ Airport</option>
-        <option value="all">All Airlines</option>
+        <option value="all" selected>All Airlines</option>
+        <option value="mine">My Airline Only</option>
       </select>
     </div>
 
@@ -76,7 +75,7 @@
         <span class="legend-icon aircraft-icon"></span>
         <span>My Aircraft</span>
       </div>
-      <div class="legend-item other-airline-legend" style="display: none;">
+      <div class="legend-item other-airline-legend" style="display: flex;">
         <span class="legend-icon aircraft-icon other"></span>
         <span>Other Airlines</span>
       </div>

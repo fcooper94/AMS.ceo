@@ -7,8 +7,7 @@ let airportMarkers = new Map(); // Map of airport ID to marker
 let selectedFlightId = null;
 let updateInterval = null;
 let activeFlights = []; // Store flight data for selection
-let airlineFilterMode = 'mine'; // 'mine', 'hq', or 'all'
-let hqAirportCode = null; // Player's HQ airport ICAO code (set on init)
+let airlineFilterMode = 'all'; // 'all' (default) or 'mine' — HQ filter removed 2026-07
 let pendingAircraftSelect = null; // Aircraft registration to auto-select after loading
 let flightsListOpen = false; // Hidden by default, user can toggle open
 let waypointMarkers = []; // Waypoint dot markers for selected flight
@@ -60,16 +59,20 @@ function syncUpdateAllPositions() {
     }
 
     marker.setLatLng([position.lat, position.lng]);
-    // Only update bearing if it changed significantly (>2 degrees)
+    // Only update bearing if it changed significantly (>2 degrees).
+    // Bearing is UNWRAPPED into a continuous angle (359°→1° becomes +2°,
+    // not -358°) so the CSS rotation transition turns the short way.
     const bearing = calculateBearing(position.lat, position.lng, position.destLat, position.destLng);
-    const prevBearing = flight._lastBearing || 0;
-    if (Math.abs(bearing - prevBearing) > 2) {
-      flight._lastBearing = bearing;
+    const prevBearing = flight._lastBearing !== undefined ? flight._lastBearing : bearing;
+    let delta = ((bearing - (prevBearing % 360 + 360) % 360) + 540) % 360 - 180;
+    if (Math.abs(delta) > 2) {
+      const continuous = prevBearing + delta;
+      flight._lastBearing = continuous;
       const iconEl = marker.getElement();
       if (iconEl) {
         const inner = iconEl.querySelector('.aircraft-marker-inner');
         if (inner) {
-          inner.style.transform = `rotate(${bearing}deg)`;
+          inner.style.transform = `rotate(${continuous}deg)`;
         }
       }
     }
@@ -433,6 +436,42 @@ function initMap() {
   // Keep attribution clear of the always-on global footer (bottom-right)
   map.attributionControl.setPosition('bottomleft');
 
+  // ── Smooth aircraft movement ──────────────────────────────────────────────
+  // Positions recompute every 2s (syncUpdateAllPositions); a CSS transition
+  // on the marker transform makes Leaflet's setLatLng glide linearly between
+  // updates — constant-speed flight, so linear interpolation is exact. The
+  // transition must be OFF during zoom (Leaflet re-transforms every marker,
+  // which would otherwise "swim" for 2s after each zoom) and when a marker
+  // is first created (it would glide in from the map origin).
+  const smoothStyle = document.createElement('style');
+  smoothStyle.textContent = `
+    .leaflet-marker-icon.aircraft-marker {
+      transition: transform 2.1s linear;
+    }
+    .leaflet-zoom-anim .leaflet-marker-icon.aircraft-marker,
+    .ac-no-transition .leaflet-marker-icon.aircraft-marker,
+    .leaflet-marker-icon.aircraft-marker.just-created {
+      transition: none;
+    }
+    /* Rotation lives on .aircraft-marker-inner — ease it too so heading
+       changes at waypoints turn instead of snapping (bearing values are
+       unwrapped in JS so 359°→1° turns 2° short way, not 358° around) */
+    .leaflet-marker-icon.aircraft-marker .aircraft-marker-inner {
+      transition: transform 2.1s linear;
+    }
+    .leaflet-zoom-anim .leaflet-marker-icon.aircraft-marker .aircraft-marker-inner,
+    .ac-no-transition .leaflet-marker-icon.aircraft-marker .aircraft-marker-inner {
+      transition: none;
+    }
+  `;
+  document.head.appendChild(smoothStyle);
+  map.on('zoomstart', () => map.getContainer().classList.add('ac-no-transition'));
+  map.on('zoomend', () => {
+    // Re-enable one frame after Leaflet has snapped final zoom positions
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      map.getContainer().classList.remove('ac-no-transition')));
+  });
+
   // CartoDB basemap — dark or light to match the app theme. noWrap:false
   // lets tiles repeat for infinite horizontal scrolling.
   const tileUrl = (theme) =>
@@ -454,20 +493,6 @@ function initMap() {
   };
 
   console.log('[WorldMap] Map initialized with', currentTheme, 'theme');
-
-  // Fetch HQ airport code to label the filter dropdown
-  fetch('/api/world/info')
-    .then(r => r.json())
-    .then(info => {
-      if (info.baseAirport) {
-        hqAirportCode = info.baseAirport.icaoCode || info.baseAirport.iataCode;
-        const hqOption = document.getElementById('hqFilterOption');
-        if (hqOption && hqAirportCode) {
-          hqOption.textContent = `${hqAirportCode} Flights`;
-        }
-      }
-    })
-    .catch(() => {}); // Non-critical, label stays as "HQ Airport"
 
   // Check if ATC routes are still being computed, then load flights
   checkBackfillThenLoad();
@@ -531,10 +556,10 @@ function handleAirlineFilterChange() {
   const select = document.getElementById('airlineFilter');
   airlineFilterMode = select.value;
 
-  // Show/hide other airline legend (visible for 'all' and 'hq' modes)
+  // Show/hide other airline legend (visible in 'all' mode)
   const otherLegend = document.querySelector('.other-airline-legend');
   if (otherLegend) {
-    otherLegend.style.display = (airlineFilterMode === 'all' || airlineFilterMode === 'hq') ? 'flex' : 'none';
+    otherLegend.style.display = airlineFilterMode === 'all' ? 'flex' : 'none';
   }
 
   // Re-render FIR boundaries to show/hide restricted zones
@@ -555,7 +580,6 @@ async function loadActiveFlights() {
   loadActiveTours(); // refresh sightseeing tours on the same cadence (parallel)
   try {
     const endpoint = airlineFilterMode === 'all' ? '/api/schedule/active-all'
-      : airlineFilterMode === 'hq' ? '/api/schedule/active-hq'
       : '/api/schedule/active';
     const response = await fetch(endpoint);
 
@@ -659,7 +683,7 @@ function updateFlightsOnMap(flights) {
 // ===== Sightseeing tours on the map =====
 
 // Load tours currently mid-flight and render them. Respects the airline filter:
-// 'mine' shows only your tours; 'all'/'hq' show every airline's.
+// 'mine' shows only your tours; 'all' shows every airline's.
 async function loadActiveTours() {
   try {
     const res = await fetch('/api/sightseeing-tours/active');
@@ -735,13 +759,17 @@ function createTourMarker(tour, position) {
       </div>`;
 
   const icon = L.divIcon({
-    className: 'aircraft-marker tour-marker',
+    className: 'aircraft-marker tour-marker just-created',
     html: `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="${innerStyle}">${iconDef.svg}</div>${label}</div>`,
     iconSize: [px, px],
     iconAnchor: [px / 2, px / 2]
   });
 
   const marker = L.marker([position.lat, position.lng], { icon }).addTo(map);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const el = marker.getElement();
+    if (el) el.classList.remove('just-created');
+  }));
   marker.bindTooltip(
     `<strong>${tour.name || 'Sightseeing Tour'}</strong><br>${tour.airlineName || ''}${registration ? ' · ' + registration : ''}<br>Scenic loop from ${tour.baseAirport?.icaoCode || ''}`,
     { direction: 'top', offset: [0, -px / 2], className: 'waypoint-tooltip' }
@@ -774,13 +802,18 @@ function syncUpdateTourPositions() {
     const pos = calculateTourPosition(tour);
     if (!pos || !isFinite(pos.lat) || !isFinite(pos.lng)) return;
     marker.setLatLng([pos.lat, pos.lng]);
+    // Unwrapped continuous bearing — tours turn sharply at waypoints, and
+    // the rotation transition must take the short way around (see flights)
     const bearing = calculateBearing(pos.lat, pos.lng, pos.destLat, pos.destLng);
-    if (Math.abs(bearing - (tour._lastBearing || 0)) > 2) {
-      tour._lastBearing = bearing;
+    const prevBearing = tour._lastBearing !== undefined ? tour._lastBearing : bearing;
+    const delta = ((bearing - (prevBearing % 360 + 360) % 360) + 540) % 360 - 180;
+    if (Math.abs(delta) > 2) {
+      const continuous = prevBearing + delta;
+      tour._lastBearing = continuous;
       const el = marker.getElement();
       if (el) {
         const inner = el.querySelector('.aircraft-marker-inner');
-        if (inner) inner.style.transform = `rotate(${bearing}deg)`;
+        if (inner) inner.style.transform = `rotate(${continuous}deg)`;
       }
     }
   });
@@ -1282,7 +1315,9 @@ function createFlightMarker(flight, position) {
   const innerStyle = `transform: rotate(${bearing}deg); width: ${px}px; height: ${px}px`;
 
   const icon = L.divIcon({
-    className: 'aircraft-marker',
+    // just-created: transitions OFF for the first frames so a marker
+    // materialises at its position instead of gliding in from the map origin
+    className: 'aircraft-marker just-created',
     html: isOtherAirline
       ? `<div class="aircraft-marker-wrapper"><div class="${markerClass}" style="${innerStyle}">${iconDef.svg}</div></div>`
       : `<div class="aircraft-marker-wrapper">
@@ -1299,6 +1334,13 @@ function createFlightMarker(flight, position) {
 
   const marker = L.marker([position.lat, position.lng], { icon })
     .addTo(map);
+
+  // Enable the smooth-movement transition once the initial position has
+  // painted (two frames — one to insert, one to settle)
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const el = marker.getElement();
+    if (el) el.classList.remove('just-created');
+  }));
 
   marker.on('click', (e) => {
     L.DomEvent.stopPropagation(e);
@@ -2142,10 +2184,11 @@ function updateFlightsList() {
           <span class="fl-airports">${depCode}<span class="fl-arrow">${phase === 'return' ? ' ◂ ' : ' ▸ '}</span>${arrCode}</span>
         </div>
         <div class="fl-row-bottom">
-          <span class="fl-aircraft">${acType}</span>
-          <span class="fl-separator">·</span>
-          <span>${reg}</span>
-          ${isOther && flight.airlineName ? `<span class="fl-separator">·</span><span class="fl-airline-name">${flight.airlineName}</span>` : ''}
+          ${[
+            acType ? `<span class="fl-aircraft">${acType}</span>` : '',
+            reg ? `<span class="fl-aircraft">${reg}</span>` : ''
+          ].filter(Boolean).join('<span class="fl-separator">·</span>')}
+          ${isOther && flight.airlineName ? `<span class="fl-airline-name">${flight.airlineName}</span>` : ''}
         </div>
       </div>
     </div>`;
