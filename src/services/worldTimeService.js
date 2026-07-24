@@ -50,6 +50,14 @@ class WorldTimeService {
     // Membership ID cache: avoids re-querying every 5s per processing function
     this._membershipCache = new Map(); // worldId -> { ids: [...], expiry: timestamp }
     this._membershipCacheTTL = 30000; // 30 seconds
+    // Hot/cold scheduler (Phase 2): hot = MP world or owner heartbeat within
+    // hotIdleMs; cold worlds stop ticking and get one clock-jump + window
+    // pass per cold cadence instead.
+    this.hotIdleMs = 15 * 60 * 1000;          // owner idle gate
+    this.coldPassBaseMs = 45 * 60 * 1000;     // cold cadence 45min...
+    this.coldPassJitterMs = 15 * 60 * 1000;   // ...±15min per-world jitter
+    this.hotColdSweepMs = 15000;              // temperature sweep cadence
+    this.coldPassBudgetPerSweep = 3;          // max cold passes per sweep
   }
 
   /**
@@ -160,6 +168,10 @@ class WorldTimeService {
       // deleted ones). Cheap: one narrow findAll every 15s.
       this.startReconciler();
 
+      // Hot/cold scheduler (Phase 2): demotes idle SP worlds to batch
+      // processing, promotes them back on the owner's heartbeat
+      this.startHotColdScheduler();
+
       return true;
     } catch (error) {
       console.error('✗ Failed to start World Time Service:', error.message);
@@ -261,8 +273,20 @@ class WorldTimeService {
 
       this.worlds.set(worldId, worldState);
 
-      // Start the tick loop for this world
-      worldState.tickInterval = setInterval(() => this.tick(worldId), this.tickRate);
+      // Start the tick loop — unless the hot/cold scheduler says this world
+      // is cold, in which case it gets clock-jump + window passes on the
+      // cold cadence instead of 1s ticks
+      if (this.hotColdEnabled && this._temperature(worldState) === 'cold') {
+        worldState.tickInterval = null;
+        // Spread first passes across the cadence so a boot with many cold
+        // worlds doesn't fire them all at once
+        worldState.nextColdPassAt = Date.now() + Math.random() * this.coldPassBaseMs;
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[HOTCOLD] "${world.name}" starting COLD`);
+        }
+      } else {
+        worldState.tickInterval = setInterval(() => this.tick(worldId), this.tickRate);
+      }
 
       // Window engine: settle the offline gap. The clock jump above used to
       // silently skip everything in it (flights, revenue, weekly costs) —
@@ -304,8 +328,11 @@ class WorldTimeService {
    */
   stopWorld(worldId) {
     const worldState = this.worlds.get(worldId);
-    if (worldState && worldState.tickInterval) {
-      clearInterval(worldState.tickInterval);
+    if (worldState) {
+      // NB: cold worlds (hot/cold scheduler) have NO tick interval — the
+      // map entry must be removed regardless or a deleted world would keep
+      // receiving cold passes forever
+      if (worldState.tickInterval) clearInterval(worldState.tickInterval);
       this.worlds.delete(worldId);
       if (process.env.NODE_ENV === 'development') {
         console.log(`✓ Stopped world: ${worldState.world.name}`);
@@ -326,6 +353,16 @@ class WorldTimeService {
 
       // Save final time to database
       const now = new Date();
+      // Cold worlds' inMemoryTime is stale (last cold pass, up to ~45 real
+      // min ago) — advance it to now before saving, or writing
+      // last_tick_at=now alongside the stale time would swallow the span
+      if (!worldState.world.isPaused && worldState.lastTickAt) {
+        const elapsed = (now.getTime() - worldState.lastTickAt.getTime()) / 1000;
+        if (elapsed > 2) {
+          worldState.inMemoryTime = new Date(worldState.inMemoryTime.getTime()
+            + elapsed * (worldState.world.timeAcceleration || 60) * 1000);
+        }
+      }
       savePromises.push(
         worldState.world.sequelize.query(
           'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt WHERE id = :worldId',
@@ -807,6 +844,134 @@ class WorldTimeService {
       }
     } finally {
       wp.isProcessingWindow = false;
+    }
+  }
+
+  // ═══ Phase 2: hot/cold scheduler ═════════════════════════════════════════
+  // Hot world (MP, or SP owner heartbeat within hotIdleMs): 1s tick + tiny
+  // window passes — today's behaviour. Cold world (SP, owner away): the tick
+  // interval stops entirely; every 30-60 min (jittered) the world's clock is
+  // advanced in one jump and processWorldWindow settles the gap. Cold worlds
+  // therefore cost ~one pass/45min instead of ~86K ticks/day, which is what
+  // makes thousands of persistent SP worlds affordable. Web-side clocks stay
+  // smooth regardless: getCurrentTime extrapolates from last_tick_at.
+  // HOT_COLD=0 disables (all worlds stay hot); requires the window engine.
+  get hotColdEnabled() {
+    return process.env.HOT_COLD !== '0' && this.windowEngineEnabled;
+  }
+
+  _temperature(ws) {
+    const w = ws.world;
+    if (w.worldType === 'multiplayer') return 'hot';
+    if (w.lastActiveAt && (Date.now() - new Date(w.lastActiveAt).getTime()) < this.hotIdleMs) return 'hot';
+    // Freshly created world: the owner is mid-setup before any heartbeat has
+    // landed — keep it hot for the first idle-gate span
+    if (w.createdAt && (Date.now() - new Date(w.createdAt).getTime()) < this.hotIdleMs) return 'hot';
+    return 'cold';
+  }
+
+  _nextColdDelay() {
+    return this.coldPassBaseMs - this.coldPassJitterMs
+      + Math.random() * 2 * this.coldPassJitterMs; // 30-60 min
+  }
+
+  startHotColdScheduler() {
+    if (this._hotColdInterval || this._isWebRole() || !this.hotColdEnabled) return;
+    this._hotColdInterval = setInterval(() => {
+      this._hotColdSweep().catch(e => console.error('[HOTCOLD] sweep error:', e.message));
+    }, this.hotColdSweepMs);
+    console.log(`[HOTCOLD] scheduler active (idle gate ${this.hotIdleMs / 60000}min, cold cadence ${(this.coldPassBaseMs - this.coldPassJitterMs) / 60000}-${(this.coldPassBaseMs + this.coldPassJitterMs) / 60000}min)`);
+  }
+
+  async _hotColdSweep() {
+    if (this._hotColdSweeping) return;
+    this._hotColdSweeping = true;
+    try {
+      const now = Date.now();
+
+      // Pass 1: temperature transitions (promotions first — a returning
+      // player should never wait behind a batch of cold passes)
+      for (const [worldId, ws] of this.worlds) {
+        if (!ws.world || ws.world.isPaused || ws.world.status !== 'active') continue;
+        const temp = this._temperature(ws);
+        if (ws.tickInterval && temp === 'cold') {
+          // Demote: the world ticked until this moment, so it's settled
+          clearInterval(ws.tickInterval);
+          ws.tickInterval = null;
+          ws.nextColdPassAt = now + this._nextColdDelay();
+          console.log(`[HOTCOLD] "${ws.world.name}" → COLD (owner idle)`);
+        } else if (!ws.tickInterval && temp === 'hot') {
+          // Promote: settle the cold gap NOW, then resume fine ticking
+          console.log(`[HOTCOLD] "${ws.world.name}" → HOT (owner active)`);
+          await this._advanceAndSettle(worldId, ws, { stateless: true });
+          const stillRunning = this.worlds.get(worldId); // end-date may have completed it
+          if (stillRunning && !stillRunning.tickInterval) {
+            stillRunning.lastTickAt = new Date();
+            stillRunning.tickInterval = setInterval(() => this.tick(worldId), this.tickRate);
+          }
+        }
+      }
+
+      // Pass 2: due cold passes (budgeted per sweep so a pile-up spreads
+      // across sweeps instead of monopolising the worker)
+      let budget = this.coldPassBudgetPerSweep;
+      for (const [worldId, ws] of this.worlds) {
+        if (budget <= 0) break;
+        if (!ws.world || ws.world.isPaused || ws.world.status !== 'active') continue;
+        if (ws.tickInterval) continue; // hot
+        if (ws.nextColdPassAt === undefined) ws.nextColdPassAt = now + this._nextColdDelay();
+        if (now < ws.nextColdPassAt) continue;
+        budget--;
+        await this._advanceAndSettle(worldId, ws, { stateless: true });
+        const still = this.worlds.get(worldId);
+        if (still) still.nextColdPassAt = Date.now() + this._nextColdDelay();
+      }
+    } finally {
+      this._hotColdSweeping = false;
+    }
+  }
+
+  /**
+   * Cold-pass core: advance the world clock in one jump (same math as tick,
+   * incl. end-date completion), persist it, then settle the jump via the
+   * window engine.
+   */
+  async _advanceAndSettle(worldId, ws, { stateless = true } = {}) {
+    try {
+      const world = ws.world;
+      const now = new Date();
+      const realElapsedSeconds = (now.getTime() - ws.lastTickAt.getTime()) / 1000;
+      let newGameTime = new Date(ws.inMemoryTime.getTime() + realElapsedSeconds * world.timeAcceleration * 1000);
+
+      if (world.endDate && newGameTime >= new Date(world.endDate)) {
+        newGameTime = new Date(world.endDate);
+        ws.inMemoryTime = newGameTime;
+        ws.lastTickAt = now;
+        console.log(`[HOTCOLD] "${world.name}" reached its end date during cold span. Completing.`);
+        await world.sequelize.query(
+          'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "status" = :status, "updated_at" = :updatedAt WHERE id = :worldId',
+          { replacements: { currentTime: newGameTime, lastTickAt: now, status: 'completed', updatedAt: now, worldId: world.id } }
+        );
+        world.status = 'completed';
+        // Settle up to the end date before retiring the world
+        await this.processWorldWindow(worldId, { toGameTime: newGameTime, include: { flights: true, maintenance: true }, stateless });
+        this.stopWorld(worldId);
+        return;
+      }
+
+      ws.inMemoryTime = newGameTime;
+      ws.lastTickAt = now;
+      await world.sequelize.query(
+        'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "updated_at" = :updatedAt WHERE id = :worldId',
+        { replacements: { currentTime: newGameTime, lastTickAt: now, updatedAt: now, worldId: world.id } }
+      );
+      await this._timedPhase('coldPass', worldId, this.processWorldWindow(worldId, {
+        toGameTime: newGameTime,
+        include: { flights: true, maintenance: true },
+        stateless
+      }));
+    } catch (error) {
+      console.error(`[HOTCOLD] advance/settle failed for world ${worldId}:`, error.message);
     }
   }
 

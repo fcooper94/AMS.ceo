@@ -296,15 +296,26 @@ router.post('/acceleration', async (req, res) => {
  * sweep can pause a singleplayer world once the session goes quiet. Intentionally
  * lightweight and never errors out to the client.
  */
+const _heartbeatWriteAt = new Map(); // worldId -> last DB write (throttle)
 router.post('/heartbeat', async (req, res) => {
   try {
     const activeWorldId = req.session?.activeWorldId;
     if (activeWorldId) {
-      // Only singleplayer worlds use the auto-pause heartbeat — skip the DB write
-      // for multiplayer to avoid churn on a shared row.
-      const isSP = worldTimeService.recordActivity(activeWorldId);
-      if (isSP) {
-        await World.update({ lastActiveAt: new Date() }, { where: { id: activeWorldId } });
+      // In-memory freshness when this process owns the world (combined mode)
+      worldTimeService.recordActivity(activeWorldId);
+      // DB write for the auto-pause sweep AND the hot/cold scheduler. Post-
+      // split the web role has NO in-memory worlds, so we can't ask
+      // recordActivity whether this is a singleplayer world — the WHERE
+      // clause filters instead (multiplayer rows are skipped to avoid churn
+      // on a shared row; MP worlds are always hot anyway). Throttled to one
+      // write per world per 15s; the sim reconciler mirrors it within 15s.
+      const lastWrite = _heartbeatWriteAt.get(activeWorldId) || 0;
+      if (Date.now() - lastWrite > 15000) {
+        _heartbeatWriteAt.set(activeWorldId, Date.now());
+        await World.update(
+          { lastActiveAt: new Date() },
+          { where: { id: activeWorldId, worldType: 'singleplayer' } }
+        );
       }
     }
   } catch (_) { /* ignore — a failed heartbeat must not disrupt the user */ }
