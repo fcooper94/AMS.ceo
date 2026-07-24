@@ -5809,7 +5809,7 @@ function renderDailySchedule() {
     html += `<th style="padding: 0.5rem 0.2rem; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: 40px; ${borderStyle}">${col.label}</th>`;
   });
 
-  html += '<th style="padding: 0.75rem 0.5rem 0.75rem 0.75rem; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: 100px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>';
+  html += `<th style="padding: 0.75rem 0.5rem 0.75rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: ${isCoarsePointer() ? '116px' : '100px'}; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>`;
   html += '</tr></thead>';
 
   html += '<tbody>';
@@ -5899,7 +5899,7 @@ function renderWeeklySchedule() {
       </th>`;
   });
 
-  html += '<th style="padding: 0.75rem 0.5rem 0.75rem 0.75rem; text-align: center; color: var(--text-secondary); font-weight: 600; width: 100px; min-width: 100px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>';
+  html += `<th style="padding: 0.75rem 0.5rem 0.75rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; text-align: center; color: var(--text-secondary); font-weight: 600; width: ${isCoarsePointer() ? '116px' : '100px'}; min-width: ${isCoarsePointer() ? '116px' : '100px'}; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>`;
   html += '</tr></thead>';
 
   html += '<tbody>';
@@ -6684,9 +6684,10 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     `;
   });
 
-  // Actions column (sticky right)
+  // Actions column (sticky right). Touch devices get extra left padding so
+  // the buttons sit clear of late-day flight blocks that overflow their cell
   html += `
-    <td style="padding: 0.5rem 0.6rem 0.5rem 0.75rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle;">
+    <td style="padding: 0.5rem 0.6rem 0.5rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle;">
       <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
         <button
           onclick="event.stopPropagation(); addRouteToAircraft('${aircraft.id}')"
@@ -7296,9 +7297,10 @@ function generateAircraftRow(aircraft, timeColumns) {
     `;
   });
 
-  // Actions column (sticky right) - extra left padding to cover any flight block overflow
+  // Actions column (sticky right) - extra left padding to cover any flight
+  // block overflow; touch devices get more so buttons sit clear of Sunday
   html += `
-    <td style="padding: 0.5rem 0.6rem 0.5rem 0.75rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface);">
+    <td style="padding: 0.5rem 0.6rem 0.5rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface);">
       <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
         <button
           onclick="addRouteToAircraft('${aircraft.id}')"
@@ -11350,11 +11352,13 @@ function isCoarsePointer() {
 }
 
 function armPlacement(kind, id) {
+  // Plain text only — the banner sets this via textContent, so HTML like
+  // formatRouteNumber's coloured spans would render as raw markup
   const label = kind === 'tour'
     ? (sightseeingTours.find(t => t.id === id)?.name || 'Tour')
     : (() => {
         const r = routes.find(x => x.id === id);
-        return r ? `${formatRouteNumber(r.routeNumber)} ${r.departureAirport.icaoCode}→${r.arrivalAirport.icaoCode}` : 'Route';
+        return r ? `${r.routeNumber} ${r.departureAirport.icaoCode}→${r.arrivalAirport.icaoCode}` : 'Route';
       })();
 
   armedPlacement = { kind, id, label };
