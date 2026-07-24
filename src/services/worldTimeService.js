@@ -90,6 +90,10 @@ class WorldTimeService {
         isProcessingOverheads: false,
         isProcessingLoans: false,
         isProcessingDeliveries: false,
+        // Window engine (Phase 1): pass-in-flight guard + in-memory anchor
+        // mirroring worlds.last_processed_at
+        isProcessingWindow: false,
+        windowAnchor: null,
         // Adaptive multiplier — set once when memberships are first cached
         intervalScale: 1,
       };
@@ -260,6 +264,30 @@ class WorldTimeService {
       // Start the tick loop for this world
       worldState.tickInterval = setInterval(() => this.tick(worldId), this.tickRate);
 
+      // Window engine: settle the offline gap. The clock jump above used to
+      // silently skip everything in it (flights, revenue, weekly costs) —
+      // now the gap is processed as a window from last_processed_at.
+      if (this.windowEngineEnabled) {
+        const wp = this._wp(worldId);
+        wp.windowAnchor = world.lastProcessedAt ? new Date(world.lastProcessedAt) : null;
+        if (wp.windowAnchor) {
+          const gapMs = catchUpTime.getTime() - wp.windowAnchor.getTime();
+          const DAY_MS = 24 * 60 * 60 * 1000;
+          if (gapMs > 60 * 60 * 1000) { // more than a game-hour missed
+            console.log(`[WINDOW] ${world.name}: catch-up pass over ${(gapMs / DAY_MS).toFixed(1)} game-days offline gap`);
+            setImmediate(() => {
+              this._timedPhase('windowCatchUp', worldId, this.processWorldWindow(worldId, {
+                toGameTime: catchUpTime,
+                include: { flights: true, maintenance: true },
+                stateless: gapMs > DAY_MS // day+ gaps also run AI/listings/reputation once
+              })).catch(err => console.error(`[WINDOW] catch-up failed for ${world.name}:`, err.message));
+            });
+          }
+        }
+        // null anchor (pre-Phase-1 world): the first hot pass stamps it —
+        // history from before the column existed is never back-settled.
+      }
+
       if (process.env.NODE_ENV === 'development') {
         console.log(`✓ Started world: ${world.name} (${world.timeAcceleration}x)`);
       }
@@ -396,8 +424,12 @@ class WorldTimeService {
       const shouldSave = Math.floor(now.getTime() / 10000) !== Math.floor(lastTickAt.getTime() / 10000);
 
       if (shouldSave) {
+        // In legacy mode (WINDOW_ENGINE=0) the throttle dispatch settles as it
+        // goes, so keep the window anchor current too — re-enabling the window
+        // engine must never replay days the legacy path already settled.
+        const alsoStampProcessed = !this.windowEngineEnabled;
         await world.sequelize.query(
-          'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "updated_at" = :updatedAt WHERE id = :worldId',
+          `UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "updated_at" = :updatedAt${alsoStampProcessed ? ', last_processed_at = :currentTime' : ''} WHERE id = :worldId`,
           {
             replacements: {
               currentTime: newGameTime,
@@ -407,6 +439,11 @@ class WorldTimeService {
             }
           }
         );
+        if (alsoStampProcessed) {
+          const wpStamp = this._wp(worldId);
+          wpStamp.windowAnchor = newGameTime;
+          world.lastProcessedAt = newGameTime;
+        }
       }
 
       // Emit tick event for other systems to react
@@ -434,6 +471,24 @@ class WorldTimeService {
 
     const now = Date.now();
     const wp = this._wp(worldId); // per-world processing state
+
+    const gameDay = Math.floor(gameTime.getTime() / (24 * 60 * 60 * 1000));
+
+    if (this.windowEngineEnabled) {
+      // ── Window engine (Phase 1): one pass on the flight cadence settles
+      // flights/tours, Monday credits, week boundaries and the maintenance
+      // refresh; maintenance completions ride their own (longer) cadence ──
+      if (!wp.isProcessingWindow && now - wp.lastFlightCheck >= this._interval(this.flightCheckInterval, wp)) {
+        wp.lastFlightCheck = now;
+        const dueMaintenance = now - wp.lastMaintenanceCheck >= this._interval(this.maintenanceCheckInterval, wp);
+        if (dueMaintenance) wp.lastMaintenanceCheck = now;
+        this._timedPhase('processWindow', worldId, this.processWorldWindow(worldId, {
+          toGameTime: gameTime,
+          include: { flights: true, maintenance: dueMaintenance }
+        })).catch(err => console.error('Error in window pass:', err.message));
+      }
+    } else {
+      // ── Legacy throttle dispatch (WINDOW_ENGINE=0) ──
 
     // Check for credit deductions (throttled to reduce DB load)
     if (!wp.isProcessingCredits && now - wp.lastCreditCheck >= this._interval(this.creditCheckInterval, wp)) {
@@ -466,15 +521,17 @@ class WorldTimeService {
 
     // Refresh auto-scheduled maintenance once per game day
     // This ensures daily checks never expire (they have ~1-2 day validity)
-    const gameDay = Math.floor(gameTime.getTime() / (24 * 60 * 60 * 1000));
-    const lastRefreshDay = this.lastMaintenanceRefresh[worldId] || 0;
-    if (!wp.isRefreshingMaintenance && gameDay > lastRefreshDay) {
+    // NB no `|| 0` default: pre-1970 game dates have NEGATIVE day numbers,
+    // and `gameDay > 0` never fired for 1950s-60s worlds (long-standing bug).
+    const lastRefreshDay = this.lastMaintenanceRefresh[worldId];
+    if (!wp.isRefreshingMaintenance && (lastRefreshDay === undefined || gameDay > lastRefreshDay)) {
       this.lastMaintenanceRefresh[worldId] = gameDay;
       wp.isRefreshingMaintenance = true;
       this._timedPhase('refreshMaintenanceSchedules', worldId, this.refreshMaintenanceSchedules(worldId))
         .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
         .finally(() => { wp.isRefreshingMaintenance = false; });
     }
+    } // end legacy dispatch (part 1)
 
     // Process aircraft listings (NPC buyers/lessees) and lease-out income
     if (!wp.isProcessingListings && now - wp.lastListingCheck >= this._interval(this.listingCheckInterval, wp)) {
@@ -513,6 +570,9 @@ class WorldTimeService {
         .finally(() => { wp.isProcessingReputation = false; });
     }
 
+    // Weekly settlers (overheads, loans, deliveries) — window engine handles
+    // these inside the day walk; legacy dispatch keys them off the same maps
+    if (!this.windowEngineEnabled) {
     // Record weekly overhead costs (staff, leases, contractors) once per game week
     const WeeklyFinancial = require('../models/WeeklyFinancial');
     const currentWeekStart = WeeklyFinancial.getWeekStart(gameTime);
@@ -544,6 +604,7 @@ class WorldTimeService {
         .catch(err => console.error('Error processing deliveries:', err.message))
         .finally(() => { wp.isProcessingDeliveries = false; });
     }
+    } // end legacy dispatch (part 2 — weekly settlers)
 
     // AI flight schedules no longer need refresh - templates repeat weekly automatically
 
@@ -563,6 +624,189 @@ class WorldTimeService {
         this.lastNotificationDayEmitted[worldId] = gameDay;
         global.io.emit('notifications:refresh', { worldId: worldId });
       }
+    }
+  }
+
+  // ═══ Phase 1: window-based engine ═══════════════════════════════════════
+  // Settles all game-time-keyed work in (last_processed_at → toGameTime] in
+  // one pass. The day walk re-uses the existing settlers with synthetic
+  // timestamps (they already derive gameDate/DOW/minutes from the argument):
+  //   • flights + sightseeing tours — per elapsed game day (route-day keyed)
+  //   • credits — at 00:05 on each crossed Monday (per-membership date keyed)
+  //   • overheads / loans / deliveries — at each crossed week boundary
+  //   • maintenance completions — due-based with a 90-day lookback, so a
+  //     single call at the window end covers the whole gap
+  // Stateless processors (reputation, listings, recalls, AI) don't replay
+  // history: catch-up passes run them once at the window end, with AI given
+  // one decision round per elapsed game-week (max 4).
+  // Hot ticks call this with tiny windows on the flight cadence — one code
+  // path, two cadences. WINDOW_ENGINE=0 reverts onTick to the legacy
+  // throttle dispatch (which keeps last_processed_at current via the tick's
+  // periodic DB write, so re-enabling never replays already-settled days).
+  get windowEngineEnabled() {
+    return process.env.WINDOW_ENGINE !== '0';
+  }
+
+  async _stampProcessedAt(world, wp, t) {
+    wp.windowAnchor = t;
+    try {
+      await world.sequelize.query(
+        'UPDATE worlds SET last_processed_at = :t WHERE id = :worldId',
+        { replacements: { t, worldId: world.id } }
+      );
+      world.lastProcessedAt = t;
+    } catch (e) {
+      console.error('[WINDOW] failed to stamp last_processed_at:', e.message);
+    }
+  }
+
+  async processWorldWindow(worldId, opts = {}) {
+    const worldState = this.worlds.get(worldId);
+    if (!worldState) return;
+    const wp = this._wp(worldId);
+    if (wp.isProcessingWindow) return;
+    wp.isProcessingWindow = true;
+    try {
+      const world = worldState.world;
+      const to = opts.toGameTime ? new Date(opts.toGameTime) : new Date(worldState.inMemoryTime);
+      const include = opts.include || { flights: true, maintenance: true };
+
+      // Anchor. A null column (pre-Phase-1 world / first boot) just stamps:
+      // we never back-settle history from before the window engine existed.
+      const from = wp.windowAnchor
+        || (world.lastProcessedAt ? new Date(world.lastProcessedAt) : null);
+      if (!from) {
+        await this._stampProcessedAt(world, wp, to);
+        return;
+      }
+      if (from >= to) return;
+
+      // Cap: a long-dead world catches up over several passes instead of
+      // hitching the worker on one giant pass.
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const MAX_WINDOW_MS = 28 * DAY_MS; // 4 game-weeks
+      const capped = to.getTime() - from.getTime() > MAX_WINDOW_MS;
+      const effTo = capped ? new Date(from.getTime() + MAX_WINDOW_MS) : to;
+      if (capped || effTo.getTime() - from.getTime() > DAY_MS) {
+        console.log(`[WINDOW] ${world.name}: settling ${((effTo - from) / DAY_MS).toFixed(1)} game-days`
+          + ` (${from.toISOString()} → ${effTo.toISOString()})${capped ? ' [capped, more passes follow]' : ''}`);
+      }
+
+      const WeeklyFinancial = require('../models/WeeklyFinancial');
+      let settledTo = from;
+
+      // ── Day walk (UTC days — matches the toISOString() date keys) ──
+      let dayStart = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+      for (; dayStart.getTime() < effTo.getTime(); dayStart = new Date(dayStart.getTime() + DAY_MS)) {
+        // Settle the day at 23:59 (all completions have passed) or at the
+        // window end for the final partial day.
+        const dayEnd = new Date(Math.min(dayStart.getTime() + DAY_MS - 60000, effTo.getTime()));
+        if (dayEnd <= settledTo) continue; // already settled by a previous pass
+
+        // Monday credit deduction (idempotent per membership per Monday)
+        if (dayStart.getUTCDay() === 1) {
+          const mondayMorning = new Date(dayStart.getTime() + 5 * 60000); // Mon 00:05
+          if (mondayMorning > from && mondayMorning <= effTo) {
+            await this.processCredits(worldId, mondayMorning);
+          }
+        }
+
+        // Week boundary: overheads, loan payments, deliveries (once per week,
+        // shared keys with the legacy dispatch so the paths never double-run).
+        // Key off NOON of the settled day: getWeekStart works in server-local
+        // time, and the 23:59 settle timestamp sits within an hour of midnight
+        // — on a non-UTC machine that wobbles the week key across the boundary.
+        const weekStart = WeeklyFinancial.getWeekStart(new Date(dayStart.getTime() + 12 * 60 * 60 * 1000));
+        if (weekStart !== (this.lastOverheadWeek[worldId] || '')) {
+          this.lastOverheadWeek[worldId] = weekStart;
+          await this.recordWeeklyOverheads(worldId, dayEnd, weekStart)
+            .catch(err => console.error('Error recording weekly overheads:', err.message));
+        }
+        if (weekStart !== (this.lastLoanWeek[worldId] || '')) {
+          this.lastLoanWeek[worldId] = weekStart;
+          await this.processLoanPayments(worldId, dayEnd)
+            .catch(err => console.error('Error processing loan payments:', err.message));
+        }
+        if (weekStart !== (this.lastDeliveryWeek[worldId] || '')) {
+          this.lastDeliveryWeek[worldId] = weekStart;
+          await this.processDeliveries(worldId, dayEnd)
+            .catch(err => console.error('Error processing deliveries:', err.message));
+        }
+
+        // Flights + sightseeing tours for this day (route-day keyed)
+        if (include.flights !== false) {
+          this.marketingBoostCache.clear();
+          await this.processFlights(worldId, dayEnd);
+        }
+
+        // Stamp per settled day: a mid-pass crash never replays a settled
+        // day (lastRevenueGameDay only remembers the LAST settled date, so
+        // replaying an older day would double-credit it).
+        settledTo = dayEnd;
+        await this._stampProcessedAt(world, wp, settledTo);
+      }
+
+      // ── Once per pass at the window end ──
+      // Maintenance completions are due-based (90-day lookback) — no walk.
+      if (include.maintenance !== false) {
+        await this.processMaintenance(worldId, effTo);
+      }
+
+      // Daily maintenance schedule refresh (game-day keyed, shared map).
+      // NB no `|| 0` default: pre-1970 game dates have NEGATIVE day numbers,
+      // and `gameDay > 0` would never fire for 1950s-60s worlds.
+      const gameDay = Math.floor(effTo.getTime() / DAY_MS);
+      if (!wp.isRefreshingMaintenance
+          && (this.lastMaintenanceRefresh[worldId] === undefined || gameDay > this.lastMaintenanceRefresh[worldId])) {
+        this.lastMaintenanceRefresh[worldId] = gameDay;
+        wp.isRefreshingMaintenance = true;
+        try {
+          await this.refreshMaintenanceSchedules(worldId);
+        } finally {
+          wp.isRefreshingMaintenance = false;
+        }
+      }
+
+      // ── Stateless processors (catch-up/cold passes only) ──
+      if (opts.stateless) {
+        if (!wp.isProcessingRecalls) {
+          wp.isProcessingRecalls = true;
+          await this.processRecalls(worldId, effTo)
+            .catch(err => console.error('Error processing recalls:', err.message))
+            .finally(() => { wp.isProcessingRecalls = false; });
+        }
+        if (!wp.isProcessingListings) {
+          wp.isProcessingListings = true;
+          await this.processListings(worldId, effTo)
+            .catch(err => console.error('Error processing listings:', err.message))
+            .finally(() => { wp.isProcessingListings = false; });
+        }
+        if (!wp.isProcessingReputation) {
+          wp.isProcessingReputation = true;
+          await this.processReputation(worldId, effTo)
+            .catch(err => console.error('Error processing reputation:', err.message))
+            .finally(() => { wp.isProcessingReputation = false; });
+        }
+        // AI: one decision round per elapsed game-week (max 4), timestamps
+        // spaced through the window so era-gated decisions stay era-correct
+        if (!this.isProcessingAI) {
+          this.isProcessingAI = true;
+          try {
+            const aiDecisionService = require('./aiDecisionService');
+            const elapsedMs = effTo.getTime() - from.getTime();
+            const rounds = Math.max(1, Math.min(4, Math.floor(elapsedMs / (7 * DAY_MS))));
+            for (let i = 1; i <= rounds; i++) {
+              const tAI = new Date(from.getTime() + (elapsedMs * i) / rounds);
+              await aiDecisionService.processAIDecisions(worldId, tAI)
+                .catch(err => console.error('Error processing AI decisions:', err.message));
+            }
+          } finally {
+            this.isProcessingAI = false;
+          }
+        }
+      }
+    } finally {
+      wp.isProcessingWindow = false;
     }
   }
 

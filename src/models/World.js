@@ -72,6 +72,11 @@ const World = sequelize.define('World', {
     comment: 'Real-time of last world tick',
     field: 'last_tick_at'
   },
+  lastProcessedAt: {
+    type: DataTypes.DATE,
+    comment: 'GAME-time up to which the window engine has settled this world (flights/weeklies/etc.)',
+    field: 'last_processed_at'
+  },
   // World configuration
   era: {
     type: DataTypes.INTEGER,
