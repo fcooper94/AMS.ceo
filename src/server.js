@@ -108,8 +108,31 @@ if (process.env.HTTP_LOG === '1') {
   });
 }
 
-// Session configuration
+// Behind Railway's TLS proxy: trust X-Forwarded-* so secure cookies and
+// req.ip work correctly if/when NODE_ENV=production turns cookie.secure on
+app.set('trust proxy', 1);
+
+// Session configuration — Redis-backed when REDIS_URL is set: sessions
+// survive deploys (no more everyone-logged-out on restart) and are shared
+// across web replicas. Local dev without Redis keeps MemoryStore. The
+// client reconnects automatically; requests during a brief Redis blip
+// queue in the client's offline queue.
+let sessionStore; // undefined → express-session default MemoryStore
+if (process.env.REDIS_URL) {
+  try {
+    const { createClient } = require('redis');
+    const { RedisStore } = require('connect-redis');
+    const sessionRedis = createClient({ url: process.env.REDIS_URL });
+    sessionRedis.on('error', (e) => console.error('[Redis] session client error:', e.message));
+    sessionRedis.connect().catch((e) => console.error('[Redis] session client connect failed:', e.message));
+    sessionStore = new RedisStore({ client: sessionRedis, prefix: 'ams:sess:' });
+    console.log('[Redis] Session store: Redis (sessions survive restarts/replicas)');
+  } catch (e) {
+    console.error('[Redis] Session store setup failed — falling back to MemoryStore:', e.message);
+  }
+}
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'airline-control-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
