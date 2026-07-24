@@ -199,7 +199,7 @@
         const data = await res.json();
 
         if (data.ready) {
-          statusText.textContent = 'Update complete — redirecting...';
+          statusText.textContent = 'Ready — redirecting...';
           progressBar.style.animation = 'none';
           progressBar.style.width = '100%';
           progressBar.style.transition = 'width 0.3s ease';
@@ -207,11 +207,15 @@
           return;
         }
 
-        pollCount++;
-        if (pollCount > 6) {
-          statusText.textContent = 'Almost there, applying final changes...';
-        } else if (pollCount > 3) {
-          statusText.textContent = 'Updating tables and columns...';
+        if (data.phase === 'warming') {
+          statusText.textContent = 'Warming up — game worlds are spinning up...';
+        } else {
+          pollCount++;
+          if (pollCount > 6) {
+            statusText.textContent = 'Almost there, applying final changes...';
+          } else if (pollCount > 3) {
+            statusText.textContent = 'Updating tables and columns...';
+          }
         }
       } catch (_) {
         // Server might still be starting — keep polling

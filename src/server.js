@@ -28,12 +28,15 @@ const PORT = process.env.PORT || 3000;
 
 // --- Database sync gate ---
 // Server starts listening immediately so Railway sees a healthy container.
-// All requests are held at the gate until the DB sync finishes.
-let dbReady = false;
+// All requests are held at the gate until the DB sync finishes, then through
+// a short "warming" phase while the game worlds start and their first
+// processing burst settles (otherwise the first users hit 5-8s responses).
+let dbReady = false;          // DB synced (health endpoint reports healthy from here)
+let appPhase = 'syncing';     // 'syncing' → 'warming' → 'ready' (gate opens at 'ready')
 
 // Sync status endpoint (always available, even during sync)
 app.get('/api/sync-status', (req, res) => {
-  res.json({ ready: dbReady });
+  res.json({ ready: appPhase === 'ready', phase: appPhase });
 });
 
 // Health check (always available for Railway)
@@ -45,16 +48,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Gate middleware — serves maintenance page until DB is ready
+// Gate middleware — serves maintenance page until the app is fully ready
 app.use((req, res, next) => {
-  if (dbReady) return next();
+  if (appPhase === 'ready') return next();
 
   // Let sync-status and health through (already handled above)
   if (req.path === '/api/sync-status' || req.path === '/api/health') return next();
 
   // API requests get a 503 with retry hint
   if (req.path.startsWith('/api/')) {
-    return res.status(503).json({ error: 'Server starting up', syncing: true });
+    return res.status(503).json({ error: 'Server starting up', syncing: true, phase: appPhase });
   }
 
   // All page requests get the maintenance page
@@ -800,9 +803,11 @@ server.listen(PORT, () => {
     await demandCacheService.initialize();
   }
 
-  // Mark as ready — gate middleware will now let requests through
+  // DB is ready (health endpoint goes healthy); the request gate stays closed
+  // through the warming phase until the worlds have started and settled
   dbReady = true;
-  console.log('✓ Server ready');
+  appPhase = 'warming';
+  console.log('✓ Server ready (warming up)');
 
   // Only show detailed startup message in development
   if (process.env.NODE_ENV === 'development') {
@@ -849,6 +854,23 @@ server.listen(PORT, () => {
     }
   } else {
     console.log('[WorldTime] Simulation skipped — this server is UI/API only (worlds tick elsewhere)');
+  }
+
+  // Open the request gate. When the simulation is running headless (Railway),
+  // hold a short warm-up after the worlds start so the first users don't land
+  // in the initial processing burst (5-8s responses). Interactive local dev
+  // (TTY) skips the wait; WARMUP_SECONDS overrides either way.
+  const warmupSeconds = process.env.WARMUP_SECONDS !== undefined
+    ? Math.max(0, parseInt(process.env.WARMUP_SECONDS) || 0)
+    : (worldStarted && !process.stdin.isTTY ? 30 : 0);
+  if (warmupSeconds > 0) {
+    console.log(`⏳ Warming up for ${warmupSeconds}s before opening to traffic...`);
+    setTimeout(() => {
+      appPhase = 'ready';
+      console.log('✓ Warm-up complete — now serving traffic');
+    }, warmupSeconds * 1000);
+  } else {
+    appPhase = 'ready';
   }
 
   // Pre-warm airport cache for all active worlds (non-blocking)
