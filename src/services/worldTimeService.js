@@ -1363,13 +1363,19 @@ class WorldTimeService {
       // Store on instance for processFlightRevenue to read (cleared below)
       this._flightCycleCache = { routesByPair, membershipAttrMap, membershipAttrObj, competitorAcMap };
 
-      // 1. Find same-day templates (depart today, complete today) whose round-trip has finished
-      const sameDayTemplates = await ScheduledFlight.findAll({
-        where: {
-          dayOfWeek: gameDayOfWeek,
-          arrivalDayOffset: 0,
-          isActive: true
-        },
+      // Find templates completing today. ONE query; the day-offset is derived
+      // in JS from the actual duration rather than trusted from the stored
+      // arrivalDayOffset column — legacy rows with NULL offsets (pre-template
+      // migration) matched NEITHER of the old queries (`= 0` excludes NULL in
+      // SQL) and their routes NEVER settled revenue: long-haul internationals
+      // showing 0% LF after weeks of flying (e.g. EGBB-KEWR). Deriving from
+      // duration also covers rows whose stored offset disagrees with their
+      // actual round-trip length, and offsets beyond the old 1..3 loop.
+      // Only departures from the last 4 days can complete today (offset 0-3
+      // covers any realistic round trip) — keeps the fetch at ~4/7 of rows
+      const candidateDows = [0, 1, 2, 3].map(o => (gameDayOfWeek - o + 7) % 7);
+      const candidateTemplates = await ScheduledFlight.findAll({
+        where: { isActive: true, dayOfWeek: { [Op.in]: candidateDows } },
         include: [{
           model: Route,
           as: 'route',
@@ -1392,60 +1398,25 @@ class WorldTimeService {
         }]
       });
 
-      for (const template of sameDayTemplates) {
-        // Use cached totalDurationMinutes if available, otherwise compute
+      for (const template of candidateTemplates) {
         const [depH, depM] = template.departureTime.split(':').map(Number);
         const depMinutes = depH * 60 + depM;
-        const totalDuration = template.totalDurationMinutes || this.computeTemplateDuration(template);
-        const completionMinutes = depMinutes + totalDuration;
+        // Use cached totalDurationMinutes if available, otherwise compute
+        const totalDuration = Math.max(0, template.totalDurationMinutes || this.computeTemplateDuration(template));
+
+        // Which day (relative to departure) does the round trip complete on,
+        // and at what minute of that day?
+        const effOffset = Math.floor((depMinutes + totalDuration) / 1440);
+        const completionMinutes = (depMinutes + totalDuration) - effOffset * 1440;
+
+        // Does this template complete TODAY?
+        const settleDow = (template.dayOfWeek + effOffset) % 7;
+        if (settleDow !== gameDayOfWeek) continue;
 
         if (currentMinutesOfDay >= completionMinutes) {
           await this.processTemplateRevenue(template, worldId, currentGameTime, gameDate);
         } else if (DEBUG_SIM) {
-          simLog(`⏳ Flight ${template.route?.routeNumber || '?'} not yet complete: now=${currentMinutesOfDay}min, completes=${completionMinutes}min (dep=${depMinutes}+dur=${totalDuration})`);
-        }
-      }
-
-      // 2. Find multi-day templates that departed on previous days and complete today
-      for (let offset = 1; offset <= 3; offset++) {
-        const pastDow = (gameDayOfWeek - offset + 7) % 7;
-
-        const multiDayTemplates = await ScheduledFlight.findAll({
-          where: {
-            dayOfWeek: pastDow,
-            arrivalDayOffset: offset,
-            isActive: true
-          },
-          include: [{
-            model: Route,
-            as: 'route',
-            where: {
-              worldMembershipId: { [Op.in]: membershipIds },
-              [Op.or]: [
-                { lastRevenueGameDay: { [Op.ne]: gameDate } },
-                { lastRevenueGameDay: null }
-              ]
-            },
-            include: [
-              { model: require('../models/Airport'), as: 'departureAirport' },
-              { model: require('../models/Airport'), as: 'arrivalAirport' },
-              { model: require('../models/Airport'), as: 'techStopAirport' }
-            ]
-          }, {
-            model: UserAircraft,
-            as: 'aircraft',
-            include: [{ model: Aircraft, as: 'aircraft' }]
-          }]
-        });
-
-        for (const template of multiDayTemplates) {
-          // Arrival time is the time on the arrival day
-          const [arrH, arrM] = (template.arrivalTime || '23:59:00').split(':').map(Number);
-          const arrMinutes = arrH * 60 + arrM;
-
-          if (currentMinutesOfDay >= arrMinutes) {
-            await this.processTemplateRevenue(template, worldId, currentGameTime, gameDate);
-          }
+          simLog(`⏳ Flight ${template.route?.routeNumber || '?'} not yet complete: now=${currentMinutesOfDay}min, completes=${completionMinutes}min (dep=${depMinutes}+dur=${totalDuration}, offset=${effOffset})`);
         }
       }
 
