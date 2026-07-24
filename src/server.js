@@ -72,6 +72,25 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), requ
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Event-loop stall monitor: when SLOW request warnings hit static files and
+// trivial endpoints simultaneously, the process itself is stalling (blocked
+// event loop / CPU starvation), not the endpoints. This logs the stalls with
+// their magnitude so the culprit window is visible in Railway logs.
+{
+  const CHECK_MS = 500;
+  let last = Date.now();
+  let lastLogged = 0;
+  setInterval(() => {
+    const now = Date.now();
+    const lag = now - last - CHECK_MS;
+    last = now;
+    if (lag > 1000 && now - lastLogged > 10000) {
+      lastLogged = now;
+      console.warn(`⚠ EVENT-LOOP STALL ~${Math.round(lag)}ms (process blocked — check tick/refresh work around this timestamp)`);
+    }
+  }, CHECK_MS);
+}
+
 // Request logging: only log slow requests (>3s) as warnings.
 // Set HTTP_LOG=1 to see all requests (morgan 'dev' format).
 if (process.env.HTTP_LOG === '1') {

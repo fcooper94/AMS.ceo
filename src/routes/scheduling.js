@@ -231,19 +231,24 @@ router.get('/data', async (req, res) => {
     ];
 
     if (needsRefresh) {
-      // Refresh maintenance in parallel with routes/flights, then query maintenance after
-      const refreshPromises = fleet
-        .filter(a => a.autoScheduleDaily || a.autoScheduleWeekly || a.autoScheduleA || a.autoScheduleC || a.autoScheduleD)
-        .map(a => refreshAutoScheduledMaintenance(a.id, activeWorldId).catch(err => {
-          console.error(`[MAINT-REFRESH] Error refreshing aircraft ${a.id}:`, err.message);
-        }));
-      queries.unshift(Promise.all(refreshPromises));
+      // Fire-and-forget: the maintenance horizon top-up used to run inline and
+      // added 3-7s to this request whenever the debounce expired. Serve the
+      // current rows now; the refreshed horizon appears on the next load.
+      // (Newly purchased aircraft get their blocks from the explicit
+      // /refresh-maintenance call in the purchase flow, not from here.)
       maintenanceRefreshCache.set(worldMembershipId, Date.now());
+      setImmediate(() => {
+        fleet
+          .filter(a => a.autoScheduleDaily || a.autoScheduleWeekly || a.autoScheduleA || a.autoScheduleC || a.autoScheduleD)
+          .forEach(a => refreshAutoScheduledMaintenance(a.id, activeWorldId).catch(err => {
+            console.error(`[MAINT-REFRESH] Error refreshing aircraft ${a.id}:`, err.message);
+          }));
+      });
     }
 
     const queryResults = await Promise.all(queries);
-    const routes = needsRefresh ? queryResults[1] : queryResults[0];
-    const flights = needsRefresh ? queryResults[2] : queryResults[1];
+    const routes = queryResults[0];
+    const flights = queryResults[1];
 
     // Query maintenance (after refresh if it ran, or directly if debounced)
     const maintenancePatterns = aircraftIds.length > 0
