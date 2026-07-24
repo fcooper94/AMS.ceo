@@ -667,11 +667,14 @@ class WorldTimeService {
       // competing routes, membership attributes, and competitor aircraft.
       // Loaded once, passed via this._flightCycleCache, cleared after the cycle.
 
-      // All active routes in this world (for competitor lookups by airport pair)
+      // All active routes in this world (for competitor lookups by airport pair).
+      // raw: building 10K+ Sequelize instances every cycle was pure synchronous
+      // CPU — a large cause of the multi-second event-loop stalls.
       const allActiveRoutes = await Route.findAll({
         where: { worldMembershipId: { [Op.in]: membershipIds }, isActive: true },
         attributes: ['id', 'departureAirportId', 'arrivalAirportId', 'economyPrice',
-          'worldMembershipId', 'assignedAircraftId', 'cargoRates']
+          'worldMembershipId', 'assignedAircraftId', 'cargoRates'],
+        raw: true
       });
       // Key by "depId|arrId" (both directions) for O(1) competitor lookup
       const routesByPair = new Map();
@@ -689,9 +692,14 @@ class WorldTimeService {
       // All membership attributes (reputation, contractor tiers, isAI)
       const allMemberships = await WorldMembership.findAll({
         where: { worldId, isActive: true },
-        attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor']
+        attributes: ['id', 'reputation', 'isAI', 'cleaningContractor', 'groundContractor'],
+        raw: true
       });
       const membershipAttrMap = new Map(allMemberships.map(m => [m.id, m]));
+      // Plain-object view built ONCE — the per-flight code needs it in object
+      // form, and rebuilding it per flight (Object.fromEntries over ~1.7K
+      // entries × hundreds of flights) was another stall source
+      const membershipAttrObj = Object.fromEntries(allMemberships.map(m => [m.id, m]));
 
       // All assigned aircraft with cargo/condition data (for competitor scoring)
       const allAssignedAcIds = [...new Set(allActiveRoutes.map(r => r.assignedAircraftId).filter(Boolean))];
@@ -701,13 +709,15 @@ class WorldTimeService {
           where: { id: { [Op.in]: allAssignedAcIds } },
           attributes: ['id', 'ageYears', 'conditionPercentage', 'cargoConfig',
             'cargoLightKg', 'cargoStandardKg', 'cargoHeavyKg'],
-          include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }]
+          include: [{ model: Aircraft, as: 'aircraft', attributes: ['type'] }],
+          raw: true,
+          nest: true // keeps a.aircraft.type shape without instance building
         });
         competitorAcMap = Object.fromEntries(allCompAircraft.map(a => [a.id, a]));
       }
 
       // Store on instance for processFlightRevenue to read (cleared below)
-      this._flightCycleCache = { routesByPair, membershipAttrMap, competitorAcMap };
+      this._flightCycleCache = { routesByPair, membershipAttrMap, membershipAttrObj, competitorAcMap };
 
       // 1. Find same-day templates (depart today, complete today) whose round-trip has finished
       const sameDayTemplates = await ScheduledFlight.findAll({
@@ -1204,7 +1214,7 @@ class WorldTimeService {
         if (competitorCount > 0) {
           // Competitor memberships + aircraft: use cycle cache (pre-loaded once)
           const mbrMap = cache
-            ? Object.fromEntries([...cache.membershipAttrMap.entries()])
+            ? cache.membershipAttrObj
             : Object.fromEntries((await WorldMembership.findAll({
                 where: { id: { [Op.in]: [...new Set(competingRoutesList.map(r => r.worldMembershipId))] } },
                 attributes: ['id', 'reputation', 'cleaningContractor', 'groundContractor']
