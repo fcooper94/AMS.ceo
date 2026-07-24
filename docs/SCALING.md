@@ -136,27 +136,42 @@ applies pause/resume/accel from DB, stops deleted ones), web-role
 **Rollback:** delete/stop `ams-sim`, remove `SIM_AUTOSTART` from the web
 service (unset = combined mode), redeploy.
 
-### Phase 4 — sharded sim workers
-Trigger: one sim worker can't hold all hot worlds + cold queue.
-- Workers claim worlds via a **DB lease**: `worlds.assigned_worker` +
-  `worker_heartbeat_at`; claim = atomic UPDATE where lease is null/stale.
-  Crashed workers' worlds get re-claimed automatically.
-- Hot worlds weighted so they spread across workers; cold queue is split by
-  claim. Scaling = duplicate the worker service in Railway.
-- **DB pool budgeting becomes mandatory**: replace the "80% of
-  max_connections" auto-size with a `DB_POOL_MAX` env per service
-  (e.g. web 60, each worker 40; keep total < 400 of the 500).
+### Phase 4 — sharded sim workers — CODE COMPLETE 2026-07-24 (tested on real PG; dormant until a 2nd worker exists)
 
-### Phase 5 — data discipline (parallel, ongoing)
+Shipped: `worlds.assigned_worker` + `worker_heartbeat_at` (additive guards),
+lease claim/heartbeat/release in `worldTimeService`. Claim = atomic UPDATE
+of unclaimed/stale rows (`FOR UPDATE SKIP LOCKED`, MP + recently-active
+first, batches of 5 per 15s reconciler sweep — concurrent workers converge
+to a fair split); heartbeat rides the reconciler; stale = 60s (crashed
+worker's worlds re-claimed automatically — safe because the window engine
+settles from `last_processed_at`); graceful shutdown releases leases.
+`WORKER_ID` env names the worker (default `sim-1`); `WORKER_LEASES=0`
+reverts to claim-everything. With ONE worker, behaviour is identical to
+pre-lease. **To scale: duplicate `ams-sim` in Railway with `WORKER_ID=sim-2`
+— nothing else.** Verified on local PG: single-worker claims all, healthy
+leases not stolen, stale takeover, MP-first ordering, release.
+`DB_POOL_MAX` env now short-circuits the 80% auto-size — when adding a 2nd
+worker, SET IT on every service (e.g. web 60, each sim 40; keep the sum
+comfortably under max_connections).
+
+### Phase 5 — data discipline — PRUNE SERVICE SHIPPED 2026-07-24
 - ✅ **SP AI cap: 200 airlines** (was ~740; changed 2026-07-24). Spawn tiers
   concentrate them at the top ~100 airports by type + traffic, with region
   weights keeping UK/US/EU hubs densest. Existing worlds unaffected (spawn is
   creation-time only).
-- Aggressive pruning everywhere on the maintenance-prune model: old
-  notifications, completed loans, stale weekly_financials, completed worlds.
+- ✅ **`src/services/pruneService.js`** — daily bounded-batch pruning (sim
+  role only, 5K-row batches, 200K/rule/day safety valve, `PRUNE=0`
+  disables). Retention (agreed 2026-07-24): notifications read>30 /
+  any>120 game-days; weekly_financials keep 260 game-weeks (5 game-years);
+  loans (paid_off/defaulted) 1 game-year after last payment; **dead worlds**
+  (status=completed >30 real days) have ALL gameplay data purged
+  (flights→maintenance→tours→campaigns→routes→aircraft→the rest, FK-safe
+  order verified against information_schema) — the worlds row and
+  world_memberships survive as a record. All game-time cutoffs join through
+  the owning world's own clock (per-world era scoping).
 - Row budget at target scale (3K worlds × ~80 AI × ~4 aircraft ≈ 1M aircraft,
-  ~2M routes, maintenance pruned to horizon) — fine for single Postgres, but
-  only WITH pruning and the world-scoped indexes.
+  ~2M routes, maintenance pruned to horizon) — fine for single Postgres
+  WITH the above pruning and the world-scoped indexes.
 
 ---
 

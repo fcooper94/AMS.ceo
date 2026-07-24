@@ -671,12 +671,23 @@ Deliberately parked; get sign-off before changing.
   the DB, so pauseOnSessionEnd auto-paused under active players).
   Phase 1's boot catch-up also verified live on this deploy ([WINDOW]
   catch-up passes settled the deploy gap — deploys no longer skip time).
-- **NEXT (agreed): sessions MemoryStore → Redis** (`connect-redis`; Redis
-  already provisioned). Kills the every-deploy-logs-everyone-out problem
-  and unblocks 2+ web replicas. Then: VATSIM auth rip-out (dead OAuth
-  routes; users still keyed by vatsimId — env-gated since f1181b6),
-  Phase 5 pruning, Phase 4 sharded sim workers only when one sim can't
-  hold the load.
+- **Sessions → Redis LIVE and verified** (0c45ab9) — `connect-redis@9`,
+  `REDIS_URL`-gated (local dev keeps MemoryStore), sessions survive
+  deploys/restarts (verified: login → service restart → still logged in);
+  web replicas unblocked; `trust proxy` set for a future
+  `NODE_ENV=production` flip.
+- **Phase 4 (worker leases) CODE COMPLETE, dormant with one worker** —
+  atomic DB lease claim (SKIP LOCKED, MP-first), 60s stale takeover,
+  release on shutdown; `WORKER_ID` (default sim-1), `WORKER_LEASES=0`
+  rollback. Scale = duplicate ams-sim with WORKER_ID=sim-2 AND set
+  `DB_POOL_MAX` on every service (web 60, each sim 40).
+- **Phase 5 (pruning) SHIPPED** — `pruneService.js`, daily on sim,
+  `PRUNE=0` disables. Retention: notifications read>30/any>120 game-days;
+  financials 260 game-weeks; finished loans 1 game-year after last
+  payment; dead worlds purged 30 real-days after completion (worlds row +
+  memberships kept). Game-time cutoffs use each world's own clock.
+  Remaining, all elective: VATSIM auth rip-out (dead OAuth routes; users
+  still keyed by vatsimId — env-gated since f1181b6).
 
 Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
 ~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any
