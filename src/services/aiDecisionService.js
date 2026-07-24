@@ -1112,11 +1112,22 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
     else { targetRange = 800; targetCapacity = 50; }
   }
 
-  // Score each candidate: range fit + capacity fit + era popularity + fleet commonality
-  const existingFamilies = new Set();
+  // Score each candidate: range fit + capacity fit + era popularity + fleet commonality.
+  // Count per family (manufacturer+model). NB the fields live on the included
+  // Aircraft (ac.aircraft.*) — reading them off the UserAircraft row returned
+  // "undefined undefined", so the commonality bonus NEVER matched and AI
+  // fleets scattered into one-of-each-type confetti.
+  const FAMILY_TARGET = 7; // enough airframes of one type for a full weekly rotation
+  const familyCounts = new Map();
   for (const ac of currentFleet) {
-    if (ac.aircraft) existingFamilies.add(`${ac.manufacturer} ${ac.model}`);
+    if (ac.aircraft) {
+      const fam = `${ac.aircraft.manufacturer} ${ac.aircraft.model}`;
+      familyCounts.set(fam, (familyCounts.get(fam) || 0) + 1);
+    }
   }
+  // Is any owned family still below the rotation target? Then building it up
+  // beats opening yet another type (fleet commonality overhead is per family).
+  const hasSubTargetFamily = [...familyCounts.values()].some(n => n < FAMILY_TARGET);
 
   const scored = candidates.map(ac => {
     let score = 0;
@@ -1144,8 +1155,16 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
     // Penalize aircraft about to be discontinued (within 5 years of availableUntil)
     if (ac.availableUntil && ac.availableUntil - worldYear < 5) score -= 20;
 
-    // Fleet commonality bonus
-    if (existingFamilies.has(`${ac.manufacturer} ${ac.model}`)) score += 20;
+    // Fleet commonality: build one family up to FAMILY_TARGET before opening
+    // another (commonality overhead is a weekly cost per unique family, and
+    // ~7 airframes of a type supports a rotating weekly schedule). A new
+    // family is still chosen when the mission demands it — the range/capacity
+    // penalties above (-30..-50) outweigh the -25 here.
+    const fam = `${ac.manufacturer} ${ac.model}`;
+    const famCount = familyCounts.get(fam) || 0;
+    if (famCount > 0 && famCount < FAMILY_TARGET) score += 40; // build the family out
+    else if (famCount >= FAMILY_TARGET) score += 15;           // established family, still preferred
+    else if (hasSubTargetFamily) score -= 25;                  // new type while a family is half-built
 
     // Minimum viable size: penalize tiny aircraft (< 20 pax) unless at small airport
     if (ac.passengerCapacity < 20 && baseAirport?.type !== 'Small Regional') score -= 25;
@@ -1160,9 +1179,11 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
     return { aircraft: ac, score };
   });
 
-  // Sort by score descending, pick from top candidates with some randomness
+  // Sort by score descending, pick from top candidates with some randomness.
+  // Top-3 (was 5): enough variety between airlines without undermining the
+  // commonality preference within one airline's fleet.
   scored.sort((a, b) => b.score - a.score);
-  const topN = scored.slice(0, Math.min(5, scored.length));
+  const topN = scored.slice(0, Math.min(3, scored.length));
   const chosen = topN[Math.floor(Math.random() * topN.length)].aircraft;
 
   const rawPrice = parseFloat(chosen.purchasePrice) || 50000000;
@@ -1580,8 +1601,14 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
 
     if (viable.length === 0) continue;
 
-    // Score replacements (prefer similar capacity, newer, affordable)
+    // Score replacements (prefer similar capacity, newer, affordable, and
+    // families the airline ALREADY flies — renewal shouldn't open yet another
+    // type when an owned modern family fits)
     const balance = parseFloat(airline.balance) || 0;
+    const ownedFamilies = new Set(
+      fleet.filter(f => f.aircraft && f.id !== ua.id)
+        .map(f => `${f.aircraft.manufacturer} ${f.aircraft.model}`)
+    );
     const scored = viable.map(ac => {
       let score = 0;
       const capDiff = Math.abs(ac.passengerCapacity - acType.passengerCapacity);
@@ -1591,6 +1618,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
       else if (yearsNew <= 15) score += 5;
       const price = Math.round((parseFloat(ac.purchasePrice) || 50000000) * eraEconomicService.getEraMultiplier(worldYear));
       if (price <= balance * 0.4) score += 5; // Can afford to buy
+      if (ownedFamilies.has(`${ac.manufacturer} ${ac.model}`)) score += 15; // fleet commonality
       return { aircraft: ac, score, price };
     });
 

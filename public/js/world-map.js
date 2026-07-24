@@ -37,7 +37,19 @@ let natTrackData = null;
 let positionUpdateInterval = null;
 
 // Update all marker positions in one synchronized batch
+let _lastPositionUpdateAt = Date.now();
 function syncUpdateAllPositions() {
+  // Background tabs throttle timers, so after a refocus the next update can
+  // be many game-minutes ahead. Positions are always computed from CURRENT
+  // game time (flights "fly" regardless), but the glide transition would
+  // animate the gap as a fast-forward — so when updates were interrupted,
+  // SNAP to the current positions with transitions off, then resume gliding.
+  const _now = Date.now();
+  const _snap = _now - _lastPositionUpdateAt > 4500;
+  _lastPositionUpdateAt = _now;
+  const _mapEl = (typeof map !== 'undefined' && map && map.getContainer) ? map.getContainer() : null;
+  if (_snap && _mapEl) _mapEl.classList.add('ac-no-transition');
+
   activeFlights.forEach(flight => {
     const marker = flightMarkers.get(flight.id);
 
@@ -98,6 +110,12 @@ function syncUpdateAllPositions() {
 
   // Refresh flights list (only if open)
   if (flightsListOpen) updateFlightsListPositions();
+
+  // Re-enable glide transitions after a snap has painted
+  if (_snap && _mapEl) {
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      _mapEl.classList.remove('ac-no-transition')));
+  }
 }
 
 // Start synchronized position updates (2 second interval - aircraft move slowly enough)
@@ -105,6 +123,13 @@ function startPositionUpdates() {
   if (positionUpdateInterval) return;
   positionUpdateInterval = setInterval(syncUpdateAllPositions, 2000);
 }
+
+// On tab refocus, update immediately (the snap logic in
+// syncUpdateAllPositions puts every plane at its correct current position
+// without the fast-forward glide) instead of waiting for the next interval
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && activeFlights.length > 0) syncUpdateAllPositions();
+});
 
 // Stop position updates
 function stopPositionUpdates() {
