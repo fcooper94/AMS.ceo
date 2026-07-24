@@ -729,6 +729,15 @@ other worlds from processing flights, maintenance, and revenue. Fixed:
   attributes, and competitor aircraft pre-loaded once per cycle (3 queries
   vs 100+ per-flight). Competitor lookup by airport-pair key in memory.
   `processReputation` batch-loads fleets + routes (2 queries vs N+N).
+- **Batch WRITES too (2026-07-24):** revenue results accumulate in a
+  per-world `wp.revenueAcc` and flush ONCE per flight cycle in a single
+  transaction (route stats + `lastRevenueGameDay` settle-marks, balance
+  increments, weekly-financial increments + JSONB breakdown merges,
+  aircraft hours) — replaced ~8 awaited round-trips per settled flight.
+  Money and settle-marks are atomic: a failed flush re-settles next cycle,
+  never double-pays. `REVENUE_BATCH=0` = same math, per-template flush.
+  The acc must stay PER-WORLD (concurrent worlds' cycles would clobber a
+  shared one).
 - **Connection pool** bumped from 5 → auto-sized (80% of Postgres
   `max_connections`, cap 80). Was the primary bottleneck — 5 connections
   shared between 5 worlds + API requests.

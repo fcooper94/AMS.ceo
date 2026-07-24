@@ -1159,6 +1159,110 @@ class WorldTimeService {
     }
   }
 
+  // ── Revenue write batching ────────────────────────────────────────────────
+  // processFlightRevenue used to make ~8 awaited DB round-trips per settled
+  // flight; on a big AI world that's tens of thousands of sequential queries
+  // per cycle (the 100s processFlights passes). Results now accumulate in
+  // memory and flush ONCE per cycle in a single transaction: route stats +
+  // settle-marks, balance increments, weekly-financial increments + JSONB
+  // breakdown merges, aircraft hours. REVENUE_BATCH=0 flushes per template
+  // (legacy cadence, same math).
+  get revenueBatchEnabled() {
+    return process.env.REVENUE_BATCH !== '0';
+  }
+
+  // NB: the accumulator is PER-WORLD (_wp state) — multiple worlds' flight
+  // cycles run concurrently on one sim, and a shared accumulator would let
+  // one world's cycle clobber another's un-flushed money.
+  _newRevenueAcc(worldId) {
+    const wp = this._wp(worldId);
+    wp.revenueAcc = {
+      routes: new Map(),    // routeId -> final stat snapshot (+ lastRevenueGameDay)
+      balances: new Map(),  // membershipId -> profit delta
+      weekly: new Map(),    // "membershipId|weekStart" -> {fields, pax, cargo} deltas
+      aircraft: new Map()   // aircraftId -> {hoursDelta, lastTransitCheckDate}
+    };
+    return wp.revenueAcc;
+  }
+
+  async _flushRevenueAcc(worldId) {
+    const wp = this._wp(worldId);
+    const acc = wp.revenueAcc;
+    if (!acc) return;
+    wp.revenueAcc = null;
+    const empty = acc.routes.size === 0 && acc.balances.size === 0
+      && acc.weekly.size === 0 && acc.aircraft.size === 0;
+    if (empty) return;
+
+    const sequelize = require('../config/database');
+    const WeeklyFinancial = require('../models/WeeklyFinancial');
+    try {
+      await sequelize.transaction(async (t) => {
+        // Route stats + settle-marks (snapshot values computed in-cycle)
+        for (const [routeId, rs] of acc.routes) {
+          const vals = {
+            totalFlights: rs.totalFlights,
+            totalRevenue: rs.totalRevenue,
+            totalCosts: rs.totalCosts,
+            totalPassengers: rs.totalPassengers,
+            averageLoadFactor: Math.round(rs.averageLoadFactor * 100) / 100
+          };
+          if (rs.lastRevenueGameDay !== undefined) vals.lastRevenueGameDay = rs.lastRevenueGameDay;
+          await Route.update(vals, { where: { id: routeId }, transaction: t });
+        }
+
+        // Balances as increments (never absolute — purchases/costs elsewhere
+        // in the same window can't be clobbered)
+        for (const [membershipId, delta] of acc.balances) {
+          if (delta === 0) continue;
+          await WorldMembership.increment(
+            { balance: delta }, { where: { id: membershipId }, transaction: t });
+        }
+
+        // Weekly financials: one findOrCreate + increment + breakdown merge
+        // per membership-week (was 4 round-trips per FLIGHT)
+        for (const [, wf] of acc.weekly) {
+          const [rec] = await WeeklyFinancial.findOrCreate({
+            where: { worldMembershipId: wf.worldMembershipId, weekStart: wf.weekStart },
+            defaults: {},
+            transaction: t
+          });
+          await rec.increment(wf.fields, { transaction: t });
+          const pb = rec.passengerRevenueBreakdown || {};
+          const cb = rec.cargoRevenueBreakdown || {};
+          await rec.update({
+            passengerRevenueBreakdown: {
+              economy:     (pb.economy     || 0) + wf.pax.economy,
+              economyPlus: (pb.economyPlus || 0) + wf.pax.economyPlus,
+              business:    (pb.business    || 0) + wf.pax.business,
+              first:       (pb.first       || 0) + wf.pax.first
+            },
+            cargoRevenueBreakdown: Object.fromEntries(
+              Object.keys({ ...cb, ...wf.cargo }).map(k => [k, (cb[k] || 0) + (wf.cargo[k] || 0)])
+            )
+          }, { transaction: t });
+        }
+
+        // Aircraft: hours as increments, transit-check date as a set
+        for (const [aircraftId, as] of acc.aircraft) {
+          if (as.hoursDelta) {
+            await UserAircraft.increment(
+              { totalFlightHours: as.hoursDelta }, { where: { id: aircraftId }, transaction: t });
+          }
+          if (as.lastTransitCheckDate !== undefined) {
+            await UserAircraft.update(
+              { lastTransitCheckDate: as.lastTransitCheckDate },
+              { where: { id: aircraftId }, transaction: t });
+          }
+        }
+      });
+    } catch (err) {
+      // Nothing was marked settled (settle-marks are in the same transaction),
+      // so the next cycle re-processes the day — no lost or doubled revenue.
+      console.error('[REVENUE] flush failed — cycle will re-settle:', err.message);
+    }
+  }
+
   /**
    * Process flight revenue for weekly templates
    * Templates repeat every week - no status transitions needed.
@@ -1327,6 +1431,10 @@ class WorldTimeService {
     } catch (error) {
       console.error('Error processing flights:', error.message);
     } finally {
+      // Flush this world's accumulated revenue in one transaction (settle-
+      // marks + money land atomically). No-op when REVENUE_BATCH=0 (already
+      // flushed per template) or when nothing settled this cycle.
+      await this._flushRevenueAcc(worldId);
       this._flightCycleCache = null; // clear per-cycle caches
     }
   }
@@ -1502,12 +1610,38 @@ class WorldTimeService {
     // Delegate to the existing processFlightRevenue logic
     await this.processFlightRevenue(template, worldId, currentGameTime);
 
-    // Mark this route as having had revenue processed today
-    await template.route.update({ lastRevenueGameDay: gameDate });
+    // Mark this route as having had revenue processed today, and record the
+    // transit check — both ride the revenue accumulator so the settle-mark
+    // lands in the SAME transaction as the money (a mid-flush crash re-settles
+    // cleanly instead of double-paying or losing the day).
+    const acc = this._wp(worldId).revenueAcc || this._newRevenueAcc(worldId);
+    let rs = acc.routes.get(template.route.id);
+    if (!rs) {
+      rs = {
+        totalFlights: parseInt(template.route.totalFlights) || 0,
+        totalRevenue: parseFloat(template.route.totalRevenue) || 0,
+        totalCosts: parseFloat(template.route.totalCosts) || 0,
+        totalPassengers: parseInt(template.route.totalPassengers) || 0,
+        averageLoadFactor: parseFloat(template.route.averageLoadFactor) || 0,
+        lastRevenueGameDay: undefined
+      };
+      acc.routes.set(template.route.id, rs);
+    }
+    rs.lastRevenueGameDay = gameDate;
 
-    // Record transit check on aircraft
     if (template.aircraft) {
-      await template.aircraft.update({ lastTransitCheckDate: currentGameTime });
+      let as = acc.aircraft.get(template.aircraft.id);
+      if (!as) {
+        as = { hoursDelta: 0, lastTransitCheckDate: undefined };
+        acc.aircraft.set(template.aircraft.id, as);
+      }
+      as.lastTransitCheckDate = currentGameTime;
+    }
+
+    // Legacy write cadence (REVENUE_BATCH=0): flush after every template —
+    // identical math, per-flight write timing
+    if (!this.revenueBatchEnabled) {
+      await this._flushRevenueAcc(worldId);
     }
 
     simLog(`✓ Template flight ${template.route.routeNumber} revenue processed for ${gameDate}`);
@@ -2050,74 +2184,86 @@ class WorldTimeService {
 
       const profit = totalRevenue - totalCosts;
 
-      // Update route statistics
-      const routeFlights = (parseInt(route.totalFlights) || 0) + 1;
-      const routeRevenue = (parseFloat(route.totalRevenue) || 0) + totalRevenue;
-      const routeCosts = (parseFloat(route.totalCosts) || 0) + totalCosts;
-      const routePax = (parseInt(route.totalPassengers) || 0) + passengers;
-      const routeAvgLF = routeFlights > 0
-        ? ((parseFloat(route.averageLoadFactor) || 0) * (routeFlights - 1) + loadFactor) / routeFlights
+      // ── Accumulate results (flushed in one transaction per flight cycle —
+      // see _flushRevenueAcc; REVENUE_BATCH=0 flushes per template instead).
+      // This replaced ~8 awaited round-trips per flight (route update,
+      // membership read+save, weekly findOrCreate+increment+reload+update,
+      // aircraft save) — the dominant cost of processFlights on big worlds.
+      const acc = this._wp(worldId).revenueAcc || this._newRevenueAcc(worldId);
+
+      // Route statistics: keep a working snapshot per route, starting from
+      // the DB values on first touch this cycle
+      let rs = acc.routes.get(route.id);
+      if (!rs) {
+        rs = {
+          totalFlights: parseInt(route.totalFlights) || 0,
+          totalRevenue: parseFloat(route.totalRevenue) || 0,
+          totalCosts: parseFloat(route.totalCosts) || 0,
+          totalPassengers: parseInt(route.totalPassengers) || 0,
+          averageLoadFactor: parseFloat(route.averageLoadFactor) || 0,
+          lastRevenueGameDay: undefined
+        };
+        acc.routes.set(route.id, rs);
+      }
+      rs.totalFlights += 1;
+      rs.totalRevenue += totalRevenue;
+      rs.totalCosts += totalCosts;
+      rs.totalPassengers += passengers;
+      rs.averageLoadFactor = rs.totalFlights > 0
+        ? ((rs.averageLoadFactor * (rs.totalFlights - 1)) + loadFactor) / rs.totalFlights
         : loadFactor;
 
-      await route.update({
-        totalFlights: routeFlights,
-        totalRevenue: routeRevenue,
-        totalCosts: routeCosts,
-        totalPassengers: routePax,
-        averageLoadFactor: Math.round(routeAvgLF * 100) / 100
-      });
+      // Airline balance delta (applied as an increment at flush — never an
+      // absolute write, so concurrent purchases/costs can't be clobbered)
+      acc.balances.set(route.worldMembershipId,
+        (acc.balances.get(route.worldMembershipId) || 0) + profit);
 
-      // Credit/debit airline balance
-      const membership = await WorldMembership.findByPk(route.worldMembershipId);
-      if (membership) {
-        membership.balance = (parseFloat(membership.balance) || 0) + profit;
-        await membership.save();
-      }
-
-      // Record to weekly financials
-      try {
+      // Weekly financials: numeric field deltas + JSONB breakdown deltas
+      {
         const WeeklyFinancial = require('../models/WeeklyFinancial');
         const weekStart = WeeklyFinancial.getWeekStart(currentGameTime);
-        const [weekRecord] = await WeeklyFinancial.findOrCreate({
-          where: { worldMembershipId: route.worldMembershipId, weekStart },
-          defaults: {}
-        });
-        await weekRecord.increment({
-          flightRevenue: totalRevenue,
-          fuelCosts: fuelCost,
-          crewCosts: crewCost,
-          maintenanceCosts: maintenanceCost,
-          airportFees: airportFees + navCharges,
-          groundHandlingCosts: groundHandling,
-          paxServiceCosts: paxServiceCost + cateringCost + distributionCost,
-          flights: 1,
-          passengers: passengers
-        });
-
-        // Merge per-cabin and per-cargo breakdown into JSONB columns
-        await weekRecord.reload();
-        const pb = weekRecord.passengerRevenueBreakdown || {};
-        const cb = weekRecord.cargoRevenueBreakdown || {};
-        await weekRecord.update({
-          passengerRevenueBreakdown: {
-            economy:     (pb.economy     || 0) + cabinRevenue.economy,
-            economyPlus: (pb.economyPlus || 0) + cabinRevenue.economyPlus,
-            business:    (pb.business    || 0) + cabinRevenue.business,
-            first:       (pb.first       || 0) + cabinRevenue.first
-          },
-          cargoRevenueBreakdown: Object.fromEntries(
-            CARGO_TYPE_KEYS.map(k => [k, (cb[k] || 0) + (cargoByType[k] || 0)])
-          )
-        });
-      } catch (wfErr) {
-        // Non-critical — don't break revenue processing
+        const wfKey = `${route.worldMembershipId}|${weekStart}`;
+        let wf = acc.weekly.get(wfKey);
+        if (!wf) {
+          wf = {
+            worldMembershipId: route.worldMembershipId, weekStart,
+            fields: {
+              flightRevenue: 0, fuelCosts: 0, crewCosts: 0, maintenanceCosts: 0,
+              airportFees: 0, groundHandlingCosts: 0, paxServiceCosts: 0,
+              flights: 0, passengers: 0
+            },
+            pax: { economy: 0, economyPlus: 0, business: 0, first: 0 },
+            cargo: {}
+          };
+          acc.weekly.set(wfKey, wf);
+        }
+        wf.fields.flightRevenue += totalRevenue;
+        wf.fields.fuelCosts += fuelCost;
+        wf.fields.crewCosts += crewCost;
+        wf.fields.maintenanceCosts += maintenanceCost;
+        wf.fields.airportFees += airportFees + navCharges;
+        wf.fields.groundHandlingCosts += groundHandling;
+        wf.fields.paxServiceCosts += paxServiceCost + cateringCost + distributionCost;
+        wf.fields.flights += 1;
+        wf.fields.passengers += passengers;
+        wf.pax.economy += cabinRevenue.economy;
+        wf.pax.economyPlus += cabinRevenue.economyPlus;
+        wf.pax.business += cabinRevenue.business;
+        wf.pax.first += cabinRevenue.first;
+        for (const k of CARGO_TYPE_KEYS) {
+          wf.cargo[k] = (wf.cargo[k] || 0) + (cargoByType[k] || 0);
+        }
       }
 
-      // Update aircraft flight hours
+      // Aircraft flight hours delta
       if (aircraft) {
         const flightHours = (distance * 2 / (aircraft.aircraft?.cruiseSpeed || 450));
-        aircraft.totalFlightHours = (parseFloat(aircraft.totalFlightHours) || 0) + flightHours;
-        await aircraft.save();
+        let as = acc.aircraft.get(aircraft.id);
+        if (!as) {
+          as = { hoursDelta: 0, lastTransitCheckDate: undefined };
+          acc.aircraft.set(aircraft.id, as);
+        }
+        as.hoursDelta += flightHours;
       }
     } catch (error) {
       console.error(`Error processing flight revenue for route ${flight.route?.routeNumber || flight.route?.id || '?'}:`, error.message, error.stack?.split('\n').slice(0, 3).join(' '));
