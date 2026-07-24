@@ -2373,13 +2373,17 @@ class WorldTimeService {
           const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
           const contractorCost = Math.round(cleaningCost + groundCost + engineeringCost);
 
-          // Fleet commonality costs — fixed weekly cost per unique type family
+          // Fleet commonality costs — fixed weekly cost per unique type
+          // family. Family = shared type rating via aircraftFamily.js:
+          // A319+A320+A321 is ONE family (one fee), and baked-variant models
+          // like "747-200" group with (and are surcharged as) their root.
+          const { aircraftFamilyKey, normalizeFamilyModel } = require('../utils/aircraftFamily');
           const typeFamilies = new Map(); // family key → { type, model }
           for (const ac of fleet) {
             if (!ac.aircraft) continue;
-            const familyKey = `${ac.aircraft.manufacturer} ${ac.aircraft.model}`;
+            const familyKey = aircraftFamilyKey(ac.aircraft.manufacturer, ac.aircraft.model);
             if (!typeFamilies.has(familyKey)) {
-              typeFamilies.set(familyKey, { type: ac.aircraft.type, model: ac.aircraft.model });
+              typeFamilies.set(familyKey, { type: ac.aircraft.type, model: normalizeFamilyModel(ac.aircraft.model) });
             }
           }
           let commonalityCost = 0;

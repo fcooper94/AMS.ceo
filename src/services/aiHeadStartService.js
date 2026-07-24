@@ -122,7 +122,8 @@ function estOperatingCostPerPax(distance, paxCapacity, worldYear) {
 
 function pickAircraftWithCommonality(pool, preferredFamily) {
   if (preferredFamily) {
-    const same = pool.filter(ac => `${ac.manufacturer} ${ac.model}` === preferredFamily);
+    const { aircraftFamilyKey } = require('../utils/aircraftFamily');
+    const same = pool.filter(ac => aircraftFamilyKey(ac.manufacturer, ac.model) === preferredFamily);
     if (same.length > 0 && Math.random() < 0.75) return same[Math.floor(Math.random() * same.length)];
   }
   return pool[Math.floor(Math.random() * pool.length)];
@@ -223,7 +224,7 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
   const crypto = require('crypto');
   for (let i = 0; i < fleetSize; i++) {
     const ac = pickAircraftWithCommonality(pool, preferredFamily);
-    if (i === 0) preferredFamily = `${ac.manufacturer} ${ac.model}`;
+    if (i === 0) preferredFamily = require('../utils/aircraftFamily').aircraftFamilyKey(ac.manufacturer, ac.model);
     const reg = makeRegistration(regPrefix, existingRegs);
     const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
     fleetCost += purchasePrice;

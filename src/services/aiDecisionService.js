@@ -1152,17 +1152,24 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   // Aircraft (ac.aircraft.*) — reading them off the UserAircraft row returned
   // "undefined undefined", so the commonality bonus NEVER matched and AI
   // fleets scattered into one-of-each-type confetti.
-  const FAMILY_TARGET = 7; // enough airframes of one type for a full weekly rotation
+  // Family = shared type rating (aircraftFamily.js): A319/A320/A321 count as
+  // ONE family, matching how the weekly commonality overhead charges.
+  const { aircraftFamilyKey } = require('../utils/aircraftFamily');
+  const FAMILY_TARGET = 7; // MINIMUM airframes per family before diversifying — not a cap
   const familyCounts = new Map();
   for (const ac of currentFleet) {
     if (ac.aircraft) {
-      const fam = `${ac.aircraft.manufacturer} ${ac.aircraft.model}`;
+      const fam = aircraftFamilyKey(ac.aircraft.manufacturer, ac.aircraft.model);
       familyCounts.set(fam, (familyCounts.get(fam) || 0) + 1);
     }
   }
-  // Is any owned family still below the rotation target? Then building it up
-  // beats opening yet another type (fleet commonality overhead is per family).
-  const hasSubTargetFamily = [...familyCounts.values()].some(n => n < FAMILY_TARGET);
+  // How far below the optimum is the thinnest owned family? Opening yet
+  // another type is discouraged in PROPORTION to that shortfall — 7 is the
+  // optimum (weekly rotation coverage), never a requirement: a family at 6
+  // barely resists diversification, a family at 1 resists it strongly, and
+  // mission needs (range/capacity penalties) always outrank either way.
+  const smallestFamily = familyCounts.size > 0 ? Math.min(...familyCounts.values()) : FAMILY_TARGET;
+  const familyShortfall = Math.max(0, FAMILY_TARGET - smallestFamily);
 
   const scored = candidates.map(ac => {
     let score = 0;
@@ -1190,16 +1197,16 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
     // Penalize aircraft about to be discontinued (within 5 years of availableUntil)
     if (ac.availableUntil && ac.availableUntil - worldYear < 5) score -= 20;
 
-    // Fleet commonality: build one family up to FAMILY_TARGET before opening
-    // another (commonality overhead is a weekly cost per unique family, and
-    // ~7 airframes of a type supports a rotating weekly schedule). A new
-    // family is still chosen when the mission demands it — the range/capacity
-    // penalties above (-30..-50) outweigh the -25 here.
-    const fam = `${ac.manufacturer} ${ac.model}`;
+    // Fleet commonality: keep stacking families you already fly — real
+    // airlines run dozens or hundreds of one family. 7 per family is the
+    // OPTIMUM (weekly rotation coverage), not a requirement: the new-family
+    // penalty scales with how far the thinnest family is below it, and the
+    // range/capacity penalties above (-30..-50) always outrank it when the
+    // mission genuinely needs a different type.
+    const fam = aircraftFamilyKey(ac.manufacturer, ac.model);
     const famCount = familyCounts.get(fam) || 0;
-    if (famCount > 0 && famCount < FAMILY_TARGET) score += 40; // build the family out
-    else if (famCount >= FAMILY_TARGET) score += 15;           // established family, still preferred
-    else if (hasSubTargetFamily) score -= 25;                  // new type while a family is half-built
+    if (famCount > 0) score += 40;                        // owned family: always the strong default
+    else score -= Math.min(25, familyShortfall * 4);      // 6-strong family: -4 … 1-strong: -24
 
     // Minimum viable size: penalize tiny aircraft (< 20 pax) unless at small airport
     if (ac.passengerCapacity < 20 && baseAirport?.type !== 'Small Regional') score -= 25;
@@ -1640,9 +1647,10 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
     // families the airline ALREADY flies — renewal shouldn't open yet another
     // type when an owned modern family fits)
     const balance = parseFloat(airline.balance) || 0;
+    const { aircraftFamilyKey: famKey } = require('../utils/aircraftFamily');
     const ownedFamilies = new Set(
       fleet.filter(f => f.aircraft && f.id !== ua.id)
-        .map(f => `${f.aircraft.manufacturer} ${f.aircraft.model}`)
+        .map(f => famKey(f.aircraft.manufacturer, f.aircraft.model))
     );
     const scored = viable.map(ac => {
       let score = 0;
@@ -1653,7 +1661,7 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
       else if (yearsNew <= 15) score += 5;
       const price = Math.round((parseFloat(ac.purchasePrice) || 50000000) * eraEconomicService.getEraMultiplier(worldYear));
       if (price <= balance * 0.4) score += 5; // Can afford to buy
-      if (ownedFamilies.has(`${ac.manufacturer} ${ac.model}`)) score += 15; // fleet commonality
+      if (ownedFamilies.has(famKey(ac.manufacturer, ac.model))) score += 15; // fleet commonality
       return { aircraft: ac, score, price };
     });
 

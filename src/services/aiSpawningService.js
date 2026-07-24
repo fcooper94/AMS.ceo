@@ -370,7 +370,8 @@ function getMaxCapacityForAirport(airportType) {
  */
 function pickAircraftWithCommonality(pool, preferredFamily) {
   if (preferredFamily) {
-    const sameFamily = pool.filter(ac => `${ac.manufacturer} ${ac.model}` === preferredFamily);
+    const { aircraftFamilyKey } = require('../utils/aircraftFamily');
+    const sameFamily = pool.filter(ac => aircraftFamilyKey(ac.manufacturer, ac.model) === preferredFamily);
     // 75% chance to pick from same family if available
     if (sameFamily.length > 0 && Math.random() < 0.75) {
       return sameFamily[Math.floor(Math.random() * sameFamily.length)];
@@ -407,7 +408,7 @@ async function assignInitialFleet(membership, baseAirport, eraAircraft, config, 
 
     // Set preferred family from first pick
     if (i === 0) {
-      preferredFamily = `${aircraft.manufacturer} ${aircraft.model}`;
+      preferredFamily = require('../utils/aircraftFamily').aircraftFamilyKey(aircraft.manufacturer, aircraft.model);
     }
 
     const reg = generateRegistration(regPrefix, existingRegs);
