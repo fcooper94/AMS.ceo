@@ -66,6 +66,10 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors());
+// Gzip responses (JSON + static). The route-picker payloads are hundreds of
+// airports of indicator data — typically 5-10x smaller compressed. Response-
+// side only, so the raw-body Stripe webhook below is unaffected.
+app.use(require('compression')());
 // Stripe webhook needs the RAW request body for signature verification, so it
 // must be registered before the JSON body parser below.
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), require('./routes/billingWebhook'));
@@ -195,6 +199,17 @@ app.use(express.static(path.join(__dirname, '../public'), {
 io.on('connection', (socket) => {
   // Socket connect/disconnect logged only with DEBUG_SIM
   socket.on('disconnect', () => {});
+
+  // World rooms: world:tick / notifications:refresh are emitted per-world
+  // room so clients only receive their own world's events. A client joins
+  // when it learns its active world (and re-joins on reconnect).
+  socket.on('world:join', (worldId) => {
+    if (typeof worldId !== 'string' || !/^[0-9a-f-]{10,64}$/i.test(worldId)) return;
+    for (const room of socket.rooms) {
+      if (room.startsWith('world:')) socket.leave(room);
+    }
+    socket.join(`world:${worldId}`);
+  });
 
   socket.on('error', (error) => {
     if (process.env.NODE_ENV === 'development') {
@@ -849,6 +864,15 @@ server.listen(PORT, () => {
     } else {
       console.log('[DemandCache] Skipped');
     }
+  } else if (process.env.SIM_AUTOSTART === '0') {
+    // Web role: load in the background — this service never settles revenue,
+    // so it doesn't need the cache before serving. Pages come up immediately
+    // after boot; the route picker shows demand as soon as the cache is
+    // ready (~30-50s). The sim role still awaits below: settling flights
+    // with a half-loaded cache would floor their revenue.
+    console.log('[DemandCache] Web role — loading in background (pages serve immediately)');
+    demandCacheService.initialize().catch(err =>
+      console.error('[DemandCache] Background load failed:', err.message));
   } else {
     await demandCacheService.initialize();
   }

@@ -584,10 +584,12 @@ class WorldTimeService {
    * Hook for other systems to react to time progression
    */
   onTick(worldId, gameTime, advancementSeconds) {
-    // Emit via Socket.IO if available
+    // Emit via Socket.IO if available — scoped to the world's room (clients
+    // join via 'world:join'), so N worlds × M clients doesn't become N×M
+    // messages/sec. Works identically through the Redis emitter (sim role).
     if (global.io) {
       const worldState = this.worlds.get(worldId);
-      global.io.emit('world:tick', {
+      global.io.to(`world:${worldId}`).emit('world:tick', {
         worldId: worldId,
         gameTime: gameTime.toISOString(),
         advancement: advancementSeconds,
@@ -738,7 +740,7 @@ class WorldTimeService {
     // Picks up computed notification changes from processing cycles above
     if (global.io && now - wp.lastNotificationCheck >= this.notificationCheckInterval) {
       wp.lastNotificationCheck = now;
-      global.io.emit('notifications:refresh', { worldId: worldId });
+      global.io.to(`world:${worldId}`).emit('notifications:refresh', { worldId: worldId });
     }
 
     // Emit notification refresh at 00:01 game time each day for persistent notifications
@@ -748,7 +750,7 @@ class WorldTimeService {
       const minute = gameTime.getMinutes();
       if (hour === 0 && minute >= 1) {
         this.lastNotificationDayEmitted[worldId] = gameDay;
-        global.io.emit('notifications:refresh', { worldId: worldId });
+        global.io.to(`world:${worldId}`).emit('notifications:refresh', { worldId: worldId });
       }
     }
   }

@@ -287,9 +287,12 @@ crash-looped on `JSON.parse`. **Fixed by shipping a gzip instead:**
 - **Startup prompts must be TTY-gated, never `NODE_ENV`-gated.** The "Load
   demand data?" prompt runs only when `process.stdin.isTTY` (local dev);
   headless (Railway/CI) auto-loads the demand cache and never blocks on input.
-  Heads-up: **Railway currently has `NODE_ENV=development`**, so anything gated
-  on `NODE_ENV === 'development'` (SQL logging to `logs/sql.log`, verbose admin
-  error logs) is ON in production — prefer setting it to `production` there.
+  Heads-up: when flipping Railway to `NODE_ENV=production` (kills per-query
+  SQL file logging + verbose dev logs; `trust proxy` is already set so secure
+  cookies work), **`DEV_BYPASS_ENABLED=true` must be set on the web service at
+  the same time** — the closed-testing dev-bypass gate treats
+  `NODE_ENV=development` as one of its enable conditions, and without the
+  explicit flag registration/dev-access breaks. Env-parity: both services.
 - No automated tests (`npm test` is a stub). Verify JS with `node -c <file>`
   and, for logic, a quick `node -e` harness.
 

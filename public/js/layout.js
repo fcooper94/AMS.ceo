@@ -115,6 +115,8 @@ if (socket) {
     console.log('[Layout] ✓ Connected to Socket.IO - time sync enabled');
     console.log('[Layout] Socket ID:', socket.id);
     console.log('[Layout] Transport:', socket.io.engine.transport.name);
+    // Re-join the world room after a reconnect (rooms don't survive it)
+    if (currentWorldId) socket.emit('world:join', currentWorldId);
   });
 
   socket.on('disconnect', (reason) => {
@@ -321,6 +323,12 @@ function startSessionHeartbeat() {
 function applyWorldInfo(worldInfo) {
   // Store current world ID for filtering Socket.IO events
   currentWorldId = worldInfo.id;
+
+  // Join this world's Socket.IO room — the server only sends world:tick /
+  // notifications:refresh to the room, not to every connected client.
+  if (socket && currentWorldId) {
+    socket.emit('world:join', currentWorldId);
+  }
 
   // Set the display currency for all money formatting on this page.
   if (typeof setAppCurrency === 'function') setAppCurrency(worldInfo.currency || 'USD');

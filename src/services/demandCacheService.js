@@ -98,12 +98,22 @@ class DemandCacheService {
     const totalEntries = Object.keys(demandData).length;
     console.log(`[DemandCache] ${totalEntries.toLocaleString()} pairs loaded, mapping to airports...`);
 
-    // Convert ICAO-keyed data to UUID-keyed records
+    // Convert ICAO-keyed data to UUID-keyed records.
+    // for..in (not Object.entries — that materialises a 5.1M-element array),
+    // yielding to the event loop every 250K pairs: this loop is the bulk of
+    // the former 30-50s boot stall, and yielding keeps sockets/health/
+    // heartbeats alive while the index builds.
     let loaded = 0;
     let skipped = 0;
+    let sinceYield = 0;
     const logInterval = Math.max(1, Math.floor(totalEntries / 5)); // log ~5 times
 
-    for (const [pairKey, scores] of Object.entries(demandData)) {
+    for (const pairKey in demandData) {
+      const scores = demandData[pairKey];
+      if (++sinceYield >= 250000) {
+        sinceYield = 0;
+        await new Promise(resolve => setImmediate(resolve));
+      }
       const underscoreIdx = pairKey.indexOf('_');
       const fromIcao = pairKey.substring(0, underscoreIdx);
       const toIcao = pairKey.substring(underscoreIdx + 1);
@@ -155,9 +165,14 @@ class DemandCacheService {
     // ~12.5k routes). See usDomesticDemandService.js.
     this._applyUsDomesticDemand(airports);
 
-    // Sort byOrigin arrays by demand2000 descending
+    // Sort byOrigin arrays by demand2000 descending (yield periodically —
+    // ~5M records across thousands of origins is seconds of sync sort)
+    let originsSorted = 0;
     for (const [, records] of this.byOrigin) {
       records.sort((a, b) => (b.demand2000 || 0) - (a.demand2000 || 0));
+      if (++originsSorted % 500 === 0) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
 
     this._ready = true;
