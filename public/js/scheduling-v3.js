@@ -1303,6 +1303,14 @@ async function applyGlobalMaintenanceSettings() {
 // Fetch all schedule data in a single request (much faster than 4 separate requests)
 async function fetchAllScheduleData() {
   try {
+    // Kick BOTH requests off immediately and in parallel. World time is only
+    // needed AFTER the responses (to compute display dates), so it resolves
+    // concurrently while the network is in flight — previously the fetch was
+    // blocked behind up to 2s of world-time polling, then tours loaded
+    // serially behind the main payload.
+    const dataPromise = fetch('/api/schedule/data');
+    const toursPromise = fetch('/api/sightseeing-tours');
+
     let worldTime = getCurrentWorldTime();
     // Retry a few times if world time isn't ready yet (layout.js may still be loading)
     if (!worldTime) {
@@ -1317,7 +1325,7 @@ async function fetchAllScheduleData() {
       return;
     }
 
-    const response = await fetch('/api/schedule/data');
+    const response = await dataPromise;
     if (response.ok) {
       const data = await response.json();
       userFleet = (data.fleet || []).filter(ac => ac.status === 'active' || ac.status === 'maintenance' || ac.status === 'on_order' || ac.status === 'cabin_refit');
@@ -1329,7 +1337,7 @@ async function fetchAllScheduleData() {
       // Sightseeing tours render as their own grid blocks (Option B — they carry
       // their own daysOfWeek + scheduledDepartureTime; no ScheduledFlight rows).
       try {
-        const tourRes = await fetch('/api/sightseeing-tours');
+        const tourRes = await toursPromise;
         if (tourRes.ok) {
           sightseeingTours = await tourRes.json();
           // Give tour blocks the same virtual scheduledDate/arrivalDate the grid

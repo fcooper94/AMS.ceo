@@ -122,13 +122,18 @@ class WorldTimeService {
    * Scale is based on membership count (proxy for world complexity).
    * 1-5 memberships: 1x, 10: 1.5x, 20: 2x, 50+: 3x.
    */
-  // Run a tick phase with duration logging — phases that take seconds are the
-  // prime suspects for the event-loop stalls the server monitor reports.
-  _timedPhase(name, worldId, promise) {
+  // Run a tick phase with duration logging. Each phase gets a BUDGET scaled
+  // to its expected workload (catch-up windows scale with gap size, big
+  // worlds with their interval multiplier) — [TICK-SLOW] fires only when a
+  // phase exceeds what its own workload predicts, i.e. genuinely unexpected
+  // slowness, not "a big world doing a big job".
+  _timedPhase(name, worldId, promise, budgetMs = 3000) {
     const t0 = Date.now();
     return promise.finally(() => {
       const ms = Date.now() - t0;
-      if (ms > 3000) console.warn(`[TICK-SLOW] ${name} took ${(ms / 1000).toFixed(1)}s (world ${worldId})`);
+      if (ms > budgetMs) {
+        console.warn(`[TICK-SLOW] ${name} took ${(ms / 1000).toFixed(1)}s — over its ${(budgetMs / 1000).toFixed(0)}s budget (world ${worldId})`);
+      }
     });
   }
 
@@ -381,12 +386,15 @@ class WorldTimeService {
           const DAY_MS = 24 * 60 * 60 * 1000;
           if (gapMs > 60 * 60 * 1000) { // more than a game-hour missed
             console.log(`[WINDOW] ${world.name}: catch-up pass over ${(gapMs / DAY_MS).toFixed(1)} game-days offline gap`);
+            // Budget scales with the gap — settling N game-days legitimately
+            // takes time; only over-budget passes are flagged
+            const budget = 5000 + Math.min(gapMs, 28 * DAY_MS) / DAY_MS * 4000;
             setImmediate(() => {
               this._timedPhase('windowCatchUp', worldId, this.processWorldWindow(worldId, {
                 toGameTime: catchUpTime,
                 include: { flights: true, maintenance: true },
                 stateless: gapMs > DAY_MS // day+ gaps also run AI/listings/reputation once
-              })).catch(err => console.error(`[WINDOW] catch-up failed for ${world.name}:`, err.message));
+              }), budget).catch(err => console.error(`[WINDOW] catch-up failed for ${world.name}:`, err.message));
             });
           }
         }
@@ -610,10 +618,13 @@ class WorldTimeService {
         wp.lastFlightCheck = now;
         const dueMaintenance = now - wp.lastMaintenanceCheck >= this._interval(this.maintenanceCheckInterval, wp);
         if (dueMaintenance) wp.lastMaintenanceCheck = now;
+        // Budget: flights-only passes are cheap; maintenance-inclusive passes
+        // are the known heavy phase; both scale with world size
+        const budget = (dueMaintenance ? 12000 : 4000) * wp.intervalScale;
         this._timedPhase('processWindow', worldId, this.processWorldWindow(worldId, {
           toGameTime: gameTime,
           include: { flights: true, maintenance: dueMaintenance }
-        })).catch(err => console.error('Error in window pass:', err.message));
+        }), budget).catch(err => console.error('Error in window pass:', err.message));
       }
     } else {
       // ── Legacy throttle dispatch (WINDOW_ENGINE=0) ──
@@ -633,7 +644,7 @@ class WorldTimeService {
       wp.isProcessingFlights = true;
       // Clear marketing boost cache at the start of each flight-check cycle so it's fresh per cycle
       this.marketingBoostCache.clear();
-      this._timedPhase('processFlights', worldId, this.processFlights(worldId, gameTime))
+      this._timedPhase('processFlights', worldId, this.processFlights(worldId, gameTime), 4000 * wp.intervalScale)
         .catch(err => console.error('Error processing flights:', err.message))
         .finally(() => { wp.isProcessingFlights = false; });
     }
@@ -642,7 +653,7 @@ class WorldTimeService {
     if (!wp.isProcessingMaintenance && now - wp.lastMaintenanceCheck >= this._interval(this.maintenanceCheckInterval, wp)) {
       wp.lastMaintenanceCheck = now;
       wp.isProcessingMaintenance = true;
-      this._timedPhase('processMaintenance', worldId, this.processMaintenance(worldId, gameTime))
+      this._timedPhase('processMaintenance', worldId, this.processMaintenance(worldId, gameTime), 12000 * wp.intervalScale)
         .catch(err => console.error('Error processing maintenance:', err.message))
         .finally(() => { wp.isProcessingMaintenance = false; });
     }
@@ -655,7 +666,7 @@ class WorldTimeService {
     if (!wp.isRefreshingMaintenance && (lastRefreshDay === undefined || gameDay > lastRefreshDay)) {
       this.lastMaintenanceRefresh[worldId] = gameDay;
       wp.isRefreshingMaintenance = true;
-      this._timedPhase('refreshMaintenanceSchedules', worldId, this.refreshMaintenanceSchedules(worldId))
+      this._timedPhase('refreshMaintenanceSchedules', worldId, this.refreshMaintenanceSchedules(worldId), 8000 * wp.intervalScale)
         .catch(err => console.error('Error refreshing maintenance schedules:', err.message))
         .finally(() => { wp.isRefreshingMaintenance = false; });
     }
@@ -665,7 +676,7 @@ class WorldTimeService {
     if (!wp.isProcessingListings && now - wp.lastListingCheck >= this._interval(this.listingCheckInterval, wp)) {
       wp.lastListingCheck = now;
       wp.isProcessingListings = true;
-      this._timedPhase('processListings', worldId, this.processListings(worldId, gameTime))
+      this._timedPhase('processListings', worldId, this.processListings(worldId, gameTime), 6000 * wp.intervalScale)
         .catch(err => console.error('Error processing listings:', err.message))
         .finally(() => { wp.isProcessingListings = false; });
     }
@@ -684,7 +695,7 @@ class WorldTimeService {
       this.lastAICheck = now;
       this.isProcessingAI = true;
       const aiDecisionService = require('./aiDecisionService');
-      this._timedPhase('processAIDecisions', worldId, aiDecisionService.processAIDecisions(worldId, gameTime))
+      this._timedPhase('processAIDecisions', worldId, aiDecisionService.processAIDecisions(worldId, gameTime), 12000)
         .catch(err => console.error('Error processing AI decisions:', err.message))
         .finally(() => { this.isProcessingAI = false; });
     }
@@ -693,7 +704,7 @@ class WorldTimeService {
     if (!wp.isProcessingReputation && now - wp.lastReputationCheck >= this._interval(this.reputationCheckInterval, wp)) {
       wp.lastReputationCheck = now;
       wp.isProcessingReputation = true;
-      this._timedPhase('processReputation', worldId, this.processReputation(worldId, gameTime))
+      this._timedPhase('processReputation', worldId, this.processReputation(worldId, gameTime), 18000 * wp.intervalScale)
         .catch(err => console.error('Error processing reputation:', err.message))
         .finally(() => { wp.isProcessingReputation = false; });
     }
@@ -815,7 +826,9 @@ class WorldTimeService {
       const MAX_WINDOW_MS = 28 * DAY_MS; // 4 game-weeks
       const capped = to.getTime() - from.getTime() > MAX_WINDOW_MS;
       const effTo = capped ? new Date(from.getTime() + MAX_WINDOW_MS) : to;
-      if (capped || effTo.getTime() - from.getTime() > DAY_MS) {
+      const bigWindow = capped || effTo.getTime() - from.getTime() > DAY_MS;
+      const windowT0 = Date.now();
+      if (bigWindow) {
         console.log(`[WINDOW] ${world.name}: settling ${((effTo - from) / DAY_MS).toFixed(1)} game-days`
           + ` (${from.toISOString()} → ${effTo.toISOString()})${capped ? ' [capped, more passes follow]' : ''}`);
       }
@@ -932,6 +945,12 @@ class WorldTimeService {
             this.isProcessingAI = false;
           }
         }
+      }
+
+      // Big windows get a friendly completion line — a multi-day settle
+      // taking seconds is EXPECTED work, not a slow tick
+      if (bigWindow) {
+        console.log(`[WINDOW] ${world.name}: settled in ${((Date.now() - windowT0) / 1000).toFixed(1)}s`);
       }
     } finally {
       wp.isProcessingWindow = false;
@@ -1056,11 +1075,15 @@ class WorldTimeService {
         'UPDATE worlds SET "current_time" = :currentTime, "last_tick_at" = :lastTickAt, "updated_at" = :updatedAt WHERE id = :worldId',
         { replacements: { currentTime: newGameTime, lastTickAt: now, updatedAt: now, worldId: world.id } }
       );
+      // Budget scales with the settled span — a 45-min cold pass covers ~2
+      // game-days of flights and legitimately takes a few seconds
+      const gameDaysSettled = (realElapsedSeconds * world.timeAcceleration) / 86400;
+      const budget = 5000 + Math.min(gameDaysSettled, 28) * 4000;
       await this._timedPhase('coldPass', worldId, this.processWorldWindow(worldId, {
         toGameTime: newGameTime,
         include: { flights: true, maintenance: true },
         stateless
-      }));
+      }), budget);
     } catch (error) {
       console.error(`[HOTCOLD] advance/settle failed for world ${worldId}:`, error.message);
     }

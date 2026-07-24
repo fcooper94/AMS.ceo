@@ -160,13 +160,10 @@ router.get('/data', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
+    // One query instead of user-then-membership (they were serial round-trips)
     const membership = await WorldMembership.findOne({
-      where: { userId: user.id, worldId: activeWorldId }
+      where: { worldId: activeWorldId },
+      include: [{ model: User, as: 'user', where: { vatsimId: req.user.vatsimId }, attributes: [] }]
     });
 
     if (!membership) {
@@ -175,27 +172,14 @@ router.get('/data', async (req, res) => {
 
     const worldMembershipId = membership.id;
 
-    // Step 1: Get fleet first (needed for aircraft IDs)
-    const fleet = await UserAircraft.findAll({
-      where: { worldMembershipId },
-      include: [{ model: Aircraft, as: 'aircraft' }],
-      order: [['acquiredAt', 'DESC']]
-    });
-
-    const aircraftIds = fleet.map(a => a.id);
-
-    // Clean up any maintenance accidentally created for on-order aircraft
-    const onOrderIds = fleet.filter(a => a.status === 'on_order').map(a => a.id);
-    if (onOrderIds.length > 0) {
-      await RecurringMaintenance.destroy({ where: { aircraftId: { [Op.in]: onOrderIds } } });
-    }
-
-    // Step 2: Check if maintenance refresh is needed (debounce to avoid slow loads)
-    const lastRefresh = maintenanceRefreshCache.get(worldMembershipId) || 0;
-    const needsRefresh = Date.now() - lastRefresh > REFRESH_DEBOUNCE_MS;
-
-    const queries = [
-      // Routes query
+    // Fleet, routes, flights and world all run in PARALLEL (only the
+    // maintenance query below needs the fleet's aircraft ids)
+    const [fleet, routes, flights, world] = await Promise.all([
+      UserAircraft.findAll({
+        where: { worldMembershipId },
+        include: [{ model: Aircraft, as: 'aircraft' }],
+        order: [['acquiredAt', 'DESC']]
+      }),
       Route.findAll({
         where: { worldMembershipId },
         include: [
@@ -204,8 +188,6 @@ router.get('/data', async (req, res) => {
           { model: Airport, as: 'techStopAirport' }
         ]
       }),
-
-      // Flight templates query
       ScheduledFlight.findAll({
         where: { isActive: true },
         include: [
@@ -227,8 +209,21 @@ router.get('/data', async (req, res) => {
           }
         ],
         order: [['dayOfWeek', 'ASC'], ['departureTime', 'ASC']]
-      })
-    ];
+      }),
+      World.findByPk(activeWorldId, { attributes: ['currentTime'] })
+    ]);
+
+    const aircraftIds = fleet.map(a => a.id);
+
+    // Clean up any maintenance accidentally created for on-order aircraft
+    const onOrderIds = fleet.filter(a => a.status === 'on_order').map(a => a.id);
+    if (onOrderIds.length > 0) {
+      await RecurringMaintenance.destroy({ where: { aircraftId: { [Op.in]: onOrderIds } } });
+    }
+
+    // Check if maintenance refresh is needed (debounce to avoid slow loads)
+    const lastRefresh = maintenanceRefreshCache.get(worldMembershipId) || 0;
+    const needsRefresh = Date.now() - lastRefresh > REFRESH_DEBOUNCE_MS;
 
     if (needsRefresh) {
       // Fire-and-forget: the maintenance horizon top-up used to run inline and
@@ -246,11 +241,7 @@ router.get('/data', async (req, res) => {
       });
     }
 
-    const queryResults = await Promise.all(queries);
-    const routes = queryResults[0];
-    const flights = queryResults[1];
-
-    // Query maintenance (after refresh if it ran, or directly if debounced)
+    // Query maintenance (after the on-order cleanup above)
     const maintenancePatterns = aircraftIds.length > 0
       ? await RecurringMaintenance.findAll({
           where: {
@@ -370,9 +361,9 @@ router.get('/data', async (req, res) => {
       return true;
     });
 
-    // Include era/fuel multipliers for frontend cost scaling
+    // Include era/fuel multipliers for frontend cost scaling (world was
+    // fetched in the parallel batch above)
     const eraEconomicService = require('../services/eraEconomicService');
-    const world = await World.findByPk(activeWorldId, { attributes: ['currentTime'] });
     const worldYear = world ? new Date(world.currentTime).getFullYear() : new Date().getFullYear();
 
     res.json({
