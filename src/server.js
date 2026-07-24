@@ -734,6 +734,11 @@ server.listen(PORT, () => {
       await sequelize.query(`ALTER TABLE user_aircraft ADD COLUMN IF NOT EXISTS financing_repayment_strategy VARCHAR(20)`);
     } catch (_) { /* user_aircraft table may not exist yet — sync will create it */ }
     try {
+      // processMaintenance filters on (status, day_of_week) every cycle — without
+      // this index it seq-scans ~460K active rows per world per cycle
+      await sequelize.query(`CREATE INDEX IF NOT EXISTS idx_recurring_maintenance_status_dow ON recurring_maintenance (status, day_of_week)`);
+    } catch (_) { /* table may not exist yet — sync will create it */ }
+    try {
       // Loan reference — labels aircraft-delivery loans with reg + order date
       await sequelize.query(`ALTER TABLE loans ADD COLUMN IF NOT EXISTS reference VARCHAR(255)`);
     } catch (_) { /* loans table may not exist yet — sync will create it */ }
