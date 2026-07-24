@@ -433,39 +433,6 @@
   </div>
 </div>
 
-<!-- Set CID Modal -->
-<div id="setCidModal" class="modal" style="display: none;">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>SET VATSIM CID</h2>
-      <button class="modal-close" onclick="closeSetCidModal()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>USER</label>
-        <div id="setCidUserName" class="form-value"></div>
-      </div>
-
-      <div class="form-group">
-        <label for="setCidInput">VATSIM CID</label>
-        <input type="text" id="setCidInput" placeholder="Enter numeric VATSIM CID" onkeypress="if(event.key==='Enter')confirmSetCid()">
-      </div>
-
-      <div class="form-info">
-        <p>This will link the local account to a VATSIM CID.</p>
-        <p>The user's auth method will be changed to VATSIM and their password will be cleared.</p>
-        <p>They will need to use VATSIM SSO to sign in after this change.</p>
-      </div>
-
-      <div id="setCidError" class="error-message" style="display: none;"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeSetCidModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmSetCid()">Set CID</button>
-    </div>
-  </div>
-</div>
-
 <!-- Delete User Modal -->
 <div id="deleteUserModal" class="modal" style="display: none;">
   <div class="modal-content">

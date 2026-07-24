@@ -266,9 +266,6 @@ function renderUserActions(user) {
   items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openPermissionModal(${uj})'>Permissions</button>`;
   items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openInvoicesModal(${uj})'>Invoices</button>`;
 
-  if (user.vatsimId && user.vatsimId.startsWith('LOCAL-')) {
-    items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); openSetCidModal(${uj})'>Set CID</button>`;
-  }
   if (user.authMethod === 'local') {
     items += `<button style="${itemStyle}" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='none'" onclick='closeActionMenu(); sendPasswordReset(${uj})'>Send Reset Email</button>`;
   }
@@ -320,54 +317,8 @@ function closeActionMenu() {
 // Close menus on outside click
 document.addEventListener('click', () => closeActionMenu());
 
-// ==================== SET CID ====================
-
-let setCidUserId = null;
-
-function openSetCidModal(user) {
-  setCidUserId = user.id;
-  document.getElementById('setCidUserName').textContent = `${user.firstName} ${user.lastName}`;
-  document.getElementById('setCidInput').value = '';
-  document.getElementById('setCidError').style.display = 'none';
-  document.getElementById('setCidModal').style.display = 'flex';
-  document.getElementById('setCidInput').focus();
-}
-
-function closeSetCidModal() {
-  document.getElementById('setCidModal').style.display = 'none';
-  setCidUserId = null;
-}
-
-async function confirmSetCid() {
-  const vatsimId = document.getElementById('setCidInput').value.trim();
-  const errorDiv = document.getElementById('setCidError');
-  errorDiv.style.display = 'none';
-
-  if (!vatsimId || !/^\d+$/.test(vatsimId)) {
-    errorDiv.textContent = 'Please enter a valid numeric CID';
-    errorDiv.style.display = 'block';
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/admin/users/${setCidUserId}/set-cid`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vatsimId })
-    });
-    const data = await response.json();
-    if (response.ok) {
-      closeSetCidModal();
-      loadUsers();
-    } else {
-      errorDiv.textContent = data.error || 'Failed to set CID';
-      errorDiv.style.display = 'block';
-    }
-  } catch (error) {
-    errorDiv.textContent = 'Network error. Please try again.';
-    errorDiv.style.display = 'block';
-  }
-}
+// (Set CID removed 2026-07 — VATSIM OAuth login no longer exists, so
+// converting an account to VATSIM auth would lock its owner out.)
 
 // ==================== SEND PASSWORD RESET ====================
 

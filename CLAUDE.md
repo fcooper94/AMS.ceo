@@ -15,8 +15,13 @@ networks (VATSIM).
 
 ## Tech stack
 
-- **Backend:** Node.js + Express, Socket.IO for real-time, Passport (OAuth2 /
-  VATSIM) for auth.
+- **Backend:** Node.js + Express, Socket.IO for real-time. **Auth is local
+  email/password** (bcrypt, closed-testing dev-bypass gate, support PIN);
+  Passport remains only for session plumbing (req.login/serialize). VATSIM
+  OAuth was ripped out 2026-07 (routes, strategy, admin Set-CID, dep). Users
+  are still keyed by the legacy `vatsimId` column — local accounts use
+  `LOCAL-<uuid>`; don't remove that column. The VATSIM live-traffic DATA feed
+  (`vatsimService`) is a separate feature and stays.
 - **DB:** PostgreSQL via **Sequelize 6**, hosted on **Railway** (see Database
   rules below — this matters a lot).
 - **Frontend:** server-served static HTML in `public/` + vanilla JS (no
@@ -686,8 +691,10 @@ Deliberately parked; get sign-off before changing.
   financials 260 game-weeks; finished loans 1 game-year after last
   payment; dead worlds purged 30 real-days after completion (worlds row +
   memberships kept). Game-time cutoffs use each world's own clock.
-  Remaining, all elective: VATSIM auth rip-out (dead OAuth routes; users
-  still keyed by vatsimId — env-gated since f1181b6).
+- **VATSIM auth rip-out DONE (2026-07)** — OAuth routes/strategy/dep and
+  the admin Set-CID action removed; privacy/data-handling pages updated.
+  VATSIM_* env vars can be deleted from Railway. vatsimId stays as the
+  internal user key; vatsimService (live traffic data) stays.
 
 Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
 ~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any

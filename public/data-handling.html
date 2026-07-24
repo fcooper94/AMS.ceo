@@ -54,8 +54,8 @@
         <div>
           <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">3. Security</h2>
           <p>Access to the database is restricted to the Sim's maintainers. Connections to the
-          database use TLS. Authentication is delegated to VATSIM; we never see or store your
-          VATSIM password.</p>
+          database use TLS. Account passwords are stored only as bcrypt hashes; we never see or
+          store your plaintext password.</p>
         </div>
 
         <div>
@@ -70,7 +70,7 @@
           <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">5. Data shared with third parties</h2>
           <p>We do not sell your data. Limited data is necessarily exposed to the infrastructure
           and services listed in the <a href="/privacy" style="color: var(--accent-color);">Privacy Policy</a>
-          (VATSIM authentication, Railway hosting, and map-tile providers) purely to operate the Sim.</p>
+          (Railway hosting and map-tile providers) purely to operate the Sim.</p>
         </div>
 
       </div>

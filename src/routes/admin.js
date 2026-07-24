@@ -305,48 +305,9 @@ router.post('/payments/:paymentId/refund', async (req, res) => {
   }
 });
 
-/**
- * Set VATSIM CID for a local (non-VATSIM) user
- */
-router.post('/users/:userId/set-cid', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { userId } = req.params;
-    const { vatsimId } = req.body;
-
-    if (!vatsimId || !/^\d+$/.test(vatsimId.toString().trim())) {
-      return res.status(400).json({ error: 'CID must be a numeric value' });
-    }
-
-    const cidStr = vatsimId.toString().trim();
-
-    // Check uniqueness
-    const existing = await User.findOne({ where: { vatsimId: cidStr } });
-    if (existing) {
-      return res.status(409).json({ error: 'This CID is already assigned to another user' });
-    }
-
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.vatsimId = cidStr;
-    user.authMethod = 'vatsim';
-    user.passwordHash = null;
-    await user.save();
-
-    res.json({ message: 'CID updated successfully', vatsimId: cidStr });
-  } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error setting CID:', error);
-    }
-    res.status(500).json({ error: 'Failed to set CID' });
-  }
-});
+// (Removed 2026-07: POST /users/:userId/set-cid — it switched an account to
+// VATSIM SSO and nulled the password, which bricks the account now that
+// VATSIM OAuth login no longer exists.)
 
 /**
  * Send password reset email to a local user

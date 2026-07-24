@@ -1385,8 +1385,7 @@
   /* Admin modal 2-col form bodies -> 1 col */
   .admin-section div[style*="grid-template-columns: 1fr 1fr"],
   #editCreditsModal div[style*="grid-template-columns: 1fr 1fr"],
-  #permissionModal div[style*="grid-template-columns: 1fr 1fr"],
-  #setCidModal div[style*="grid-template-columns: 1fr 1fr"] {
+  #permissionModal div[style*="grid-template-columns: 1fr 1fr"] {
     grid-template-columns: 1fr !important;
   }
 

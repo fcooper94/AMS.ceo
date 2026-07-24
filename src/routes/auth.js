@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const passport = require('../config/passport');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { User, SystemSettings, World } = require('../models');
@@ -20,8 +19,8 @@ function requireDevUnlock(req, res, next) {
   return res.status(403).json({ error: 'The app is in closed testing. Please use Dev Access to register or sign in.' });
 }
 
-// VATSIM OAuth (unaffected by the testing gate)
-router.get('/login', passport.authenticate('vatsim'));
+// VATSIM OAuth removed 2026-07 — /auth/login and /auth/vatsim/callback are
+// gone; authentication is local email/password (+ support PIN + dev bypass).
 
 // Check if dev bypass is enabled (public endpoint for login page)
 // Can be enabled via: 1) SystemSettings in DB, 2) DEV_BYPASS_ENABLED env var, 3) NODE_ENV=development
@@ -344,15 +343,6 @@ router.post('/local-login', requireDevUnlock, async (req, res) => {
     res.status(500).json({ error: 'Login failed' });
   }
 });
-
-// OAuth callback route
-router.get('/vatsim/callback',
-  passport.authenticate('vatsim', { failureRedirect: '/' }),
-  (req, res) => {
-    // Successful authentication, redirect to world selection
-    res.redirect('/world-selection');
-  }
-);
 
 // Logout route
 router.get('/logout', async (req, res) => {

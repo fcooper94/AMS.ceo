@@ -268,7 +268,7 @@ async function loadUserInfo() {
     } else {
       // Redirect to login if not authenticated (only on protected pages)
       // Public pages that don't require authentication
-      const publicPages = ['/', '/auth/login', '/auth/vatsim/callback', '/contact', '/wiki', '/privacy', '/data-handling'];
+      const publicPages = ['/', '/contact', '/wiki', '/privacy', '/data-handling'];
       if (!publicPages.includes(window.location.pathname)) {
         window.location.href = '/';
       } else {
