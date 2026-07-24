@@ -662,15 +662,21 @@ Deliberately parked; get sign-off before changing.
   (first pass only stamps the new column — history is never back-settled).
   Rollback: `WINDOW_ENGINE=0` (legacy dispatch intact, keeps the anchor
   current so re-enabling never double-settles). Details in docs/SCALING.md.
-- **Phase 2 (hot/cold scheduler) CODE COMPLETE, harness-tested** — hot =
-  MP / owner heartbeat <15 min / world <15 min old; cold worlds stop
-  ticking, get clock-jump + window pass every 30-60 min (3 per 15s sweep
-  max); promotion settles before restarting the tick. Rollback
-  `HOT_COLD=0`. Includes post-split heartbeat regression fix (web role
-  wrote last_active_at via the EMPTY in-memory map check — heartbeats
-  never hit the DB, so pauseOnSessionEnd auto-paused under active
-  players). Remaining: Phase 4 (sharded sim workers) only when one sim
-  can't hold the load; sessions MemoryStore → Redis before web replicas.
+- **Phase 2 (hot/cold scheduler) LIVE and verified** — hot = MP / owner
+  heartbeat <15 min / world <15 min old; cold worlds stop ticking, get
+  clock-jump + window pass every 30-60 min (3 per 15s sweep max);
+  promotion settles before restarting the tick. Rollback `HOT_COLD=0`.
+  Includes post-split heartbeat regression fix (web role wrote
+  last_active_at via the EMPTY in-memory map check — heartbeats never hit
+  the DB, so pauseOnSessionEnd auto-paused under active players).
+  Phase 1's boot catch-up also verified live on this deploy ([WINDOW]
+  catch-up passes settled the deploy gap — deploys no longer skip time).
+- **NEXT (agreed): sessions MemoryStore → Redis** (`connect-redis`; Redis
+  already provisioned). Kills the every-deploy-logs-everyone-out problem
+  and unblocks 2+ web replicas. Then: VATSIM auth rip-out (dead OAuth
+  routes; users still keyed by vatsimId — env-gated since f1181b6),
+  Phase 5 pruning, Phase 4 sharded sim workers only when one sim can't
+  hold the load.
 
 Target: ~1,000 players with 2-3 SP worlds each (~3K worlds, all "24/7") plus
 ~20-60 MP worlds. **Plan lives in `docs/SCALING.md`** — read it before any
