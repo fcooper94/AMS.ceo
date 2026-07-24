@@ -1335,7 +1335,25 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
  * @param {string} worldId - World ID (optional)
  * @param {Date} providedGameTime - Pre-fetched game time to avoid DB calls (optional)
  */
+// Per-aircraft in-flight lock: two concurrent refreshes (e.g. the schedule
+// page's background refresh racing the explicit /refresh-maintenance POST)
+// both check-then-insert and create duplicate maintenance rows.
+const _maintRefreshInFlight = new Set();
+
 async function refreshAutoScheduledMaintenance(aircraftId, worldId = null, providedGameTime = null) {
+  if (_maintRefreshInFlight.has(aircraftId)) {
+    maintLog(`[MAINT REFRESH] Skipping ${aircraftId} — refresh already in flight`);
+    return [];
+  }
+  _maintRefreshInFlight.add(aircraftId);
+  try {
+    return await _refreshAutoScheduledMaintenance(aircraftId, worldId, providedGameTime);
+  } finally {
+    _maintRefreshInFlight.delete(aircraftId);
+  }
+}
+
+async function _refreshAutoScheduledMaintenance(aircraftId, worldId = null, providedGameTime = null) {
   const aircraft = await UserAircraft.findByPk(aircraftId);
   if (!aircraft) {
     maintLog(`[MAINT REFRESH] Aircraft ${aircraftId} not found`);

@@ -2357,6 +2357,10 @@ class WorldTimeService {
       lookbackDate.setDate(lookbackDate.getDate() - 90);
       const lookbackDateStr = lookbackDate.toISOString().split('T')[0];
 
+      // raw: thousands of daily patterns match every cycle in big worlds and
+      // most are already recorded — building Sequelize instances (plus full
+      // aircraft instances) for all of them froze the event loop for seconds.
+      // Writes below use targeted Model.update by id instead.
       const maintenancePatterns = await RecurringMaintenance.findAll({
         where: {
           status: 'active',
@@ -2368,8 +2372,12 @@ class WorldTimeService {
         include: [{
           model: UserAircraft,
           as: 'aircraft',
+          attributes: ['id', 'registration', 'totalFlightHours', 'lastDailyCheckDate',
+            'lastWeeklyCheckDate', 'lastACheckDate', 'lastCCheckDate', 'lastDCheckDate'],
           where: { worldMembershipId: { [Op.in]: membershipIds } }
-        }]
+        }],
+        raw: true,
+        nest: true
       });
 
       if (DEBUG_SIM && maintenancePatterns.length > 0) {
@@ -2477,12 +2485,12 @@ class WorldTimeService {
               simLog(`🔧 ${checkType} Check also validates lower checks for ${aircraft.registration}`);
             }
 
-            await aircraft.update(updateData);
+            await UserAircraft.update(updateData, { where: { id: aircraft.id } });
 
             // Mark all one-time scheduled maintenance as completed
             // so they don't keep being re-queried on every tick
             if (pattern.scheduledDate) {
-              await pattern.update({ status: 'completed' });
+              await RecurringMaintenance.update({ status: 'completed' }, { where: { id: pattern.id } });
               simLog(`🔧 ${checkType} Check marked as completed for ${aircraft.registration}`);
             }
 
