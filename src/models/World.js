@@ -77,6 +77,16 @@ const World = sequelize.define('World', {
     comment: 'GAME-time up to which the window engine has settled this world (flights/weeklies/etc.)',
     field: 'last_processed_at'
   },
+  assignedWorker: {
+    type: DataTypes.STRING(64),
+    comment: 'Sim worker (WORKER_ID) currently leasing this world; null = unclaimed',
+    field: 'assigned_worker'
+  },
+  workerHeartbeatAt: {
+    type: DataTypes.DATE,
+    comment: 'Lease heartbeat — stale (>60s) leases are re-claimed by other workers',
+    field: 'worker_heartbeat_at'
+  },
   // World configuration
   era: {
     type: DataTypes.INTEGER,

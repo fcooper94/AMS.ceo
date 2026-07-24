@@ -58,6 +58,13 @@ class WorldTimeService {
     this.coldPassJitterMs = 15 * 60 * 1000;   // ...±15min per-world jitter
     this.hotColdSweepMs = 15000;              // temperature sweep cadence
     this.coldPassBudgetPerSweep = 3;          // max cold passes per sweep
+    // Worker leases (Phase 4): each sim worker claims worlds via an atomic
+    // DB lease and only processes what it holds. One worker claims all —
+    // identical to pre-lease behaviour; scaling = duplicate the service
+    // with a different WORKER_ID.
+    this.workerId = process.env.WORKER_ID || 'sim-1';
+    this.leaseStaleMs = 60 * 1000;            // heartbeat older than this = dead worker
+    this.leaseClaimBatch = 5;                 // claims per sweep (workers converge to a fair split)
   }
 
   /**
@@ -143,23 +150,40 @@ class WorldTimeService {
    */
   async startAll() {
     try {
-      const activeWorlds = await World.findAll({
-        where: { status: 'active' }
-      });
-
-      if (activeWorlds.length === 0) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('⚠ No active worlds found. Create a world first.');
+      let toStart;
+      if (this.workerLeasesEnabled) {
+        // Worker leases: claim in batches until nothing claimable remains.
+        // A single worker ends up holding everything (pre-lease behaviour);
+        // workers booting concurrently converge to a roughly even split.
+        for (;;) {
+          const ids = await this._claimWorlds(this.leaseClaimBatch);
+          if (ids.length < this.leaseClaimBatch) break;
         }
-        return false;
+        // Start everything leased to us — includes worlds still assigned
+        // from a previous run of this worker (crash-restart before stale)
+        const mine = await World.findAll({
+          where: { status: 'active', assignedWorker: this.workerId },
+          attributes: ['id'], raw: true
+        });
+        toStart = mine.map(r => r.id);
+        console.log(`[LEASE] worker ${this.workerId} holds ${toStart.length} world(s)`);
+      } else {
+        const activeWorlds = await World.findAll({
+          where: { status: 'active' }, attributes: ['id'], raw: true
+        });
+        toStart = activeWorlds.map(w => w.id);
       }
 
-      for (const world of activeWorlds) {
-        await this.startWorld(world.id);
+      if (toStart.length === 0 && process.env.NODE_ENV === 'development') {
+        console.log('⚠ No worlds to start (none active, or other workers hold them). Reconciler keeps watching.');
+      }
+
+      for (const id of toStart) {
+        await this.startWorld(id);
       }
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✓ World Time Service started for ${activeWorlds.length} world(s)`);
+        console.log(`✓ World Time Service started for ${toStart.length} world(s)`);
       }
 
       // Service-split control plane: worlds are created/paused/resumed/deleted
@@ -187,6 +211,64 @@ class WorldTimeService {
   // worlds up via its reconciler within ~15s.
   _isWebRole() {
     return process.env.SIM_AUTOSTART === '0';
+  }
+
+  // ═══ Phase 4: worker leases ══════════════════════════════════════════════
+  // Multiple sim workers split the worlds via a DB lease: claim = atomic
+  // UPDATE of unclaimed/stale rows (SKIP LOCKED — two workers can sweep at
+  // once), heartbeat every reconciler sweep, release on graceful shutdown.
+  // A crashed worker's leases go stale in 60s and are re-claimed; the window
+  // engine makes takeover safe (the new worker settles from
+  // last_processed_at). WORKER_LEASES=0 reverts to claim-everything.
+  get workerLeasesEnabled() {
+    return process.env.WORKER_LEASES !== '0';
+  }
+
+  async _leaseHeartbeat() {
+    const sequelize = require('../config/database');
+    await sequelize.query(
+      `UPDATE worlds SET worker_heartbeat_at = NOW()
+       WHERE assigned_worker = :me AND status = 'active'`,
+      { replacements: { me: this.workerId } }
+    );
+  }
+
+  /**
+   * Claim up to `batch` unclaimed/stale active worlds. MP and recently
+   * active worlds first so hot load spreads across workers before cold.
+   * Returns the claimed world ids.
+   */
+  async _claimWorlds(batch = this.leaseClaimBatch) {
+    const sequelize = require('../config/database');
+    const [rows] = await sequelize.query(
+      `UPDATE worlds SET assigned_worker = :me, worker_heartbeat_at = NOW()
+       WHERE id IN (
+         SELECT id FROM worlds
+         WHERE status = 'active'
+           AND (assigned_worker IS NULL
+                OR (assigned_worker != :me AND (worker_heartbeat_at IS NULL OR worker_heartbeat_at < NOW() - INTERVAL '${Math.round(this.leaseStaleMs / 1000)} seconds')))
+         ORDER BY (CASE WHEN world_type = 'multiplayer' THEN 0 ELSE 1 END),
+                  last_active_at DESC NULLS LAST
+         LIMIT :batch
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id`,
+      { replacements: { me: this.workerId, batch } }
+    );
+    return rows.map(r => r.id);
+  }
+
+  async _releaseLeases() {
+    try {
+      const sequelize = require('../config/database');
+      await sequelize.query(
+        'UPDATE worlds SET assigned_worker = NULL, worker_heartbeat_at = NULL WHERE assigned_worker = :me',
+        { replacements: { me: this.workerId } }
+      );
+      console.log(`[LEASE] worker ${this.workerId} released its leases`);
+    } catch (e) {
+      console.error('[LEASE] release failed (leases will go stale in 60s):', e.message);
+    }
   }
 
   async startWorld(worldId) {
@@ -381,6 +463,13 @@ class WorldTimeService {
     await Promise.all(savePromises);
 
     this.worlds.clear();
+
+    // Graceful shutdown: hand our worlds back so a replacement worker can
+    // claim them instantly instead of waiting out the 60s stale window
+    if (this.workerLeasesEnabled && !this._isWebRole()) {
+      await this._releaseLeases();
+    }
+
     if (process.env.NODE_ENV === 'development') {
       console.log('✓ World Time Service stopped all worlds and saved final state');
     }
@@ -3313,17 +3402,31 @@ class WorldTimeService {
       if (this._reconciling) return;
       this._reconciling = true;
       try {
+        // Worker leases: renew ours, then try to claim unclaimed/stale
+        // worlds (new worlds from the web service, or a crashed worker's)
+        if (this.workerLeasesEnabled) {
+          await this._leaseHeartbeat();
+          const claimed = await this._claimWorlds();
+          if (claimed.length > 0) {
+            console.log(`[LEASE] worker ${this.workerId} claimed ${claimed.length} world(s)`);
+          }
+        }
+
         const rows = await World.findAll({
-          attributes: ['id', 'isPaused', 'timeAcceleration', 'currentTime', 'pauseOnSessionEnd', 'lastActiveAt'],
+          attributes: ['id', 'isPaused', 'timeAcceleration', 'currentTime', 'pauseOnSessionEnd', 'lastActiveAt', 'assignedWorker'],
           where: { status: 'active' },
           raw: true
         });
-        const activeIds = new Set(rows.map(r => r.id));
+        // Only worlds leased to this worker are ours to run
+        const myRows = this.workerLeasesEnabled
+          ? rows.filter(r => r.assignedWorker === this.workerId)
+          : rows;
+        const activeIds = new Set(myRows.map(r => r.id));
 
-        for (const r of rows) {
+        for (const r of myRows) {
           const ws = this.worlds.get(r.id);
           if (!ws) {
-            // New world created on the web service
+            // New world created on the web service (or newly claimed)
             console.log(`[WorldTime] Reconciler: starting new world ${r.id}`);
             await this.startWorld(r.id);
             continue;
@@ -3342,10 +3445,12 @@ class WorldTimeService {
           if (r.lastActiveAt) ws.world.lastActiveAt = new Date(r.lastActiveAt);
         }
 
-        // Worlds deleted/completed on the web service
+        // Worlds deleted/completed on the web service, or whose lease we
+        // lost (stalled >60s and another worker took it — stop immediately
+        // so two workers never process the same world for long)
         for (const worldId of [...this.worlds.keys()]) {
           if (!activeIds.has(worldId)) {
-            console.log(`[WorldTime] Reconciler: stopping removed/inactive world ${worldId}`);
+            console.log(`[WorldTime] Reconciler: stopping removed/reassigned world ${worldId}`);
             this.stopWorld(worldId);
           }
         }

@@ -14,6 +14,16 @@ const sqlLogger = (msg) => sqlLogStream.write(`${new Date().toISOString()} ${msg
 // Falls back to 15 if the query fails.
 let poolMax = parseInt(process.env.DB_POOL_MAX) || 15;
 async function autoSizePool(seq) {
+  // Explicit per-service budget (Phase 4): with multiple sim workers the
+  // 80%-of-max auto-size would let each worker take 80 connections and
+  // exhaust Postgres. Set DB_POOL_MAX per service (e.g. web 60, worker 40,
+  // total < max_connections) and the auto-size is skipped entirely.
+  const envMax = parseInt(process.env.DB_POOL_MAX);
+  if (Number.isFinite(envMax) && envMax > 0) {
+    seq.config.pool.max = envMax;
+    console.log(`✓ DB pool set from DB_POOL_MAX: ${envMax}`);
+    return;
+  }
   try {
     const [result] = await seq.query("SHOW max_connections", { type: 'SELECT' });
     const maxConn = parseInt(result?.max_connections) || 100;
