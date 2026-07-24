@@ -787,7 +787,9 @@ server.listen(PORT, () => {
           ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE,
           ADD COLUMN IF NOT EXISTS ai_maturity VARCHAR(20) NOT NULL DEFAULT 'brand_new',
           ADD COLUMN IF NOT EXISTS currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-          ADD COLUMN IF NOT EXISTS last_processed_at TIMESTAMP WITH TIME ZONE
+          ADD COLUMN IF NOT EXISTS last_processed_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS assigned_worker VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS worker_heartbeat_at TIMESTAMP WITH TIME ZONE
       `);
     } catch (_) { /* worlds table may not exist yet — sync will create it */ }
     try {
@@ -931,6 +933,8 @@ server.listen(PORT, () => {
     if (!worldStarted && process.env.NODE_ENV === 'development') {
       console.log('\n💡 Tip: Create a world with "npm run world:create"\n');
     }
+    // Phase 5 data discipline: daily bounded-batch pruning (sim role only)
+    require('./services/pruneService').start();
   } else {
     console.log('[WorldTime] Simulation skipped — this server is UI/API only (worlds tick elsewhere)');
     // Web role: serve game time from the DB mirror (sim persists clocks every
