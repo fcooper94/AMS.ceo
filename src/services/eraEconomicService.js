@@ -382,6 +382,11 @@ class EraEconomicService {
     const fuelMult = this.getFuelCostMultiplier(year);
     const eraMult  = this.getEraMultiplier(year);
     const pax = passengers != null ? passengers : Math.round(seats * 0.75);
+    // 2026-07 economy rebalance: -12% on all NON-fuel operating costs
+    // (route profitability was too thin even at healthy LFs). Fuel is
+    // deliberately untouched — its calibration is parked separately
+    // (currently UNDER-priced in early eras; see CLAUDE.md).
+    const OPEX = 0.88;
 
     let fuelCost, crewCost, maintenanceCost, flightHours;
 
@@ -404,12 +409,12 @@ class EraEconomicService {
       } else if (oneWayHours > C.LONG_HAUL_CREW_HOURS) {
         pilots += 1; cabinCrew = Math.ceil(cabinCrew * 1.3);
       }
-      crewCost = Math.round((pilots * C.PILOT_HOURLY + cabinCrew * C.CABIN_CREW_HOURLY) * flightHours * eraMult);
+      crewCost = Math.round((pilots * C.PILOT_HOURLY + cabinCrew * C.CABIN_CREW_HOURLY) * flightHours * eraMult * OPEX);
 
       // Maintenance: per-flight-hour variable + per-cycle fixed
       const maintHr = opts.maintenanceCostPerHour || 1000;
       maintenanceCost = Math.round(
-        (maintHr * C.MAINT_VARIABLE_FRAC * flightHours + maintHr * C.MAINT_CYCLE_FRAC) * eraMult
+        (maintHr * C.MAINT_VARIABLE_FRAC * flightHours + maintHr * C.MAINT_CYCLE_FRAC) * eraMult * OPEX
       );
     } else {
       // ── Fallback: seat-based estimation (AI cost estimators) ───────
@@ -418,28 +423,28 @@ class EraEconomicService {
       flightHours = totalNm / estSpeed;
       // Fuel: era-scaled with fuel-specific multiplier (consistent with aircraft path)
       fuelCost        = Math.round(totalNm * 5.5  * sizeScale * fuelMult * eraMult * C.FUEL_CONTINGENCY);
-      crewCost        = Math.round(totalNm * 0.90 * sizeScale * eraMult);
-      maintenanceCost = Math.round(totalNm * 0.65 * sizeScale * eraMult);
+      crewCost        = Math.round(totalNm * 0.90 * sizeScale * eraMult * OPEX);
+      maintenanceCost = Math.round(totalNm * 0.65 * sizeScale * eraMult * OPEX);
     }
 
     // ── Common costs (both paths) ────────────────────────────────────
     // Airport fees: landing + terminal + handling. Scales with aircraft size —
     // small regionals at small airports pay much less than widebodies at major hubs.
-    const airportFees = Math.round(seats * 15 * eraMult);
+    const airportFees = Math.round(seats * 15 * eraMult * OPEX);
 
     // Ground handling: per-departure cost by contractor tier
     const tier = (opts && opts.groundTier) || 'standard';
     const gh = C.GROUND_HANDLING[tier] || C.GROUND_HANDLING.standard;
-    const groundHandling = Math.round((gh.base + seats * gh.perSeat) * eraMult);
+    const groundHandling = Math.round((gh.base + seats * gh.perSeat) * eraMult * OPEX);
 
     // Per-passenger service costs (check-in, boarding, compensation reserve)
-    const paxServiceCost = Math.round(pax * 3 * eraMult);
+    const paxServiceCost = Math.round(pax * 3 * eraMult * OPEX);
 
     // Navigation / ATC charges
-    const navCharges = Math.round(totalNm * C.NAV_PER_NM * eraMult);
+    const navCharges = Math.round(totalNm * C.NAV_PER_NM * eraMult * OPEX);
 
     // Catering: scales with flight duration
-    const cateringCost = Math.round(pax * (C.CATERING_BASE_PER_PAX + (flightHours / 2) * C.CATERING_PER_PAX_PER_HR) * eraMult);
+    const cateringCost = Math.round(pax * (C.CATERING_BASE_PER_PAX + (flightHours / 2) * C.CATERING_PER_PAX_PER_HR) * eraMult * OPEX);
 
     // Distribution / sales commission (3% of ticket revenue when known)
     const distributionCost = (opts && opts.ticketRevenue) ? Math.round(opts.ticketRevenue * C.DISTRIBUTION_RATE) : 0;

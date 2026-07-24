@@ -307,7 +307,20 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
       else if (paxCapacity > 150) turnaround = 60;
       else if (paxCapacity < 80) turnaround = 30;
 
-      const depHour = 6 + Math.floor(Math.random() * 14); // 06:00–19:00
+      // Curfew-aware departure: ≥06:00 local, and prefer an hour whose
+      // round trip lands back by ~23:00 local (overnight flying is fine,
+      // antisocial takeoffs/landings are not — mirrors aiDecisionService)
+      const rtMinutes = (distance / (ac.cruiseSpeed || 450)) * 60 * 2 + turnaround;
+      const baseUtcOffset = Math.round((parseFloat(airline.baseAirport?.longitude) || 0) / 15);
+      const candidates = [];
+      for (let h = 6; h <= 19; h++) {
+        const arrLocal = (h + rtMinutes / 60) % 24;
+        if (arrLocal >= 6 && arrLocal <= 23) candidates.push(h);
+      }
+      const depLocal = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : 6 + Math.floor(Math.random() * 14);
+      const depHour = ((depLocal - baseUtcOffset) % 24 + 24) % 24;
       const depTime = `${String(depHour).padStart(2, '0')}:${String(Math.floor(Math.random() * 12) * 5).padStart(2, '0')}:00`;
 
       const priceMod = (archetype.pricingModifier || 1.0) * (config.pricingModifier || 1.0);

@@ -314,11 +314,20 @@ async function countCompetitors(route) {
  * Generate a departure time with awareness of route type, personality, and existing competition.
  * Tries to find a time slot with good separation from existing departures.
  */
-function generateSmartDepartureTime(routeType, personality, existingDepartures) {
+function generateSmartDepartureTime(routeType, personality, existingDepartures, opts = {}) {
+  // Curfew discipline: depart base no earlier than 06:00 LOCAL and aim to
+  // land back no later than ~23:00 LOCAL. Overnight FLYING is fine (a long-
+  // haul can be airborne through the night) — it's the takeoff/landing
+  // events that should sit inside civilised hours. Stored times are UTC-ish
+  // (the revenue time factor derives local via longitude/15), so opts.
+  // baseUtcOffset converts; opts.roundTripMinutes enables the arrival check.
+  const roundTripMinutes = opts.roundTripMinutes || 0;
+  const utcOffset = Number.isFinite(opts.baseUtcOffset) ? opts.baseUtcOffset : 0;
+
   const peakMorning = [6, 7, 8, 9];
   const peakEvening = [16, 17, 18, 19];
   const midDay = [10, 11, 12, 13, 14, 15];
-  const offPeak = [20, 21, 5];
+  const offPeak = [20, 21]; // hour 5 removed — pre-06:00 departures are out
 
   let hourPool;
   if (routeType === 'business') {
@@ -333,37 +342,58 @@ function generateSmartDepartureTime(routeType, personality, existingDepartures) 
     hourPool = [...peakMorning, ...peakMorning, ...peakEvening, ...peakEvening, ...midDay];
   }
 
-  // Parse existing departure hours
+  // Does a LOCAL departure hour bring the aircraft back to base within
+  // 06:00–23:00 local? (No round-trip info → treat as compliant.)
+  const landsCivilised = (localDepHour) => {
+    if (!roundTripMinutes) return true;
+    const arrLocal = (localDepHour + roundTripMinutes / 60) % 24;
+    return arrLocal >= 6 && arrLocal <= 23;
+  };
+
+  // Parse existing departure hours (stored space) for separation scoring
   const existingHours = (existingDepartures || []).map(t => {
     const parts = String(t).split(':');
     return parseInt(parts[0]) + parseInt(parts[1] || 0) / 60;
   });
 
-  // Try 10 candidates, pick the one with best separation from existing
-  let bestHour = hourPool[Math.floor(Math.random() * hourPool.length)];
+  // Try candidates; a curfew-compliant arrival ALWAYS beats a better gap
+  let bestHour = null;
   let bestGap = -1;
+  let bestCompliant = false;
 
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const candidateHour = hourPool[Math.floor(Math.random() * hourPool.length)];
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const candidateLocal = hourPool[Math.floor(Math.random() * hourPool.length)];
+    const candidateStored = ((candidateLocal - utcOffset) % 24 + 24) % 24;
+    const compliant = landsCivilised(candidateLocal);
 
-    if (existingHours.length === 0) {
-      bestHour = candidateHour;
-      break;
-    }
+    const minGap = existingHours.length === 0 ? 24
+      : Math.min(...existingHours.map(eh => {
+          const diff = Math.abs(candidateStored - eh);
+          return Math.min(diff, 24 - diff);
+        }));
 
-    const minGap = Math.min(...existingHours.map(eh => {
-      const diff = Math.abs(candidateHour - eh);
-      return Math.min(diff, 24 - diff);
-    }));
-
-    if (minGap > bestGap) {
+    if (bestHour === null
+        || (compliant && !bestCompliant)
+        || (compliant === bestCompliant && minGap > bestGap)) {
+      bestHour = candidateStored;
       bestGap = minGap;
-      bestHour = candidateHour;
+      bestCompliant = compliant;
+    }
+  }
+
+  // If nothing in the pool lands in-window (very long round trips), walk the
+  // full 06:00-21:00 local range for any compliant hour before giving up
+  if (!bestCompliant && roundTripMinutes) {
+    for (let h = 6; h <= 21; h++) {
+      if (landsCivilised(h)) {
+        bestHour = ((h - utcOffset) % 24 + 24) % 24;
+        break;
+      }
     }
   }
 
   const minute = Math.floor(Math.random() * 12) * 5;
-  return `${String(bestHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+  return `${String(Math.floor(bestHour)).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
 // ─── Core decision functions ─────────────────────────────────────────
@@ -731,14 +761,19 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     else if (paxCapacity > 150) turnaroundTime = 60;
     else if (paxCapacity < 80) turnaroundTime = 30;
 
-    // Smart departure time
+    // Smart departure time — curfew-aware: departs base ≥06:00 local and
+    // aims to land back ≤23:00 local (see generateSmartDepartureTime)
     const existingTimesOnPair = competingRoutes
       .filter(r => r.arrivalAirportId === destAirport.id)
       .map(r => r.scheduledDepartureTime);
+    const cruiseSpd = aircraft.aircraft?.cruiseSpeed || 450;
+    const roundTripMinutes = (distance / cruiseSpd) * 60 * 2 + turnaroundTime;
+    const baseLng = parseFloat(airline.baseAirport?.longitude) || 0;
     const departureTime = generateSmartDepartureTime(
       destData.routeType || 'mixed',
       airline.aiPersonality,
-      existingTimesOnPair
+      existingTimesOnPair,
+      { roundTripMinutes, baseUtcOffset: Math.round(baseLng / 15) }
     );
 
     // Smart frequency

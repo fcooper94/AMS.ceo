@@ -1948,9 +1948,15 @@ class WorldTimeService {
         // Marketing lifts the starting point. This replaces the old flat 0.55 start so
         // a high-demand monopoly route no longer opens with an unrealistically low LF,
         // while a route fighting for share starts modest (never zero) and grows.
-        if (route.createdAt) {
-          const routeAgeWeeks = (currentGameTime.getTime() - new Date(route.createdAt).getTime()) / (7 * 24 * 60 * 60 * 1000);
-          const ramp = 1 - Math.exp(-Math.max(0, routeAgeWeeks) / 3); // 0 → ~1 over 8-12wk
+        {
+          // Route age in GAME terms = settled operating days (totalFlights).
+          // NB route.createdAt is a REAL-world timestamp — subtracting it from
+          // game time was hugely negative in every historical-era world,
+          // clamping the ramp to 0 so routes NEVER matured (competitive
+          // routes sat at their 0.40-0.62 day-one share forever). Flights
+          // flown is game-keyed and arguably the truer "customer base built".
+          const routeAgeWeeks = (parseInt(route.totalFlights) || 0) / 7;
+          const ramp = 1 - Math.exp(-Math.max(0, routeAgeWeeks) / 3); // 0 → ~1 over 8-12wk of ops
           const competitorCount = competingRoutesList.length;
           const demandStrength = Math.max(0, Math.min(1, routeDemandValue / 100));
 
@@ -2000,6 +2006,25 @@ class WorldTimeService {
 
         // Combine all factors
         loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * variance;
+
+        // 10. Undersupply floor: when the route's real market dwarfs the seats
+        // on offer, the plane fills regardless of ramp/competition — demand
+        // with no supply. Uses the same demandToPax the cargo engine uses.
+        // 2x undersupply → no lift; 20x+ → floor ~0.95 at fair pricing.
+        // Overpricing still bites (floor scales with the price factor), so
+        // this is "you can't fail to fill a small plane on a huge market",
+        // not "pricing stops mattering".
+        try {
+          const { demandToPax } = require('./cargoDemandService');
+          const marketPaxPerDay = demandToPax(routeDemandValue, worldYear, routeIsDomestic);
+          const supplyRatio = marketPaxPerDay / Math.max(1, paxCapacity);
+          if (supplyRatio > 2) {
+            const lift = Math.min(1, Math.log10(supplyRatio / 2)); // 2x→0, 20x→1
+            const undersupplyFloor = (0.50 + 0.45 * lift) * Math.min(1, priceFactor);
+            loadFactor = Math.max(loadFactor, undersupplyFloor);
+          }
+        } catch (_) { /* demand→pax unavailable — skip the floor */ }
+
         // AI airlines get a higher floor (0.30) to ensure financial survival — represents
         // established customer base, codeshare traffic, and corporate contracts
         const minLoadFactor = isAIAirline ? 0.30 : 0.15;
