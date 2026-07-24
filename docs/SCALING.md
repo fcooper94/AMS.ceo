@@ -34,9 +34,26 @@ Raw-row cycle caches, per-cycle membership object, raw maintenance processing,
 timing, boot warming gate. Result: no steady-state event-loop stalls at
 5-world scale. **The stall monitor is the tripwire for starting Phase 3.**
 
-### Phase 1 — window-based engine refactor (the big one)
-Refactor per-world processing from "tick every second" to **"process the
-elapsed window [world.lastProcessedAt → now] in one pass"**:
+### Phase 1 — window-based engine refactor — CODE COMPLETE 2026-07-24 (harness-tested, pending live verify)
+
+Shipped as `worldTimeService.processWorldWindow(worldId, {toGameTime, include,
+stateless})` + `worlds.last_processed_at` (additive guard). Day walk settles
+flights/tours per elapsed game day (23:59 synthetic timestamps; route-day
+keys make it idempotent), credits at each crossed Monday 00:05, weeklies at
+week boundaries (TZ-stable noon week-keys, shared maps with legacy dispatch);
+maintenance completions run once at window end (already due-based, 90-day
+lookback); catch-up/cold passes add stateless processors once at end with AI
+scaled 1 round per elapsed game-week (max 4). Anchor stamps after EVERY
+settled day (mid-pass crash never replays a day — lastRevenueGameDay only
+remembers the last date, replay would double-credit). 4-game-week cap per
+pass. Hot ticks call it with tiny windows on the flight cadence; boot
+catch-up settles the offline gap (deploys used to silently skip it).
+**Rollback: `WINDOW_ENGINE=0`** reverts to the legacy throttle dispatch,
+which keeps the anchor current via the tick's periodic write so re-enabling
+never double-settles. Bonus fix both paths: pre-1970 worlds never got the
+daily maintenance refresh (negative epoch day vs `|| 0` default).
+
+Original design notes:
 - Revenue already keys off `lastRevenueGameDay` per route — generalise: a
   window pass walks each elapsed game-day and settles flights/tours due in it.
 - Same for maintenance completions, weekly overheads/loans/deliveries (already
@@ -68,7 +85,18 @@ push. Groundwork already exists (`SIM_AUTOSTART`).
   express-session currently uses MemoryStore, which doesn't survive restarts
   or multiple web instances. Use `connect-redis` + `@socket.io/redis-adapter`.
 
-### Phase 3 — CODE SHIPPED 2026-07-24; deployment runbook
+### Phase 3 — ✅ DEPLOYED to Railway 2026-07-24 (runbook kept for reference/rollback)
+
+Verified in production: sim ticks worlds and emits via Redis, web serves the
+mirrored clock, no steady-state event-loop stalls on either service (the 49s
+demand-cache stall at boot now lands on the sim, where it's harmless).
+Two lessons from the deploy:
+- **`ams-sim` needs the web service's FULL variable set** (raw-editor copy,
+  then flip `SIM_AUTOSTART=1`) — it boots the same `server.js`. Any future
+  env var added to web must be added to sim too (or moved to Shared
+  Variables).
+- VATSIM OAuth env is no longer required to boot: the passport strategy is
+  registered only when `VATSIM_CLIENT_ID`/`SECRET` are set (f1181b6).
 
 The code side is done: Redis Socket.IO adapter (web) + emitter (sim role),
 DB time mirror for web-role `getCurrentTime()` (15s refresh, extrapolated

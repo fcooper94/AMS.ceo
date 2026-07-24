@@ -643,13 +643,16 @@ Deliberately parked; get sign-off before changing.
 
 ## Scaling roadmap — hot/cold worlds (see docs/SCALING.md)
 
-**STATUS (2026-07-24): Phase 3 (web/sim split) is CODE-COMPLETE and pushed;
-Railway UI steps NOT yet done** — the exact runbook is in docs/SCALING.md
-("Phase 3 — CODE SHIPPED"). The split activates only via env vars
-(`SIM_AUTOSTART` + `REDIS_URL`); until the user does the Railway steps,
-production runs combined exactly as before. Phases 1-2 (window-based engine
-refactor + hot/cold scheduler) are NOT started — do them in a dedicated
-session. Key split mechanics: web role serves game time from a 15s DB
+**STATUS (2026-07-24): Phase 3 (web/sim split) is DEPLOYED on Railway and
+verified** — `ams` web-only (`SIM_AUTOSTART=0`) + `ams-sim` (`=1`, no public
+domain) + Redis. **Env parity rule: any new env var added to the web service
+must also be added to `ams-sim`** (same image/boot path; deploy broke on
+missing VATSIM keys — passport is now env-gated, f1181b6, and VATSIM OAuth
+login is no longer used; full rip-out pending). Phases 1-2 (window-based
+engine refactor + hot/cold scheduler) are NOT started — do them in a
+dedicated session; sim steady-state TICK-SLOW on the big AI worlds
+(maintenance 4-8s/cycle, one 100s flights spike) is the Phase 1 baseline.
+Key split mechanics: web role serves game time from a 15s DB
 mirror in `worldTimeService.getCurrentTime`; sim role reconciles world
 create/pause/resume/accel/delete from the DB every 15s; sim emits sockets
 via `@socket.io/redis-emitter`, web fans out via the Redis adapter.
