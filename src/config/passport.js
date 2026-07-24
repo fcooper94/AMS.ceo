@@ -3,7 +3,11 @@ const OAuth2Strategy = require('passport-oauth2');
 const axios = require('axios');
 const { User } = require('../models');
 
-// Configure VATSIM OAuth2 Strategy
+// Configure VATSIM OAuth2 Strategy — only when credentials are present.
+// The sim service (and any env without VATSIM keys) boots without it;
+// passport.authenticate('vatsim') resolves the strategy per-request, so
+// /auth/login simply 500s instead of the whole process crashing at require.
+if (process.env.VATSIM_CLIENT_ID && process.env.VATSIM_CLIENT_SECRET) {
 passport.use('vatsim', new OAuth2Strategy({
     authorizationURL: `${process.env.VATSIM_AUTH_URL}/oauth/authorize`,
     tokenURL: `${process.env.VATSIM_AUTH_URL}/oauth/token`,
@@ -66,6 +70,9 @@ passport.use('vatsim', new OAuth2Strategy({
     }
   }
 ));
+} else {
+  console.log('VATSIM OAuth not configured (no VATSIM_CLIENT_ID) — /auth/login disabled on this instance');
+}
 
 // Serialize user to session
 passport.serializeUser((user, done) => {
