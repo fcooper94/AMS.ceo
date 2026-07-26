@@ -768,7 +768,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     return getFlightSlotsFromTemplates(templates, targetDow, forDailyCheck);
   }
 
-  function findAvailableSlotCached(dateStr, duration, checkType) {
+  function findAvailableSlotCached(dateStr, duration, checkType, minStartMins = 0) {
     const flightSlots = getFlightSlotsForDateCached(dateStr, checkType === 'daily');
     const targetDate = new Date(dateStr + 'T00:00:00');
 
@@ -856,7 +856,41 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     // For multi-day checks (C/D), only check for conflicts on the first day
     const isMultiDay = duration > 1440;
 
+    // ── Randomised placement (primary, single-day checks) ──
+    // Engineers can't work the whole fleet at once: scatter each check
+    // uniformly across the day's actual free gaps instead of every aircraft
+    // walking the same preference ladder (which produced one synchronized
+    // 03:00 stripe of dailies). The ladder below remains the fallback.
+    if (!isMultiDay) {
+      const gaps = [];
+      let cursor = 0;
+      for (const busy of busyPeriods) {
+        if (busy.start > cursor) gaps.push({ start: cursor, end: Math.min(busy.start, 1440) });
+        cursor = Math.max(cursor, busy.end);
+      }
+      if (cursor < 1440) gaps.push({ start: cursor, end: 1440 });
+
+      const candidates = [];
+      for (const g of gaps) {
+        for (let s = Math.ceil(g.start / 15) * 15; s + duration <= g.end; s += 15) {
+          if (s >= minStartMins) candidates.push(s); // e.g. ≥16h since previous daily
+        }
+      }
+      if (candidates.length > 0) {
+        const slotKeyOf = (mins) => `${Math.floor(mins / 60).toString().padStart(2, '0')}:${(mins % 60).toString().padStart(2, '0')}`;
+        // De-clash: avoid starts fleet-mates already use on this date/type
+        const unclashed = candidates.filter(s => !fleetMaintCountBySlot[slotKeyOf(s)]);
+        const pool = unclashed.length > 0 ? unclashed : candidates;
+        const s = pool[Math.floor(Math.random() * pool.length)];
+        // Record the pick so later picks in this run de-clash against it
+        fleetMaintCountBySlot[slotKeyOf(s)] = (fleetMaintCountBySlot[slotKeyOf(s)] || 0) + 1;
+        fleetMaintByDateType[key] = fleetMaintCountBySlot;
+        return slotKeyOf(s);
+      }
+    }
+
     for (const preferredStart of preferredStarts) {
+      if (preferredStart < minStartMins) continue; // respect min gap since previous check
       // For multi-day checks, only check start time conflicts (first day)
       // For single-day checks, check entire duration fits
       const slotEnd = isMultiDay ? 1440 : preferredStart + duration;
@@ -1295,16 +1329,48 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
       // If no slot is found on a given day, the 2-day validity from
       // the previous check provides coverage as a safety net.
       maintLog(`[AUTO-SCHEDULE] ${aircraft.registration} daily: existingDates=${existingDates.size}, heavierDates=${heavierCheckDates.size}, allExistingMaint=${allExistingMaint.length}, flightTemplates=${allFlights.length}`);
+
+      // Minimum spacing between consecutive dailies: with randomised slots, a
+      // late pick (23:00) followed by an early one (01:00) is two checks hours
+      // apart — wasted engineering. Track the previous daily's actual datetime
+      // (completed, existing row, or heavier check that validates it) and
+      // require ≥16h before the next.
+      const MIN_DAILY_GAP_MS = 16 * 60 * 60 * 1000;
+      const timeMins = (t) => {
+        const [h, mm] = String(t || '00:00').substring(0, 5).split(':').map(Number);
+        return (h || 0) * 60 + (mm || 0);
+      };
+      const rowDateStr = (m) => m.scheduledDate instanceof Date
+        ? m.scheduledDate.toISOString().split('T')[0] : String(m.scheduledDate).split('T')[0];
+      const dailyTimeByDate = {};
+      for (const m of (existingByCheckType['daily'] || [])) dailyTimeByDate[rowDateStr(m)] = m.startTime;
+      const heavierTimeByDate = {};
+      for (const m of heavierChecks) {
+        if (m.scheduledDate) heavierTimeByDate[rowDateStr(m)] = m.startTime;
+      }
+      const dayStartMs = (dStr) => new Date(dStr + 'T00:00:00Z').getTime();
+      let prevDailyAt = aircraft.lastDailyCheckDate ? new Date(aircraft.lastDailyCheckDate).getTime() : null;
+
       for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset++) {
         const tryDate = new Date(gameNow);
         tryDate.setDate(tryDate.getDate() + dayOffset);
         const dateStr = tryDate.toISOString().split('T')[0];
 
         // Skip if there's already a daily check on this day
-        if (existingDates.has(dateStr)) continue;
+        if (existingDates.has(dateStr)) {
+          if (dailyTimeByDate[dateStr] != null) prevDailyAt = dayStartMs(dateStr) + timeMins(dailyTimeByDate[dateStr]) * 60000;
+          continue;
+        }
 
         // Skip if there's a heavier check on this day (it covers daily)
-        if (heavierCheckDates.has(dateStr)) continue;
+        if (heavierCheckDates.has(dateStr)) {
+          if (heavierTimeByDate[dateStr] != null) prevDailyAt = dayStartMs(dateStr) + timeMins(heavierTimeByDate[dateStr]) * 60000;
+          continue;
+        }
+
+        // Earliest allowed start today given the previous daily + min gap
+        const minStartMins = prevDailyAt != null
+          ? Math.max(0, Math.ceil((prevDailyAt + MIN_DAILY_GAP_MS - dayStartMs(dateStr)) / 60000)) : 0;
 
         // For expired checks on day 0, schedule NOW
         // Skip if heavier check is handling immediate scheduling
@@ -1317,7 +1383,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
           availableTime = immediateStartTime;
         } else {
           // Use cached slot finder - daily can be done downroute
-          availableTime = findAvailableSlotCached(dateStr, duration, 'daily');
+          availableTime = findAvailableSlotCached(dateStr, duration, 'daily', minStartMins);
         }
 
         // No slot found - log why and skip (2-day validity from previous check covers the gap)
@@ -1325,6 +1391,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
           maintLog(`[AUTO-SCHEDULE] ${aircraft.registration}: No slot for daily on ${dateStr} - flights or maintenance blocking all times`);
           continue;
         }
+        prevDailyAt = dayStartMs(dateStr) + timeMins(availableTime) * 60000;
 
         recordsToCreate.push({
           aircraftId,
@@ -3187,7 +3254,13 @@ router.post('/lease', async (req, res) => {
     if (autoScheduleD === true) autoCheckTypes.push('D');
 
     if (autoCheckTypes.length > 0) {
-      await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
+      // Never fail a completed lease over maintenance scheduling — the daily
+      // engine refresh will (re)build the schedule anyway
+      try {
+        await createAutoScheduledMaintenance(userAircraft.id, autoCheckTypes, activeWorldId);
+      } catch (maintErr) {
+        console.error(`Lease ${registrationUpper}: auto-maintenance scheduling failed (non-fatal):`, maintErr.message);
+      }
     }
 
     // Deduct first payment + one-off cabin outfitting (lessor receives the
@@ -3255,10 +3328,12 @@ router.post('/lease', async (req, res) => {
       newBalance: membership.balance
     });
   } catch (error) {
-    console.error('Error leasing aircraft:', error);
+    // Full context in the logs — "unable to lease" bug reports were
+    // undiagnosable with just the message
+    console.error(`Error leasing aircraft (aircraftId=${req.body?.aircraftId}, reg=${req.body?.registration}, world=${req.session?.activeWorldId}):`, error.stack || error);
     res.status(500).json({
       error: 'Failed to lease aircraft',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: error.message
     });
   }
 });

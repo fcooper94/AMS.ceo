@@ -114,6 +114,20 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
     const contractType = type === 'lease' ? 'AIRCRAFT LEASE AGREEMENT' : type === 'order' ? 'AIRCRAFT ORDER AGREEMENT' : 'AIRCRAFT PURCHASE AGREEMENT';
     const actionText = type === 'lease' ? 'lease' : type === 'order' ? 'order' : 'purchase';
 
+    // Lease agreements: surface the one-off cabin outfitting charge — it's
+    // collected at signing on top of the first weekly payment, and hiding it
+    // here meant the server's affordability rejection blindsided players
+    // ("unable to lease after the agreement screen").
+    let leaseOutfitting = 0;
+    if (type === 'lease' && typeof cabinOutfittingCost === 'function' && selectedCabinConfig) {
+      leaseOutfitting = cabinOutfittingCost(selectedCabinConfig, marketplaceEraMultiplier);
+    }
+    const leaseOutfittingRow = leaseOutfitting > 0 ? `
+            <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+              <span>Cabin Outfitting (due at signing):</span>
+              <strong>${formatCurrencyShort(leaseOutfitting)}</strong>
+            </div>` : '';
+
     overlay.innerHTML = `
       <div class="contract-container" style="
         background: #f5f0e6;
@@ -165,7 +179,7 @@ function showContractSigningAnimation(type, aircraftName, registration, price) {
             <div style="display: flex; justify-content: space-between;">
               <span>${type === 'lease' ? 'Weekly Rate:' : type === 'order' ? 'Deposit Paid:' : 'Purchase Price:'}</span>
               <strong>${formattedPrice}</strong>
-            </div>
+            </div>${leaseOutfittingRow}
           </div>
 
           <p style="font-size: 0.8rem; color: #666; margin-top: 1rem;">
