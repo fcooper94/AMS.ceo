@@ -319,8 +319,25 @@ Fixes uncovered when the hot/cold window engine met the maintenance system:
   flights** (`scheduling-v3.js`): if it renders before the world-time
   reference arrives it falls back to REAL dates and maintenance silently
   can't match (flights still render — the tell is the red now-line on the
-  real-world weekday). On the first `worldTimeUpdated` event it now
-  re-fetches (`loadSchedule()`), and re-renders on game-date rollover.
+  real-world weekday). Recovery re-fetch runs ONLY when a load actually
+  bailed for lack of time (`_scheduleLoadFailedNoTime`) — a success-flag
+  version raced and re-fetched mid-refresh; re-renders on game-date rollover.
+- **"Checks vanish after load"**: the combined schedule endpoint fires a
+  background maintenance refresh that DELETES future rows then recreates
+  them; any fetch landing in that gap renders no maintenance. The refresh is
+  now delayed 5s after the response (was setImmediate). Proper fix someday:
+  wrap the refresh's delete+recreate in one transaction.
+- **Check slots are randomised into free schedule gaps** — the real
+  auto-schedule path is `findAvailableSlotCached` INSIDE
+  `createAutoScheduledMaintenance` (`findAvailableSlotOnDate` is a separate,
+  rarely-used variant — patching only it changes nothing). Uniform pick over
+  free 15-min slots, fleet de-clash, and consecutive dailies keep a **16h
+  minimum gap** (prev daily's actual datetime threaded through the loop —
+  without it, random late-then-early picks put two dailies 1-6h apart).
+- **Lease agreement shows the cabin outfitting charge** due at signing
+  (hidden before — server affordability rejections read as "unable to lease
+  after the agreement screen"); the lease 500 handler now logs stack +
+  context and returns the real error message.
 
 ## Dev workflow
 
