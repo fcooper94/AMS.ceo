@@ -604,12 +604,27 @@ function stopAircraftStatusUpdates() {
 
 // Listen for world time updates from layout.js (which manages the centralized socket connection)
 window.addEventListener('worldTimeUpdated', (event) => {
-  // Sync with the centralized time from layout.js
-  if (scheduleWorldReferenceTime) {
-    scheduleWorldReferenceTime = new Date(event.detail.referenceTime);
-    scheduleWorldReferenceTimestamp = event.detail.referenceTimestamp;
-    scheduleWorldTimeAcceleration = event.detail.acceleration;
-    console.log('[Scheduling] Time synced from socket:', scheduleWorldReferenceTime.toLocaleTimeString());
+  // Sync with the centralized time from layout.js. This must NOT be gated on
+  // already having a reference — the first update IS the reference.
+  const hadReference = !!scheduleWorldReferenceTime;
+  const prevDateStr = hadReference && typeof getCurrentWorldTime === 'function'
+    ? formatLocalDate(getCurrentWorldTime() || new Date()) : null;
+  scheduleWorldReferenceTime = new Date(event.detail.referenceTime);
+  scheduleWorldReferenceTimestamp = event.detail.referenceTimestamp;
+  scheduleWorldTimeAcceleration = event.detail.acceleration;
+  console.log('[Scheduling] Time synced from socket:', scheduleWorldReferenceTime.toLocaleTimeString());
+
+  // The weekly grid's day columns carry exact game DATES (maintenance blocks
+  // are date-keyed). If the page loaded before the world time was known, the
+  // fetchers bailed early (empty arrays) and the grid fell back to real-world
+  // dates — no 1950s maintenance can ever match. On the FIRST reference,
+  // re-fetch everything (not just re-render); on a game-date rollover just
+  // re-render so the columns advance.
+  const newDateStr = formatLocalDate(new Date(event.detail.referenceTime));
+  if (!hadReference) {
+    try { loadSchedule(); } catch (_) { /* initial load will pick up the reference */ }
+  } else if (prevDateStr && prevDateStr !== newDateStr) {
+    try { renderSchedule(); } catch (_) { /* grid not ready yet */ }
   }
 });
 
@@ -8350,66 +8365,32 @@ async function performCheckNow(aircraftId, checkType) {
   const overviewModal = document.getElementById('maintenanceModalOverlay');
   if (overviewModal) overviewModal.remove();
 
-  const checkDurations = {
-    'daily': 60,      // 1 hour
-    'weekly': 135,    // 2.25 hours
-    'A': 540,         // 9 hours
-    'C': 30240,       // 21 days (in minutes)
-    'D': 108000       // 75 days (in minutes)
-  };
-
   try {
-    const worldTime = getCurrentWorldTime();
-    if (!worldTime) {
-      await showAlertModal('Error', 'World time not available. Please try again.');
-      return;
-    }
-
-    // Get today's date and current time (+5 min buffer)
-    const startTimeDate = new Date(worldTime.getTime() + 5 * 60 * 1000);
-    const today = formatLocalDate(startTimeDate);
-    const currentHour = startTimeDate.getHours();
-    const currentMinute = startTimeDate.getMinutes();
-    const startTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}:00`;
-
-    // Schedule the maintenance to start now
-    const response = await fetch('/api/schedule/maintenance', {
+    // Perform the check immediately: the server stamps the check dates, takes
+    // the aircraft out of service for the check's (size-scaled) duration and
+    // auto-restores it — scheduled flights simply don't run in that window and
+    // resume by themselves (templates untouched).
+    const response = await fetch(`/api/fleet/${aircraftId}/perform-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aircraftId: aircraftId,
-        checkType: checkType,
-        scheduledDate: today,
-        startTime: startTime,
-        duration: checkDurations[checkType],
-        dayOfWeek: startTimeDate.getDay()
-      })
+      body: JSON.stringify({ checkType })
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to schedule check');
+      throw new Error(error.error || 'Failed to perform check');
     }
 
-    const checkNames = { daily: 'Daily', weekly: 'Weekly', A: 'A Check', C: 'C Check', D: 'D Check' };
-    const checkName = checkNames[checkType] || checkType;
-    const durationText = checkType === 'daily' ? '1 hour' :
-                         checkType === 'weekly' ? '2-3 hours' :
-                         checkType === 'A' ? '6-12 hours' :
-                         checkType === 'C' ? '2-4 weeks' : '2-3 months';
-
-    await showAlertModal('Check Scheduled',
-      `${checkName} has been scheduled to start now (${startTime}). ` +
-      `Duration: ${durationText}. ` +
-      `Once complete, you can enable auto-scheduling for this check type.`);
+    const result = await response.json();
+    await showAlertModal('Check Started', result.message || `${checkType} Check started.`);
 
     // Refresh schedule data and re-render
     await loadSchedule();
     renderSchedule();
 
   } catch (error) {
-    console.error('Error scheduling check:', error);
-    await showAlertModal('Error', error.message || 'Failed to schedule check. Please try again.');
+    console.error('Error performing check:', error);
+    await showAlertModal('Error', error.message || 'Failed to perform check. Please try again.');
   }
 }
 
@@ -8455,15 +8436,6 @@ async function performAllChecksNow(aircraftId) {
     });
   });
 
-  // Check durations in minutes
-  const checkDurations = {
-    'daily': 60,      // 1 hour
-    'weekly': 135,    // 2.25 hours
-    'A': 540,         // 9 hours
-    'C': 30240,       // 21 days (in minutes)
-    'D': 108000       // 75 days (in minutes)
-  };
-
   // What checks will be validated by this check
   const validatesMap = {
     'D': ['D', 'C', 'A', 'weekly', 'daily'],
@@ -8474,40 +8446,24 @@ async function performAllChecksNow(aircraftId) {
   };
 
   try {
-    const worldTime = getCurrentWorldTime();
-    if (!worldTime) {
-      hideLoadingOverlay();
-      await showAlertModal('Error', 'World time not available. Please try again.');
-      return;
-    }
-
-    const currentTime = new Date(worldTime);
-    const today = formatLocalDate(currentTime);
-    const startTime = `${String(currentTime.getHours()).padStart(2, '0')}:${String(currentTime.getMinutes()).padStart(2, '0')}:00`;
-
-    console.log(`[MAINT] Scheduling ${highestCheck.name} for ${today} at ${startTime} (will validate: ${validatesMap[highestCheck.type].join(', ')})`);
-
-    const response = await fetch('/api/schedule/maintenance', {
+    // Perform the highest expired check immediately — server stamps the check
+    // dates (cascade validates the lower checks), grounds the aircraft for the
+    // check's duration and auto-restores it afterwards.
+    console.log(`[MAINT] Performing ${highestCheck.name} now (will validate: ${validatesMap[highestCheck.type].join(', ')})`);
+    const response = await fetch(`/api/fleet/${aircraftId}/perform-check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aircraftId: aircraftId,
-        checkType: highestCheck.type,
-        scheduledDate: today,
-        startTime: startTime,
-        duration: checkDurations[highestCheck.type],
-        dayOfWeek: currentTime.getDay()
-      })
+      body: JSON.stringify({ checkType: highestCheck.type })
     });
 
     if (!response.ok) {
       const error = await response.json();
-      console.error(`[MAINT] Failed to schedule ${highestCheck.name}:`, error);
-      throw new Error(error.error || `Failed to schedule ${highestCheck.name}`);
+      console.error(`[MAINT] Failed to perform ${highestCheck.name}:`, error);
+      throw new Error(error.error || `Failed to perform ${highestCheck.name}`);
     }
 
     const result = await response.json();
-    console.log(`[MAINT] Successfully scheduled ${highestCheck.name}:`, result);
+    console.log(`[MAINT] ${highestCheck.name} started:`, result);
 
     // Refresh schedule data and re-render
     await loadSchedule();
@@ -8516,19 +8472,19 @@ async function performAllChecksNow(aircraftId) {
     // Hide loading overlay
     hideLoadingOverlay();
 
-    // Show success confirmation with info about what will be validated
+    // Show success confirmation with info about what was validated
     const validatedChecks = validatesMap[highestCheck.type].map(t => {
       const names = { 'daily': 'Daily', 'weekly': 'Weekly', 'A': 'A Check', 'C': 'C Check', 'D': 'D Check' };
       return names[t];
     }).join(', ');
 
-    await showAlertModal('Maintenance Scheduled',
-      `Scheduled: ${highestCheck.name} on ${today} at ${startTime}\n\nThis will validate: ${validatedChecks}\n\nThe aircraft will be available once maintenance is complete.`);
+    await showAlertModal('Check Started',
+      `${result.message || highestCheck.name + ' started.'}\n\nThis validates: ${validatedChecks}.`);
 
   } catch (error) {
     hideLoadingOverlay();
-    console.error('Error scheduling check:', error);
-    await showAlertModal('Error', error.message || 'Failed to schedule check. Please try again.');
+    console.error('Error performing check:', error);
+    await showAlertModal('Error', error.message || 'Failed to perform check. Please try again.');
   }
 }
 
@@ -8536,6 +8492,20 @@ async function performAllChecksNow(aircraftId) {
 async function scheduleMaintenance(aircraftId) {
   const aircraft = userFleet.find(a => a.id === aircraftId);
   if (!aircraft) return;
+
+  // On-order aircraft haven't been delivered yet: check dates are stamped
+  // factory-fresh AT delivery, so the status grid (all "Never") and its
+  // "perform D check first" gating are meaningless here — and performing a
+  // check on an undelivered airframe makes no sense.
+  if (aircraft.status === 'on_order') {
+    const deliveryStr = aircraft.expectedDeliveryDate
+      ? ` Expected delivery: ${formatCheckDate(aircraft.expectedDeliveryDate)}.` : '';
+    await showAlertModal('Aircraft On Order',
+      `${aircraft.registration} has not been delivered yet.${deliveryStr}\n\n` +
+      `It arrives factory-fresh with ALL checks valid (D check ~6-10 years), ` +
+      `and the auto-schedule preferences chosen at order apply from delivery.`);
+    return;
+  }
 
   const worldTime = getCurrentWorldTime();
   if (!worldTime) {

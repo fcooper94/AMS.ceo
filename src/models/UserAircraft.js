@@ -192,6 +192,15 @@ const UserAircraft = sequelize.define('UserAircraft', {
     allowNull: true,
     field: 'cabin_refit_end_date'
   },
+  // Explicit end of an in-progress manual check ("Perform now" on an expired
+  // check): status='maintenance' until this game time, then auto-restored.
+  // C/D checks from the auto-grounding path derive their end from the check
+  // dates instead and leave this null.
+  maintenanceUntil: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'maintenance_until'
+  },
   // Location
   currentAirport: {
     type: DataTypes.STRING,

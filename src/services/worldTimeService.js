@@ -734,10 +734,12 @@ class WorldTimeService {
         .finally(() => { wp.isProcessingLoans = false; });
     }
 
-    // Process aircraft deliveries once per game week
-    const lastDeliveryWeek = this.lastDeliveryWeek[worldId] || '';
-    if (!wp.isProcessingDeliveries && currentWeekStart !== lastDeliveryWeek) {
-      this.lastDeliveryWeek[worldId] = currentWeekStart;
+    // Process aircraft deliveries once per game DAY — they're date-keyed
+    // (expectedDeliveryDate); the old weekly key made mid-week deliveries up
+    // to six game-days late. Stores a YYYY-MM-DD key in the same map.
+    const deliveryDayKey = gameTime.toISOString().split('T')[0];
+    if (!wp.isProcessingDeliveries && deliveryDayKey !== (this.lastDeliveryWeek[worldId] || '')) {
+      this.lastDeliveryWeek[worldId] = deliveryDayKey;
       wp.isProcessingDeliveries = true;
       this.processDeliveries(worldId, gameTime)
         .catch(err => console.error('Error processing deliveries:', err.message))
@@ -868,11 +870,12 @@ class WorldTimeService {
           await this.processLoanPayments(worldId, dayEnd)
             .catch(err => console.error('Error processing loan payments:', err.message));
         }
-        if (weekStart !== (this.lastDeliveryWeek[worldId] || '')) {
-          this.lastDeliveryWeek[worldId] = weekStart;
-          await this.processDeliveries(worldId, dayEnd)
-            .catch(err => console.error('Error processing deliveries:', err.message));
-        }
+        // Deliveries are DATE-keyed (expectedDeliveryDate), not weekly events —
+        // settle them every day, else a mid-week delivery waits for Monday.
+        // Idempotent + cheap (only status='on_order' rows), and during catch-up
+        // each delivery (and its loan origination) lands on its correct day.
+        await this.processDeliveries(worldId, dayEnd)
+          .catch(err => console.error('Error processing deliveries:', err.message));
 
         // Flights + sightseeing tours for this day (route-day keyed)
         if (include.flights !== false) {
@@ -3080,6 +3083,10 @@ class WorldTimeService {
             'lastWeeklyCheckDate', 'lastACheckDate', 'lastCCheckDate', 'lastDCheckDate'],
           where: { worldMembershipId: { [Op.in]: membershipIds } }
         }],
+        // Chronological settle: a big catch-up window completes many checks in
+        // one pass. Without this, later checks record first and earlier rows
+        // hit the alreadyRecorded guard, stranding them 'active' forever.
+        order: [['scheduled_date', 'ASC'], ['start_time', 'ASC']],
         raw: true,
         nest: true
       });
@@ -3180,6 +3187,10 @@ class WorldTimeService {
               updateData.lastWeeklyCheckDate = currentGameTime;
               updateData.lastDailyCheckDate = currentGameTime;
             } else if (checkType === 'A') {
+              // A-check expiry is HOURS-based: without anchoring the hours at
+              // completion, the check reads as expired again immediately
+              // (matches the manual perform-check endpoint in routes/fleet.js)
+              updateData.lastACheckHours = aircraft.totalFlightHours || 0;
               updateData.lastWeeklyCheckDate = currentGameTime;
               updateData.lastDailyCheckDate = currentGameTime;
             } else if (checkType === 'weekly') {
@@ -3199,6 +3210,11 @@ class WorldTimeService {
             }
 
             simLog(`🔧 ${checkType} Check recorded for ${aircraft.registration} at ${endTimeStr} (date: ${gameDate})`);
+          } else if (pattern.scheduledDate) {
+            // Superseded: a later check of this type already covered this row.
+            // Close it out anyway — otherwise it stays 'active' forever, gets
+            // re-queried every cycle and clutters the schedule grid.
+            await RecurringMaintenance.update({ status: 'completed' }, { where: { id: pattern.id } });
           }
         }
       }
@@ -3356,6 +3372,16 @@ class WorldTimeService {
 
         // 1) Return-to-service for completed heavy checks (frees a slot first).
         if (ac.status === 'maintenance') {
+          // Manual "perform now" checks carry an explicit end time — honour it
+          // before the C/D date derivation (which would misjudge short checks).
+          if (ac.maintenanceUntil) {
+            if (currentGameTime >= new Date(ac.maintenanceUntil)) {
+              await ac.update({ status: 'active', maintenanceUntil: null });
+              inMaint.set(ac.worldMembershipId, Math.max(0, (inMaint.get(ac.worldMembershipId) || 1) - 1));
+              simLog(`✓ ${ac.registration} returned to service after manual check`);
+            }
+            continue;
+          }
           let returned = null;
           if (ac.lastDCheckDate) {
             const dEnd = new Date(ac.lastDCheckDate);

@@ -796,6 +796,10 @@ server.listen(PORT, () => {
       await sequelize.query(`ALTER TABLE loans ADD COLUMN IF NOT EXISTS reference VARCHAR(255)`);
     } catch (_) { /* loans table may not exist yet — sync will create it */ }
     try {
+      // Manual "perform now" checks take the aircraft out of service until this time
+      await sequelize.query(`ALTER TABLE user_aircraft ADD COLUMN IF NOT EXISTS maintenance_until TIMESTAMP WITH TIME ZONE`);
+    } catch (_) { /* user_aircraft table may not exist yet — sync will create it */ }
+    try {
       await sequelize.query(`
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tutorial_dismissed BOOLEAN NOT NULL DEFAULT FALSE
       `);

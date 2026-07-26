@@ -417,6 +417,46 @@ async function findAvailableSlotOnDate(aircraftId, dateStr, duration, checkType 
   // Non-daily checks require home base - check if aircraft will be there
   const requiresHomeBase = checkType !== 'daily';
 
+  // ── Randomised placement (primary) ──
+  // Engineers can't work the whole fleet at once: instead of every aircraft
+  // walking the same preference ladder (which stacks the checks into one
+  // pre-dawn stripe), scatter each check uniformly across the aircraft's
+  // actual free gaps for the day. The deterministic ladder below remains as
+  // the fallback when no random candidate validates (e.g. home-base misses).
+  if (duration < 1440) {
+    const gaps = [];
+    let cursor = 0;
+    for (const busy of busyPeriods) {
+      if (busy.start > cursor) gaps.push({ start: cursor, end: Math.min(busy.start, 1440) });
+      cursor = Math.max(cursor, busy.end);
+    }
+    if (cursor < 1440) gaps.push({ start: cursor, end: 1440 });
+
+    // All feasible starts on a 15-min grid across the free gaps
+    const candidates = [];
+    for (const g of gaps) {
+      for (let s = Math.ceil(g.start / 15) * 15; s + duration <= g.end; s += 15) {
+        candidates.push(s);
+      }
+    }
+
+    const slotKey = (mins) =>
+      `${Math.floor(mins / 60).toString().padStart(2, '0')}:${(mins % 60).toString().padStart(2, '0')}`;
+    // De-clash: prefer starts no fleet-mate already uses on this date
+    const unclashed = candidates.filter(s => !fleetMaintCountBySlot[slotKey(s)]);
+    const pool = unclashed.length > 0 ? unclashed : candidates;
+
+    let attempts = Math.min(8, pool.length);
+    const tried = new Set();
+    while (attempts-- > 0 && tried.size < pool.length) {
+      const s = pool[Math.floor(Math.random() * pool.length)];
+      if (tried.has(s)) continue;
+      tried.add(s);
+      if (requiresHomeBase && !(await isAtHomeBase(aircraftId, dateStr, s, duration))) continue;
+      return slotKey(s);
+    }
+  }
+
   for (const preferredStart of preferredStarts) {
     const slotEnd = preferredStart + duration;
 
@@ -3888,8 +3928,16 @@ router.post('/:aircraftId/perform-check', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Update the appropriate check date
-    const now = new Date();
+    // Checks can only be performed on an airframe you physically have.
+    // On-order aircraft are stamped factory-fresh at delivery instead.
+    if (['on_order', 'storage', 'recalling', 'sold', 'scrapping', 'leased_out'].includes(aircraft.status)) {
+      return res.status(400).json({ error: `Cannot perform a check on an aircraft that is ${String(aircraft.status).replace(/_/g, ' ')}` });
+    }
+
+    // Update the appropriate check date — in GAME time, not real time (a real
+    // 2026 stamp in a 1950 world makes the check "valid" for decades)
+    const gameNow = worldTimeService.getCurrentTime(activeWorldId) || new Date();
+    const now = gameNow;
     const updateData = {};
 
     // Cascading check validation:
@@ -3929,11 +3977,35 @@ router.post('/:aircraftId/perform-check', async (req, res) => {
         break;
     }
 
+    // The check takes real (game) time: the aircraft goes out of service for
+    // the size-scaled check duration and its scheduled flights simply don't
+    // run until it returns (the revenue engine skips non-active aircraft; the
+    // templates are untouched, so the schedule reinstates itself afterwards).
+    let durationMinutes = 0;
+    let maintenanceUntil = null;
+    if (['active', 'maintenance'].includes(aircraft.status)) {
+      const acType = aircraft.aircraft?.type
+        || (await Aircraft.findByPk(aircraft.aircraftId, { attributes: ['type'] }))?.type;
+      durationMinutes = getCheckDurationMinutes(checkType, acType) || CHECK_DURATIONS[checkType] || 60;
+      maintenanceUntil = new Date(gameNow.getTime() + durationMinutes * 60000);
+      updateData.status = 'maintenance';
+      updateData.maintenanceUntil = maintenanceUntil;
+    }
+
     await aircraft.update(updateData);
 
+    const durLabel = durationMinutes >= 1440
+      ? `${Math.round(durationMinutes / 1440)} day${durationMinutes >= 2880 ? 's' : ''}`
+      : durationMinutes >= 60
+        ? `${Math.round(durationMinutes / 60)}h`
+        : `${durationMinutes}min`;
     res.json({
-      message: `${checkType} Check performed successfully`,
+      message: maintenanceUntil
+        ? `${checkType} Check started — ${aircraft.registration} out of service for ${durLabel}. Scheduled flights resume automatically afterwards.`
+        : `${checkType} Check performed successfully`,
       checkDate: now.toISOString(),
+      durationMinutes,
+      maintenanceUntil: maintenanceUntil ? maintenanceUntil.toISOString() : null,
       flightHours: checkType === 'A' ? (aircraft.totalFlightHours || 0) : undefined,
       aircraft: aircraft
     });
