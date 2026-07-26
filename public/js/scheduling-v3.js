@@ -602,6 +602,13 @@ function stopAircraftStatusUpdates() {
   }
 }
 
+// Set true ONLY when a schedule load had to bail because no world-time
+// reference existed yet — the worldTimeUpdated listener then (and only then)
+// runs a recovery re-fetch. Success-flag logic raced: an event arriving
+// mid-load triggered a redundant second fetch that sampled the background
+// maintenance refresh's delete-then-recreate gap and wiped the check blocks.
+let _scheduleLoadFailedNoTime = false;
+
 // Listen for world time updates from layout.js (which manages the centralized socket connection)
 window.addEventListener('worldTimeUpdated', (event) => {
   // Sync with the centralized time from layout.js. This must NOT be gated on
@@ -621,9 +628,11 @@ window.addEventListener('worldTimeUpdated', (event) => {
   // re-fetch everything (not just re-render); on a game-date rollover just
   // re-render so the columns advance.
   const newDateStr = formatLocalDate(new Date(event.detail.referenceTime));
-  if (!hadReference) {
+  if (_scheduleLoadFailedNoTime) {
+    // Recovery only: a load actually bailed for lack of a time reference
+    _scheduleLoadFailedNoTime = false;
     try { loadSchedule(); } catch (_) { /* initial load will pick up the reference */ }
-  } else if (prevDateStr && prevDateStr !== newDateStr) {
+  } else if (hadReference && prevDateStr && prevDateStr !== newDateStr) {
     try { renderSchedule(); } catch (_) { /* grid not ready yet */ }
   }
 });
@@ -1337,6 +1346,8 @@ async function fetchAllScheduleData() {
     }
     if (!worldTime) {
       console.error('World time not available after retries');
+      // Flag for the worldTimeUpdated listener: reload once time arrives
+      _scheduleLoadFailedNoTime = true;
       return;
     }
 

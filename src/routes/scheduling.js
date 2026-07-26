@@ -231,14 +231,17 @@ router.get('/data', async (req, res) => {
       // current rows now; the refreshed horizon appears on the next load.
       // (Newly purchased aircraft get their blocks from the explicit
       // /refresh-maintenance call in the purchase flow, not from here.)
+      // Delayed a few seconds, NOT setImmediate: the refresh deletes future
+      // rows before recreating them, and any page-load fetch that lands in
+      // that gap renders a schedule with no maintenance blocks.
       maintenanceRefreshCache.set(worldMembershipId, Date.now());
-      setImmediate(() => {
+      setTimeout(() => {
         fleet
           .filter(a => a.autoScheduleDaily || a.autoScheduleWeekly || a.autoScheduleA || a.autoScheduleC || a.autoScheduleD)
           .forEach(a => refreshAutoScheduledMaintenance(a.id, activeWorldId).catch(err => {
             console.error(`[MAINT-REFRESH] Error refreshing aircraft ${a.id}:`, err.message);
           }));
-      });
+      }, 5000);
     }
 
     // Query maintenance (after the on-order cleanup above)
