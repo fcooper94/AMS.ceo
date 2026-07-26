@@ -276,6 +276,52 @@ crash-looped on `JSON.parse`. **Fixed by shipping a gzip instead:**
 - **Per-world era scoping is essential** — worlds run at different eras (a
   1984 world vs a 2024 world); any time/era logic must be scoped per world.
 
+## Maintenance & delivery reliability batch (2026-07)
+
+Fixes uncovered when the hot/cold window engine met the maintenance system:
+
+- **`processMaintenance` settles in chronological order** (`ORDER BY
+  scheduled_date`) and closes superseded rows out. Before: catch-up windows
+  completed checks in arbitrary DB order; earlier rows hit the
+  `alreadyRecorded` guard and stayed 'active' forever (536K stranded rows
+  swept on Railway 2026-07-26 — they were re-fetched every cycle inside the
+  90-day lookback, a real tick-time cost).
+- **A-check expiry is HOURS-based** (`totalFlightHours − lastACheckHours`).
+  The engine's completion path never anchored `lastACheckHours` (only the C/D
+  cascade + the manual endpoint did) → whole fleets showed "A Check expired /
+  GROUNDED" despite completing A checks on schedule. Fixed + 2,608 aircraft
+  backfilled. Any new completion path MUST anchor hours for A checks.
+- **PERFORM NOW takes real time now**: `/perform-check` stamps check dates in
+  GAME time (was real `new Date()` — a 2026 stamp in a 1950 world), sets
+  `status='maintenance'` + **`user_aircraft.maintenance_until`** (additive
+  column) for the size-scaled duration; `processAutomaticHeavyMaintenance`
+  restores at that time (checked BEFORE its C/D date-derivation). Flights
+  auto-skip via the existing non-active-status guard and resume untouched.
+  Both scheduling-page buttons call this endpoint now (they used to insert a
+  maintenance row that never grounded anything server-side). Endpoint rejects
+  on_order/storage/recalling/sold/scrapping/leased_out aircraft.
+- **On-order aircraft have NULL check dates until delivery** (stamped
+  factory-fresh in `processDeliveries`) — the maintenance status modal
+  short-circuits to an info dialog for them instead of showing "Never /
+  perform D check first".
+- **Auto-scheduled checks are randomised into free schedule gaps**
+  (`findAvailableSlotOnDate`): uniform pick over the aircraft's actual free
+  15-min slots, fleet de-clash (no two aircraft share a start when
+  avoidable), home-base validation retained, old night-preference ladder is
+  the fallback. Before: every aircraft walked the same ladder → one pre-dawn
+  stripe of simultaneous checks.
+- **Deliveries settle DAILY, not weekly** — they're `expectedDeliveryDate`-
+  keyed; the weekly settle key (shared with overheads/loans, which ARE
+  weekly) made mid-week deliveries up to six game-days late. In catch-up
+  windows each delivery now lands on its correct historical day (loan
+  origination dates + capex P&L week stay accurate).
+- **Scheduling grid is date-keyed for maintenance, dayOfWeek-keyed for
+  flights** (`scheduling-v3.js`): if it renders before the world-time
+  reference arrives it falls back to REAL dates and maintenance silently
+  can't match (flights still render — the tell is the red now-line on the
+  real-world weekday). On the first `worldTimeUpdated` event it now
+  re-fetches (`loadSchedule()`), and re-renders on game-date rollover.
+
 ## Dev workflow
 
 - **Start server:** `npm run go` (prompts Railway/Local, then nodemon) or
