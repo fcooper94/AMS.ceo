@@ -45,15 +45,21 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
     modeName = 'Test data (Local)';
     simAutostart = '1'; // dev worlds only tick here — always run the sim
   } else {
-    // Restore original Railway URL from .env (find the non-commented DATABASE_URL or the backed-up one)
+    // Restore original Railway URL from .env — check DATABASE_URL (rlwy.net),
+    // commented backup, or the explicit RAILWAY_DATABASE_URL entry.
     const railwayLine = envContent.split('\n').find(l =>
       l.startsWith('DATABASE_URL=') && l.includes('rlwy.net')
     ) || envContent.split('\n').find(l =>
       l.startsWith('#DATABASE_URL=') && l.includes('rlwy.net')
     );
+    const railwayUrlLine = envContent.split('\n').find(l =>
+      l.startsWith('RAILWAY_DATABASE_URL=')
+    );
     dbUrl = railwayLine
       ? railwayLine.replace(/^#?DATABASE_URL=/, '')
-      : null;
+      : railwayUrlLine
+        ? railwayUrlLine.replace('RAILWAY_DATABASE_URL=', '').trim()
+        : null;
     modeName = 'Real data (Railway)';
     simAutostart = '0'; // production server already ticks these worlds — don't double-tick
   }
@@ -78,7 +84,7 @@ rl.question('  Select mode [1/2, Enter = keep current]: ', (answer) => {
   const child = spawn('npx', ['nodemon', 'src/server.js'], {
     stdio: 'inherit',
     shell: true,
-    env: { ...process.env, SIM_AUTOSTART: simAutostart }
+    env: { ...process.env, SIM_AUTOSTART: simAutostart, NODE_OPTIONS: '--max-old-space-size=4096' }
   });
 
   child.on('exit', (code) => process.exit(code ?? 0));

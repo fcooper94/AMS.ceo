@@ -37,7 +37,8 @@ const {
   CHECK_INTERVALS,
   getCheckDurationMinutes,
   getCheckDurationDays,
-  getCheckLeadDays
+  getCheckLeadDays,
+  getRandomisedCheckDuration
 } = require('../config/maintenanceConfig');
 
 /**
@@ -1069,7 +1070,7 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
       where: { aircraftId, checkType, scheduledDate: null }
     });
 
-    const duration = getCheckDurationMinutes(checkType, acType);
+    const duration = getRandomisedCheckDuration(checkType, acType);
     const durationDays = Math.ceil(duration / (24 * 60)); // Convert minutes to days (round up)
 
     // For weekly, A, C, D checks - plan ahead
@@ -2104,18 +2105,22 @@ router.get('/:aircraftId/details', async (req, res) => {
       return res.status(404).json({ error: 'Aircraft not found' });
     }
 
-    // Get routes assigned to this aircraft
-    const routes = await Route.findAll({
-      where: {
-        assignedAircraftId: aircraftId,
-        worldMembershipId: membership.id
-      },
+    // Get routes flown by this aircraft (via ScheduledFlight — routes don't
+    // carry assignedAircraftId; the aircraft link lives on each ScheduledFlight).
+    const flightTemplates = await ScheduledFlight.findAll({
+      where: { aircraftId },
+      attributes: ['routeId'],
+      group: ['routeId']
+    });
+    const routeIds = flightTemplates.map(f => f.routeId).filter(Boolean);
+    const routes = routeIds.length > 0 ? await Route.findAll({
+      where: { id: routeIds, worldMembershipId: membership.id },
       include: [
         { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'name'] },
         { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'name'] }
       ],
       order: [['totalRevenue', 'DESC']]
-    });
+    }) : [];
 
     // Calculate profit for each route
     const routesWithProfit = routes.map(route => {
@@ -4061,7 +4066,7 @@ router.post('/:aircraftId/perform-check', async (req, res) => {
     if (['active', 'maintenance'].includes(aircraft.status)) {
       const acType = aircraft.aircraft?.type
         || (await Aircraft.findByPk(aircraft.aircraftId, { attributes: ['type'] }))?.type;
-      durationMinutes = getCheckDurationMinutes(checkType, acType) || CHECK_DURATIONS[checkType] || 60;
+      durationMinutes = getRandomisedCheckDuration(checkType, acType) || CHECK_DURATIONS[checkType] || 60;
       maintenanceUntil = new Date(gameNow.getTime() + durationMinutes * 60000);
       updateData.status = 'maintenance';
       updateData.maintenanceUntil = maintenanceUntil;

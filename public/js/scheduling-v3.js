@@ -549,7 +549,7 @@ function updateAircraftStatusBadges() {
         newBadge.textContent = badgeText;
         newBadge.title = groundedTooltip;
         newBadge.style.cssText = `font-size: 0.7rem; color: ${badgeColor}; font-weight: 600; background: rgba(${rgbaColor}, 0.15); padding: 0.1rem 0.35rem; border-radius: 3px; cursor: help;`;
-        const container = infoCell.querySelector('div');
+        const container = registrationSpan ? registrationSpan.parentElement : infoCell.querySelector('div > div');
         if (container) container.appendChild(newBadge);
       }
 
@@ -11215,7 +11215,9 @@ async function showAircraftDetails(userAircraftId) {
       }
       routeInfoEl.innerHTML = rh || '<span>No route data</span>';
     } else {
-      routeInfoEl.innerHTML = '<span>No routes assigned</span>';
+      routeInfoEl.innerHTML = details.routeCount > 0
+        ? '<span style="color:var(--text-muted);">No flight data yet</span>'
+        : '<span>No routes assigned</span>';
     }
 
     const maintInfoEl = document.getElementById('maintInfo');

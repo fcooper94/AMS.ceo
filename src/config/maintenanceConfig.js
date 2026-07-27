@@ -70,6 +70,20 @@ function getCheckLeadDays(checkType, aircraftType) {
   return getCheckDurationDays(checkType, aircraftType) + (CHECK_MARGINS[checkType] || 1);
 }
 
+/**
+ * Semi-randomised duration for when a check is actually performed.
+ * Applies ±20% noise to the base duration, rounded to the nearest 5 min
+ * (light checks: daily/weekly/A) or nearest 30 min (heavy: C/D).
+ * Use this when STAMPING a check — not for lead-time or conflict calculations.
+ */
+function getRandomisedCheckDuration(checkType, aircraftType) {
+  const base = getCheckDurationMinutes(checkType, aircraftType);
+  const factor = 0.8 + Math.random() * 0.4; // 0.80–1.20
+  const raw = base * factor;
+  const snap = ['C', 'D'].includes(checkType) ? 30 : 5;
+  return Math.max(snap, Math.round(raw / snap) * snap);
+}
+
 module.exports = {
   CHECK_BASE_DURATIONS,
   TYPE_DURATION_MULTIPLIER,
@@ -79,5 +93,6 @@ module.exports = {
   getTypeMultiplier,
   getCheckDurationMinutes,
   getCheckDurationDays,
-  getCheckLeadDays
+  getCheckLeadDays,
+  getRandomisedCheckDuration
 };

@@ -589,7 +589,9 @@ async function showAircraftDetails(userAircraftId) {
       }
       routeInfoEl.innerHTML = rh || '<span>No route data</span>';
     } else {
-      routeInfoEl.innerHTML = '<span>No routes assigned</span>';
+      routeInfoEl.innerHTML = details.routeCount > 0
+        ? '<span style="color:var(--text-muted);">No flight data yet</span>'
+        : '<span>No routes assigned</span>';
     }
 
     const maintInfoEl = document.getElementById('maintInfo');
