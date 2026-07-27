@@ -327,9 +327,53 @@
     opacity: 0.9;
   }
 
-  .flight-segment:hover {
-    opacity: 0.9;
-    z-index: 3;
+  /* Destination label used in weekly view segments only.
+     Clipped naturally by overflow:hidden when the block is too narrow. */
+  .flight-segment .segment-dest {
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+
+  /* Floating tooltip for weekly flight blocks — mirrors daily view style */
+  #weeklyFlightTooltip {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    background: #1e293b;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.78rem;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: none;
+    line-height: 1.4;
+    max-width: 280px;
+    transition: left 0.15s ease-out, top 0.15s ease-out, opacity 0.12s ease-out;
+  }
+  #weeklyFlightTooltip .wft-seg { text-align: center; }
+  #weeklyFlightTooltip .wft-num {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #facc15;
+  }
+  #weeklyFlightTooltip .wft-route {
+    font-size: 0.75rem;
+    opacity: 0.95;
+  }
+  #weeklyFlightTooltip .wft-time {
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+  #weeklyFlightTooltip .wft-div {
+    border-top: 1px solid rgba(255,255,255,0.25);
+    margin: 0.3rem 0;
+  }
+  #weeklyFlightTooltip .wft-div + .wft-seg .wft-num {
+    color: #93c5fd;
   }
 
   /* Outbound segment - dark blue */
@@ -563,3 +607,5 @@
     border-color: #ff6b63;
   }
 </style>
+
+<div id="weeklyFlightTooltip"></div>

@@ -1938,8 +1938,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.routeNumber)}: ${depAirport} → ${techStopAirport} | Off: ${depTime} On: ${leg1ArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.routeNumber)}</span>
-        <span class="segment-route">${depAirport}-${techStopAirport}</span>
-        <span class="segment-time">${depTime}-${leg1ArrTime}</span>
+        <span class="segment-route">${depAirport}→${techStopAirport}</span>
+        <span class="segment-time">Off: ${depTime} On: ${leg1ArrTime}</span>
       </div>
     `;
     currentLeft += leg1Width;
@@ -1957,8 +1957,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.routeNumber)}: ${techStopAirport} → ${arrAirport} | Off: ${leg2DepTime} On: ${leg2ArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.routeNumber)}</span>
-        <span class="segment-route">${techStopAirport}-${arrAirport}</span>
-        <span class="segment-time">${leg2DepTime}-${leg2ArrTime}</span>
+        <span class="segment-route">${techStopAirport}→${arrAirport}</span>
+        <span class="segment-time">Off: ${leg2DepTime} On: ${leg2ArrTime}</span>
       </div>
     `;
     currentLeft += leg2Width;
@@ -1996,8 +1996,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.returnRouteNumber)}: ${arrAirport} → ${techStopAirport} | Off: ${leg3DepTime} On: ${leg3ArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.returnRouteNumber)}</span>
-        <span class="segment-route">${arrAirport}-${techStopAirport}</span>
-        <span class="segment-time">${leg3DepTime}-${leg3ArrTime}</span>
+        <span class="segment-route">${arrAirport}→${techStopAirport}</span>
+        <span class="segment-time">Off: ${leg3DepTime} On: ${leg3ArrTime}</span>
       </div>
     `;
     currentLeft += leg3Width;
@@ -2014,8 +2014,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.returnRouteNumber)}: ${techStopAirport} → ${depAirport} | Off: ${leg4DepTime} On: ${returnArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.returnRouteNumber)}</span>
-        <span class="segment-route">${techStopAirport}-${depAirport}</span>
-        <span class="segment-time">${leg4DepTime}-${returnArrTime}</span>
+        <span class="segment-route">${techStopAirport}→${depAirport}</span>
+        <span class="segment-time">Off: ${leg4DepTime} On: ${returnArrTime}</span>
       </div>
     `;
   } else {
@@ -2028,8 +2028,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.routeNumber)}: ${depAirport} → ${arrAirport} | Off: ${depTime} On: ${outboundArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.routeNumber)}</span>
-        <span class="segment-route">${depAirport}-${arrAirport}</span>
-        <span class="segment-time">${depTime}-${outboundArrTime}</span>
+        <span class="segment-route">${depAirport}→${arrAirport}</span>
+        <span class="segment-time">Off: ${depTime} On: ${outboundArrTime}</span>
       </div>
     `;
     currentLeft += outboundWidth;
@@ -2067,8 +2067,8 @@ function renderFlightSegments(params) {
            onclick="viewFlightDetails('${flight.id}')"
            title="${getRouteNum(route.returnRouteNumber)}: ${arrAirport} → ${depAirport} | Off: ${returnDepTime} On: ${returnArrTime}">
         <span class="segment-flight-num">${getRouteNum(route.returnRouteNumber)}</span>
-        <span class="segment-route">${arrAirport}-${depAirport}</span>
-        <span class="segment-time">${returnDepTime}-${returnArrTime}</span>
+        <span class="segment-route">${arrAirport}→${depAirport}</span>
+        <span class="segment-time">Off: ${returnDepTime} On: ${returnArrTime}</span>
       </div>
     `;
   }
@@ -2707,7 +2707,7 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
         "
         onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
         title="Pre-flight: Catering & Fuelling (${preFlightMinutesEarly}m) - Click for details"
-      >PRE</div>
+      ></div>
     ` : '';
 
     // Check if this flight spans past midnight (overnight departure)
@@ -2864,7 +2864,7 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
         "
         onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
         title="Pre-flight: Catering & Fuelling (${preFlightMinutes}m) - Click for details"
-      >PRE</div>
+      ></div>
     ` : '';
 
     // Build post-flight extension HTML (shown after the flight block)
@@ -2879,7 +2879,7 @@ function renderFlightBlocks(flights, viewingDate, isGrounded = false) {
         "
         onclick="event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')"
         title="Post-flight: Deboarding & Cleaning (${postFlightMinutes}m)${postFlightInfo.hasHeavyCheck ? ' + ' + postFlightInfo.checkType + ' Check' : ''} - Click for details"
-      >POST</div>
+      ></div>
     ` : '';
 
     // Render segmented flight strips: Outbound → Turnaround (purple) → Return
@@ -5835,7 +5835,7 @@ function renderDailySchedule() {
     html += `<th style="padding: 0.5rem 0.2rem; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: 40px; ${borderStyle}">${col.label}</th>`;
   });
 
-  html += `<th style="padding: 0.75rem 0.5rem 0.75rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; text-align: center; color: var(--text-secondary); font-weight: 600; min-width: ${isCoarsePointer() ? '116px' : '100px'}; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>`;
+  html += `<th style="padding: 0.75rem 0.3rem; text-align: center; color: var(--text-secondary); font-weight: 600; width: 44px; min-width: 44px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);"></th>`;
   html += '</tr></thead>';
 
   html += '<tbody>';
@@ -5909,7 +5909,8 @@ function renderWeeklySchedule() {
   const dayColumns = generateWeeklyDayColumns();
 
   // Build schedule grid HTML - use table-layout: fixed for even day column widths
-  let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; table-layout: fixed;">';
+  // min-width ensures day columns are wide enough for 3-letter destination labels
+  let html = '<table style="width: 100%; min-width: 1680px; border-collapse: collapse; font-size: 0.9rem; table-layout: fixed;">';
 
   // Header row
   html += '<thead><tr style="background: var(--surface-elevated); border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 10;">';
@@ -5925,7 +5926,7 @@ function renderWeeklySchedule() {
       </th>`;
   });
 
-  html += `<th style="padding: 0.75rem 0.5rem 0.75rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; text-align: center; color: var(--text-secondary); font-weight: 600; width: ${isCoarsePointer() ? '116px' : '100px'}; min-width: ${isCoarsePointer() ? '116px' : '100px'}; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);">ACTIONS</th>`;
+  html += `<th style="padding: 0.75rem 0.3rem; text-align: center; color: var(--text-secondary); font-weight: 600; width: 44px; min-width: 44px; border-left: 2px solid var(--border-color); position: sticky; right: 0; background: var(--surface-elevated); z-index: 11; box-shadow: -5px 0 0 var(--surface-elevated);"></th>`;
   html += '</tr></thead>';
 
   html += '<tbody>';
@@ -5972,6 +5973,64 @@ function renderWeeklySchedule() {
   container.innerHTML = html;
   requestAnimationFrame(fitSegmentFlightNumbers);
 
+  // Shrink then truncate destination labels that don't fit their block
+  requestAnimationFrame(() => {
+    container.querySelectorAll('.flight-segment .segment-dest').forEach(lbl => {
+      const block = lbl.parentElement;
+      if (!block) return;
+      const fits = () => lbl.scrollWidth + 4 <= block.clientWidth;
+      if (fits()) return;
+      // Step 1: try smaller font
+      lbl.style.fontSize = '0.55rem';
+      if (fits()) return;
+      // Step 2: truncate to last 2 letters at small font
+      const full = lbl.textContent;
+      if (full.length > 2) lbl.textContent = full.slice(-2);
+      if (fits()) return;
+      // Still doesn't fit — hide
+      lbl.style.display = 'none';
+    });
+  });
+
+  // Hover tooltip for weekly flight blocks — shows both sectors in daily-view style.
+  const wft = document.getElementById('weeklyFlightTooltip');
+  if (wft) {
+    let _wftHideTimer = null;
+    container.addEventListener('mouseover', e => {
+      const seg = e.target.closest('[data-tt]');
+      if (!seg) return;
+      if (_wftHideTimer) { clearTimeout(_wftHideTimer); _wftHideTimer = null; }
+      wft.innerHTML = seg.dataset.tt;
+      if (wft.style.display !== 'block') {
+        // First show — position immediately without transition
+        wft.style.transition = 'none';
+        wft.style.opacity = '0';
+        wft.style.display = 'block';
+        const x = e.clientX + 12, y = e.clientY - 10;
+        wft.style.left = Math.min(x, window.innerWidth - wft.offsetWidth - 8) + 'px';
+        wft.style.top = Math.min(y, window.innerHeight - wft.offsetHeight - 8) + 'px';
+        requestAnimationFrame(() => { wft.style.transition = ''; wft.style.opacity = '1'; });
+      }
+    });
+    container.addEventListener('mousemove', e => {
+      if (wft.style.display !== 'block') return;
+      const x = e.clientX + 12;
+      const y = e.clientY - 10;
+      const maxX = window.innerWidth - wft.offsetWidth - 8;
+      const maxY = window.innerHeight - wft.offsetHeight - 8;
+      wft.style.left = Math.min(x, maxX) + 'px';
+      wft.style.top = Math.min(y, maxY) + 'px';
+    });
+    container.addEventListener('mouseout', e => {
+      const seg = e.target.closest('[data-tt]');
+      if (!seg) return;
+      if (!seg.contains(e.relatedTarget)) {
+        // Brief delay so moving between adjacent blocks feels smooth
+        _wftHideTimer = setTimeout(() => { wft.style.display = 'none'; wft.style.opacity = '0'; _wftHideTimer = null; }, 80);
+      }
+    });
+  }
+
   // Start timeline updates for weekly view too
   updateTimeline();
 }
@@ -6004,6 +6063,74 @@ function goToDay(dayOfWeek) {
     selectedDayOfWeek = dayOfWeek;
   }
   setViewMode('daily');
+}
+
+// Build hover tooltip HTML for a maintenance block in weekly view.
+// Returns HTML string suitable for data-tt attribute.
+function buildMaintTooltipHtml(maint) {
+  const checkLabels = { daily: 'Daily Check', weekly: 'Weekly Check', A: 'A Check', C: 'C Check', D: 'D Check' };
+  const label = checkLabels[maint.checkType] || maint.checkType + ' Check';
+  const color = { daily: '#FFA500', weekly: '#8B5CF6', A: '#17A2B8', C: '#6B7280', D: '#4B5563' }[maint.checkType] || '#6b7280';
+
+  // Time window
+  const startStr = (maint.startTime || '00:00').substring(0, 5);
+  const dur = maint.duration || { daily: 60, weekly: 135, A: 540, C: 30240, D: 108000 }[maint.checkType] || 60;
+  const [sH, sM] = startStr.split(':').map(Number);
+  const endTotalMin = sH * 60 + sM + dur;
+  const eH = Math.floor((endTotalMin % 1440) / 60);
+  const eM = endTotalMin % 60;
+  const endStr = `${String(eH).padStart(2,'0')}:${String(eM).padStart(2,'0')}`;
+
+  // Progress from game time
+  const gameTime = getCurrentWorldTime();
+  let progressPct = 0;
+  let statusLabel = 'SCHEDULED';
+  let statusClr = '#58a6ff';
+  if (gameTime && maint.scheduledDate) {
+    const schedDate = String(maint.scheduledDate).split('T')[0];
+    const startDT = new Date(schedDate + 'T' + startStr + ':00');
+    const endDT = new Date(startDT.getTime() + dur * 60000);
+    const now = gameTime.getTime();
+    if (now >= endDT.getTime()) { progressPct = 100; statusLabel = 'COMPLETED'; statusClr = '#3fb950'; }
+    else if (now >= startDT.getTime()) {
+      progressPct = Math.min(100, Math.round(((now - startDT.getTime()) / (dur * 60000)) * 100));
+      statusLabel = 'IN PROGRESS'; statusClr = '#ffa657';
+    }
+  }
+
+  // Current task from MAINTENANCE_TASKS
+  const tasks = MAINTENANCE_TASKS[maint.checkType] || [];
+  let currentTask = '';
+  if (tasks.length > 0 && progressPct < 100 && progressPct > 0) {
+    const taskIdx = Math.min(Math.floor((progressPct / 100) * tasks.length), tasks.length - 1);
+    currentTask = tasks[taskIdx];
+  }
+
+  // For heavy checks show days
+  const isHeavy = maint.checkType === 'C' || maint.checkType === 'D';
+  let timeInfo = `${startStr} → ${endStr}`;
+  if (isHeavy) {
+    const days = Math.ceil(dur / 1440);
+    timeInfo = `~${days} days`;
+    if (progressPct > 0 && progressPct < 100) {
+      const remaining = Math.ceil(days * (100 - progressPct) / 100);
+      timeInfo += ` (${remaining}d left)`;
+    }
+  }
+
+  // Build HTML
+  let html = `<div class="wft-seg" style="text-align:left;">`;
+  html += `<div class="wft-num" style="color:${color};">${label}</div>`;
+  html += `<div class="wft-time">${timeInfo}</div>`;
+  // Progress bar
+  html += `<div style="background:rgba(255,255,255,0.15);border-radius:3px;height:5px;margin:0.25rem 0;overflow:hidden;">`;
+  html += `<div style="background:${statusClr};height:100%;width:${progressPct}%;"></div></div>`;
+  html += `<div style="font-size:0.7rem;color:${statusClr};font-weight:600;">${statusLabel} — ${progressPct}%</div>`;
+  if (currentTask) {
+    html += `<div style="font-size:0.65rem;color:rgba(255,255,255,0.7);margin-top:0.15rem;">⟳ ${currentTask}</div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 // Generate aircraft row for weekly view
@@ -6132,9 +6259,11 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
     if (dayFlights.length > 0) {
       dayFlights.forEach(flight => {
         const route = flight.route;
+        const depAirport = route?.departureAirport?.iataCode || route?.departureAirport?.icaoCode || '???';
         const arrAirport = route?.arrivalAirport?.iataCode || route?.arrivalAirport?.icaoCode || '???';
         const techStopAirport = route?.techStopAirport?.iataCode || route?.techStopAirport?.icaoCode || null;
         const routeNum = route?.routeNumber || '';
+        const returnRouteNum = route?.returnRouteNumber || '';
 
         // Parse departure and arrival times from stored data
         const depTimeStr = flight.departureTime?.substring(0, 5) || '00:00';
@@ -6160,6 +6289,24 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
 
         // Add post-flight time to arrival to get true operation end
         arrMinutes += postFlightDur;
+
+        // Compute sector times for hover tooltip (outbound arrival, return departure)
+        const _minsToHHMM = (m) => {
+          const h = Math.floor(((m % 1440) + 1440) % 1440 / 60);
+          const mm = Math.round(((m % 1440) + 1440) % 1440 % 60 / 5) * 5;
+          return `${String(mm === 60 ? (h+1)%24 : h).padStart(2,'0')}:${String(mm === 60 ? 0 : mm).padStart(2,'0')}`;
+        };
+        let outArrStr = '', retDepStr = '';
+        if (!flight.isTour && route && aircraft.aircraft?.cruiseSpeed) {
+          const cs = aircraft.aircraft.cruiseSpeed;
+          const dLat = parseFloat(route.departureAirport?.latitude)||0, dLng = parseFloat(route.departureAirport?.longitude)||0;
+          const aLat = parseFloat(route.arrivalAirport?.latitude)||0, aLng = parseFloat(route.arrivalAirport?.longitude)||0;
+          const outMin = calculateFlightMinutes(routeDistance, cs, dLng, aLng, dLat, aLat);
+          const turnaround = route.turnaroundTime || 45;
+          const rawDepMin = depH * 60 + depM;
+          outArrStr = _minsToHHMM(rawDepMin + outMin);
+          retDepStr = _minsToHHMM(rawDepMin + outMin + turnaround);
+        }
 
         // Use stored arrivalDate for multi-day detection (consistent with getFlightsForDay)
         // arrMinutes already has post-flight added from stored arrivalTime above
@@ -6234,55 +6381,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         // Minimum width for visibility
         if (widthPct < 5) widthPct = 5;
 
-        // Show ICAO - prefer transit day if exists, otherwise use midpoint logic
-        let showLabel = true;
-        if (isMultiDay) {
-          if (hasTransitDays) {
-            // Show label on first transit day only
-            const firstTransitDayOfWeek = (opStartDayOfWeek + 1) % 7;
-            showLabel = col.dayOfWeek === firstTransitDayOfWeek;
-          } else {
-            // No transit days - use midpoint logic for 2-day operations
-            const opStartDayMinutesRemaining = 1440 - depMinutes;
-            const totalOperationMinutes = opStartDayMinutesRemaining + arrMinutes;
-            const midpointMinutes = totalOperationMinutes / 2;
-            const midpointOnOpStartDay = midpointMinutes <= opStartDayMinutesRemaining;
-
-            if (col.dayOfWeek === opStartDayOfWeek) {
-              showLabel = midpointOnOpStartDay;
-            } else if (col.dayOfWeek === arrDayOfWeek) {
-              showLabel = !midpointOnOpStartDay;
-            } else {
-              showLabel = false;
-            }
-          }
-        }
-
-        // Build label content - use vertical text for narrow strips, hide if too small
-        let labelContent = '';
-        if (showLabel) {
-          const isNarrow = widthPct < 12; // Less than ~12% of day width
-          const isTooSmall = widthPct < 5; // Less than ~5% - don't show label at all
-
-          if (isTooSmall) {
-            labelContent = '';
-          } else if (isNarrow) {
-            // Vertically stacked letters for narrow strips (letters upright, stacked top to bottom)
-            const stackedLetters = arrAirport.split('').join('<br>');
-            labelContent = `
-              <span style="color: white; font-size: 0.55rem; font-weight: 600; line-height: 0.9; text-align: center;">${stackedLetters}</span>
-            `;
-          } else {
-            // Normal horizontal text with optional tech stop
-            const techStopLabel = techStopAirport ? `<div style="color: #22c55e; font-size: 0.55rem; white-space: nowrap;">via ${techStopAirport}</div>` : '';
-            labelContent = `
-              <div style="display: flex; flex-direction: column; align-items: center; line-height: 1.2;">
-                <span style="color: white; font-size: 0.7rem; font-weight: 600; white-space: nowrap;">${arrAirport}</span>
-                ${techStopLabel}
-              </div>
-            `;
-          }
-        }
+        // Show destination label on every block (post-render hides if block is too narrow)
 
         // Check if maintenance immediately follows this flight (to remove right border-radius)
         const flightEndPct = leftPct + widthPct;
@@ -6332,16 +6431,28 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         const blockClick = isTourBlock
           ? `event.stopPropagation(); viewTourFromSchedule('${flight.tourId}')`
           : `event.stopPropagation(); viewFlightDetailsWeekly('${flight.id}')`;
-        const blockTitle = isTourBlock
-          ? `${(flight.tour?.name || 'Sightseeing Tour').replace(/"/g, '&quot;')} (tour): ${depTimeStr}→${arrTimeStr}`
-          : `${routeNum}: ${depTimeStr}→${arrTimeStr}${techStopAirport ? ' via ' + techStopAirport : ''}`;
+        // Data for hover tooltip (two-sector display matching daily view style)
+        const weeklyDestLabel = isTourBlock
+          ? ''
+          : `<span class="segment-dest">${arrAirport}</span>`;
+        // Encode tooltip HTML into a data attribute (both sectors)
+        let ttHtml = '';
+        if (isTourBlock) {
+          const tourName = (flight.tour?.name || 'Sightseeing Tour').replace(/"/g, '&quot;');
+          ttHtml = `<div class="wft-seg"><div class="wft-num">${tourName}</div><div class="wft-time">Off: ${depTimeStr} On: ${arrTimeStr}</div></div>`;
+        } else {
+          const via = techStopAirport ? ` via ${techStopAirport}` : '';
+          ttHtml = `<div class="wft-seg"><div class="wft-num">${routeNum}</div><div class="wft-route">${depAirport}→${arrAirport}${via}</div><div class="wft-time">Off: ${depTimeStr} On: ${outArrStr || '??:??'}</div></div>`
+            + `<div class="wft-div"></div>`
+            + `<div class="wft-seg"><div class="wft-num">${returnRouteNum}</div><div class="wft-route">${arrAirport}→${depAirport}${via}</div><div class="wft-time">Off: ${retDepStr || '??:??'} On: ${arrTimeStr}</div></div>`;
+        }
         cellContent += `
-          <div
+          <div class="flight-segment"
             onclick="${blockClick}"
-            title="${blockTitle}"
+            data-tt="${ttHtml.replace(/"/g, '&quot;')}"
             style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${blockBg}; border-radius: ${finalBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; ${flightBlockBlur}"
           >
-            ${labelContent}
+            ${weeklyDestLabel}
           </div>
         `;
       });
@@ -6491,9 +6602,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           const hasStarted = maintDateStr < todayStr ||
             (maintDateStr === todayStr && currentMinutes >= startMinutes);
 
-          const heavyMaintTooltip = hasStarted
-            ? `${checkDescription}\nStarted: ${startTimeStr} on ${scheduledDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}\nCompletes: ~${completionDateStr}`
-            : `${checkDescription}\nScheduled: ${startTimeStr} on ${scheduledDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}\nCompletes: ~${completionDateStr}`;
+          const heavyMaintTtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
 
           // Use the full maintenance ID for the modal
           const maintId = maint.id;
@@ -6523,7 +6632,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  title="${heavyMaintTooltip}"
+                  data-tt="${heavyMaintTtHtml}"
                   style="position: absolute; left: ${continuationLeft}%; width: ${continuationWidth}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 0.5rem; cursor: pointer; z-index: 2;"
                 >
                   <span style="color: rgba(255,255,255,0.5); font-size: 0.9rem; letter-spacing: 2px;">...</span>
@@ -6541,7 +6650,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  title="${heavyMaintTooltip}"
+                  data-tt="${heavyMaintTtHtml}"
                   style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: linear-gradient(90deg, ${maintBg} 50%, #22c55e); border-radius: 0 3px 3px 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
                 >
                   ${lastDayContent}
@@ -6561,7 +6670,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  title="${heavyMaintTooltip}"
+                  data-tt="${heavyMaintTtHtml}"
                   style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
                 >
                   ${content}
@@ -6576,7 +6685,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                title="${heavyMaintTooltip}"
+                data-tt="${heavyMaintTtHtml}"
                 style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 3px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
               >
                 ${content}
@@ -6602,12 +6711,12 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             const totalWidthPct = todayRemainingPct + nextDayWidthPct;
 
             const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">A</span>`;
-            const maintTooltip = `A Check\nStarts: ${startTimeStr}\nCompletes: ${nextDayEndTime} (next day)`;
+            const overnightATtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
 
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
-                title="${maintTooltip}"
+                data-tt="${overnightATtHtml}"
                 style="position: absolute; left: ${leftPct}%; width: ${totalWidthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${isAdjacentToFlight ? '0' : '3px'} 3px 3px ${isAdjacentToFlight ? '0' : '3px'}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: visible; z-index: 3;"
               >
                 ${content}
@@ -6625,21 +6734,12 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             // Hide label for daily checks (too narrow in weekly view) and any block < 3% width
             const content = (maint.checkType === 'daily' || maint.checkType === 'weekly' || widthPct <= 3) ? '' : `<span style="color: white; font-size: 0.6rem; font-weight: 600;">${maintLabelText}</span>`;
 
-            // Build tooltip with completion time
-            const checkName = maint.checkType === 'daily' ? 'Daily' : (maint.checkType === 'weekly' ? 'Weekly' : maint.checkType);
-            let maintTooltip;
-            if (maint._isOvernightContinuation) {
-              maintTooltip = `${checkName} Check (continued from previous day)\nCompletes: ${endTimeStr}`;
-            } else if (isDownrouteDaily) {
-              maintTooltip = `${checkName} Check (downroute)\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
-            } else {
-              maintTooltip = `${checkName} Check\nStarts: ${startTimeStr}\nCompletes: ${endTimeStr}`;
-            }
+            const lightMaintTtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
 
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
-                title="${maintTooltip}"
+                data-tt="${lightMaintTtHtml}"
                 style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: hidden; ${maintZIndex}"
               >
                 ${content}
@@ -6702,7 +6802,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         ondragover="${hasExpiredChecks ? '' : `handleWeeklyDragOver(event, ${col.dayOfWeek})`}"
         ondragleave="${hasExpiredChecks ? '' : 'handleWeeklyDragLeave(event)'}"
         ondrop="${hasExpiredChecks ? '' : `handleWeeklyDrop(event, '${aircraft.id}', ${col.dayOfWeek})`}"
-        title="${hasExpiredChecks ? groundedTooltip : (isCoarsePointer() ? 'Tap a route, then tap here to schedule' : 'Drag route here to schedule')}"
+        title="${hasExpiredChecks ? groundedTooltip : (hasContent ? '' : (isCoarsePointer() ? 'Tap a route, then tap here to schedule' : 'Drag route here to schedule'))}"
       >
         ${hasContent ? cellContent : ''}
         ${expiredOverlay}
@@ -6713,74 +6813,14 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
   // Actions column (sticky right). Touch devices get extra left padding so
   // the buttons sit clear of late-day flight blocks that overflow their cell
   html += `
-    <td style="padding: 0.5rem 0.6rem 0.5rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle;">
-      <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
-        <button
-          onclick="event.stopPropagation(); addRouteToAircraft('${aircraft.id}')"
-          title="Add Route"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: var(--primary-color);
-            border: 1px solid var(--accent-color);
-            color: white;
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.background='var(--accent-color)'"
-          onmouseout="this.style.background='var(--primary-color)'"
-        >+</button>
-        <button
-          onclick="event.stopPropagation(); scheduleMaintenance('${aircraft.id}')"
-          title="Schedule Maintenance"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            font-size: 1.4rem;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.borderColor='var(--primary-color)'; this.style.color='var(--text-primary)'"
-          onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
-        >⚙</button>
-        <button
-          onclick="event.stopPropagation(); clearWeekSchedule('${aircraft.id}')"
-          title="Clear Week Schedule"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.borderColor='#dc3545'; this.style.color='#dc3545'"
-          onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
-        >✖</button>
-      </div>
+    <td style="padding: 0.5rem 0.4rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); vertical-align: middle; text-align: center;">
+      <button
+        onclick="event.stopPropagation(); toggleActionMenu(this, '${aircraft.id}', 'weekly')"
+        title="Actions"
+        style="width:28px;height:28px;padding:0;background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);font-size:1.2rem;font-weight:700;cursor:pointer;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:1px;line-height:1;"
+        onmouseover="this.style.borderColor='var(--accent-color)';this.style.color='var(--text-primary)'"
+        onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'"
+      >⋯</button>
     </td>
   `;
 
@@ -7326,74 +7366,14 @@ function generateAircraftRow(aircraft, timeColumns) {
   // Actions column (sticky right) - extra left padding to cover any flight
   // block overflow; touch devices get more so buttons sit clear of Sunday
   html += `
-    <td style="padding: 0.5rem 0.6rem 0.5rem ${isCoarsePointer() ? '1.6rem' : '0.75rem'}; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface);">
-      <div style="display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
-        <button
-          onclick="addRouteToAircraft('${aircraft.id}')"
-          title="Add Route"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: var(--primary-color);
-            border: 1px solid var(--accent-color);
-            color: white;
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.background='var(--accent-color)'"
-          onmouseout="this.style.background='var(--primary-color)'"
-        >+</button>
-        <button
-          onclick="scheduleMaintenance('${aircraft.id}')"
-          title="Schedule Maintenance"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            font-size: 1.4rem;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.borderColor='var(--primary-color)'; this.style.color='var(--text-primary)'"
-          onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
-        >⚙</button>
-        <button
-          onclick="clearDaySchedule('${aircraft.id}')"
-          title="Clear Day Schedule"
-          style="
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          "
-          onmouseover="this.style.borderColor='#dc3545'; this.style.color='#dc3545'"
-          onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'"
-        >✖</button>
-      </div>
+    <td style="padding: 0.5rem 0.4rem; position: sticky; right: 0; background: var(--surface); border-left: 2px solid var(--border-color); z-index: 5; box-shadow: -5px 0 0 var(--surface); text-align: center;">
+      <button
+        onclick="event.stopPropagation(); toggleActionMenu(this, '${aircraft.id}', 'daily')"
+        title="Actions"
+        style="width:28px;height:28px;padding:0;background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);font-size:1.2rem;font-weight:700;cursor:pointer;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:1px;line-height:1;"
+        onmouseover="this.style.borderColor='var(--accent-color)';this.style.color='var(--text-primary)'"
+        onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'"
+      >⋯</button>
     </td>
   `;
 
@@ -9513,6 +9493,46 @@ function hideLoadingOverlay() {
   if (overlay) {
     overlay.remove();
   }
+}
+
+// Action menu popup — single ⋯ button opens a 3-item menu
+function toggleActionMenu(btn, aircraftId, mode) {
+  // Close any existing menu
+  const existing = document.getElementById('actionMenuPopup');
+  if (existing) { existing.remove(); return; }
+
+  const clearFn = mode === 'daily' ? 'clearDaySchedule' : 'clearWeekSchedule';
+  const clearLabel = mode === 'daily' ? 'Clear Day' : 'Clear Week';
+
+  const menu = document.createElement('div');
+  menu.id = 'actionMenuPopup';
+  menu.style.cssText = 'position:fixed;z-index:9999;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);padding:4px 0;min-width:140px;';
+  menu.innerHTML = `
+    <button onclick="this.parentElement.remove(); addRouteToAircraft('${aircraftId}')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 14px;background:none;border:none;color:var(--text-primary);font-size:0.8rem;cursor:pointer;text-align:left;white-space:nowrap;" onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background='none'">
+      <span style="color:var(--accent-color);font-weight:700;font-size:1rem;width:16px;text-align:center;">+</span> Add Route
+    </button>
+    <button onclick="this.parentElement.remove(); scheduleMaintenance('${aircraftId}')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 14px;background:none;border:none;color:var(--text-primary);font-size:0.8rem;cursor:pointer;text-align:left;white-space:nowrap;" onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background='none'">
+      <span style="font-size:0.9rem;width:16px;text-align:center;">⚙</span> Maintenance
+    </button>
+    <div style="border-top:1px solid var(--border-color);margin:3px 0;"></div>
+    <button onclick="this.parentElement.remove(); ${clearFn}('${aircraftId}')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 14px;background:none;border:none;color:#f87171;font-size:0.8rem;cursor:pointer;text-align:left;white-space:nowrap;" onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background='none'">
+      <span style="font-size:0.9rem;width:16px;text-align:center;">✖</span> ${clearLabel}
+    </button>
+  `;
+  document.body.appendChild(menu);
+
+  // Position relative to button
+  const r = btn.getBoundingClientRect();
+  let top = r.bottom + 4;
+  let left = r.right - menu.offsetWidth;
+  if (top + menu.offsetHeight > window.innerHeight) top = r.top - menu.offsetHeight - 4;
+  if (left < 4) left = 4;
+  menu.style.top = top + 'px';
+  menu.style.left = left + 'px';
+
+  // Close on outside click
+  const close = (e) => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('pointerdown', close, true); } };
+  setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
 }
 
 // Action: Clear schedule
