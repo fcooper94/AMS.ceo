@@ -3121,6 +3121,7 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
       }
     }
 
+    const labelFontSize = (check.checkType === 'daily' || check.checkType === 'weekly') ? '0.6rem' : '0.85rem';
     return `
       <div
         class="maintenance-block"
@@ -3133,7 +3134,7 @@ function renderMaintenanceBlocks(maintenance, cellFlights = [], aircraft = null)
           background: ${backgroundColor};
           border-radius: ${borderRadius};
           color: white;
-          font-size: 0.85rem;
+          font-size: ${labelFontSize};
           font-weight: 700;
           padding: 0.15rem;
           cursor: pointer;
@@ -5997,10 +5998,16 @@ function renderWeeklySchedule() {
   if (wft) {
     let _wftHideTimer = null;
     container.addEventListener('mouseover', e => {
-      const seg = e.target.closest('[data-tt]');
+      const seg = e.target.closest('[data-tt], [data-maint-id]');
       if (!seg) return;
       if (_wftHideTimer) { clearTimeout(_wftHideTimer); _wftHideTimer = null; }
-      wft.innerHTML = seg.dataset.tt;
+      // Maintenance tooltips are computed live so progress stays current
+      if (seg.dataset.maintId) {
+        const m = scheduledMaintenance.find(x => String(x.id) === seg.dataset.maintId);
+        wft.innerHTML = m ? buildMaintTooltipHtml(m) : '';
+      } else {
+        wft.innerHTML = seg.dataset.tt;
+      }
       if (wft.style.display !== 'block') {
         // First show — position immediately without transition
         wft.style.transition = 'none';
@@ -6022,7 +6029,7 @@ function renderWeeklySchedule() {
       wft.style.top = Math.min(y, maxY) + 'px';
     });
     container.addEventListener('mouseout', e => {
-      const seg = e.target.closest('[data-tt]');
+      const seg = e.target.closest('[data-tt], [data-maint-id]');
       if (!seg) return;
       if (!seg.contains(e.relatedTarget)) {
         // Brief delay so moving between adjacent blocks feels smooth
@@ -6602,8 +6609,6 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
           const hasStarted = maintDateStr < todayStr ||
             (maintDateStr === todayStr && currentMinutes >= startMinutes);
 
-          const heavyMaintTtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
-
           // Use the full maintenance ID for the modal
           const maintId = maint.id;
 
@@ -6632,7 +6637,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  data-tt="${heavyMaintTtHtml}"
+                  data-maint-id="${maint.id}"
                   style="position: absolute; left: ${continuationLeft}%; width: ${continuationWidth}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 0.5rem; cursor: pointer; z-index: 2;"
                 >
                   <span style="color: rgba(255,255,255,0.5); font-size: 0.9rem; letter-spacing: 2px;">...</span>
@@ -6650,7 +6655,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  data-tt="${heavyMaintTtHtml}"
+                  data-maint-id="${maint.id}"
                   style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: linear-gradient(90deg, ${maintBg} 50%, #22c55e); border-radius: 0 3px 3px 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
                 >
                   ${lastDayContent}
@@ -6670,7 +6675,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
               cellContent += `
                 <div
                   onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                  data-tt="${heavyMaintTtHtml}"
+                  data-maint-id="${maint.id}"
                   style="position: absolute; left: 0; width: 100%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
                 >
                   ${content}
@@ -6685,7 +6690,7 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maintId}')"
-                data-tt="${heavyMaintTtHtml}"
+                data-maint-id="${maint.id}"
                 style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: 3px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2;"
               >
                 ${content}
@@ -6711,12 +6716,10 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             const totalWidthPct = todayRemainingPct + nextDayWidthPct;
 
             const content = `<span style="color: white; font-size: 0.65rem; font-weight: 600;">A</span>`;
-            const overnightATtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
-
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
-                data-tt="${overnightATtHtml}"
+                data-maint-id="${maint.id}"
                 style="position: absolute; left: ${leftPct}%; width: ${totalWidthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${isAdjacentToFlight ? '0' : '3px'} 3px 3px ${isAdjacentToFlight ? '0' : '3px'}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: visible; z-index: 3;"
               >
                 ${content}
@@ -6734,12 +6737,10 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
             // Hide label for daily checks (too narrow in weekly view) and any block < 3% width
             const content = (maint.checkType === 'daily' || maint.checkType === 'weekly' || widthPct <= 3) ? '' : `<span style="color: white; font-size: 0.6rem; font-weight: 600;">${maintLabelText}</span>`;
 
-            const lightMaintTtHtml = buildMaintTooltipHtml(maint).replace(/"/g, '&quot;');
-
             cellContent += `
               <div
                 onclick="event.stopPropagation(); viewMaintenanceDetails('${maint.id}')"
-                data-tt="${lightMaintTtHtml}"
+                data-maint-id="${maint.id}"
                 style="position: absolute; left: ${leftPct}%; width: ${widthPct}%; top: 0; bottom: 0; background: ${maintBg}; border-radius: ${maintBorderRadius}; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: ${maintOpacity}; filter: ${maintFilter}; overflow: hidden; ${maintZIndex}"
               >
                 ${content}
