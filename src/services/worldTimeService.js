@@ -2662,6 +2662,7 @@ class WorldTimeService {
           if (readyAircraft.length === 0) continue;
 
           for (const ua of readyAircraft) {
+            try {
             const remaining = parseFloat(ua.remainingPayment) || 0;
             const balance = parseFloat(membership.balance) || 0;
             const acName = ua.aircraft ? `${ua.aircraft.manufacturer} ${ua.aircraft.model}` : ua.registration;
@@ -2821,6 +2822,22 @@ class WorldTimeService {
                 priority: 2,
                 gameTime: now
               });
+            } else {
+              // Fallback: no recognised financingMethod — treat as cash with $0 remaining
+              console.warn(`[Delivery] Aircraft ${ua.id} (${ua.registration}) has unrecognised financingMethod '${ua.financingMethod}' — activating as cash`);
+              ua.status = 'active';
+              await ua.save();
+
+              await Notification.create({
+                worldMembershipId: membership.id,
+                type: 'aircraft_delivered',
+                icon: 'plane',
+                title: `Aircraft Delivered — ${ua.registration}`,
+                message: `Your ${acName} has been delivered and is now active.`,
+                link: '/fleet',
+                priority: 2,
+                gameTime: now
+              });
             }
 
             // Auto-schedule maintenance if preferences were set at order time
@@ -2841,6 +2858,20 @@ class WorldTimeService {
                   // Non-critical: maintenance can be scheduled manually
                 }
               }
+
+              // Notify connected clients so scheduling/fleet pages auto-refresh
+              if (global.io) {
+                global.io.to(`world:${worldId}`).emit('fleet:delivered', {
+                  worldId,
+                  membershipId: membership.id,
+                  aircraftId: ua.id,
+                  registration: ua.registration
+                });
+              }
+            }
+            } catch (acErr) {
+              console.error(`[Delivery] Failed to deliver aircraft ${ua.id} (${ua.registration}):`, acErr.message);
+              // Continue with remaining aircraft — don't let one failure block the rest
             }
           }
         } catch (mErr) {

@@ -637,6 +637,12 @@ window.addEventListener('worldTimeUpdated', (event) => {
   }
 });
 
+// Auto-refresh when an aircraft is delivered (on_order → active)
+window.addEventListener('fleetDelivered', () => {
+  console.log('[Scheduling] Aircraft delivered — reloading schedule');
+  try { loadSchedule(); } catch (_) {}
+});
+
 // Modal Helper Functions
 function showConfirmModal(title, message) {
   return new Promise((resolve) => {

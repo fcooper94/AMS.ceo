@@ -179,6 +179,12 @@ if (socket) {
     window.dispatchEvent(new CustomEvent('notificationsRefresh'));
   });
 
+  // Fleet delivery event — scheduling/fleet pages can listen and auto-refresh
+  socket.on('fleet:delivered', (data) => {
+    if (!currentWorldId || data.worldId !== currentWorldId) return;
+    window.dispatchEvent(new CustomEvent('fleetDelivered', { detail: data }));
+  });
+
   console.log('[Layout] Socket.IO event listeners registered');
 } else {
   console.warn('[Layout] Socket.IO not available - falling back to API-only time sync');
