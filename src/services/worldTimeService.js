@@ -2341,10 +2341,13 @@ class WorldTimeService {
             }
           }
 
-          // Contractor costs
-          const cleaningCost = (getContractor('cleaning', membership.cleaningContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
-          const groundCost = (getContractor('ground', membership.groundContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
-          const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier;
+          // Contractor costs — scale with fleet size (a 1-aircraft startup
+          // doesn't need the same support as a 50-aircraft airline).
+          // Minimum 25% at 1 aircraft, full rate at 12+ aircraft.
+          const contractorFleetScale = Math.min(1.0, 0.25 + fleetCount * (0.75 / 12));
+          const cleaningCost = (getContractor('cleaning', membership.cleaningContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier * contractorFleetScale;
+          const groundCost = (getContractor('ground', membership.groundContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier * contractorFleetScale;
+          const engineeringCost = (getContractor('engineering', membership.engineeringContractor || 'standard')?.weeklyCost2024 || 0) * eraMultiplier * contractorFleetScale;
           const contractorCost = Math.round(cleaningCost + groundCost + engineeringCost);
 
           // Fleet commonality costs — fixed weekly cost per unique type

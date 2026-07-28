@@ -409,7 +409,13 @@ class EraEconomicService {
       } else if (oneWayHours > C.LONG_HAUL_CREW_HOURS) {
         pilots += 1; cabinCrew = Math.ceil(cabinCrew * 1.3);
       }
-      crewCost = Math.round((pilots * C.PILOT_HOURLY + cabinCrew * C.CABIN_CREW_HOURLY) * flightHours * eraMult * OPEX);
+      // Crew cost scales with aircraft size — regional pilots earn significantly
+      // less than widebody captains (real-world ratio ~0.40-0.65 for regionals).
+      const crewSizeMult = seats <= 30 ? 0.45
+                         : seats <= 80 ? 0.65
+                         : seats <= 200 ? 0.85
+                         : 1.0;
+      crewCost = Math.round((pilots * C.PILOT_HOURLY + cabinCrew * C.CABIN_CREW_HOURLY) * flightHours * eraMult * OPEX * crewSizeMult);
 
       // Maintenance: per-flight-hour variable + per-cycle fixed
       const maintHr = opts.maintenanceCostPerHour || 1000;
@@ -421,9 +427,13 @@ class EraEconomicService {
       const sizeScale = Math.sqrt(Math.max(seats, 30) / 150);
       const estSpeed = seats > 200 ? 480 : seats > 80 ? 460 : 300;
       flightHours = totalNm / estSpeed;
+      const fbCrewSizeMult = seats <= 30 ? 0.45
+                           : seats <= 80 ? 0.65
+                           : seats <= 200 ? 0.85
+                           : 1.0;
       // Fuel: era-scaled with fuel-specific multiplier (consistent with aircraft path)
       fuelCost        = Math.round(totalNm * 5.5  * sizeScale * fuelMult * eraMult * C.FUEL_CONTINGENCY);
-      crewCost        = Math.round(totalNm * 0.90 * sizeScale * eraMult * OPEX);
+      crewCost        = Math.round(totalNm * 0.90 * sizeScale * eraMult * OPEX * fbCrewSizeMult);
       maintenanceCost = Math.round(totalNm * 0.65 * sizeScale * eraMult * OPEX);
     }
 

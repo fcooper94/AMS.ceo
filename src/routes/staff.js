@@ -105,6 +105,8 @@ router.get('/', async (req, res) => {
     roster.summary.totalWeeklyCost = roster.departments.reduce((s, d) => s + d.totalWeeklyCost, 0);
 
     // Build contractor info for outsourced departments
+    // Contractor costs scale with fleet size (matches recordWeeklyOverheads)
+    const contractorFleetScale = Math.min(1.0, 0.25 + fleetCount * (0.75 / 12));
     const contractors = {};
     const contractorMap = {
       ground: { key: 'ground', tier: membership.groundContractor || 'standard' },
@@ -118,14 +120,14 @@ router.get('/', async (req, res) => {
           tier,
           name: c.name,
           shortName: c.shortName,
-          weeklyCost: Math.round(c.weeklyCost2024 * eraMultiplier),
+          weeklyCost: Math.round(c.weeklyCost2024 * eraMultiplier * contractorFleetScale),
           options: Object.entries(allTiers).map(([t, data]) => ({
             tier: t,
             name: data.name,
             shortName: data.shortName,
             tagline: data.tagline,
             description: data.description,
-            weeklyCost: Math.round(data.weeklyCost2024 * eraMultiplier),
+            weeklyCost: Math.round(data.weeklyCost2024 * eraMultiplier * contractorFleetScale),
             current: t === tier
           }))
         };
@@ -228,8 +230,12 @@ router.post('/contractor', async (req, res) => {
     const world = await World.findByPk(activeWorldId);
     const gameYear = (worldTimeService.getCurrentTime(activeWorldId) || world.currentTime).getFullYear();
     const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
+    const penaltyFleetCount = await UserAircraft.count({
+      where: { worldMembershipId: membership.id, status: { [Op.notIn]: ['sold'] } }
+    });
+    const penaltyFleetScale = Math.min(1.0, 0.25 + penaltyFleetCount * (0.75 / 12));
     const oldContractor = getContractor(category, currentTier);
-    const penaltyCost = Math.round((oldContractor?.weeklyCost2024 || 0) * eraMultiplier * 2);
+    const penaltyCost = Math.round((oldContractor?.weeklyCost2024 || 0) * eraMultiplier * penaltyFleetScale * 2);
 
     if (membership.balance < penaltyCost) {
       return res.status(400).json({
