@@ -2923,8 +2923,7 @@ class WorldTimeService {
     try {
       const [stuck] = await WorldMembership.sequelize.query(`
         SELECT ua.id, ua.registration, ua.acquisition_type,
-               ua.expected_delivery_date, ua.lease_duration_months,
-               ua.lease_weekly_payment
+               ua.expected_delivery_date, ua.lease_duration_months
         FROM user_aircraft ua
         JOIN world_memberships wm ON wm.id = ua.world_membership_id
         WHERE wm.world_id = :worldId

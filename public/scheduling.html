@@ -2,6 +2,28 @@
 <!-- SUBTITLE: Aircraft Scheduling & Utilization -->
 <!-- SCRIPTS: /js/cargo-types.js, /js/storageAirports.js, /js/cabin-outfitting.js, /js/cabin-configurator.js, /js/cargo-configurator.js, /js/fleet.js, /js/flight-timing.js, /js/scheduling-v3.js -->
 
+<style>
+  /* Pinned horizontal scrollbar at the viewport bottom so it's always
+     reachable without scrolling past hundreds of aircraft rows.
+     The page grows freely — no vertical height constraint. */
+  #stickyHScroll {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+  }
+  #stickyHScroll > div {
+    height: 1px; /* just enough to produce a scrollbar */
+  }
+  /* Hide the native horizontal scrollbar on the grid panel — the sticky one replaces it */
+  .ops-panel .panel-body::-webkit-scrollbar:horizontal {
+    display: none;
+  }
+</style>
+
 <div class="dashboard-container">
   <main class="main-content">
     <div class="page-header">
@@ -113,7 +135,7 @@
       <div class="panel-header">
         <h2>FLEET SCHEDULE</h2>
       </div>
-      <div class="panel-body" style="padding: 0; overflow-x: auto;">
+      <div class="panel-body" style="padding: 0; overflow-x: auto; scrollbar-width: none;">
         <div id="scheduleGrid" style="min-width: 100%;">
           <div style="padding: 3rem; text-align: center; color: var(--text-secondary);">
             <div style="
@@ -135,6 +157,8 @@
           </style>
         </div>
       </div>
+      <!-- Sticky horizontal scrollbar pinned to viewport bottom -->
+      <div id="stickyHScroll"><div></div></div>
     </div>
   </main>
 

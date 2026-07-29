@@ -849,9 +849,7 @@
 .main-content {
   flex: 1;
   margin-left: 240px;
-  /* Extra bottom padding so the fixed global footer (theme toggle + policy
-     links, bottom-right) never overlaps the last of the page content. */
-  padding: 1.25rem 1.5rem 3.75rem;
+  padding: 1.25rem 1.5rem 2.25rem; /* extra bottom clears the fixed footer bar */
   overflow-y: auto;
   background: var(--background);
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -861,6 +859,15 @@
 }
 
 .sidebar-collapsed .main-content {
+  margin-left: 0;
+}
+
+/* Global footer bar */
+.app-global-footer {
+  margin-left: 240px;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-collapsed .app-global-footer {
   margin-left: 0;
 }
 

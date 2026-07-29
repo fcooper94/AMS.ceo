@@ -1519,10 +1519,16 @@ window.toggleTheme = function () {
   window.applyTheme(current === 'light' ? 'dark' : 'light');
 };
 
-// Sync any footer labels once the DOM is ready.
+// Move the global footer inside .main-content so it flows after page content
+// (never overlaps), then show it.
 document.addEventListener('DOMContentLoaded', function () {
   const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
   document.querySelectorAll('[data-theme-label]').forEach(el => {
     el.textContent = current === 'light' ? 'Dark mode' : 'Light mode';
   });
+
+  // Show the global footer only when no page-specific public footer exists
+  const footer = document.querySelector('.app-global-footer');
+  const hasOwnFooter = document.querySelector('.public-page-footer, .lp-footer, .cs-footer');
+  if (footer && !hasOwnFooter) footer.style.display = '';
 });

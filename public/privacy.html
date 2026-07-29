@@ -22,71 +22,153 @@
   <main class="main-content">
     <div class="page-header">
       <h1>PRIVACY POLICY</h1>
-      <p class="subtitle">LAST UPDATED: 18 MAY 2026</p>
+      <p class="subtitle">LAST UPDATED: 29 JULY 2026</p>
     </div>
 
     <div class="worlds-section" style="max-width: 900px;">
       <div style="display: flex; flex-direction: column; gap: 1.5rem; color: var(--text-secondary); line-height: 1.7; font-size: 0.92rem;">
 
         <p style="font-style: italic; color: var(--text-muted);">
-          This is a plain-language summary of how AMS.ceo ("the Sim", "we") handles your
-          information. It is provided in good faith and should be reviewed by the operator
-          before relying on it for legal compliance.
+          This is a plain-language summary of how AMS.ceo ("the Sim", "we", "us") handles your
+          information. We aim to be transparent and keep things simple. If you have questions,
+          reach us via the <a href="/contact" style="color: var(--accent-color);">Contact</a> page.
         </p>
 
+        <!-- 1. Controller / Identity -->
         <div>
           <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">1. Who we are</h2>
-          <p>AMS.ceo is a free, non-commercial flight-simulation management game integrated with the
-          VATSIM network. We are not affiliated with VATSIM. The Sim is operated by its maintainers
-          and contactable via the <a href="/contact" style="color: var(--accent-color);">Contact</a> page.</p>
+          <p>AMS.ceo is an airline management simulation game operated from the United Kingdom.
+          The data controller is the operator of AMS.ceo, contactable via the
+          <a href="/contact" style="color: var(--accent-color);">Contact</a> page. We are a small
+          independent project, not a large corporation.</p>
         </div>
 
+        <!-- 2. Data collected -->
         <div>
           <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">2. Information we collect</h2>
           <ul style="margin: 0.5rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
-            <li><strong style="color: var(--text-primary);">Account data</strong> — the name and email address you register with, and your password (stored only as a secure hash). Accounts created via the former VATSIM sign-in retain the VATSIM CID, name and email received from VATSIM at that time.</li>
-            <li><strong style="color: var(--text-primary);">Session data</strong> — a session cookie used to keep you signed in.</li>
+            <li><strong style="color: var(--text-primary);">Account data</strong> — the name and email address you register with, and your password (stored only as a secure bcrypt hash; we never see or store your plaintext password).</li>
+            <li><strong style="color: var(--text-primary);">Session data</strong> — a session cookie and your IP address, used to keep you signed in and protect against abuse.</li>
             <li><strong style="color: var(--text-primary);">Game data</strong> — the airline, fleet, routes, finances and activity you generate while playing.</li>
+            <li><strong style="color: var(--text-primary);">Payment data</strong> — if you purchase credits, the transaction is processed by Stripe. We receive a transaction reference, the amount paid and your email, but we <strong>never</strong> see or store your card details. Stripe's own privacy policy governs the data they collect.</li>
             <li><strong style="color: var(--text-primary);">Contact form data</strong> — if you message us, the name, email and message you submit.</li>
           </ul>
-          <p style="margin-top: 0.5rem;">We do not collect payment information and we do not run advertising or third-party trackers.</p>
+          <p style="margin-top: 0.75rem;">We do <strong>not</strong> collect or process any special category data (e.g. race, health, political opinions).</p>
         </div>
 
+        <!-- 3. Legal basis (GDPR Art. 6) -->
         <div>
-          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">3. How we use it</h2>
-          <p>Your data is used solely to operate the game: to authenticate you, run your airline,
-          show leaderboards/competition within worlds, and respond to support requests. We do not
-          sell or rent your data, and we do not share it for marketing.</p>
-        </div>
-
-        <div>
-          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">4. Cookies</h2>
-          <p>We use a single essential session cookie to keep you logged in. We also use
-          <code>localStorage</code> in your browser for preferences such as your light/dark theme
-          and sidebar state. No advertising or analytics cookies are used.</p>
-        </div>
-
-        <div>
-          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">5. Third-party services</h2>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">3. Legal basis for processing</h2>
+          <p>Under the UK GDPR and EU GDPR, we process your data on the following bases:</p>
           <ul style="margin: 0.5rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
-            <li><strong style="color: var(--text-primary);">VATSIM</strong> — public live network flight data for the live traffic map; no account data is exchanged.</li>
-            <li><strong style="color: var(--text-primary);">Hosting / database</strong> — application and data are hosted on Railway infrastructure.</li>
-            <li><strong style="color: var(--text-primary);">Map tiles</strong> — the live map loads tiles from CARTO / OpenStreetMap; your IP is visible to those providers when tiles load.</li>
+            <li><strong style="color: var(--text-primary);">Contract</strong> — account data, game data and payment data are necessary to provide the game service you signed up for (Art. 6(1)(b)).</li>
+            <li><strong style="color: var(--text-primary);">Legitimate interest</strong> — session/IP data for security, fraud prevention and service stability (Art. 6(1)(f)).</li>
+            <li><strong style="color: var(--text-primary);">Consent</strong> — contact form submissions are voluntary; you choose what to send us.</li>
+            <li><strong style="color: var(--text-primary);">Legal obligation</strong> — payment records may be retained as required for tax and accounting law (Art. 6(1)(c)).</li>
           </ul>
         </div>
 
+        <!-- 4. How we use it -->
         <div>
-          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">6. Your rights</h2>
-          <p>You can request a copy or deletion of your account data at any time via the
-          <a href="/contact" style="color: var(--accent-color);">Contact</a> page. See the
-          <a href="/data-handling" style="color: var(--accent-color);">Data Handling</a> page for
-          retention details.</p>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">4. How we use your data</h2>
+          <p>Your data is used solely to operate the game: to authenticate you, run your airline,
+          process purchases, show leaderboards and competition within worlds, and respond to support
+          requests. We do <strong>not</strong> sell, rent or share your data for advertising or marketing purposes.</p>
         </div>
 
+        <!-- 5. Cookies -->
         <div>
-          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">7. Changes</h2>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">5. Cookies and local storage</h2>
+          <p>We use a single <strong>essential</strong> session cookie to keep you logged in. We also use
+          <code>localStorage</code> in your browser for preferences such as your light/dark theme
+          and sidebar state. No advertising, analytics or tracking cookies are used. Because we only
+          use strictly necessary cookies, no cookie consent banner is required.</p>
+        </div>
+
+        <!-- 6. Third parties -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">6. Third-party services</h2>
+          <ul style="margin: 0.5rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
+            <li><strong style="color: var(--text-primary);">Stripe</strong> — processes credit pack purchases. Your payment details are handled entirely by Stripe and are subject to <a href="https://stripe.com/privacy" style="color: var(--accent-color);" target="_blank" rel="noopener">Stripe's Privacy Policy</a>.</li>
+            <li><strong style="color: var(--text-primary);">Railway</strong> — application hosting and database infrastructure (servers located in the United States).</li>
+            <li><strong style="color: var(--text-primary);">Map tiles</strong> — the live map loads tiles from CARTO / OpenStreetMap; your IP address is visible to those providers when tiles load.</li>
+          </ul>
+          <p style="margin-top: 0.5rem;">We do not use Google Analytics, Facebook pixels, or any other tracking or advertising services.</p>
+        </div>
+
+        <!-- 7. International transfers (GDPR Art. 44-49) -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">7. International data transfers</h2>
+          <p>Our servers are hosted on Railway infrastructure in the <strong>United States</strong>.
+          If you are located in the UK, EU or EEA, your data is transferred to and processed in the US.
+          We rely on Railway's compliance with applicable data transfer mechanisms. Stripe processes
+          payment data in accordance with its own international transfer safeguards. By using the Sim,
+          you acknowledge this transfer. You can request deletion of your data at any time
+          (see "Your rights" below).</p>
+        </div>
+
+        <!-- 8. Rights (GDPR Art. 15-22 + CCPA/CPRA) -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">8. Your rights</h2>
+          <p>Depending on where you live, you may have the following rights regarding your personal data:</p>
+          <ul style="margin: 0.5rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
+            <li><strong style="color: var(--text-primary);">Access</strong> — request a copy of the personal data we hold about you.</li>
+            <li><strong style="color: var(--text-primary);">Rectification</strong> — ask us to correct inaccurate data.</li>
+            <li><strong style="color: var(--text-primary);">Erasure ("right to be forgotten")</strong> — ask us to delete your account and associated personal data.</li>
+            <li><strong style="color: var(--text-primary);">Data portability</strong> — receive your data in a structured, machine-readable format.</li>
+            <li><strong style="color: var(--text-primary);">Restriction</strong> — ask us to limit how we use your data while a concern is resolved.</li>
+            <li><strong style="color: var(--text-primary);">Objection</strong> — object to processing based on legitimate interest.</li>
+            <li><strong style="color: var(--text-primary);">Withdraw consent</strong> — where processing is based on consent, you can withdraw it at any time.</li>
+          </ul>
+          <p style="margin-top: 0.75rem;">To exercise any of these rights, contact us via the
+          <a href="/contact" style="color: var(--accent-color);">Contact</a> page. We will respond
+          within 30 days. See the <a href="/data-handling" style="color: var(--accent-color);">Data Handling</a>
+          page for retention and deletion details.</p>
+        </div>
+
+        <!-- 9. Do Not Sell (CCPA/CPRA) -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">9. Do Not Sell or Share My Personal Information</h2>
+          <p>We do <strong>not</strong> sell your personal information. We do <strong>not</strong> share
+          your personal information for cross-context behavioural advertising. This applies to all users,
+          including California residents under the CCPA/CPRA. Because we do not sell or share data,
+          there is no need to opt out — but if you have concerns, please
+          <a href="/contact" style="color: var(--accent-color);">contact us</a>.</p>
+        </div>
+
+        <!-- 10. Non-discrimination (CCPA) -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">10. Non-discrimination</h2>
+          <p>We will not discriminate against you for exercising any of your privacy rights. You will not
+          receive a different level of service or pricing for making a privacy request.</p>
+        </div>
+
+        <!-- 11. Children (COPPA + GDPR Art. 8) -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">11. Children's privacy</h2>
+          <p>AMS.ceo is not directed at children under 13 (or under 16 in jurisdictions where the GDPR
+          sets a higher age of consent). We do not knowingly collect personal information from children.
+          If you believe a child has provided us with data, please
+          <a href="/contact" style="color: var(--accent-color);">contact us</a> and we will delete it
+          promptly.</p>
+        </div>
+
+        <!-- 12. Complaints -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">12. Complaints</h2>
+          <p>If you are unhappy with how we handle your data, please
+          <a href="/contact" style="color: var(--accent-color);">contact us</a> first so we can try to
+          resolve the issue. You also have the right to lodge a complaint with a supervisory authority.
+          In the UK, this is the <a href="https://ico.org.uk/make-a-complaint/" style="color: var(--accent-color);" target="_blank" rel="noopener">Information Commissioner's Office (ICO)</a>.
+          EU residents may contact their local data protection authority.</p>
+        </div>
+
+        <!-- 13. Changes -->
+        <div>
+          <h2 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.5rem;">13. Changes to this policy</h2>
           <p>We may update this policy as the Sim evolves. Material changes will be reflected by the
-          "last updated" date above.</p>
+          "last updated" date above. If we make significant changes that affect how your data is used,
+          we will notify registered users via email or an in-app notice.</p>
         </div>
 
       </div>
@@ -97,7 +179,9 @@
 <!-- Public footer (shown when not logged in) -->
 <div class="public-page-footer lp-footer">
   <span>&copy; 2026 AMS.ceo - Airline Management Sim</span>
-  <div style="display: flex; align-items: center; gap: 1.25rem;">
+  <div style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;">
+    <a href="/privacy" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Privacy Policy</a>
+    <a href="/data-handling" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Data Handling</a>
     <a href="/wiki" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Wiki</a>
     <a href="/contact" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-muted)'">Contact Us</a>
   </div>

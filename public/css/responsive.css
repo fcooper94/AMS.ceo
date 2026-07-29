@@ -141,7 +141,7 @@
 
   /* -- Page content -- */
   .main-content {
-    padding: 1rem 1rem 3.75rem !important; /* extra bottom clears the fixed footer */
+    padding: 1rem !important;
   }
 
   .page-header {
@@ -595,7 +595,7 @@
 
   /* -- Page content tighter -- */
   .main-content {
-    padding: 0.75rem 0.75rem 3.5rem !important; /* extra bottom clears the fixed footer */
+    padding: 0.75rem !important;
   }
 
   .page-header h1 {
@@ -1860,13 +1860,7 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Fixed bottom-right footer pill clears the home indicator */
-.app-global-footer {
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
-  right: calc(14px + env(safe-area-inset-right, 0px)) !important;
-}
-
-/* Fixed bottom sheet clears it too */
+/* Fixed bottom sheet clears the home indicator */
 #addRouteModal {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -1875,7 +1869,7 @@
   .main-content {
     padding-left: max(1rem, env(safe-area-inset-left, 0px)) !important;
     padding-right: max(1rem, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .wi-expand-panel {
@@ -1888,7 +1882,7 @@
   .main-content {
     padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
     padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .credits-dropdown {

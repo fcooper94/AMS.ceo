@@ -11494,3 +11494,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const title = document.getElementById('addRouteModalTitle');
   if (title) title.textContent = 'TAP ROUTE, THEN TAP A SLOT';
 });
+
+// ── Sticky horizontal scrollbar ──────────────────────────────────────────
+// A proxy scrollbar pinned to the viewport bottom so the user never has to
+// scroll past hundreds of aircraft rows to reach it. The panel-body hides
+// its own horizontal overflow; this div mirrors the grid's scroll width.
+(function initStickyHScroll() {
+  const hScroll = document.getElementById('stickyHScroll');
+  const panelBody = hScroll?.previousElementSibling; // the .panel-body
+  if (!hScroll || !panelBody) return;
+  const inner = hScroll.firstElementChild;
+  let syncing = false;
+
+  function syncWidth() {
+    const grid = document.getElementById('scheduleGrid');
+    if (!grid) return;
+    const sw = grid.scrollWidth;
+    inner.style.width = sw + 'px';
+    // Hide the sticky bar when nothing overflows
+    hScroll.style.display = sw > panelBody.clientWidth ? '' : 'none';
+  }
+
+  // Sync scroll positions bidirectionally
+  hScroll.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    panelBody.scrollLeft = hScroll.scrollLeft;
+    syncing = false;
+  });
+  panelBody.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    hScroll.scrollLeft = panelBody.scrollLeft;
+    syncing = false;
+  });
+
+  // Re-measure after renders + on resize
+  const observer = new MutationObserver(syncWidth);
+  const grid = document.getElementById('scheduleGrid');
+  if (grid) observer.observe(grid, { childList: true, subtree: true });
+  window.addEventListener('resize', syncWidth);
+  // Initial sync (grid may not be rendered yet — the observer will catch it)
+  syncWidth();
+})();

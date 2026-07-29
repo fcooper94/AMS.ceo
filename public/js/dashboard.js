@@ -418,16 +418,17 @@ function applySPControls(world) {
   // Set current speed
   const speedSelect = document.getElementById('spSpeedSelect');
   if (speedSelect) {
-    const currentSpeed = world.timeAcceleration || 60;
+    let currentSpeed = world.timeAcceleration || 60;
+    // Clamp to max 120x — higher speeds cause delivery/processing bugs
+    if (currentSpeed > 120) {
+      currentSpeed = 120;
+      changeWorldSpeed(120);
+    }
     const optExists = [...speedSelect.options].some(o => parseInt(o.value) === currentSpeed);
     if (optExists) {
       speedSelect.value = String(currentSpeed);
     } else {
-      const opt = document.createElement('option');
-      opt.value = String(currentSpeed);
-      opt.textContent = currentSpeed + 'x';
-      opt.selected = true;
-      speedSelect.appendChild(opt);
+      speedSelect.value = '120';
     }
   }
 
