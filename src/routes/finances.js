@@ -39,10 +39,17 @@ router.get('/', async (req, res) => {
     const gameYear = world.currentTime ? new Date(world.currentTime).getFullYear() : 2024;
     const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);
 
-    // ── 1. Weekly financial records (all weeks) ──────────────────────────────
-    const weeklyRecords = await WeeklyFinancial.findAll({
+    // ── 1. Weekly financial records (completed weeks only) ─────────────────
+    const gameNow = world.currentTime ? new Date(world.currentTime) : new Date();
+    const allWeeklyRecords = await WeeklyFinancial.findAll({
       where: { worldMembershipId: membership.id },
       order: [['week_start', 'DESC']]
+    });
+    // Only show weeks that have ended (weekStart + 7 days <= game time)
+    const weeklyRecords = allWeeklyRecords.filter(w => {
+      const weekEnd = new Date(w.weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      return weekEnd <= gameNow;
     });
 
     const weeks = weeklyRecords.map(w => {
@@ -102,8 +109,11 @@ router.get('/', async (req, res) => {
     const routes = await Route.findAll({
       where: { worldMembershipId: membership.id },
       include: [
-        { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'iataCode', 'city'] },
-        { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'iataCode', 'city'] }
+        { model: Airport, as: 'departureAirport', attributes: ['id', 'icaoCode', 'iataCode', 'city'] },
+        { model: Airport, as: 'arrivalAirport', attributes: ['id', 'icaoCode', 'iataCode', 'city'] },
+        { model: UserAircraft, as: 'assignedAircraft', attributes: ['id'], include: [
+          { model: Aircraft, as: 'aircraft', attributes: ['id', 'model', 'icaoCode', 'type'] }
+        ] }
       ]
     });
 
@@ -127,12 +137,18 @@ router.get('/', async (req, res) => {
 
       const dep = r.departureAirport;
       const arr = r.arrivalAirport;
+      const ac = r.assignedAircraft?.aircraft;
 
       return {
         routeNumber: r.routeNumber,
         departure: dep ? (dep.iataCode || dep.icaoCode) : '??',
         arrival: arr ? (arr.iataCode || arr.icaoCode) : '??',
+        departureId: dep?.id || null,
+        arrivalId: arr?.id || null,
         isActive: r.isActive,
+        daysOfWeek: r.daysOfWeek || [],
+        aircraftType: ac ? ac.model : null,
+        aircraftIcao: ac ? ac.icaoCode : null,
         totalRevenue: Math.round(rev),
         totalCosts: Math.round(costs),
         profit: Math.round(profit),

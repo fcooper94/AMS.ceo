@@ -560,6 +560,38 @@ an exploit.
   new-orders only). Used-market generated ages are **never 0**: min 0.2y, one
   decimal under 3y (`src/routes/aircraft.js`).
 
+## Route performance reporting — tabbed finances view (2026-07)
+
+The **Route Performance** section at the bottom of the finances page
+(`public/finances.html` + `public/js/finances.js`) is a tabbed table with
+three views: **City Pair** | **All Routes** | **By A/C Type**.
+
+- **City Pair** groups routes bi-directionally (EGLL↔KJFK = KJFK→EGLL),
+  sorted by weekly profit. Shows route count per pair.
+- **All Routes** shows individual routes (flight number + pair), sorted by
+  weekly profit. Inactive routes tagged "off".
+- **By A/C Type** groups routes by assigned aircraft model name, sorted by
+  weekly profit. Shows route count per type.
+
+Columns are split into two labelled groups with a border separator:
+- **Weekly** (accent header): Revenue, Costs, Profit (bold), LF — estimated
+  as `(allTimeValue / totalFlights) × operatingDaysPerWeek` per route, summed
+  for aggregates. Not actual weekly snapshots (per-route weekly data isn't
+  tracked; `WeeklyFinancial` is per-airline).
+- **All-time** (muted header): Flights, Revenue, Costs, Profit, LF.
+
+Color coding: revenue green, costs amber/warning, profit green/red by sign
+(weekly profit bold), LF green ≥70% / amber ≥40% / red <40%. First two
+columns (identifier + sub-info) use regular font; data columns use monospace.
+
+**API** (`src/routes/finances.js` GET `/api/finances`): route details now
+include `daysOfWeek`, `departureId`, `arrivalId`, `aircraftType`, and
+`aircraftIcao` (via `UserAircraft → Aircraft` join) for client-side grouping.
+
+**⚠ Inline style gotcha:** `_rpTd` uses `font-family:'Courier New'` with
+single quotes — double quotes break the `style="..."` HTML attribute and
+silently kill all subsequent CSS properties including colors.
+
 ## Aircraft loans & fleet capital in the P&L (2026-07)
 
 - **One loan per DELIVERED aircraft**: a financed order of 7 creates 7 loans,
@@ -869,6 +901,56 @@ Real money. Handle with care; test in **test mode** first.
   ALTER guards). **Backup codes** at enrol + **DB escape hatch**
   (`totp_enabled=false`) so you can't get locked out. Secrets are per-account,
   so live enrolment is separate from the sandbox.
+
+## Navigraph integration — PENDING API access (2026-07)
+
+**STATUS: Application sent to `dev@navigraph.com`, awaiting client credentials.**
+
+AMS computes ATC routes server-side (`airwayService.js`) from navdata files
+(waypoints, airways, SID/STAR procedures). Players can also fly their own
+airline's flights in flight simulators on VATSIM, so realistic routing matters.
+
+**Current navdata** (`src/data/navdata/`): `earth_fix.dat` + `earth_awy.dat` +
+`procedures.json`, converted from a Navigraph DFD source via
+`scripts/convert-navdata.mjs` (reads MDB/Jet DB tables: Waypoints, Navaids,
+Airways, AirwayLegs, Terminals, TerminalLegs → X-Plane format). These files
+are ~38 MB total and will be **removed from the repo** once the integration is
+live — they should not be redistributed.
+
+**Planned integration (build once credentials arrive):**
+
+1. **User account linking** — OAuth 2.0 Authorization Code Flow with PKCE.
+   "Link Navigraph" button on account settings page → redirect to Navigraph
+   login → callback stores tokens. New User columns: `navigraph_user_id`,
+   `navigraph_access_token` (encrypted), `navigraph_refresh_token` (encrypted),
+   `navigraph_token_expiry`, `navigraph_linked_at`. Redirect URIs:
+   `https://ams.ceo/auth/navigraph/callback` + localhost for dev.
+
+2. **Server-side navdata download** — `navigraphService.js`. Periodically
+   checks `GET /v1/navdata/packages?package_status=current` using any linked
+   user's valid token. Downloads DFD SQLite via signed CloudFront URL, converts
+   to our 3 files (adapt converter from MDB to SQLite via `better-sqlite3`),
+   hot-reloads `airwayService.initialize()`.
+
+3. **Fallback without Navigraph** — if no linked user has a valid subscription,
+   `airwayService` simply doesn't initialize → all routes are **direct** (great
+   circle, no airways/SIDs/STARs). `computeRoute()` already returns `null` when
+   navdata is unavailable; the route system handles this as a straight line.
+
+4. **AIRAC cycle display** — show current cycle status somewhere visible
+   (account page, possibly dashboard). "Link Navigraph to enable ATC routing"
+   prompt for unlinked users.
+
+**Navigraph API details:**
+- Base URL: `https://api.navigraph.com`
+- Auth: OpenID Connect, access tokens ~60 min, long-lived refresh tokens
+- No subscription → API returns an old outdated AIRAC package
+- Any Navigraph subscription → current AIRAC cycle
+- npm SDK (`navigraph`) exists but is early/React-focused; raw API preferred
+- Restriction: flight simulation only (AMS + VATSIM qualifies)
+- Free for devs; users need their own Navigraph subscription for current data
+
+**Dependencies to add:** `better-sqlite3` (read DFD SQLite files).
 
 ## How the user wants Claude to work
 

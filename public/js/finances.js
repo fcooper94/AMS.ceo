@@ -1,4 +1,4 @@
-// Financial Reports — week-by-week P&L with route performance
+// Financial Reports — weekly profit + route performance
 
 let allWeeks = [];
 let weekPage = 0;
@@ -54,16 +54,32 @@ async function loadFinancialData() {
 function renderSummary(data) {
   setText('statBalance', fmtMoney(data.balance));
   setText('statRevenue', fmtMoney(data.allTime.totalRevenue));
-  setText('statCosts', fmtMoney(data.allTime.totalCosts));
   setText('statFlights', data.allTime.totalFlights.toLocaleString());
   setText('statPax', data.allTime.totalPassengers.toLocaleString());
   setText('statOverhead', fmtMoney(data.weeklyOverheads.total) + '/wk');
-  // Net P&L with color
-  const net = (data.allTime.totalRevenue || 0) - (data.allTime.totalCosts || 0);
-  const netEl = document.getElementById('statNet');
-  if (netEl) {
-    netEl.textContent = (net < 0 ? '-' : '') + fmtMoney(Math.abs(net));
-    netEl.style.color = net > 0 ? 'var(--success-color)' : net < 0 ? '#f85149' : 'var(--text-muted)';
+
+  // Weekly profit hero — from latest week record
+  var weeks = data.weeks || [];
+  var latest = weeks.length > 0 ? weeks[0] : null;
+  var profitEl = document.getElementById('statWeeklyProfit');
+  var labelEl = document.getElementById('statWeeklyLabel');
+  var heroEl = document.getElementById('heroProfit');
+  if (latest && profitEl) {
+    var wp = latest.netProfit;
+    profitEl.textContent = (wp < 0 ? '-' : '+') + fmtMoney(Math.abs(wp));
+    profitEl.style.color = wp > 0 ? 'var(--success-color)' : wp < 0 ? '#f85149' : 'var(--text-muted)';
+    if (heroEl) {
+      heroEl.style.borderLeft = '3px solid ' + (wp > 0 ? 'var(--success-color)' : wp < 0 ? '#f85149' : 'var(--border-color)');
+    }
+    if (labelEl) labelEl.textContent = 'Wk of ' + fmtDateShort(latest.weekStart);
+    setText('statWkRevenue', fmtMoney(latest.flightRevenue));
+    setText('statWkCosts', fmtMoney(latest.totalCosts));
+  } else if (profitEl) {
+    profitEl.textContent = '—';
+    profitEl.style.color = 'var(--text-muted)';
+    if (labelEl) labelEl.textContent = 'No data yet';
+    setText('statWkRevenue', '—');
+    setText('statWkCosts', '—');
   }
 }
 
@@ -75,7 +91,7 @@ function changeWeekPage(dir) {
   renderWeeklyPL();
 }
 
-// ── Weekly P&L table ─────────────────────────────────────────────────────────
+// ── Weekly breakdown table ───────────────────────────────────────────────────
 
 function renderWeeklyPL() {
   const thead = document.getElementById('weeklyHead');
@@ -109,13 +125,12 @@ function renderWeeklyPL() {
   if (prevBtn) prevBtn.style.display = '';
   if (nextBtn) nextBtn.style.display = '';
 
-  // Range label with page indicator
+  // Range label
   if (rangeEl) {
-    const pageNum = weekPage + 1;
-    if (totalPages <= 1) {
-      rangeEl.textContent = `${allWeeks.length} week${allWeeks.length !== 1 ? 's' : ''} of data`;
+    if (allWeeks.length <= WEEKS_PER_PAGE) {
+      rangeEl.textContent = allWeeks.length + ' week' + (allWeeks.length !== 1 ? 's' : '');
     } else {
-      rangeEl.textContent = `Page ${pageNum} of ${totalPages}`;
+      rangeEl.textContent = (weekPage * WEEKS_PER_PAGE + 1) + '–' + Math.min((weekPage + 1) * WEEKS_PER_PAGE, allWeeks.length) + ' of ' + allWeeks.length + ' weeks';
     }
   }
 
@@ -123,8 +138,12 @@ function renderWeeklyPL() {
   const cols = weeks.length + 1;
   let head = '<tr style="background:var(--surface-elevated);border-bottom:1px solid var(--border-color);">';
   head += '<th style="padding:0.4rem 0.6rem;text-align:left;color:var(--text-muted);font-size:0.7rem;font-weight:600;min-width:140px;">Category</th>';
-  for (const w of weeks) {
-    head += `<th style="padding:0.4rem 0.6rem;text-align:right;color:var(--text-muted);font-size:0.7rem;font-weight:600;white-space:nowrap;">Wk of ${fmtDate(w.weekStart)}</th>`;
+  for (var wi = 0; wi < weeks.length; wi++) {
+    var w = weeks[wi];
+    var isLatest = (weekPage === 0 && wi === 0);
+    var badge = isLatest ? ' <span style="background:var(--accent-color);color:#fff;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.5rem;font-weight:700;vertical-align:middle;margin-left:0.2rem;">LATEST</span>' : '';
+    var thColor = isLatest ? 'color:var(--accent-color)' : 'color:var(--text-muted)';
+    head += '<th style="padding:0.4rem 0.6rem;text-align:left;' + thColor + ';font-size:0.7rem;font-weight:600;white-space:nowrap;">Wk of ' + fmtDateShort(w.weekStart) + badge + '</th>';
   }
   head += '</tr>';
   thead.innerHTML = head;
@@ -333,34 +352,228 @@ function wkBreakdownRow(label, weeks, jsonKey, subKey) {
   return `<tr style="background:rgba(16,185,129,0.01);border-bottom:1px solid rgba(255,255,255,0.02);">${cells}</tr>`;
 }
 
-// ── Route Performance ────────────────────────────────────────────────────────
+// ── Route Performance (tabbed) ───────────────────────────────────────────────
+
+var _rpRoutes = [];
+var _rpActiveTab = 'cityPair';
 
 function renderRoutes(routes) {
-  const tbody = document.getElementById('routeTableBody');
+  _rpRoutes = routes || [];
+  switchRouteTab(_rpActiveTab);
+}
 
-  if (!routes || routes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text-secondary);">No routes yet.</td></tr>';
+function switchRouteTab(tab) {
+  _rpActiveTab = tab;
+  var btns = document.querySelectorAll('#routePerfTabs .rp-tab');
+  for (var i = 0; i < btns.length; i++) {
+    var b = btns[i];
+    if (b.getAttribute('data-tab') === tab) {
+      b.style.background = 'var(--accent-color)';
+      b.style.color = '#fff';
+    } else {
+      b.style.background = 'var(--surface-elevated)';
+      b.style.color = 'var(--text-muted)';
+    }
+  }
+  var container = document.getElementById('routePerfContent');
+  if (!_rpRoutes.length) {
+    container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:0.85rem;">No routes yet.</div>';
     return;
   }
+  if (tab === 'cityPair') renderCityPairTab(container);
+  else if (tab === 'allRoutes') renderAllRoutesTab(container);
+  else if (tab === 'byAcType') renderByAcTypeTab(container);
+}
 
-  const sorted = [...routes].sort((a, b) => b.profit - a.profit);
-  let rows = '';
-  for (const r of sorted) {
-    const pc = r.profit > 0 ? 'var(--success-color)' : r.profit < 0 ? '#f85149' : 'var(--text-muted)';
-    const mc = r.profitMargin > 0 ? 'var(--success-color)' : r.profitMargin < 0 ? '#f85149' : 'var(--text-muted)';
-    const tag = r.isActive ? '' : '<span style="color:var(--text-muted);font-size:0.65rem;"> off</span>';
-    rows += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-      <td style="padding:0.35rem 0.6rem;white-space:nowrap;"><span style="color:var(--accent-color);font-family:'Courier New',monospace;">${r.routeNumber}</span> <span style="color:var(--text-muted);font-size:0.75rem;">${r.departure}→${r.arrival}</span>${tag}</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${r.totalFlights}</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--success-color);">${fmtNum(r.totalRevenue)}</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--warning-color);">${fmtNum(r.totalCosts)}</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${pc};">${r.profit<0?'-':''}${fmtNum(Math.abs(r.profit))}</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${mc};">${r.profitMargin}%</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${Math.round((r.averageLoadFactor || 0) * 100)}%</td>
-      <td style="padding:0.35rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);">${fmtNum(r.revenuePerFlight)}</td>
-    </tr>`;
+// Weekly estimates: avg per flight × operating days per week
+function _weeklyEstimates(r) {
+  if (!r.totalFlights || r.totalFlights === 0) return { weeklyRevenue: 0, weeklyCosts: 0, weeklyProfit: 0 };
+  var daysPerWeek = (r.daysOfWeek && r.daysOfWeek.length) ? r.daysOfWeek.length : 7;
+  return {
+    weeklyRevenue: (r.totalRevenue / r.totalFlights) * daysPerWeek,
+    weeklyCosts: (r.totalCosts / r.totalFlights) * daysPerWeek,
+    weeklyProfit: (r.profit / r.totalFlights) * daysPerWeek
+  };
+}
+
+// Aggregate helper: combine route objects into a summary
+function _aggregate(routes) {
+  var flights = 0, rev = 0, costs = 0, pax = 0, lfWeighted = 0;
+  var wRev = 0, wCosts = 0, wProfit = 0;
+  for (var i = 0; i < routes.length; i++) {
+    var r = routes[i];
+    flights += r.totalFlights || 0;
+    rev += r.totalRevenue || 0;
+    costs += r.totalCosts || 0;
+    pax += r.totalPassengers || 0;
+    lfWeighted += (r.totalFlights || 0) * (r.averageLoadFactor || 0);
+    var we = _weeklyEstimates(r);
+    wRev += we.weeklyRevenue;
+    wCosts += we.weeklyCosts;
+    wProfit += we.weeklyProfit;
   }
-  tbody.innerHTML = rows;
+  var profit = rev - costs;
+  return {
+    totalFlights: flights,
+    totalRevenue: rev,
+    totalCosts: costs,
+    profit: profit,
+    profitMargin: rev > 0 ? parseFloat(((profit / rev) * 100).toFixed(1)) : 0,
+    totalPassengers: pax,
+    averageLoadFactor: flights > 0 ? lfWeighted / flights : 0,
+    weeklyRevenue: wRev,
+    weeklyCosts: wCosts,
+    weeklyProfit: wProfit,
+    routeCount: routes.length,
+    activeCount: routes.filter(function(r) { return r.isActive; }).length
+  };
+}
+
+var _rpTh = 'padding:0.35rem 0.5rem;text-align:right;color:var(--text-muted);font-size:0.65rem;font-weight:600;';
+var _rpGrp = 'padding:0.3rem 0.5rem;text-align:center;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;';
+var _rpTd = "padding:0.3rem 0.5rem;text-align:right;font-family:'Courier New',monospace;font-size:0.75rem;";
+var _rpBorderL = 'border-left:2px solid var(--border-color);';
+
+function _rpProfitColor(v) {
+  return v > 0 ? 'var(--success-color)' : v < 0 ? '#f85149' : 'var(--text-muted)';
+}
+
+function _rpLfColor(lf) {
+  var pct = (lf || 0) * 100;
+  return pct >= 70 ? 'var(--success-color)' : pct >= 40 ? 'var(--warning-color)' : '#f85149';
+}
+
+function _rpTableHead(col1, col2) {
+  return '<table style="width:100%;border-collapse:collapse;font-size:0.75rem;"><thead>' +
+    '<tr style="background:var(--surface-elevated);">' +
+    '<th colspan="2" style="' + _rpGrp + '"></th>' +
+    '<th colspan="4" style="' + _rpGrp + _rpBorderL + 'color:var(--accent-color);">Weekly</th>' +
+    '<th colspan="4" style="' + _rpGrp + _rpBorderL + 'color:var(--text-secondary);">All-time</th>' +
+    '</tr>' +
+    '<tr style="background:var(--surface-elevated);border-bottom:1px solid var(--border-color);">' +
+    '<th style="' + _rpTh + 'text-align:left;">' + col1 + '</th>' +
+    '<th style="' + _rpTh + 'text-align:left;">' + col2 + '</th>' +
+    '<th style="' + _rpTh + _rpBorderL + '">Revenue</th>' +
+    '<th style="' + _rpTh + '">Costs</th>' +
+    '<th style="' + _rpTh + '">Profit</th>' +
+    '<th style="' + _rpTh + '">LF</th>' +
+    '<th style="' + _rpTh + _rpBorderL + '">Flights</th>' +
+    '<th style="' + _rpTh + '">Revenue</th>' +
+    '<th style="' + _rpTh + '">Costs</th>' +
+    '<th style="' + _rpTh + '">Profit</th>' +
+    '</tr></thead><tbody>';
+}
+
+function _rpRow(col1, col2, agg) {
+  var pc = _rpProfitColor(agg.profit);
+  var wpc = _rpProfitColor(agg.weeklyProfit);
+  var wrc = _rpProfitColor(agg.weeklyRevenue);
+  var lfc = _rpLfColor(agg.averageLoadFactor);
+  return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">' +
+    '<td style="padding:0.3rem 0.5rem;text-align:left;white-space:nowrap;font-size:0.75rem;">' + col1 + '</td>' +
+    '<td style="padding:0.3rem 0.5rem;text-align:left;color:var(--text-muted);font-size:0.7rem;">' + col2 + '</td>' +
+    '<td style="' + _rpTd + _rpBorderL + 'color:var(--success-color);">' + fmtNum(Math.abs(Math.round(agg.weeklyRevenue))) + '</td>' +
+    '<td style="' + _rpTd + 'color:var(--warning-color);">' + fmtNum(Math.abs(Math.round(agg.weeklyCosts))) + '</td>' +
+    '<td style="' + _rpTd + 'color:' + wpc + ';font-weight:600;">' + (agg.weeklyProfit < 0 ? '-' : '') + fmtNum(Math.abs(Math.round(agg.weeklyProfit))) + '</td>' +
+    '<td style="' + _rpTd + 'color:' + lfc + ';">' + Math.round((agg.averageLoadFactor || 0) * 100) + '%</td>' +
+    '<td style="' + _rpTd + _rpBorderL + 'color:var(--text-secondary);">' + agg.totalFlights.toLocaleString() + '</td>' +
+    '<td style="' + _rpTd + 'color:var(--success-color);">' + fmtNum(Math.round(agg.totalRevenue)) + '</td>' +
+    '<td style="' + _rpTd + 'color:var(--warning-color);">' + fmtNum(Math.round(agg.totalCosts)) + '</td>' +
+    '<td style="' + _rpTd + 'color:' + pc + ';">' + (agg.profit < 0 ? '-' : '') + fmtNum(Math.abs(Math.round(agg.profit))) + '</td>' +
+    '</tr>';
+}
+
+// ── City Pair tab ────────────────────────────────────────────────────────────
+function renderCityPairTab(container) {
+  // Group by airport pair (bi-directional: sort IDs so EGLL↔KJFK = KJFK↔EGLL)
+  var pairs = {};
+  for (var i = 0; i < _rpRoutes.length; i++) {
+    var r = _rpRoutes[i];
+    var a = r.departureId || r.departure;
+    var b = r.arrivalId || r.arrival;
+    var key = a < b ? a + '|' + b : b + '|' + a;
+    if (!pairs[key]) pairs[key] = { routes: [], dep: r.departure, arr: r.arrival };
+    pairs[key].routes.push(r);
+  }
+
+  var entries = Object.values(pairs).map(function(p) {
+    var agg = _aggregate(p.routes);
+    agg.dep = p.dep;
+    agg.arr = p.arr;
+    return agg;
+  });
+  entries.sort(function(a, b) { return b.weeklyProfit - a.weeklyProfit; });
+
+  var html = _rpTableHead('City Pair', 'Routes');
+  for (var j = 0; j < entries.length; j++) {
+    var e = entries[j];
+    var pair = '<span style="color:var(--accent-color);">' + e.dep + ' ↔ ' + e.arr + '</span>';
+    var count = e.routeCount + ' route' + (e.routeCount !== 1 ? 's' : '');
+    html += _rpRow(pair, count, e);
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ── All Routes tab ───────────────────────────────────────────────────────────
+function renderAllRoutesTab(container) {
+  var routes = _rpRoutes.map(function(r) {
+    var we = _weeklyEstimates(r);
+    return { r: r, we: we };
+  });
+  routes.sort(function(a, b) { return b.we.weeklyProfit - a.we.weeklyProfit; });
+
+  var html = _rpTableHead('Flight', 'Pair');
+  for (var i = 0; i < routes.length; i++) {
+    var r = routes[i].r;
+    var we = routes[i].we;
+    var tag = r.isActive ? '' : ' <span style="color:var(--text-muted);font-size:0.6rem;">off</span>';
+    var flightNum = '<span style="color:var(--accent-color);font-family:\'Courier New\',monospace;">' + r.routeNumber + '</span>' + tag;
+    var pair = r.departure + '→' + r.arrival;
+    var agg = {
+      totalFlights: r.totalFlights,
+      totalRevenue: r.totalRevenue,
+      totalCosts: r.totalCosts,
+      profit: r.profit,
+      profitMargin: r.profitMargin,
+      totalPassengers: r.totalPassengers,
+      averageLoadFactor: r.averageLoadFactor,
+      weeklyRevenue: we.weeklyRevenue,
+      weeklyCosts: we.weeklyCosts,
+      weeklyProfit: we.weeklyProfit
+    };
+    html += _rpRow(flightNum, pair, agg);
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ── By A/C Type tab ──────────────────────────────────────────────────────────
+function renderByAcTypeTab(container) {
+  var types = {};
+  for (var i = 0; i < _rpRoutes.length; i++) {
+    var r = _rpRoutes[i];
+    var typeName = r.aircraftType || 'Unassigned';
+    if (!types[typeName]) types[typeName] = [];
+    types[typeName].push(r);
+  }
+
+  var entries = Object.keys(types).map(function(name) {
+    var agg = _aggregate(types[name]);
+    agg.typeName = name;
+    return agg;
+  });
+  entries.sort(function(a, b) { return b.weeklyProfit - a.weeklyProfit; });
+
+  var html = _rpTableHead('Aircraft', 'Routes');
+  for (var j = 0; j < entries.length; j++) {
+    var e = entries[j];
+    var name = '<span style="color:var(--accent-color);">' + e.typeName + '</span>';
+    var count = e.routeCount + ' route' + (e.routeCount !== 1 ? 's' : '');
+    html += _rpRow(name, count, e);
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
