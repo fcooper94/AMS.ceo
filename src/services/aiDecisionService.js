@@ -17,6 +17,16 @@ const { Op } = require('sequelize');
 // AI decision logs gated behind DEBUG_AI (or DEBUG_SIM). Set DEBUG_AI=1 to see.
 const DEBUG_AI = process.env.DEBUG_AI === '1' || process.env.DEBUG_SIM === '1';
 const aiLog = (...args) => { if (DEBUG_AI) console.log(...args); };
+
+// Short USD formatter: $1.2B / $41.9M / $700K / $120
+function fmtUSD(v) {
+  const a = Math.abs(v);
+  const neg = v < 0 ? '-' : '';
+  if (a >= 1e9) return neg + '$' + (a / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (a >= 1e6) return neg + '$' + (a / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (a >= 1e3) return neg + '$' + Math.round(a / 1e3) + 'K';
+  return neg + '$' + Math.round(a);
+}
 const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { getAllBanks, calculateOfferRate, calculateFixedPayment, calculateMaxLoanAmount, TERM_RANGES } = require('../data/bankConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
@@ -1302,16 +1312,16 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
       airline.balance = parseFloat(airline.balance) - financePlan.deposit; // deposit only; loan covers the rest
       await airline.save();
       acqType = 'financed';
-      acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M ($${(financePlan.deposit / 1000000).toFixed(1)}M down, $${Math.round(financePlan.loanAmount).toLocaleString()} loan via ${financePlan.bank.shortName})`;
-      aiLog(`[AI-DECISION] ${airline.airlineName} financed ${chosen.manufacturer} ${chosen.model} (${reg}): $${(financePlan.deposit / 1000000).toFixed(1)}M down + $${Math.round(financePlan.loanAmount).toLocaleString()} loan @ ${financePlan.rate}% (${financePlan.bank.shortName}), $${Math.round(financePlan.weeklyPayment).toLocaleString()}/wk`);
+      acqDetail = `${fmtUSD(purchasePrice)} (${fmtUSD(financePlan.deposit)} down, $${Math.round(financePlan.loanAmount).toLocaleString()} loan via ${financePlan.bank.shortName})`;
+      aiLog(`[AI-DECISION] ${airline.airlineName} financed ${chosen.manufacturer} ${chosen.model} (${reg}): ${fmtUSD(financePlan.deposit)} down + $${Math.round(financePlan.loanAmount).toLocaleString()} loan @ ${financePlan.rate}% (${financePlan.bank.shortName}), $${Math.round(financePlan.weeklyPayment).toLocaleString()}/wk`);
 
     } else { // cash
       await UserAircraft.create({ ...baseFields, acquisitionType: 'purchase', purchasePrice });
       airline.balance = parseFloat(airline.balance) - purchasePrice;
       await airline.save();
       acqType = 'purchased';
-      acqDetail = `$${(purchasePrice / 1000000).toFixed(1)}M cash`;
-      aiLog(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for $${(purchasePrice / 1000000).toFixed(1)}M`);
+      acqDetail = `${fmtUSD(purchasePrice)} cash`;
+      aiLog(`[AI-DECISION] ${airline.airlineName} purchased ${chosen.manufacturer} ${chosen.model} (${reg}) for ${fmtUSD(purchasePrice)}`);
     }
 
     await notifyPlayer(world.id,

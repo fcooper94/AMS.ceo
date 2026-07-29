@@ -27,26 +27,26 @@
       background: var(--surface-elevated);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      padding: 2rem;
+      padding: 1.5rem 1.75rem;
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     }
-    .auth-brand { text-align: center; margin-bottom: 1.5rem; }
-    .auth-brand .logo { font-size: 1.8rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
+    .auth-brand { text-align: center; margin-bottom: 1rem; }
+    .auth-brand .logo { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
     .auth-brand .logo span { color: var(--accent-color); font-size: 0.6em; font-weight: 400; }
-    .auth-brand .sub { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 0.25rem; }
-    .auth-title { font-size: 1.1rem; color: var(--text-primary); font-weight: 600; margin-bottom: 1.25rem; text-align: center; }
-    .field { margin-bottom: 0.9rem; }
-    .field label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; }
-    .field-row { display: flex; gap: 0.75rem; }
+    .auth-brand .sub { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 0.15rem; }
+    .auth-title { font-size: 1rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.9rem; text-align: center; }
+    .field { margin-bottom: 0.6rem; }
+    .field label { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.2rem; }
+    .field-row { display: flex; gap: 0.6rem; }
     .field-row .field { flex: 1; }
     .lp-input {
       width: 100%;
-      padding: 0.65rem 0.75rem;
+      padding: 0.5rem 0.65rem;
       background: var(--surface);
       border: 1px solid var(--border-color);
       border-radius: 4px;
       color: var(--text-primary);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       box-sizing: border-box;
       transition: border-color 0.15s;
     }
@@ -55,9 +55,9 @@
     .lp-btn {
       display: block;
       width: 100%;
-      padding: 0.7rem 1rem;
+      padding: 0.55rem 1rem;
       border-radius: 4px;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 600;
       cursor: pointer;
       text-align: center;
@@ -81,17 +81,26 @@
       background: var(--surface);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 0.85rem;
-      margin-bottom: 0.9rem;
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.6rem;
     }
-    .captcha-box .label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
-    .captcha-row { display: flex; align-items: center; gap: 0.75rem; }
-    .captcha-problem { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+    .captcha-box .label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.35rem; }
+    .captcha-row { display: flex; align-items: center; gap: 0.6rem; }
+    .captcha-problem { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
     .captcha-row .lp-input { flex: 1; }
-    .auth-links { margin-top: 1.25rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary); }
+    .auth-links { margin-top: 0.9rem; text-align: center; font-size: 0.8rem; color: var(--text-secondary); }
     .auth-links a { color: var(--accent-color); text-decoration: none; }
     .auth-links a:hover { text-decoration: underline; }
     .auth-links .row { margin-top: 0.5rem; }
+    .pw-strength { margin-top: 0.35rem; display: none; }
+    .pw-bar { height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; margin-bottom: 0.3rem; }
+    .pw-fill { height: 100%; width: 0; border-radius: 2px; transition: width 0.25s, background 0.25s; }
+    .pw-info { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+    .pw-reqs { display: flex; flex-wrap: wrap; gap: 0.05rem 0.45rem; font-size: 0.68rem; color: var(--text-muted); }
+    .pw-reqs span.met { color: var(--success-color); }
+    .pw-reqs span::before { content: '○ '; }
+    .pw-reqs span.met::before { content: '● '; }
+    .pw-label { font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -121,6 +130,18 @@
     <div class="field">
       <label for="regPassword">Password</label>
       <input type="password" id="regPassword" class="lp-input" placeholder="At least 6 characters" autocomplete="new-password">
+      <div class="pw-strength" id="regPwStrength">
+        <div class="pw-bar"><div class="pw-fill" id="regPwFill"></div></div>
+        <div class="pw-info">
+          <div class="pw-reqs">
+            <span id="reqLen">6+ chars</span>
+            <span id="reqLetter">Letter</span>
+            <span id="reqNumber">Number</span>
+            <span id="reqSymbol">Symbol</span>
+          </div>
+          <span class="pw-label" id="regPwLabel"></span>
+        </div>
+      </div>
     </div>
     <div class="field">
       <label for="regConfirmPassword">Confirm password</label>
@@ -162,6 +183,36 @@
     }
     generateRegCaptcha();
 
+    // Password strength checker
+    function checkPwStrength(pw) {
+      return { len: pw.length >= 6, letter: /[a-zA-Z]/.test(pw), number: /[0-9]/.test(pw), symbol: /[^a-zA-Z0-9]/.test(pw) };
+    }
+    function pwStrengthLevel(pw) {
+      var s = checkPwStrength(pw);
+      var reqs = [s.len, s.letter, s.number, s.symbol].filter(Boolean).length;
+      if (reqs < 4) return { pct: reqs * 15, color: '#f85149', label: 'Very weak', s: s };
+      // All requirements met — rate by length
+      if (pw.length < 8)  return { pct: 60,  color: '#d29922', label: 'Weak', s: s };
+      if (pw.length < 10) return { pct: 75,  color: '#d29922', label: 'Good', s: s };
+      if (pw.length < 14) return { pct: 90,  color: '#3fb950', label: 'Strong', s: s };
+      return { pct: 100, color: '#3fb950', label: 'Very strong', s: s };
+    }
+    document.getElementById('regPassword').addEventListener('input', function () {
+      var pw = this.value;
+      var box = document.getElementById('regPwStrength');
+      box.style.display = pw.length > 0 ? 'block' : 'none';
+      var r = pwStrengthLevel(pw);
+      document.getElementById('regPwFill').style.width = r.pct + '%';
+      document.getElementById('regPwFill').style.background = r.color;
+      var label = document.getElementById('regPwLabel');
+      label.textContent = r.label;
+      label.style.color = r.color;
+      document.getElementById('reqLen').className = r.s.len ? 'met' : '';
+      document.getElementById('reqLetter').className = r.s.letter ? 'met' : '';
+      document.getElementById('reqNumber').className = r.s.number ? 'met' : '';
+      document.getElementById('reqSymbol').className = r.s.symbol ? 'met' : '';
+    });
+
     function localRegister() {
       const firstName = document.getElementById('regFirstName').value.trim();
       const lastName = document.getElementById('regLastName').value.trim();
@@ -176,8 +227,9 @@
         errorDiv.style.display = 'block';
         return;
       }
-      if (password.length < 6) {
-        errorDiv.textContent = 'Password must be at least 6 characters';
+      var s = checkPwStrength(password);
+      if (!s.len || !s.letter || !s.number || !s.symbol) {
+        errorDiv.textContent = 'Password needs at least 6 characters with a letter, number and symbol';
         errorDiv.style.display = 'block';
         return;
       }

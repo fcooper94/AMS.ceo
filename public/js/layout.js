@@ -715,6 +715,9 @@ function initializeLayout() {
   // Initialize credits dropdown
   initCreditsDropdown();
 
+  // Initialize user profile dropdown
+  initUserDropdown();
+
   console.log('[Layout] ✓ Layout initialization complete');
 }
 
@@ -1272,6 +1275,24 @@ async function loadCreditsOutgoings() {
 // Mobile detection helper
 function isMobileViewport() {
   return window.innerWidth <= 768;
+}
+
+// User profile dropdown toggle
+function initUserDropdown() {
+  const toggle = document.getElementById('userProfileToggle');
+  const dropdown = document.getElementById('userDropdown');
+  if (!toggle || !dropdown) return;
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!toggle.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
 }
 
 // Create sidebar backdrop for mobile overlay

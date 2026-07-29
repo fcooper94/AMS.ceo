@@ -214,16 +214,9 @@
 }
 
 @media (max-width: 1200px) {
-  .nav-user-details {
+  .nav-user-details,
+  .nav-user-chevron {
     display: none;
-  }
-
-  .nav-logout-btn span {
-    display: none;
-  }
-
-  .nav-logout-btn {
-    padding: 0.35rem;
   }
 
   .world-info-item .info-label {
@@ -486,6 +479,13 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.nav-user-profile:hover {
+  background: var(--surface-elevated);
 }
 
 .nav-user-avatar {
@@ -519,26 +519,53 @@
   line-height: 1;
 }
 
-.nav-logout-btn {
+/* User dropdown menu */
+.nav-user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 180px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 100;
+  padding: 0.3rem;
+}
+
+.nav-user-dropdown.open {
+  display: block;
+}
+
+.nav-user-dropdown-item {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
-  background: transparent;
-  border: 1px solid var(--border-color);
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: all 0.2s;
+  font-size: 0.78rem;
+  font-weight: 500;
   border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
+  transition: all 0.15s;
   white-space: nowrap;
 }
 
-.nav-logout-btn:hover {
+.nav-user-dropdown-item:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.nav-user-dropdown-logout:hover {
   background: rgba(220, 38, 38, 0.1);
-  border-color: rgba(220, 38, 38, 0.4);
   color: #ef4444;
+}
+
+.nav-user-dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.25rem 0.35rem;
 }
 
 .nav-icon-btn {

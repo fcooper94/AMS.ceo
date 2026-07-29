@@ -105,6 +105,13 @@ const User = sequelize.define('User', {
     field: 'totp_backup_codes',
     comment: 'Array of hashed one-time backup codes'
   },
+  totpLoginRequired: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'totp_login_required',
+    comment: 'When true, 2FA is required at login (not just admin step-up)'
+  },
   passwordHash: {
     type: DataTypes.STRING,
     allowNull: true,

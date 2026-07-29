@@ -151,6 +151,9 @@ router.post('/register', requireDevUnlock, async (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
+      return res.status(400).json({ error: 'Password must contain letters, a number and a symbol' });
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
@@ -288,6 +291,13 @@ router.post('/local-login', requireDevUnlock, async (req, res) => {
       if (!user) {
         return res.status(401).json({ error: 'Support account not found' });
       }
+
+      // Check login-time 2FA
+      if (user.totpLoginRequired && user.totpEnabled && user.totpSecret) {
+        req.session.pending2faUserId = user.id;
+        return res.json({ success: true, requires2fa: true });
+      }
+
       await user.update({ lastLogin: new Date() });
       const sessionUser = {
         id: user.id, vatsimId: user.vatsimId,
@@ -314,6 +324,12 @@ router.post('/local-login', requireDevUnlock, async (req, res) => {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // If user opted into login-time 2FA, require a code before completing login
+    if (user.totpLoginRequired && user.totpEnabled && user.totpSecret) {
+      req.session.pending2faUserId = user.id;
+      return res.json({ success: true, requires2fa: true });
     }
 
     // Update last login
@@ -344,6 +360,62 @@ router.post('/local-login', requireDevUnlock, async (req, res) => {
   }
 });
 
+// 2FA verification at login — only used when user has opted into login-time 2FA
+router.post('/verify-2fa', async (req, res) => {
+  try {
+    const userId = req.session && req.session.pending2faUserId;
+    if (!userId) {
+      return res.status(400).json({ error: 'No pending login. Please sign in again.' });
+    }
+    const code = (req.body && req.body.code || '').replace(/\s/g, '');
+    if (!code) return res.status(400).json({ error: 'Code is required' });
+
+    const user = await User.findByPk(userId);
+    if (!user || !user.totpEnabled || !user.totpSecret) {
+      delete req.session.pending2faUserId;
+      return res.status(400).json({ error: '2FA not configured. Please sign in again.' });
+    }
+
+    let authenticator;
+    try { authenticator = require('otplib').authenticator; authenticator.options = { window: 1 }; } catch (_) {
+      return res.status(500).json({ error: '2FA unavailable' });
+    }
+    const crypto = require('crypto');
+    const sha256 = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+    if (authenticator.verify({ token: code, secret: user.totpSecret })) {
+      // valid TOTP
+    } else {
+      // try backup codes
+      const hashes = Array.isArray(user.totpBackupCodes) ? user.totpBackupCodes : [];
+      const h = sha256(code.replace(/-/g, ''));
+      const idx = hashes.findIndex(x => x === h || x === sha256(code));
+      if (idx === -1) return res.status(400).json({ error: 'Invalid code.' });
+      hashes.splice(idx, 1);
+      user.totpBackupCodes = hashes;
+      await user.save();
+    }
+
+    delete req.session.pending2faUserId;
+    await user.update({ lastLogin: new Date() });
+
+    const sessionUser = {
+      id: user.id, vatsimId: user.vatsimId,
+      firstName: user.firstName, lastName: user.lastName,
+      email: user.email, rating: 0, pilotRating: 0,
+      division: null, subdivision: null
+    };
+    req.login(sessionUser, (err) => {
+      if (err) return res.status(500).json({ error: 'Login failed' });
+      req.session.adminTwoFA = true;
+      res.json({ success: true, redirect: '/world-selection' });
+    });
+  } catch (error) {
+    console.error('2FA verification error:', error);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
 // Logout route
 router.get('/logout', async (req, res) => {
   // Auto-pause the active singleplayer world on logout if the owner opted in.
@@ -363,7 +435,12 @@ router.get('/logout', async (req, res) => {
     if (err) {
       console.error('Logout error:', err);
     }
-    res.redirect('/');
+    // Destroy the session fully so 2FA, dev-bypass, etc. don't carry over
+    if (req.session) {
+      req.session.destroy(() => { res.redirect('/'); });
+    } else {
+      res.redirect('/');
+    }
   });
 });
 
@@ -497,6 +574,9 @@ router.post('/reset-password', async (req, res) => {
 
     if (newPassword.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    if (!/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^a-zA-Z0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain letters, a number and a symbol' });
     }
 
     const user = await User.findOne({

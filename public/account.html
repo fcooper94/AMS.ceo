@@ -1,0 +1,369 @@
+<!-- TITLE: Account Settings - AMS.ceo -->
+<!-- SUBTITLE: Manage your account -->
+<!-- SCRIPTS: /js/account.js -->
+
+<div class="dashboard-container">
+  <main class="main-content">
+    <div class="page-header">
+      <h1>ACCOUNT SETTINGS</h1>
+      <p class="subtitle">MANAGE YOUR ACCOUNT</p>
+    </div>
+
+    <div class="acct-grid">
+
+      <!-- ═══════ LEFT COLUMN ═══════ -->
+      <div class="acct-left">
+
+        <!-- BASIC INFO -->
+        <div class="acct-section">
+          <div class="acct-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+            <h2>Basic Info</h2>
+          </div>
+          <div class="acct-row">
+            <div class="acct-row-label">Name</div>
+            <div class="acct-row-value" id="acctNameDisplay">Loading...</div>
+            <button class="acct-row-action" id="editNameBtn">Edit</button>
+          </div>
+          <div class="acct-row">
+            <div class="acct-row-label">Email</div>
+            <div class="acct-row-value" id="acctEmailDisplay">Loading...</div>
+            <button class="acct-row-action" id="changeEmailBtn">Change</button>
+          </div>
+          <div class="acct-row" style="border-bottom: none;">
+            <div class="acct-row-label">Member Since</div>
+            <div class="acct-row-value" id="acctMemberSince" style="color: var(--text-muted);">...</div>
+          </div>
+        </div>
+
+        <!-- SECURITY -->
+        <div class="acct-section">
+          <div class="acct-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <h2>Security</h2>
+          </div>
+          <div class="acct-row">
+            <div class="acct-row-label">Password</div>
+            <div class="acct-row-value" style="color: var(--text-muted);">••••••••</div>
+            <button class="acct-row-action" id="changePasswordBtn">Change</button>
+          </div>
+          <div class="acct-row" style="border-bottom: none;">
+            <div class="acct-row-label">Two-Factor Auth</div>
+            <div class="acct-row-value" id="acct2faStatus">
+              <span class="acct-badge acct-badge-off">OFF</span>
+            </div>
+            <button class="acct-row-action" id="toggle2faBtn">Enable</button>
+          </div>
+          <!-- Login 2FA toggle — admin only, shown by JS when 2FA is enabled -->
+        <div class="acct-row" id="acct2faLoginRow" style="display: none; border-bottom: none;">
+          <div class="acct-row-label">Require at Login</div>
+          <div class="acct-row-value" style="display: flex; align-items: center; gap: 0.5rem;">
+            <label class="acct-toggle">
+              <input type="checkbox" id="acct2faLoginToggle" />
+              <span class="acct-toggle-slider"></span>
+            </label>
+            <span id="acct2faLoginLabel" style="font-size: 0.78rem; color: var(--text-muted);">Off</span>
+          </div>
+        </div>
+        <div id="acct2faNote" style="display: none; padding: 0 1rem 0.6rem; font-size: 0.72rem; color: var(--text-muted);"></div>
+        </div>
+
+      </div>
+
+      <!-- ═══════ RIGHT COLUMN ═══════ -->
+      <div class="acct-right">
+        <div class="acct-section" style="height: 100%;">
+          <div class="acct-section-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <h2>Payments &amp; Invoices</h2>
+          </div>
+          <div id="invoicesBody" style="padding: 0.75rem 1rem; color: var(--text-muted); font-size: 0.85rem;">Loading...</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ═══════ MODALS ═══════ -->
+
+<!-- Edit Name Modal -->
+<div class="acct-modal-overlay" id="nameModal">
+  <div class="acct-modal">
+    <div class="acct-modal-header">
+      <h3>Edit Name</h3>
+      <button class="acct-modal-close" data-close="nameModal">&times;</button>
+    </div>
+    <div class="acct-modal-body">
+      <label class="acct-label">First Name</label>
+      <input type="text" id="acctFirstName" class="acct-input" />
+      <label class="acct-label" style="margin-top: 0.6rem;">Last Name</label>
+      <input type="text" id="acctLastName" class="acct-input" />
+      <div class="acct-modal-msg" id="nameMsg"></div>
+    </div>
+    <div class="acct-modal-footer">
+      <button class="acct-btn-secondary" data-close="nameModal">Cancel</button>
+      <button class="acct-btn-primary" id="saveNameBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change Email Modal -->
+<div class="acct-modal-overlay" id="emailModal">
+  <div class="acct-modal">
+    <div class="acct-modal-header">
+      <h3>Change Email</h3>
+      <button class="acct-modal-close" data-close="emailModal">&times;</button>
+    </div>
+    <div class="acct-modal-body">
+      <label class="acct-label">Current Password</label>
+      <input type="password" id="acctEmailPassword" class="acct-input" placeholder="Verify your identity" />
+      <label class="acct-label" style="margin-top: 0.6rem;">New Email Address</label>
+      <input type="email" id="acctNewEmail" class="acct-input" placeholder="new@example.com" />
+      <div id="emailTotpRow" style="display:none; margin-top: 0.6rem;">
+        <label class="acct-label">2FA Code</label>
+        <input type="text" id="acctEmailTotp" class="acct-input" placeholder="6-digit code" maxlength="6" autocomplete="off" inputmode="numeric" style="letter-spacing:4px; text-align:center; font-family:'Courier New',monospace;" />
+      </div>
+      <div class="acct-modal-msg" id="emailMsg"></div>
+    </div>
+    <div class="acct-modal-footer">
+      <button class="acct-btn-secondary" data-close="emailModal">Cancel</button>
+      <button class="acct-btn-primary" id="saveEmailBtn">Update Email</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="acct-modal-overlay" id="passwordModal">
+  <div class="acct-modal">
+    <div class="acct-modal-header">
+      <h3>Change Password</h3>
+      <button class="acct-modal-close" data-close="passwordModal">&times;</button>
+    </div>
+    <div class="acct-modal-body">
+      <label class="acct-label">Current Password</label>
+      <input type="password" id="acctCurrentPassword" class="acct-input" />
+      <label class="acct-label" style="margin-top: 0.6rem;">New Password</label>
+      <input type="password" id="acctNewPassword" class="acct-input" placeholder="Minimum 6 characters" />
+      <div class="acct-pw-strength" id="acctPwStrength" style="display:none; margin-top:0.4rem;">
+        <div style="height:4px; background:var(--border-color); border-radius:2px; overflow:hidden; margin-bottom:0.35rem;">
+          <div id="acctPwFill" style="height:100%; width:0; border-radius:2px; transition:width 0.25s, background 0.25s;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+          <div style="display:flex; flex-wrap:wrap; gap:0.1rem 0.5rem; font-size:0.7rem; color:var(--text-muted);">
+            <span id="acctReqLen">6+ chars</span>
+            <span id="acctReqLetter">Letter</span>
+            <span id="acctReqNumber">Number</span>
+            <span id="acctReqSymbol">Symbol</span>
+          </div>
+          <span id="acctPwLabel" style="font-size:0.7rem; font-weight:600; white-space:nowrap;"></span>
+        </div>
+      </div>
+      <label class="acct-label" style="margin-top: 0.6rem;">Confirm New Password</label>
+      <input type="password" id="acctConfirmPassword" class="acct-input" />
+      <div id="passwordTotpRow" style="display:none; margin-top: 0.6rem;">
+        <label class="acct-label">2FA Code</label>
+        <input type="text" id="acctPasswordTotp" class="acct-input" placeholder="6-digit code" maxlength="6" autocomplete="off" inputmode="numeric" style="letter-spacing:4px; text-align:center; font-family:'Courier New',monospace;" />
+      </div>
+      <div class="acct-modal-msg" id="passwordMsg"></div>
+    </div>
+    <div class="acct-modal-footer">
+      <button class="acct-btn-secondary" data-close="passwordModal">Cancel</button>
+      <button class="acct-btn-primary" id="savePasswordBtn">Update Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- 2FA Setup Modal -->
+<div class="acct-modal-overlay" id="tfaSetupModal">
+  <div class="acct-modal" style="max-width: 420px;">
+    <div class="acct-modal-header">
+      <h3>Enable Two-Factor Authentication</h3>
+      <button class="acct-modal-close" data-close="tfaSetupModal">&times;</button>
+    </div>
+    <div class="acct-modal-body" id="tfaSetupBody">
+      <div style="text-align: center; color: var(--text-muted);">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 2FA Disable Modal -->
+<div class="acct-modal-overlay" id="tfaDisableModal">
+  <div class="acct-modal" style="max-width: 360px;">
+    <div class="acct-modal-header">
+      <h3>Disable Two-Factor Authentication</h3>
+      <button class="acct-modal-close" data-close="tfaDisableModal">&times;</button>
+    </div>
+    <div class="acct-modal-body">
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 0.75rem;">Enter a code from your authenticator app to confirm.</p>
+      <label class="acct-label">Authentication Code</label>
+      <input type="text" id="tfaDisableCode" class="acct-input" placeholder="6-digit code" maxlength="6" autocomplete="off" inputmode="numeric" style="letter-spacing: 4px; text-align: center; font-family: 'Courier New', monospace; font-size: 1.1rem;" />
+      <div class="acct-modal-msg" id="tfaDisableMsg"></div>
+    </div>
+    <div class="acct-modal-footer">
+      <button class="acct-btn-secondary" data-close="tfaDisableModal">Cancel</button>
+      <button class="acct-btn-primary" id="tfaDisableBtn" style="background: #dc2626;">Disable 2FA</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Account page layout — two columns on desktop, stacked on mobile/tablet */
+.acct-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+.acct-left { display: flex; flex-direction: column; gap: 1.25rem; }
+.acct-right { }
+
+@media (max-width: 960px) {
+  .acct-grid { grid-template-columns: 1fr; }
+}
+
+/* Sections */
+.acct-section {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.acct-section-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+}
+.acct-section-header svg { color: var(--text-muted); flex-shrink: 0; }
+.acct-section-header h2 {
+  margin: 0; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted);
+}
+
+/* Rows */
+.acct-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.acct-row-label {
+  width: 110px; flex-shrink: 0;
+  font-size: 0.78rem; font-weight: 600; color: var(--text-muted);
+}
+.acct-row-value {
+  flex: 1; min-width: 0;
+  font-size: 0.85rem; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acct-row-action {
+  flex-shrink: 0;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.72rem; font-weight: 600;
+  background: transparent; border: 1px solid var(--border-color);
+  color: var(--accent-color); border-radius: 4px; cursor: pointer;
+  transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.acct-row-action:hover { background: rgba(37,99,235,0.08); border-color: var(--accent-color); }
+
+/* Badges */
+.acct-badge {
+  display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px;
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.acct-badge-on  { background: rgba(5,150,105,0.15); color: var(--success-color); }
+.acct-badge-off { background: rgba(107,114,128,0.15); color: var(--text-muted); }
+
+/* Toggle switch */
+.acct-toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+.acct-toggle input { opacity: 0; width: 0; height: 0; }
+.acct-toggle-slider {
+  position: absolute; inset: 0; cursor: pointer; border-radius: 20px;
+  background: var(--border-color); transition: background 0.2s;
+}
+.acct-toggle-slider::before {
+  content: ''; position: absolute; left: 2px; top: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-muted); transition: transform 0.2s, background 0.2s;
+}
+.acct-toggle input:checked + .acct-toggle-slider { background: var(--success-color); }
+.acct-toggle input:checked + .acct-toggle-slider::before { transform: translateX(16px); background: #fff; }
+
+/* Modal system */
+.acct-modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(3px);
+  justify-content: center; align-items: center;
+}
+.acct-modal-overlay.open { display: flex; }
+.acct-modal {
+  background: var(--surface-elevated); border: 1px solid var(--border-color);
+  border-radius: 10px; width: 90%; max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.acct-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color);
+}
+.acct-modal-header h3 { margin: 0; font-size: 0.9rem; color: var(--text-primary); }
+.acct-modal-close {
+  background: none; border: none; color: var(--text-muted); font-size: 1.3rem;
+  cursor: pointer; padding: 0; line-height: 1;
+}
+.acct-modal-close:hover { color: var(--text-primary); }
+.acct-modal-body { padding: 1rem; }
+.acct-modal-footer {
+  display: flex; justify-content: flex-end; gap: 0.5rem;
+  padding: 0.75rem 1rem; border-top: 1px solid var(--border-color);
+}
+.acct-modal-msg {
+  min-height: 1.2rem; margin-top: 0.5rem;
+  font-size: 0.78rem; text-align: right;
+}
+
+.acct-label {
+  display: block; font-size: 0.68rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted); margin-bottom: 0.25rem;
+}
+.acct-input {
+  width: 100%; padding: 0.5rem 0.6rem;
+  background: var(--surface); border: 1px solid var(--border-color);
+  border-radius: 5px; color: var(--text-primary); font-size: 0.85rem;
+  outline: none; transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.acct-input:focus { border-color: var(--accent-color); }
+
+.acct-btn-primary {
+  padding: 0.45rem 1rem; border: none; border-radius: 5px;
+  background: var(--accent-color); color: #fff;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  transition: filter 0.15s;
+}
+.acct-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+.acct-btn-primary:disabled { opacity: 0.5; cursor: default; }
+.acct-btn-secondary {
+  padding: 0.45rem 1rem; border: 1px solid var(--border-color); border-radius: 5px;
+  background: transparent; color: var(--text-secondary);
+  font-size: 0.78rem; font-weight: 500; cursor: pointer;
+  transition: all 0.15s;
+}
+.acct-btn-secondary:hover { background: var(--surface); }
+
+/* Invoice rows */
+.acct-hist-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.8fr 0.9fr 1.4fr;
+  gap: 0.75rem; align-items: center;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.82rem;
+}
+.acct-hist-row:last-child { border-bottom: none; }
+.acct-hist-link { color: var(--accent-color); text-decoration: none; font-size: 0.78rem; }
+.acct-hist-link:hover { text-decoration: underline; }
+.acct-pw-strength span::before { content: '○ '; }
+.acct-pw-strength span.met { color: var(--success-color); }
+.acct-pw-strength span.met::before { content: '● '; }
+</style>

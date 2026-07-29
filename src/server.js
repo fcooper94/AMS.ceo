@@ -259,6 +259,7 @@ const loansRoutes = require('./routes/loans');
 const airspaceRoutes = require('./routes/airspace');
 const marketingRoutes = require('./routes/marketing');
 const sightseeingRoutes = require('./routes/sightseeing');
+const accountRoutes = require('./routes/account');
 
 // Import services
 const worldTimeService = require('./services/worldTimeService');
@@ -272,7 +273,7 @@ async function renderPage(pagePath, requestPath) {
   try {
     // Determine which sidebar to use based on the request path
     // Use simplified sidebar for admin, world selection, and public pages
-    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/wiki', '/faqs', '/privacy', '/data-handling', '/changelog'];
+    const simplifiedSidebarPages = ['/admin', '/world-selection', '/contact', '/credits', '/account', '/wiki', '/faqs', '/privacy', '/data-handling', '/changelog'];
     const sidebarPath = simplifiedSidebarPages.includes(requestPath)
       ? path.join(__dirname, '../public/partials/sidebar-admin.html')
       : path.join(__dirname, '../public/partials/sidebar.html');
@@ -436,6 +437,7 @@ app.use('/api/airspace', requireWorld, airspaceRoutes);
 app.use('/api/marketing', requireWorld, marketingRoutes);
 app.use('/api/sightseeing-tours', requireWorld, sightseeingRoutes);
 app.use('/api/billing', requireAuth, require('./routes/billing'));
+app.use('/api/account', requireAuth, accountRoutes);
 app.use('/api/changelog', require('./routes/changelog')); // public
 
 // Page routes
@@ -499,6 +501,15 @@ app.get('/admin', requireAuth, async (req, res) => {
 app.get('/credits', requireAuth, async (req, res) => {
   try {
     const html = await renderPage(path.join(__dirname, '../public/credits.html'), '/credits');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('Error loading page');
+  }
+});
+
+app.get('/account', requireAuth, async (req, res) => {
+  try {
+    const html = await renderPage(path.join(__dirname, '../public/account.html'), '/account');
     res.send(html);
   } catch (error) {
     res.status(500).send('Error loading page');
@@ -806,6 +817,7 @@ server.listen(PORT, () => {
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(255)`);
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes JSONB`);
+      await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_login_required BOOLEAN NOT NULL DEFAULT FALSE`);
     } catch (_) { /* users table may not exist yet — sync will create it */ }
     try {
       // Create the payments table if it doesn't exist (non-destructive CREATE).

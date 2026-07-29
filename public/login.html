@@ -181,6 +181,21 @@
     </div>
   </div>
 
+  <!-- 2FA popup (shown only when user has opted into login-time 2FA) -->
+  <div class="pin-overlay" id="tfaOverlay">
+    <div class="pin-card">
+      <h3>Two-Factor Authentication</h3>
+      <div class="pin-sub">Enter the 6-digit code from your authenticator app</div>
+      <div style="margin: 1rem 0;">
+        <input type="text" id="tfaCode" class="lp-input" placeholder="000000" maxlength="6" autocomplete="off" inputmode="numeric" style="text-align: center; letter-spacing: 6px; font-family: 'Courier New', monospace; font-size: 1.3rem;">
+      </div>
+      <div class="pin-error" id="tfaError"></div>
+      <button class="lp-btn lp-btn-primary" id="tfaSubmitBtn" onclick="submitTfa()">Verify</button>
+      <button class="pin-cancel" onclick="closeTfa()">Cancel</button>
+      <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted, #6b7280);">You can also use a backup code</div>
+    </div>
+  </div>
+
   <!-- PIN popup -->
   <div class="pin-overlay" id="pinOverlay">
     <div class="pin-card">
@@ -218,7 +233,12 @@
       })
         .then(res => res.json())
         .then(data => {
-          if (data.success) {
+          if (data.success && data.requires2fa) {
+            document.getElementById('tfaOverlay').style.display = 'flex';
+            document.getElementById('tfaCode').value = '';
+            document.getElementById('tfaError').textContent = '';
+            setTimeout(function () { document.getElementById('tfaCode').focus(); }, 100);
+          } else if (data.success) {
             window.location.href = data.redirect;
           } else {
             errorDiv.textContent = data.error || 'Login failed';
@@ -230,6 +250,28 @@
           errorDiv.style.display = 'block';
         });
     }
+
+    function submitTfa() {
+      var code = document.getElementById('tfaCode').value.trim();
+      var errorDiv = document.getElementById('tfaError');
+      var btn = document.getElementById('tfaSubmitBtn');
+      errorDiv.textContent = '';
+      if (!code) { errorDiv.textContent = 'Enter a code'; return; }
+      btn.disabled = true; btn.textContent = 'Verifying...';
+      fetch('/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data.success) { window.location.href = data.redirect; }
+          else { errorDiv.textContent = data.error || 'Invalid code'; btn.disabled = false; btn.textContent = 'Verify'; }
+        })
+        .catch(function () { errorDiv.textContent = 'Verification failed'; btn.disabled = false; btn.textContent = 'Verify'; });
+    }
+
+    function closeTfa() { document.getElementById('tfaOverlay').style.display = 'none'; }
 
     function toggleForgot() {
       const block = document.getElementById('forgotBlock');
@@ -285,6 +327,10 @@
       if (e.key === 'Enter') localLogin();
     });
 
+    document.getElementById('tfaCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitTfa();
+    });
+
     // ── PIN popup for support@ams.ceo ──
     const pinOverlay = document.getElementById('pinOverlay');
     const pinDigits = document.querySelectorAll('.pin-digit');
@@ -298,9 +344,10 @@
       }
     });
 
+    var pinVerified = false;
     document.getElementById('loginEmail').addEventListener('blur', () => {
       const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-      if (email === 'support@ams.ceo') openPin();
+      if (email === 'support@ams.ceo' && !pinVerified) openPin();
     });
 
     function openPin() {
@@ -350,7 +397,14 @@
       })
         .then(res => res.json())
         .then(data => {
-          if (data.success) {
+          if (data.success && data.requires2fa) {
+            pinVerified = true;
+            closePin();
+            document.getElementById('tfaOverlay').style.display = 'flex';
+            document.getElementById('tfaCode').value = '';
+            document.getElementById('tfaError').textContent = '';
+            setTimeout(function () { document.getElementById('tfaCode').focus(); }, 100);
+          } else if (data.success) {
             window.location.href = data.redirect;
           } else {
             pinError.textContent = data.error || 'Invalid PIN';
