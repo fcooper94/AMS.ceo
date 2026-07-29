@@ -338,6 +338,15 @@ Fixes uncovered when the hot/cold window engine met the maintenance system:
   (hidden before — server affordability rejections read as "unable to lease
   after the agreement screen"); the lease 500 handler now logs stack +
   context and returns the real error message.
+- **Delivery fallback sweep** (`_fallbackDeliverySweep`, added 2026-07-29):
+  once per game day from `onTick` (hot worlds) + after each cold pass, a
+  raw-SQL sweep finds any `on_order` aircraft whose `expected_delivery_date`
+  has passed and force-activates them with factory-fresh check dates.
+  Independent of the window engine — catches anything `processDeliveries`
+  missed due to transient errors. Logs as `[Delivery-Fallback]`.
+  `processDeliveries` itself also now logs every attempt/success/failure
+  with stack traces. `isProcessingWindow` has a 60s stuck-lock recovery.
+  Manual diagnostic: `node scripts/checkStuckDeliveries.js [--fix]`.
 
 ## Dev workflow
 

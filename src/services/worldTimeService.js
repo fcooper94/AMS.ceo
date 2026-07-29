@@ -766,6 +766,16 @@ class WorldTimeService {
         global.io.to(`world:${worldId}`).emit('notifications:refresh', { worldId: worldId });
       }
     }
+
+    // ── Fallback delivery sweep: once per game day, catch any on_order
+    // aircraft whose delivery date has passed but weren't delivered by the
+    // normal processDeliveries path (e.g. due to a transient error). ──
+    const lastDeliverySweep = wp._lastDeliverySweepDay;
+    if (lastDeliverySweep === undefined || gameDay > lastDeliverySweep) {
+      wp._lastDeliverySweepDay = gameDay;
+      this._fallbackDeliverySweep(worldId, gameTime)
+        .catch(err => console.error(`[Delivery-Fallback] Error for world ${worldId}:`, err.message));
+    }
   }
 
   // ═══ Phase 1: window-based engine ═══════════════════════════════════════
@@ -805,8 +815,18 @@ class WorldTimeService {
     const worldState = this.worlds.get(worldId);
     if (!worldState) return;
     const wp = this._wp(worldId);
-    if (wp.isProcessingWindow) return;
+    if (wp.isProcessingWindow) {
+      // Safety: if the window lock has been held for >60s, it's stuck — force-clear
+      const lockAge = Date.now() - (wp._windowLockAt || 0);
+      if (lockAge > 60000) {
+        console.warn(`[WINDOW] Force-clearing stuck isProcessingWindow for world ${worldId} (held ${(lockAge / 1000).toFixed(0)}s)`);
+        wp.isProcessingWindow = false;
+      } else {
+        return;
+      }
+    }
     wp.isProcessingWindow = true;
+    wp._windowLockAt = Date.now();
     try {
       const world = worldState.world;
       const to = opts.toGameTime ? new Date(opts.toGameTime) : new Date(worldState.inMemoryTime);
@@ -1087,6 +1107,9 @@ class WorldTimeService {
         include: { flights: true, maintenance: true },
         stateless
       }), budget);
+      // Fallback delivery sweep after the cold pass settles
+      await this._fallbackDeliverySweep(worldId, newGameTime)
+        .catch(err => console.error(`[Delivery-Fallback] Cold-pass error for world ${worldId}:`, err.message));
     } catch (error) {
       console.error(`[HOTCOLD] advance/settle failed for world ${worldId}:`, error.message);
     }
@@ -2661,8 +2684,11 @@ class WorldTimeService {
 
           if (readyAircraft.length === 0) continue;
 
+          console.log(`[Delivery] Processing ${readyAircraft.length} overdue aircraft for membership ${membership.id} (world ${worldId}, gameTime ${gameTime.toISOString()})`);
+
           for (const ua of readyAircraft) {
             try {
+            console.log(`[Delivery] Attempting delivery: ${ua.registration} (id=${ua.id}, type=${ua.acquisitionType}, financing=${ua.financingMethod}, expected=${ua.expectedDeliveryDate})`);
             const remaining = parseFloat(ua.remainingPayment) || 0;
             const balance = parseFloat(membership.balance) || 0;
             const acName = ua.aircraft ? `${ua.aircraft.manufacturer} ${ua.aircraft.model}` : ua.registration;
@@ -2840,6 +2866,8 @@ class WorldTimeService {
               });
             }
 
+            console.log(`[Delivery] ✓ ${ua.registration} delivered successfully (status=${ua.status}, type=${ua.acquisitionType})`);
+
             // Auto-schedule maintenance if preferences were set at order time
             if (ua.status === 'active') {
               const autoCheckTypes = [];
@@ -2870,16 +2898,92 @@ class WorldTimeService {
               }
             }
             } catch (acErr) {
-              console.error(`[Delivery] Failed to deliver aircraft ${ua.id} (${ua.registration}):`, acErr.message);
+              console.error(`[Delivery] Failed to deliver aircraft ${ua.id} (${ua.registration}):`, acErr.message, acErr.stack);
               // Continue with remaining aircraft — don't let one failure block the rest
             }
           }
         } catch (mErr) {
-          console.error(`Error processing deliveries for membership ${membership.id}:`, mErr.message);
+          console.error(`Error processing deliveries for membership ${membership.id}:`, mErr.message, mErr.stack);
         }
       }
     } catch (error) {
-      console.error('Error processing deliveries:', error.message);
+      console.error('Error processing deliveries:', error.message, error.stack);
+    }
+  }
+
+  /**
+   * Fallback delivery sweep: uses raw SQL to find and activate any on_order
+   * aircraft whose delivery date has passed. Runs once per game day from
+   * onTick, independent of the window engine, as a safety net for anything
+   * processDeliveries missed (transient DB error, stuck window lock, etc.).
+   * Minimal logic: stamps check dates and activates. Financial details
+   * (loans, payments) are NOT handled here — they stay on the normal path.
+   */
+  async _fallbackDeliverySweep(worldId, gameTime) {
+    try {
+      const [stuck] = await WorldMembership.sequelize.query(`
+        SELECT ua.id, ua.registration, ua.acquisition_type,
+               ua.expected_delivery_date, ua.lease_duration_months,
+               ua.lease_weekly_payment
+        FROM user_aircraft ua
+        JOIN world_memberships wm ON wm.id = ua.world_membership_id
+        WHERE wm.world_id = :worldId
+          AND wm.is_active = true
+          AND ua.status = 'on_order'
+          AND ua.expected_delivery_date IS NOT NULL
+          AND ua.expected_delivery_date <= :gameTime
+      `, { replacements: { worldId, gameTime } });
+
+      if (stuck.length === 0) return;
+
+      console.warn(`[Delivery-Fallback] Found ${stuck.length} overdue on_order aircraft in world ${worldId} — force-delivering`);
+
+      const now = new Date(gameTime);
+      for (const row of stuck) {
+        try {
+          // Activate with factory-fresh check dates
+          const updates = {
+            status: 'active',
+            acquiredAt: now,
+            lastCCheckDate: now,
+            lastDCheckDate: now,
+            cCheckIntervalDays: 600 + Math.floor(Math.random() * 120),
+            dCheckIntervalDays: 2190 + Math.floor(Math.random() * 1460),
+            lastDailyCheckDate: now,
+            lastWeeklyCheckDate: now,
+            lastACheckDate: now,
+            lastACheckHours: 0,
+            aCheckIntervalHours: 800 + Math.floor(Math.random() * 200)
+          };
+
+          // Set lease dates if applicable
+          if (row.acquisition_type === 'lease') {
+            updates.leaseStartDate = now;
+            const leaseEnd = new Date(now);
+            leaseEnd.setMonth(leaseEnd.getMonth() + (row.lease_duration_months || 36));
+            updates.leaseEndDate = leaseEnd;
+          }
+
+          await UserAircraft.update(updates, {
+            where: { id: row.id, status: 'on_order' } // status guard prevents double-delivery
+          });
+
+          console.log(`[Delivery-Fallback] ✓ Force-delivered ${row.registration} (id=${row.id})`);
+
+          // Emit socket so scheduling/fleet pages auto-refresh
+          if (global.io) {
+            global.io.to(`world:${worldId}`).emit('fleet:delivered', {
+              worldId,
+              aircraftId: row.id,
+              registration: row.registration
+            });
+          }
+        } catch (err) {
+          console.error(`[Delivery-Fallback] Failed ${row.registration} (id=${row.id}):`, err.message);
+        }
+      }
+    } catch (err) {
+      console.error(`[Delivery-Fallback] Sweep failed for world ${worldId}:`, err.message);
     }
   }
 
