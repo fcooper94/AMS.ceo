@@ -818,6 +818,7 @@ server.listen(PORT, () => {
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes JSONB`);
       await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_login_required BOOLEAN NOT NULL DEFAULT FALSE`);
+      await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_preferences JSONB`);
     } catch (_) { /* users table may not exist yet — sync will create it */ }
     try {
       // Create the payments table if it doesn't exist (non-destructive CREATE).

@@ -136,6 +136,12 @@ const User = sequelize.define('User', {
     allowNull: true,
     field: 'reset_token_expiry',
     comment: 'Password reset token expiration'
+  },
+  notificationPreferences: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    field: 'notification_preferences',
+    comment: 'Per-user notification opt-out prefs (null = all enabled)'
   }
 }, {
   tableName: 'users',

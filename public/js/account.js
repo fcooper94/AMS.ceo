@@ -45,6 +45,23 @@
         document.getElementById('acctMemberSince').textContent =
           new Date(p.memberSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
       }
+
+      // Credit balance
+      var banner = document.getElementById('creditBalanceBanner');
+      if (banner) {
+        var label = p.unlimitedCredits ? 'unlimited credits' : 'credits remaining';
+        document.getElementById('creditAmount').textContent = p.unlimitedCredits ? '\u221E' : (p.credits || 0);
+        document.getElementById('creditAmount').parentElement.querySelector('.acct-credit-label').textContent = label;
+        banner.style.display = 'flex';
+      }
+
+      // Notification preferences
+      var prefs = p.notificationPreferences || {};
+      document.querySelectorAll('[data-notif]').forEach(function (cb) {
+        var key = cb.getAttribute('data-notif');
+        // Default to checked (enabled) unless explicitly set to false
+        cb.checked = prefs[key] !== false;
+      });
     } catch (err) {
       console.error('[Account] Load failed:', err);
     }
@@ -167,27 +184,32 @@
       var rows = await res.json();
       if (!rows || rows.length === 0) { body.textContent = 'No payments yet.'; return; }
       body.innerHTML = '';
-      var html = rows.map(function (r) {
+      var tableHtml = '<table class="acct-hist-table"><thead><tr>' +
+        '<th>Date</th><th>Credits</th><th>Amount</th><th>Status</th><th>Documents</th>' +
+        '</tr></thead><tbody>';
+      tableHtml += rows.map(function (r) {
         var d = new Date(r.date).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
         var refunded = !!r.refundedAt;
         var statusLabel = refunded ? 'Refunded' : r.status;
-        var statusColor = refunded ? 'var(--text-muted)' : r.status === 'paid' ? 'var(--success-color)' : r.status === 'pending' ? 'var(--warning-color)' : '#f85149';
+        var statusClass = refunded ? 'refunded' : r.status === 'paid' ? 'paid' : r.status === 'pending' ? 'pending' : 'failed';
         var sym = (r.currency || 'gbp').toLowerCase() === 'gbp' ? '\u00A3' : (r.currency || '').toUpperCase() + ' ';
         var amt = (r.amount / 100).toFixed(2);
-        var links = [
-          refunded && r.creditNoteUrl ? '<a class="acct-hist-link" href="' + r.creditNoteUrl + '" target="_blank" rel="noopener">Refund invoice</a>' : '',
+        var linkParts = [
+          refunded && r.creditNoteUrl ? '<a class="acct-hist-link" href="' + r.creditNoteUrl + '" target="_blank" rel="noopener">Credit Note</a>' : '',
           !refunded && r.invoiceUrl ? '<a class="acct-hist-link" href="' + r.invoiceUrl + '" target="_blank" rel="noopener">Invoice</a>' : '',
           r.receiptUrl ? '<a class="acct-hist-link" href="' + r.receiptUrl + '" target="_blank" rel="noopener">Receipt</a>' : ''
-        ].filter(Boolean).join(' \u00B7 ') || '<span style="color:var(--text-muted); font-size:0.75rem;">\u2014</span>';
-        return '<div class="acct-hist-row">' +
-          '<span style="color:var(--text-secondary);">' + d + '</span>' +
-          '<span style="color:var(--text-primary);">+' + r.credits + ' credits</span>' +
-          '<span style="font-family:\'Courier New\',monospace;">' + sym + amt + '</span>' +
-          '<span style="color:' + statusColor + '; text-transform:capitalize; font-weight:600;">' + statusLabel + '</span>' +
-          '<span style="text-align:right;">' + links + '</span>' +
-          '</div>';
+        ].filter(Boolean).join('<span class="acct-hist-link-sep">\u00B7</span>');
+        var links = linkParts || '<span style="color:var(--text-muted);">\u2014</span>';
+        return '<tr>' +
+          '<td class="acct-hist-date">' + d + '</td>' +
+          '<td class="acct-hist-credits">+' + r.credits + '</td>' +
+          '<td class="acct-hist-amount">' + sym + amt + '</td>' +
+          '<td><span class="acct-hist-status acct-hist-status-' + statusClass + '">' + statusLabel + '</span></td>' +
+          '<td class="acct-hist-links">' + links + '</td>' +
+          '</tr>';
       }).join('');
-      body.innerHTML = html;
+      tableHtml += '</tbody></table>';
+      body.innerHTML = tableHtml;
     } catch (err) {
       body.textContent = 'No payment history.';
       console.error('[Account] History failed:', err);
@@ -311,6 +333,114 @@
       } catch (err) {
         showMsg('tfaDisableMsg', err.message, true);
       } finally { btn.disabled = false; }
+    });
+
+    // ── Notification preference toggles ──────────────────────
+    document.querySelectorAll('[data-notif]').forEach(function (cb) {
+      cb.addEventListener('change', async function () {
+        var prefs = {};
+        document.querySelectorAll('[data-notif]').forEach(function (el) {
+          prefs[el.getAttribute('data-notif')] = el.checked;
+        });
+        try {
+          await api('PUT', '/api/account/notifications', { preferences: prefs });
+        } catch (err) {
+          // Revert on failure
+          cb.checked = !cb.checked;
+          console.error('[Account] Notification pref update failed:', err);
+        }
+      });
+    });
+
+    // ── Active sessions — current device info ──────────────
+    var sessionInfoEl = document.getElementById('currentSessionInfo');
+    if (sessionInfoEl) {
+      var ua = navigator.userAgent;
+      var browser = 'Unknown browser';
+      if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+      else if (ua.indexOf('Edg/') > -1) browser = 'Microsoft Edge';
+      else if (ua.indexOf('Chrome') > -1) browser = 'Chrome';
+      else if (ua.indexOf('Safari') > -1) browser = 'Safari';
+      var os = 'Unknown OS';
+      if (ua.indexOf('Win') > -1) os = 'Windows';
+      else if (ua.indexOf('Mac') > -1) os = 'macOS';
+      else if (ua.indexOf('Linux') > -1) os = 'Linux';
+      else if (ua.indexOf('Android') > -1) os = 'Android';
+      else if (/iPhone|iPad/.test(ua)) os = 'iOS';
+      sessionInfoEl.textContent = browser + ' on ' + os;
+    }
+
+    // ── Logout all other sessions ──────────────────────────
+    document.getElementById('logoutAllBtn').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true;
+      try {
+        var result = await api('POST', '/api/account/logout-all');
+        showMsg('logoutAllMsg', 'Logged out of ' + (result.destroyed || 0) + ' other session(s)', false);
+      } catch (err) {
+        showMsg('logoutAllMsg', err.message, true);
+      } finally { btn.disabled = false; }
+    });
+
+    // ── Export data ────────────────────────────────────────
+    document.getElementById('exportDataBtn').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Exporting...';
+      try {
+        var res = await fetch('/api/account/export');
+        if (!res.ok) throw new Error('Export failed');
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'ams-account-data.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('[Account] Export failed:', err);
+        alert('Export failed — please try again.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Download';
+      }
+    });
+
+    // ── Delete account ─────────────────────────────────────
+    document.getElementById('deleteAccountBtn').addEventListener('click', function () {
+      // Show/hide 2FA field based on current state
+      var totpRow = document.getElementById('deleteAcctTotpRow');
+      if (totpRow) totpRow.style.display = _2faEnabled ? 'block' : 'none';
+      openModal('deleteAccountModal');
+    });
+
+    var deleteConfirmInput = document.getElementById('deleteAcctConfirm');
+    var confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+    deleteConfirmInput.addEventListener('input', function () {
+      confirmDeleteBtn.disabled = this.value.trim() !== 'DELETE';
+    });
+
+    confirmDeleteBtn.addEventListener('click', async function () {
+      var btn = this;
+      var pw = document.getElementById('deleteAcctPassword').value;
+      var totpCode = _2faEnabled ? (document.getElementById('deleteAcctTotp').value || '').trim() : '';
+      var confirm = document.getElementById('deleteAcctConfirm').value.trim();
+      if (!pw) return showMsg('deleteAcctMsg', 'Password is required', true);
+      if (_2faEnabled && !totpCode) return showMsg('deleteAcctMsg', '2FA code is required', true);
+      if (confirm !== 'DELETE') return showMsg('deleteAcctMsg', 'Type DELETE to confirm', true);
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try {
+        await api('POST', '/api/account/delete', { password: pw, confirmation: confirm, totpCode: totpCode });
+        // Redirect to home after deletion
+        window.location.href = '/';
+      } catch (err) {
+        showMsg('deleteAcctMsg', err.message, true);
+        btn.disabled = false;
+        btn.textContent = 'Delete My Account';
+      }
     });
 
     // Load data
