@@ -4125,20 +4125,58 @@ router.get('/maintenance/calendar', async (req, res) => {
       });
     }
 
-    // Aircraft summary for the grid
-    const aircraftList = fleet.map(ac => ({
-      id: ac.id,
-      registration: ac.registration,
-      aircraftType: ac.aircraft?.model || 'Unknown',
-      type: ac.aircraft?.type || 'Narrowbody',
-      icaoCode: ac.aircraft?.icaoCode || '',
-      status: ac.status,
-      autoScheduleDaily: ac.autoScheduleDaily !== false,
-      autoScheduleWeekly: ac.autoScheduleWeekly !== false,
-      autoScheduleA: ac.autoScheduleA !== false,
-      autoScheduleC: ac.autoScheduleC !== false,
-      autoScheduleD: ac.autoScheduleD !== false
-    }));
+    // Aircraft summary for the grid (include A/C/D expiry for calendar flags)
+    const aircraftList = fleet.map(ac => {
+      // C & D expiry dates (calendar-based)
+      const cInterval = ac.cCheckIntervalDays || CHECK_INTERVALS.C || 730;
+      const dInterval = ac.dCheckIntervalDays || CHECK_INTERVALS.D || 2190;
+      let cExpiry = null, dExpiry = null;
+      if (ac.lastCCheckDate) {
+        const d = new Date(ac.lastCCheckDate);
+        d.setDate(d.getDate() + cInterval);
+        cExpiry = d.toISOString().split('T')[0];
+      }
+      if (ac.lastDCheckDate) {
+        const d = new Date(ac.lastDCheckDate);
+        d.setDate(d.getDate() + dInterval);
+        dExpiry = d.toISOString().split('T')[0];
+      }
+      // A check: hours-based — estimate expiry date from daily flight rate
+      let aExpiry = null;
+      if (ac.lastACheckDate) {
+        const lastHrs = parseFloat(ac.lastACheckHours) || 0;
+        const curHrs = parseFloat(ac.totalFlightHours) || 0;
+        const interval = ac.aCheckIntervalHours || 900;
+        const hoursRemaining = interval - (curHrs - lastHrs);
+        if (hoursRemaining <= 0) {
+          aExpiry = todayStr; // already overdue
+        } else {
+          // Estimate daily flight hours from hours accrued since last A check
+          const daysSinceA = Math.max(1, (gameNow - new Date(ac.lastACheckDate)) / (24 * 60 * 60 * 1000));
+          const dailyRate = (curHrs - lastHrs) / daysSinceA;
+          if (dailyRate > 0) {
+            const daysUntilDue = Math.floor(hoursRemaining / dailyRate);
+            const est = new Date(gameNow);
+            est.setDate(est.getDate() + daysUntilDue);
+            aExpiry = est.toISOString().split('T')[0];
+          }
+        }
+      }
+      return {
+        id: ac.id,
+        registration: ac.registration,
+        aircraftType: ac.aircraft?.model || 'Unknown',
+        type: ac.aircraft?.type || 'Narrowbody',
+        icaoCode: ac.aircraft?.icaoCode || '',
+        status: ac.status,
+        autoScheduleDaily: ac.autoScheduleDaily !== false,
+        autoScheduleWeekly: ac.autoScheduleWeekly !== false,
+        autoScheduleA: ac.autoScheduleA !== false,
+        autoScheduleC: ac.autoScheduleC !== false,
+        autoScheduleD: ac.autoScheduleD !== false,
+        aExpiry, cExpiry, dExpiry
+      };
+    });
 
     res.json({
       weekStart: weekStartStr,

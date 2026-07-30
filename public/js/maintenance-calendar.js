@@ -460,6 +460,23 @@ function _calRender() {
     }
   }
 
+  // Index A/C/D expiry flags by aircraftId:date
+  var _calExpiryIndex = {}; // key: aircraftId:date -> [{checkType, overdue}]
+  var gameToday = _calDateStr(_calGetGameTime());
+  for (var exi = 0; exi < _calData.aircraft.length; exi++) {
+    var exAc = _calData.aircraft[exi];
+    var exTypes = ['A', 'C', 'D'];
+    var exFields = { A: 'aExpiry', C: 'cExpiry', D: 'dExpiry' };
+    for (var ext = 0; ext < exTypes.length; ext++) {
+      var exType = exTypes[ext];
+      var exDate = exAc[exFields[exType]];
+      if (!exDate) continue;
+      var exKey = exAc.id + ':' + exDate;
+      if (!_calExpiryIndex[exKey]) _calExpiryIndex[exKey] = [];
+      _calExpiryIndex[exKey].push({ checkType: exType, overdue: exDate <= gameToday });
+    }
+  }
+
   // Identify multi-day checks that should render as spanning bars
   // Group by (id) to find all day-blocks for the same maintenance record
   var spanGroups = {};
@@ -585,6 +602,21 @@ function _calRender() {
           html += '>' + CAL_LABELS[sb2.checkType] + '</div>';
         }
 
+        // Render A/C/D expiry flags
+        var expiryKey = aircraft.id + ':' + dateStr;
+        var expiryFlags = _calExpiryIndex[expiryKey];
+        if (expiryFlags && expiryFlags.length > 0) {
+          html += '<div class="cal-expiry-flags">';
+          for (var efi = 0; efi < expiryFlags.length; efi++) {
+            var ef = expiryFlags[efi];
+            var efClass = ef.overdue ? 'expiry-overdue' : 'expiry-' + ef.checkType;
+            var efLabel = ef.checkType + (ef.overdue ? '!' : '');
+            var efTitle = ef.checkType + ' check ' + (ef.overdue ? 'OVERDUE' : 'expires this day');
+            html += '<span class="cal-expiry-flag ' + efClass + '" title="' + efTitle + '">' + efLabel + '</span>';
+          }
+          html += '</div>';
+        }
+
         html += '</td>';
       }
       html += '</tr>';
@@ -699,8 +731,20 @@ function _calRenderSidebar() {
     html += ' ondragstart="_calSidebarDragStart(event)"';
     html += ' ondragend="_calSidebarDragEnd(event)"';
     html += '>';
+    var checkHints = {
+      daily: 'Valid 1\u20132 days \u2014 ideally performed every day',
+      weekly: 'Valid 7\u20138 days \u2014 performed once per week',
+      A: 'Every 800\u20131000 flight hours',
+      C: 'Every ~2 years \u2014 aircraft out of service 2\u20134 weeks',
+      D: 'Every 5\u20137 years \u2014 major overhaul, 2\u20133 months'
+    };
+    html += '<div style="display:flex;flex-direction:column;gap:0.1rem;">';
+    html += '<div style="display:flex;align-items:center;gap:0.5rem;">';
     html += '<span class="check-badge" style="background:' + color + ';">' + CAL_LABELS[cType] + '</span>';
     html += '<span style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">' + checkNames[cType] + '</span>';
+    html += '</div>';
+    html += '<span style="font-size:0.6rem;color:var(--text-muted);padding-left:2.1rem;">' + checkHints[cType] + '</span>';
+    html += '</div>';
     html += '</div>';
   }
 
@@ -849,6 +893,7 @@ function _calShowSchedulePrompt(aircraftId, date, checkType, prefillTime, isTurn
   var timeVal = prefillTime || '03:00';
   var gameToday = _calGetGameTime().toISOString().split('T')[0];
   var isPast = date < gameToday;
+  var isOneOff = checkType === 'A' || checkType === 'C' || checkType === 'D'; // A/C/D only scheduled once
 
   var html = '<div id="calSchedulePrompt" onclick="_calCloseSchedulePrompt()" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;justify-content:center;align-items:center;z-index:10000;">'
     + '<div onclick="event.stopPropagation()" style="background:#161b22;border:1px solid #30363d;border-radius:8px;min-width:380px;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">'
@@ -880,27 +925,31 @@ function _calShowSchedulePrompt(aircraftId, date, checkType, prefillTime, isTurn
     + '<p style="color:#f85149;margin:0;font-size:0.8rem;" id="calSchedClashMsg"></p>'
     + '</div>'
     + '</div>'
-    // Footer — once / recurring buttons
+    // Footer — once / recurring buttons (A/C/D are one-off only)
     + '<div style="padding:1rem 1.5rem;border-top:1px solid #30363d;display:flex;flex-direction:column;gap:0.75rem;">'
-    + (isPast ? '<div style="font-size:0.75rem;color:#8b949e;text-align:center;">This date is in the past \u2014 use Recurring Weekly to plan from this day of the week going forward</div>' : '')
+    + (isPast && !isOneOff ? '<div style="font-size:0.75rem;color:#8b949e;text-align:center;">This date is in the past \u2014 use Recurring Weekly to plan from this day of the week going forward</div>' : '')
+    + (isPast && isOneOff ? '<div style="font-size:0.75rem;color:#8b949e;text-align:center;">This date is in the past</div>' : '')
     + '<div style="display:flex;gap:0.75rem;">'
-    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',false)"' + (isPast ? ' disabled' : '') + ' style="flex:1;padding:0.5rem 1rem;background:' + (isPast ? '#21262d' : '#238636') + ';border:1px solid ' + (isPast ? '#30363d' : '#2ea043') + ';border-radius:6px;color:' + (isPast ? '#484f58' : 'white') + ';cursor:' + (isPast ? 'not-allowed' : 'pointer') + ';font-size:0.85rem;font-weight:500;">Schedule Once</button>'
-    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',true)" style="flex:1;padding:0.5rem 1rem;background:#1f6feb;border:1px solid #388bfd;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Recurring Weekly</button>'
+    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',false)"' + (isPast ? ' disabled' : '') + ' style="flex:1;padding:0.5rem 1rem;background:' + (isPast ? '#21262d' : '#238636') + ';border:1px solid ' + (isPast ? '#30363d' : '#2ea043') + ';border-radius:6px;color:' + (isPast ? '#484f58' : 'white') + ';cursor:' + (isPast ? 'not-allowed' : 'pointer') + ';font-size:0.85rem;font-weight:500;">Schedule' + (isOneOff ? '' : ' Once') + '</button>'
+    + (isOneOff ? '' : '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',true)" style="flex:1;padding:0.5rem 1rem;background:#1f6feb;border:1px solid #388bfd;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Recurring Weekly</button>')
     + '</div></div>'
     + '</div></div>';
 
   document.body.insertAdjacentHTML('beforeend', html);
 
-  // If time is editable, wire up live clash checking
+  // Wire up live clash checking for time-editable checks; always run initial check for multi-day
+  var isMultiDayCheck = (CAL_CHECK_DURATIONS[checkType] || 60) >= 1440;
   if (needsTime) {
     var timeInput = document.getElementById('calSchedTime');
     if (timeInput) {
       timeInput.addEventListener('input', function() {
         _calCheckTimeClash(aircraftId, date, checkType, this.value);
       });
-      // Check initial value
       _calCheckTimeClash(aircraftId, date, checkType, timeVal);
     }
+  } else if (isMultiDayCheck) {
+    // Multi-day checks: always show clash info even when time is pre-filled
+    _calCheckTimeClash(aircraftId, date, checkType, timeVal);
   }
 }
 
@@ -914,11 +963,35 @@ function _calCheckTimeClash(aircraftId, date, checkType, timeStr) {
   var clashMsg = document.getElementById('calSchedClashMsg');
   if (!clashDiv || !clashMsg) return;
 
+  var duration = CAL_CHECK_DURATIONS[checkType] || 60;
+  var isMultiDay = duration >= 1440; // C/D checks span multiple days
+
+  // Multi-day checks (C/D): count total clashing flights across all spanned days
+  if (isMultiDay) {
+    var spanDays = Math.ceil(duration / 1440);
+    var startDate = new Date(date + 'T00:00:00Z');
+    var clashCount = 0;
+    for (var d = 0; d < spanDays; d++) {
+      var dayDate = new Date(startDate);
+      dayDate.setUTCDate(dayDate.getUTCDate() + d);
+      var dayStr = _calDateStr(dayDate);
+      var dayFlights = _calFlightIndex[aircraftId + ':' + dayStr] || [];
+      clashCount += dayFlights.length;
+    }
+    if (clashCount > 0) {
+      clashMsg.textContent = 'Aircraft will be out of service for ~' + spanDays + ' days \u2014 clashes with ' + clashCount + ' scheduled flight' + (clashCount !== 1 ? 's' : '');
+      clashDiv.style.display = '';
+    } else {
+      clashDiv.style.display = 'none';
+    }
+    return;
+  }
+
+  // Single-day checks: show specific flight clash
   var flights = _calFlightIndex[aircraftId + ':' + date] || [];
   if (flights.length === 0) { clashDiv.style.display = 'none'; return; }
 
   var startMins = _calParseTime(timeStr);
-  var duration = CAL_CHECK_DURATIONS[checkType] || 60;
   var endMins = startMins + duration;
 
   for (var i = 0; i < flights.length; i++) {
@@ -941,20 +1014,25 @@ async function _calScheduleConfirm(aircraftId, date, checkType, recurring) {
   var timeInput = document.getElementById('calSchedTime');
   var startTime = timeInput ? timeInput.value : '03:00';
 
-  // Client-side clash check — block if clashing
+  // Client-side clash check
   var flights = _calFlightIndex[aircraftId + ':' + date] || [];
   var startMins = _calParseTime(startTime);
   var duration = CAL_CHECK_DURATIONS[checkType] || 60;
   var endMins = startMins + duration;
+  var isMultiDay = duration >= 1440;
 
-  for (var i = 0; i < flights.length; i++) {
-    var f = flights[i];
-    var fDep = _calParseTime(f.departureTime);
-    var fArr = _calParseTime(f.arrivalTime);
-    if (fArr <= fDep) fArr += 1440;
-    if (startMins < fArr && endMins > fDep) {
-      alert('Cannot schedule — clashes with ' + (f.flightNum || '') + ' ' + f.depCode + '\u2192' + f.arrCode);
-      return;
+  // Multi-day checks (C/D): warn but allow — aircraft goes out of service
+  // Single-day checks: block on same-day clash
+  if (!isMultiDay) {
+    for (var i = 0; i < flights.length; i++) {
+      var f = flights[i];
+      var fDep = _calParseTime(f.departureTime);
+      var fArr = _calParseTime(f.arrivalTime);
+      if (fArr <= fDep) fArr += 1440;
+      if (startMins < fArr && endMins > fDep) {
+        alert('Cannot schedule — clashes with ' + (f.flightNum || '') + ' ' + f.depCode + '\u2192' + f.arrCode);
+        return;
+      }
     }
   }
 

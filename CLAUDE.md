@@ -49,7 +49,7 @@ Airline management sim. Players run airlines across eras (1950→present): aircr
 - Guard: scheduling aborts when clock invalid/<1980 (prevents epoch-dated orphan rows).
 - On-order aircraft have NULL check dates until delivery.
 - Per-world era scoping is essential — worlds run at different eras.
-- **Maintenance calendar** (`public/js/maintenance-calendar.js`): weekly Gantt view with flight blocks (IATA dest codes), drag-and-drop from sidebar (visible when auto-schedule off), turnaround scheduling for dailies.
+- **Maintenance calendar** (`public/js/maintenance-calendar.js`): weekly Gantt view with flight blocks (IATA dest codes), drag-and-drop from sidebar (visible when auto-schedule off), turnaround scheduling for dailies. A/C/D expiry flags rendered on calendar cells (date-based for C/D, hours-estimated for A). A/C/D checks are schedule-once only (no recurring). Multi-day check clashes show aggregate count, not individual flights.
 
 ## Scaling architecture (LIVE on Railway)
 
