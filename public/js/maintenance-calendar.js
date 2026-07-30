@@ -67,8 +67,6 @@ function calNavWeek(dir) {
   var next = new Date(_calWeekStart);
   next.setUTCDate(next.getUTCDate() + dir * 7);
   var currentMonday = _calGetMonday(_calGetGameTime());
-  // Don't navigate before the current game-time week
-  if (dir < 0 && next < currentMonday) return;
   // Don't navigate beyond 8 weeks ahead
   var maxMonday = new Date(currentMonday);
   maxMonday.setUTCDate(maxMonday.getUTCDate() + CAL_MAX_WEEKS_AHEAD * 7);
@@ -546,7 +544,7 @@ function _calRender() {
           html += ' data-arr-code="' + flight.arrCode + '"';
           html += '>' + fLabel;
           if (hasDailyEmbed) {
-            html += '<span class="cal-flight-daily" title="Daily check during turnaround at ' + fArrKey + '"></span>';
+            html += '<span class="cal-flight-daily" title="Daily check during turnaround at ' + fArrKey + '" onclick="_calBlockClick(\'' + aircraft.id + '\',\'daily\',\'' + dateStr + '\',\'' + fArrKey + '\');event.stopPropagation();"></span>';
           }
           html += '</div>';
         }
@@ -583,7 +581,7 @@ function _calRender() {
           html += '<div class="cal-block check-' + sb2.checkType + '"';
           html += ' style="left:' + leftPct.toFixed(1) + '%;width:' + widthPct.toFixed(1) + '%;top:' + (2 + topOff) + 'px;height:' + Math.max(12, 32 - topOff * 2) + 'px;"';
           html += ' title="' + sb2.checkType.toUpperCase() + ' Check — ' + sb2.startTime + ' (' + _calFmtDuration(sb2.duration) + ')"';
-          html += ' onclick="_calBlockClick(\'' + sb2.aircraftId + '\',\'' + sb2.checkType + '\')"';
+          html += ' onclick="_calBlockClick(\'' + sb2.aircraftId + '\',\'' + sb2.checkType + '\',\'' + dateStr + '\',\'' + (sb2.startTime || '') + '\')"';
           html += '>' + CAL_LABELS[sb2.checkType] + '</div>';
         }
 
@@ -650,7 +648,7 @@ function _calRenderSpanBar(firstBlock, spanGroup, startDayIdx, dayDates) {
   var s = '<div class="cal-block cal-span-bar check-' + firstBlock.checkType + '"';
   s += ' style="left:0;width:' + widthPct + '%;top:2px;height:calc(100% - 4px);"';
   s += ' title="' + tooltip + '"';
-  s += ' onclick="_calBlockClick(\'' + firstBlock.aircraftId + '\',\'' + firstBlock.checkType + '\')"';
+  s += ' onclick="_calBlockClick(\'' + firstBlock.aircraftId + '\',\'' + firstBlock.checkType + '\',\'' + (firstBlock.displayDate || firstBlock.scheduledDate) + '\',\'' + (firstBlock.startTime || '') + '\')"';
   s += '>' + label + '</div>';
   return s;
 }
@@ -849,6 +847,8 @@ function _calShowSchedulePrompt(aircraftId, date, checkType, prefillTime, isTurn
   var dateDisplay = dayNames[dateObj.getDay()] + ' ' + _calFmtDate(dateObj);
   var needsTime = !prefillTime && !isTurnaround;
   var timeVal = prefillTime || '03:00';
+  var gameToday = _calGetGameTime().toISOString().split('T')[0];
+  var isPast = date < gameToday;
 
   var html = '<div id="calSchedulePrompt" onclick="_calCloseSchedulePrompt()" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;justify-content:center;align-items:center;z-index:10000;">'
     + '<div onclick="event.stopPropagation()" style="background:#161b22;border:1px solid #30363d;border-radius:8px;min-width:380px;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">'
@@ -881,10 +881,12 @@ function _calShowSchedulePrompt(aircraftId, date, checkType, prefillTime, isTurn
     + '</div>'
     + '</div>'
     // Footer — once / recurring buttons
-    + '<div style="padding:1rem 1.5rem;border-top:1px solid #30363d;display:flex;gap:0.75rem;">'
-    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',false)" style="flex:1;padding:0.5rem 1rem;background:#238636;border:1px solid #2ea043;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Schedule Once</button>'
+    + '<div style="padding:1rem 1.5rem;border-top:1px solid #30363d;display:flex;flex-direction:column;gap:0.75rem;">'
+    + (isPast ? '<div style="font-size:0.75rem;color:#8b949e;text-align:center;">This date is in the past \u2014 use Recurring Weekly to plan from this day of the week going forward</div>' : '')
+    + '<div style="display:flex;gap:0.75rem;">'
+    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',false)"' + (isPast ? ' disabled' : '') + ' style="flex:1;padding:0.5rem 1rem;background:' + (isPast ? '#21262d' : '#238636') + ';border:1px solid ' + (isPast ? '#30363d' : '#2ea043') + ';border-radius:6px;color:' + (isPast ? '#484f58' : 'white') + ';cursor:' + (isPast ? 'not-allowed' : 'pointer') + ';font-size:0.85rem;font-weight:500;">Schedule Once</button>'
     + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',true)" style="flex:1;padding:0.5rem 1rem;background:#1f6feb;border:1px solid #388bfd;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Recurring Weekly</button>'
-    + '</div>'
+    + '</div></div>'
     + '</div></div>';
 
   document.body.insertAdjacentHTML('beforeend', html);
@@ -966,15 +968,22 @@ async function _calScheduleConfirm(aircraftId, date, checkType, recurring) {
   }
 
   // Build list of dates to schedule
-  var dates = [date];
+  var gameToday = _calGetGameTime().toISOString().split('T')[0];
+  var dates = [];
   if (recurring) {
-    // Schedule same weekday for 8 weeks ahead
+    // Find the next occurrence of the same weekday on or after today, then 8 weeks
     var baseDate = new Date(date + 'T00:00:00Z');
-    for (var w = 1; w <= 7; w++) {
+    // Advance to current/future if the base date is in the past
+    while (_calDateStr(baseDate) < gameToday) {
+      baseDate.setUTCDate(baseDate.getUTCDate() + 7);
+    }
+    for (var w = 0; w < 8; w++) {
       var nextDate = new Date(baseDate);
       nextDate.setUTCDate(nextDate.getUTCDate() + w * 7);
       dates.push(_calDateStr(nextDate));
     }
+  } else {
+    dates = [date];
   }
 
   // Schedule all dates
@@ -1068,21 +1077,302 @@ function _calFmtDuration(mins) {
   return mins + 'm';
 }
 
-function _calBlockClick(aircraftId, checkType) {
-  // Delegate to the existing maintenance modal if available
-  if (typeof showCheckDetails === 'function') {
-    // Find the aircraft in _calData
-    var ac = null;
-    if (_calData && _calData.aircraft) {
-      for (var i = 0; i < _calData.aircraft.length; i++) {
-        if (_calData.aircraft[i].id === aircraftId) { ac = _calData.aircraft[i]; break; }
+// Maintenance task lists (matches scheduling page)
+var CAL_MAINT_TASKS = {
+  daily: [
+    'External visual inspection (fuselage, wings, empennage)',
+    'Check tires, brakes, struts for damage/leaks',
+    'Check fluid levels (oil, hydraulic, oxygen)',
+    'Inspect lights, antennas, probes',
+    'Check engine inlets/exhaust for FOD',
+    'Check avionics cooling and vents',
+    'Review aircraft technical log',
+    'Check emergency equipment status',
+    'Check cabin condition and safety items',
+    'Rectify minor defects if required'
+  ],
+  weekly: [
+    'More detailed exterior inspection',
+    'Operational checks of flight controls',
+    'Check engine oil consumption trends',
+    'Test warning systems and indicators',
+    'Inspect landing gear bays',
+    'Check battery condition and charging',
+    'Check windshield and wipers',
+    'Inspect cabin systems more thoroughly',
+    'Review deferred defects (MEL items)',
+    'Perform scheduled lubrication tasks'
+  ],
+  A: [
+    'Detailed visual inspection of airframe',
+    'Operational checks of avionics systems',
+    'Check and service fluids and filters',
+    'Inspect brakes and wheels (may change)',
+    'Inspect flight control linkages',
+    'Test autopilot and navigation systems',
+    'Inspect engine components (no teardown)',
+    'Check corrosion-prone areas',
+    'Perform software/database updates',
+    'Clear or re-defer MEL items'
+  ],
+  C: [
+    'Extensive airframe inspection (panels removed)',
+    'Detailed structural inspections',
+    'Non-destructive testing (NDT) on structure',
+    'Inspect wiring looms and connectors',
+    'Overhaul or replace major components',
+    'Inspect and service landing gear (partial)',
+    'Corrosion detection and treatment',
+    'Cabin refurbishment and system checks',
+    'Compliance with major ADs and SBs',
+    'Functional testing of all major systems'
+  ],
+  D: [
+    'Complete aircraft teardown (interior & exterior)',
+    'Full structural inspection of fuselage, wings',
+    'Extensive corrosion removal and repair',
+    'Landing gear removed and fully overhauled',
+    'Engines removed (sent for overhaul)',
+    'Replacement of life-limited parts',
+    'Major structural modifications if required',
+    'Full rewiring or harness replacement (if needed)',
+    'Complete repaint of aircraft',
+    'Aircraft essentially rebuilt and re-certified'
+  ]
+};
+
+var _calDetailInterval = null;
+
+function _calBlockClick(aircraftId, checkType, blockDate, blockStartTime) {
+  if (!_calData) return;
+
+  // Find aircraft
+  var ac = null;
+  for (var i = 0; i < _calData.aircraft.length; i++) {
+    if (String(_calData.aircraft[i].id) === String(aircraftId)) { ac = _calData.aircraft[i]; break; }
+  }
+  if (!ac) return;
+
+  // Find the matching maintenance block
+  var block = null;
+  var blocks = _calData.maintenanceBlocks || [];
+  for (var bi = 0; bi < blocks.length; bi++) {
+    var b = blocks[bi];
+    if (String(b.aircraftId) === String(aircraftId) && b.checkType === checkType) {
+      if (blockDate && (b.displayDate || b.scheduledDate) !== blockDate) continue;
+      if (blockStartTime && (b.startTime || '').substring(0, 5) !== blockStartTime.substring(0, 5)) continue;
+      block = b; break;
+    }
+  }
+  if (!block) return;
+
+  // Check if turnaround daily
+  var turnaroundInfo = null;
+  var startTime = (block.startTime || '').substring(0, 5);
+  if (checkType === 'daily') {
+    var cellFlights = _calFlightIndex[aircraftId + ':' + block.scheduledDate] || [];
+    for (var fi = 0; fi < cellFlights.length; fi++) {
+      var f = cellFlights[fi];
+      if ((f.arrivalTime || '').substring(0, 5) === startTime) {
+        turnaroundInfo = {
+          iata: f.arrIata || f.arrCode || '???',
+          flightNum: f.flightNum || '',
+          depCode: f.depIata || f.depCode || '???'
+        };
+        break;
       }
     }
-    if (ac) {
-      // Build a minimal checkStatuses-like object for the modal
-      showCheckDetails(ac.registration, checkType, 'check-valid', {
-        status: 'valid', text: 'Scheduled', expiryText: 'Scheduled on calendar'
-      }, ac);
+  }
+
+  var checkNames = { daily: 'Daily Check', weekly: 'Weekly Check', A: 'A Check', C: 'C Check', D: 'D Check' };
+  var checkColors = { daily: '#F59E0B', weekly: '#8B5CF6', A: '#17A2B8', C: '#6B7280', D: '#4B5563' };
+  var color = checkColors[checkType] || '#6b7280';
+  var subtitle = turnaroundInfo ? 'Turnaround in ' + turnaroundInfo.iata : '';
+
+  // Remove existing
+  var existing = document.getElementById('calDetailModal');
+  if (existing) existing.remove();
+  if (_calDetailInterval) { clearInterval(_calDetailInterval); _calDetailInterval = null; }
+
+  var modalHtml = '<div id="calDetailModal" onclick="if(event.target===this)_calCloseDetail()" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;justify-content:center;align-items:center;z-index:10000;">'
+    + '<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;width:680px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">'
+    // Header
+    + '<div style="padding:1rem 1.25rem;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;background:' + color + '15;">'
+    + '<div style="display:flex;align-items:center;gap:0.75rem;">'
+    + '<span style="background:' + color + ';color:white;padding:0.25rem 0.6rem;border-radius:4px;font-weight:700;font-size:0.9rem;">' + CAL_LABELS[checkType] + '</span>'
+    + '<div>'
+    + '<h3 style="margin:0;color:#f0f6fc;font-size:1rem;">' + (checkNames[checkType] || checkType)
+    + (subtitle ? ' <span style="font-weight:400;font-size:0.8rem;color:#fbbf24;">(' + subtitle + ')</span>' : '') + '</h3>'
+    + '<span style="color:#8b949e;font-size:0.75rem;">' + ac.registration + ' \u2014 ' + (ac.aircraftType || '') + '</span>'
+    + '</div></div>'
+    + '<button onclick="_calCloseDetail()" style="background:none;border:none;color:#8b949e;font-size:1.5rem;cursor:pointer;padding:0;line-height:1;">&times;</button>'
+    + '</div>'
+    // Dynamic content
+    + '<div id="calDetailContent" style="overflow-y:auto;"></div>'
+    // Footer
+    + '<div style="padding:0.75rem 1.25rem;border-top:1px solid #30363d;display:flex;gap:0.75rem;justify-content:flex-end;">'
+    + '<button onclick="_calCloseDetail()" style="padding:0.4rem 0.8rem;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer;font-size:0.8rem;">Close</button>'
+    + '<button onclick="_calRemoveCheck(' + block.id + ')" style="padding:0.4rem 0.8rem;background:#da3633;border:1px solid #f85149;border-radius:6px;color:white;cursor:pointer;font-size:0.8rem;">Remove Check</button>'
+    + '</div></div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  // Render content immediately + start live update
+  _calRenderDetailContent(block, ac, checkType, turnaroundInfo);
+  _calDetailInterval = setInterval(function() {
+    if (!document.getElementById('calDetailModal')) {
+      clearInterval(_calDetailInterval); _calDetailInterval = null; return;
     }
+    _calRenderDetailContent(block, ac, checkType, turnaroundInfo);
+  }, 1000);
+}
+
+function _calRenderDetailContent(block, ac, checkType, turnaroundInfo) {
+  var container = document.getElementById('calDetailContent');
+  if (!container) return;
+
+  var checkIntervals = { daily: '1\u20132 days', weekly: '7\u20138 days', A: '800\u20131000 hrs', C: '~2 years', D: '5\u20137 years' };
+  var durationTexts = { daily: '30\u201390 mins', weekly: '1.5\u20133 hrs', A: '6\u201312 hrs', C: '2\u20134 weeks', D: '2\u20133 months' };
+
+  var startTimeStr = (block.startTime || '00:00').substring(0, 5);
+  var durationMins = block.duration || CAL_CHECK_DURATIONS[checkType] || 60;
+  var isHeavy = checkType === 'C' || checkType === 'D';
+
+  // Calculate end time
+  var stParts = startTimeStr.split(':');
+  var totalEndMins = parseInt(stParts[0]) * 60 + parseInt(stParts[1]) + durationMins;
+  var endH = Math.floor((totalEndMins % 1440) / 60);
+  var endM = totalEndMins % 60;
+  var endTimeStr = String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0');
+  var isOvernight = totalEndMins > 1440 && !isHeavy;
+
+  // Game time for progress
+  var gameTime = _calGetGameTime();
+  var schedDateStr = block.scheduledDate || '';
+  var startDT = new Date(schedDateStr + 'T' + startTimeStr + ':00Z');
+  var endDT = new Date(startDT.getTime() + durationMins * 60000);
+
+  var elapsedMins = 0;
+  var progressPct = 0;
+  var statusText, statusColor, availText;
+  var now = gameTime.getTime();
+
+  if (now < startDT.getTime()) {
+    statusText = 'SCHEDULED'; statusColor = '#58a6ff'; availText = 'Starts ' + startTimeStr;
+    elapsedMins = 0; progressPct = 0;
+  } else if (now >= endDT.getTime()) {
+    statusText = 'COMPLETED'; statusColor = '#3fb950';
+    availText = isHeavy ? 'Completed' : 'Completed at ' + endTimeStr + (isOvernight ? ' (next day)' : '');
+    elapsedMins = durationMins; progressPct = 100;
+  } else {
+    statusText = 'IN PROGRESS'; statusColor = '#ffa657';
+    elapsedMins = Math.floor((now - startDT.getTime()) / 60000);
+    progressPct = Math.min(100, Math.round((elapsedMins / durationMins) * 100));
+    var remMins = durationMins - elapsedMins;
+    if (isHeavy) {
+      var remDays = Math.ceil(remMins / 1440);
+      availText = '~' + remDays + ' day' + (remDays !== 1 ? 's' : '') + ' remaining';
+    } else {
+      var remH = Math.floor(remMins / 60); var remM = remMins % 60;
+      availText = '~' + remH + 'h ' + remM + 'm remaining';
+    }
+  }
+
+  // Completion date for heavy checks
+  var completionText = '';
+  if (isHeavy) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    completionText = endDT.getUTCDate() + ' ' + months[endDT.getUTCMonth()] + ' ' + endDT.getUTCFullYear();
+  }
+
+  // Schedule date display
+  var schedDisplay = isHeavy ? startTimeStr + ' (' + schedDateStr + ')' : startTimeStr;
+  var endDisplay = isHeavy ? completionText : endTimeStr + (isOvernight ? ' (next day)' : '');
+
+  // Tasks with progress
+  var tasks = CAL_MAINT_TASKS[checkType] || [];
+  var taskCount = tasks.length;
+  var minsPerTask = taskCount > 0 ? durationMins / taskCount : 0;
+  var completedTasks = 0;
+  var taskHtml = '';
+  for (var ti = 0; ti < tasks.length; ti++) {
+    var taskStart = ti * minsPerTask;
+    var taskEnd = (ti + 1) * minsPerTask;
+    var icon, style;
+    if (elapsedMins >= taskEnd) {
+      icon = '\u2713'; style = 'color:#3fb950;text-decoration:line-through;opacity:0.7;'; completedTasks++;
+    } else if (elapsedMins >= taskStart) {
+      icon = '\u21BB'; style = 'color:#ffa657;font-weight:600;';
+    } else {
+      icon = '\u25CB'; style = 'color:#8b949e;';
+    }
+    var iconColor = elapsedMins >= taskEnd ? '#3fb950' : elapsedMins >= taskStart ? '#ffa657' : '#484f58';
+    taskHtml += '<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.4rem 0.5rem;background:#21262d;border-radius:4px;">'
+      + '<span style="width:16px;text-align:center;flex-shrink:0;color:' + iconColor + ';">' + icon + '</span>'
+      + '<span style="' + style + 'font-size:0.78rem;line-height:1.3;">' + tasks[ti] + '</span>'
+      + '</div>';
+  }
+
+  // Turnaround info banner
+  var turnaroundHtml = '';
+  if (turnaroundInfo) {
+    turnaroundHtml = '<div style="padding:0.75rem 1.25rem;border-bottom:1px solid #30363d;background:rgba(251,191,36,0.08);">'
+      + '<div style="display:flex;align-items:center;gap:0.5rem;">'
+      + '<span style="color:#fbbf24;font-size:1rem;">\u2708</span>'
+      + '<span style="color:#fbbf24;font-weight:600;font-size:0.85rem;">Will be conducted on the turnaround in ' + turnaroundInfo.iata + '</span>'
+      + '</div>'
+      + '<div style="color:#8b949e;font-size:0.75rem;margin-top:0.25rem;">'
+      + turnaroundInfo.flightNum + ' ' + turnaroundInfo.depCode + ' \u2192 ' + turnaroundInfo.iata + ', arriving ' + startTimeStr + ' UTC'
+      + '</div></div>';
+  }
+
+  container.innerHTML = turnaroundHtml
+    // Status & Progress
+    + '<div style="padding:1rem 1.25rem;border-bottom:1px solid #30363d;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">'
+    + '<span style="color:' + statusColor + ';font-weight:600;font-size:0.9rem;">' + statusText + '</span>'
+    + '<span style="color:#f0f6fc;font-size:0.85rem;">' + progressPct + '% Complete</span>'
+    + '</div>'
+    + '<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden;">'
+    + '<div style="background:' + statusColor + ';height:100%;width:' + progressPct + '%;transition:width 0.3s;"></div>'
+    + '</div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:0.5rem;font-size:0.75rem;color:#8b949e;">'
+    + '<span>' + schedDisplay + '</span><span>' + endDisplay + '</span>'
+    + '</div></div>'
+    // Info grid
+    + '<div style="padding:0.75rem 1.25rem;border-bottom:1px solid #30363d;display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.8rem;">'
+    + '<div><span style="color:#8b949e;">Duration:</span><span style="color:#f0f6fc;margin-left:0.5rem;">' + (durationTexts[checkType] || durationMins + ' mins') + '</span></div>'
+    + '<div><span style="color:#8b949e;">Interval:</span><span style="color:#f0f6fc;margin-left:0.5rem;">' + (checkIntervals[checkType] || '') + '</span></div>'
+    + '<div style="grid-column:span 2;"><span style="color:#8b949e;">Availability:</span><span style="color:#58a6ff;margin-left:0.5rem;font-weight:500;">' + availText + '</span></div>'
+    + '</div>'
+    // Work items
+    + '<div style="padding:0.75rem 1.25rem;">'
+    + '<div style="color:#f0f6fc;font-size:0.85rem;font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem;">'
+    + '<span>Work Items</span>'
+    + '<span style="color:#8b949e;font-weight:400;font-size:0.75rem;">(' + completedTasks + '/' + taskCount + ' complete)</span>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;">' + taskHtml + '</div>'
+    + '</div>';
+}
+
+function _calCloseDetail() {
+  if (_calDetailInterval) { clearInterval(_calDetailInterval); _calDetailInterval = null; }
+  var el = document.getElementById('calDetailModal');
+  if (el) el.remove();
+}
+
+async function _calRemoveCheck(maintId) {
+  _calCloseDetail();
+  try {
+    var res = await fetch('/api/schedule/maintenance/' + maintId, { method: 'DELETE' });
+    if (res.ok) {
+      _calShowNotice('Check removed');
+      loadCalendarData();
+    } else {
+      alert('Failed to remove check');
+    }
+  } catch (err) {
+    console.error('Error removing check:', err);
+    alert('Failed to remove check');
   }
 }

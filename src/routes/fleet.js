@@ -819,13 +819,46 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     let basePreferredStarts;
 
     if (checkType === 'daily') {
-      // Daily checks: prefer early morning 03:00-06:00
-      basePreferredStarts = [
-        180, 210, 240, 270, 300, 330, 360,  // 03:00-06:00 (ideal for daily)
-        150, 120, 90, 60, 30, 0,  // 02:30-00:00 (secondary)
-        1380, 1410, 1350, 1320, 1290, 1260,  // 23:00-21:00 (secondary)
-        420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200  // 07:00-20:00 (daytime last resort)
-      ];
+      // Daily checks — structured priority:
+      // 1. Early morning (00:00-06:00) — realistic overnight maintenance
+      // 2. Turnaround at outstation — daily done between legs
+      // 3. Evening (21:00-23:59) — after last flight of the day
+      basePreferredStarts = [];
+
+      // Tier 1: Early morning 00:00-06:00 (every 15 mins, shuffled per-aircraft)
+      const earlyMorning = [];
+      for (let m = 0; m <= 360; m += 15) earlyMorning.push(m);
+      // Stagger across fleet using aircraft index
+      for (let e = 0; e < earlyMorning.length; e++) {
+        basePreferredStarts.push(earlyMorning[(e + aircraftFleetIndex * 3) % earlyMorning.length]);
+      }
+
+      // Tier 2: Turnaround windows — find arrival times of flights on this day
+      const targetDate = new Date(dateStr + 'T00:00:00');
+      const targetDow = targetDate.getDay();
+      const dayTemplates = flightsByDow[targetDow] || [];
+      for (const fl of dayTemplates) {
+        const arrTime = fl.arrivalTime || '';
+        if (!arrTime) continue;
+        const [aH, aM] = arrTime.split(':').map(Number);
+        const arrMins = aH * 60 + (aM || 0);
+        // Turnaround starts at half the flight duration (arrival at outstation)
+        const turnaroundTime = fl.route?.turnaroundTime || 45;
+        const totalDur = fl.totalDurationMinutes || 120;
+        const outboundMins = Math.round((totalDur - turnaroundTime) / 2);
+        const [dH, dM] = fl.departureTime.split(':').map(Number);
+        const depMins = dH * 60 + dM;
+        const destArrMins = depMins + outboundMins;
+        if (destArrMins >= 0 && destArrMins < 1440) {
+          basePreferredStarts.push(destArrMins);
+        }
+      }
+
+      // Tier 3: Evening 21:00-23:59
+      for (let m = 1260; m < 1440; m += 15) basePreferredStarts.push(m);
+
+      // Tier 4: Daytime last resort 07:00-20:00
+      for (let m = 420; m < 1200; m += 30) basePreferredStarts.push(m);
     } else {
       // Other checks (weekly, A, C, D): prefer overnight 21:00-04:30
       basePreferredStarts = [
@@ -857,12 +890,10 @@ async function createAutoScheduledMaintenance(aircraftId, checkTypes, worldId = 
     // For multi-day checks (C/D), only check for conflicts on the first day
     const isMultiDay = duration > 1440;
 
-    // ── Randomised placement (primary, single-day checks) ──
-    // Engineers can't work the whole fleet at once: scatter each check
-    // uniformly across the day's actual free gaps instead of every aircraft
-    // walking the same preference ladder (which produced one synchronized
-    // 03:00 stripe of dailies). The ladder below remains the fallback.
-    if (!isMultiDay) {
+    // ── Randomised placement (non-daily single-day checks) ──
+    // Daily checks use the structured priority ladder (early morning → turnaround → evening).
+    // Other checks scatter uniformly across free gaps to avoid fleet-wide synchronisation.
+    if (!isMultiDay && checkType !== 'daily') {
       const gaps = [];
       let cursor = 0;
       for (const busy of busyPeriods) {
