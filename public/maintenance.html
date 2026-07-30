@@ -593,6 +593,18 @@
     white-space: nowrap;
     overflow: hidden;
   }
+  .cal-flight-daily {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    background: #F59E0B;
+    border-radius: 1px;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.6);
+  }
   .cal-flight.cal-flight-droppable {
     pointer-events: auto;
     cursor: pointer;
@@ -641,60 +653,37 @@
   .cal-sidebar-list {
     overflow-y: auto;
     flex: 1;
-    padding: 0.3rem;
-  }
-  .cal-sidebar-group {
-    margin-bottom: 0.2rem;
-  }
-  .cal-sidebar-type-header {
+    padding: 0.4rem;
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.4rem 0.25rem;
-  }
-  .cal-sidebar-type-header .check-badge {
-    display: inline-block;
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
-    font-size: 0.6rem;
-    font-weight: 700;
-    color: #fff;
-    flex-shrink: 0;
+    flex-direction: column;
+    gap: 0.3rem;
   }
   .cal-sidebar-item {
     background: var(--surface-elevated);
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    padding: 0.3rem 0.5rem;
-    margin: 0 0.15rem 0.2rem;
+    padding: 0.5rem 0.6rem;
     cursor: grab;
     transition: background 0.15s, border-color 0.15s;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.7rem;
+    gap: 0.5rem;
+    font-size: 0.75rem;
   }
   .cal-sidebar-item:hover {
     background: var(--surface);
     border-color: var(--accent-color);
   }
   .cal-sidebar-item:active { cursor: grabbing; }
-  .cal-sidebar-reg {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--accent-color);
-    font-family: 'Courier New', monospace;
-  }
-  .cal-sidebar-item .severity-badge {
-    font-size: 0.55rem;
-    font-weight: 600;
-    padding: 0.1rem 0.25rem;
+  .cal-sidebar-item .check-badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
     border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #fff;
     flex-shrink: 0;
-    margin-left: auto;
   }
-  .severity-expired { background: rgba(239,68,68,0.15); color: #ef4444; }
-  .severity-warning { background: rgba(217,119,6,0.15); color: #d97706; }
 </style>
 
 <div class="dashboard-container">

@@ -61,11 +61,21 @@ function _calDateStr(d) {
 
 // ── Week navigation ─────────────────────────────────────────────────────────
 
+var CAL_MAX_WEEKS_AHEAD = 8;
+
 function calNavWeek(dir) {
   var next = new Date(_calWeekStart);
   next.setUTCDate(next.getUTCDate() + dir * 7);
+  var currentMonday = _calGetMonday(_calGetGameTime());
   // Don't navigate before the current game-time week
-  if (dir < 0 && next < _calGetMonday(_calGetGameTime())) return;
+  if (dir < 0 && next < currentMonday) return;
+  // Don't navigate beyond 8 weeks ahead
+  var maxMonday = new Date(currentMonday);
+  maxMonday.setUTCDate(maxMonday.getUTCDate() + CAL_MAX_WEEKS_AHEAD * 7);
+  if (dir > 0 && next >= maxMonday) {
+    _calShowNotice('Flight schedules repeat weekly \u2014 maintenance is only planned up to ' + CAL_MAX_WEEKS_AHEAD + ' weeks ahead.');
+    return;
+  }
   _calWeekStart = next;
   loadCalendarData();
 }
@@ -495,8 +505,21 @@ function _calRender() {
         html += ' ondragover="_calDragOver(event)" ondragleave="_calDragLeave(event)" ondrop="_calDrop(event)"';
         html += '>';
 
-        // Render flight blocks as background context
+        // Build set of daily checks attached to flight turnarounds
+        // (daily startTime matches a flight's arrivalTime → embedded in flight block)
+        var embeddedDailies = {}; // key: flight arrival time → true
         var cellFlights = _calFlightIndex[cellKey] || [];
+        for (var edck = 0; edck < cellBlocks.length; edck++) {
+          var edBlk = cellBlocks[edck];
+          if (edBlk.checkType !== 'daily' || edBlk.spanDays > 1) continue;
+          var edStart = (edBlk.startTime || '').substring(0, 5);
+          for (var edf = 0; edf < cellFlights.length; edf++) {
+            var edArr = (cellFlights[edf].arrivalTime || '').substring(0, 5);
+            if (edStart === edArr) { embeddedDailies[edStart] = true; break; }
+          }
+        }
+
+        // Render flight blocks as background context
         for (var fli = 0; fli < cellFlights.length; fli++) {
           var flight = cellFlights[fli];
           var fDepMins = _calParseTime(flight.departureTime);
@@ -508,6 +531,11 @@ function _calRender() {
           // Make droppable when dragging a daily check for this aircraft
           var droppableClass = _calDragCheck && _calDragCheck.checkType === 'daily' ? ' cal-flight-droppable' : '';
           var fLabel = flight.arrIata || flight.arrCode || '?';
+
+          // Check if a daily is embedded in this flight's turnaround
+          var fArrKey = (flight.arrivalTime || '').substring(0, 5);
+          var hasDailyEmbed = embeddedDailies[fArrKey];
+
           html += '<div class="cal-flight' + droppableClass + '"';
           html += ' style="left:' + fLeftPct.toFixed(1) + '%;width:' + fWidthPct.toFixed(1) + '%;"';
           html += ' title="' + (flight.flightNum || '') + ' ' + flight.depCode + '\u2192' + flight.arrCode + ' dep ' + flight.departureTime + ' arr ' + flight.arrivalTime + '"';
@@ -516,7 +544,11 @@ function _calRender() {
           html += ' data-flight-num="' + (flight.flightNum || '') + '"';
           html += ' data-dep-code="' + flight.depCode + '"';
           html += ' data-arr-code="' + flight.arrCode + '"';
-          html += '>' + fLabel + '</div>';
+          html += '>' + fLabel;
+          if (hasDailyEmbed) {
+            html += '<span class="cal-flight-daily" title="Daily check during turnaround at ' + fArrKey + '"></span>';
+          }
+          html += '</div>';
         }
 
         // Render blocks in this cell
@@ -534,6 +566,8 @@ function _calRender() {
               renderedSpanIds[block.id] = true;
             }
           } else {
+            // Skip dailies that are embedded in flight blocks
+            if (block.checkType === 'daily' && embeddedDailies[(block.startTime || '').substring(0, 5)]) continue;
             singleBlocks.push(block);
           }
         }
@@ -655,54 +689,20 @@ function _calRenderSidebar() {
   }
 
   var html = '';
-  var pending = _calData.pendingChecks || [];
 
-  // Build lookup of pending checks by aircraftId:checkType
-  var pendingMap = {};
-  for (var pi = 0; pi < pending.length; pi++) {
-    var pk = pending[pi].aircraftId + ':' + pending[pi].checkType;
-    pendingMap[pk] = pending[pi];
-  }
-
-  // Render a section per disabled check type
+  // One draggable item per disabled check type — drop target cell determines aircraft
   for (var ti = 0; ti < checkTypes.length; ti++) {
     var cType = checkTypes[ti];
     if (!disabledTypes[cType]) continue;
 
     var color = CAL_COLORS[cType] || '#666';
-    html += '<div class="cal-sidebar-group">';
-    html += '<div class="cal-sidebar-type-header">';
+    html += '<div class="cal-sidebar-item" draggable="true"';
+    html += ' data-check-type="' + cType + '"';
+    html += ' ondragstart="_calSidebarDragStart(event)"';
+    html += ' ondragend="_calSidebarDragEnd(event)"';
+    html += '>';
     html += '<span class="check-badge" style="background:' + color + ';">' + CAL_LABELS[cType] + '</span>';
-    html += '<span style="font-size:0.7rem;font-weight:600;color:var(--text-primary);">' + checkNames[cType] + '</span>';
-    html += '</div>';
-
-    // Show ALL aircraft with this check type disabled as draggable items
-    var field = fieldMap[cType];
-    for (var ai = 0; ai < ac.length; ai++) {
-      var a = ac[ai];
-      if (a[field]) continue; // auto-schedule on — skip
-
-      var pKey = a.id + ':' + cType;
-      var pItem = pendingMap[pKey];
-      var sevHtml = '';
-      if (pItem) {
-        var sevClass = pItem.severity === 'expired' ? 'severity-expired' : 'severity-warning';
-        var sevLabel = pItem.severity === 'expired' ? 'EXP' : 'DUE';
-        sevHtml = '<span class="severity-badge ' + sevClass + '">' + sevLabel + '</span>';
-      }
-
-      html += '<div class="cal-sidebar-item" draggable="true"';
-      html += ' data-aircraft-id="' + a.id + '"';
-      html += ' data-check-type="' + cType + '"';
-      html += ' data-registration="' + a.registration + '"';
-      html += ' ondragstart="_calSidebarDragStart(event)"';
-      html += ' ondragend="_calSidebarDragEnd(event)"';
-      html += '>';
-      html += '<span class="cal-sidebar-reg">' + a.registration + '</span>';
-      html += sevHtml;
-      html += '</div>';
-    }
-
+    html += '<span style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">' + checkNames[cType] + '</span>';
     html += '</div>';
   }
 
@@ -720,12 +720,10 @@ function _calSidebarDragStart(event) {
   var item = event.target.closest('.cal-sidebar-item');
   if (!item) return;
   _calDragCheck = {
-    aircraftId: item.getAttribute('data-aircraft-id'),
-    checkType: item.getAttribute('data-check-type'),
-    registration: item.getAttribute('data-registration')
+    checkType: item.getAttribute('data-check-type')
   };
   event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', _calDragCheck.aircraftId + ':' + _calDragCheck.checkType);
+  event.dataTransfer.setData('text/plain', _calDragCheck.checkType);
   item.style.opacity = '0.5';
 
   // If dragging a daily check, enable flight blocks as drop targets
@@ -764,13 +762,7 @@ function _calDragOver(event) {
   event.dataTransfer.dropEffect = 'move';
 
   var cell = event.target.closest('.cal-cell');
-  if (!cell) return;
-
-  // Only highlight if this cell's aircraft matches the dragged check
-  var cellAcId = cell.getAttribute('data-aircraft-id');
-  if (cellAcId === _calDragCheck.aircraftId) {
-    cell.classList.add('drag-over');
-  }
+  if (cell) cell.classList.add('drag-over');
 }
 
 function _calDragLeave(event) {
@@ -786,31 +778,12 @@ async function _calDrop(event) {
 
   var cellAcId = cell.getAttribute('data-aircraft-id');
   var cellDate = cell.getAttribute('data-date');
-  if (cellAcId !== _calDragCheck.aircraftId) return;
+  if (!cellAcId) return;
 
-  // Schedule the check via API
-  try {
-    var res = await fetch('/api/fleet/maintenance/schedule', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aircraftId: _calDragCheck.aircraftId,
-        checkType: _calDragCheck.checkType,
-        scheduledDate: cellDate
-      })
-    });
-    var data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Failed to schedule');
-      return;
-    }
-    // Reload calendar to show the new check
-    _calDragCheck = null;
-    loadCalendarData();
-  } catch (err) {
-    console.error('Error scheduling maintenance:', err);
-    alert('Failed to schedule maintenance');
-  }
+  // Show schedule prompt — user picks time and once/recurring
+  var checkType = _calDragCheck.checkType;
+  _calDragCheck = null;
+  _calShowSchedulePrompt(cellAcId, cellDate, checkType, null);
 }
 
 // ── Flight block drag handlers (daily check → turnaround) ──────────────────
@@ -836,48 +809,211 @@ async function _calFlightDrop(event) {
   if (!flightEl || !_calDragCheck || _calDragCheck.checkType !== 'daily') return;
   flightEl.classList.remove('drag-over-flight');
 
-  // Get the parent cell for date + aircraft ID
   var cell = flightEl.closest('.cal-cell');
   if (!cell) return;
   var cellAcId = cell.getAttribute('data-aircraft-id');
   var cellDate = cell.getAttribute('data-date');
-  if (cellAcId !== _calDragCheck.aircraftId) return;
+  if (!cellAcId) return;
 
-  // Get turnaround time from the flight block
+  // Pre-fill time from the flight's arrival (turnaround slot)
   var arrivalTime = flightEl.getAttribute('data-arrival-time') || '12:00';
-  var flightNum = flightEl.getAttribute('data-flight-num') || '';
-  var depCode = flightEl.getAttribute('data-dep-code') || '';
-  var arrCode = flightEl.getAttribute('data-arr-code') || '';
+  var checkType = _calDragCheck.checkType;
+  _calDragCheck = null;
+  _calShowSchedulePrompt(cellAcId, cellDate, checkType, arrivalTime, true);
+}
 
-  // Schedule the daily check at the turnaround (arrival time)
-  try {
-    var res = await fetch('/api/fleet/maintenance/schedule', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aircraftId: _calDragCheck.aircraftId,
-        checkType: 'daily',
-        scheduledDate: cellDate,
-        startTime: arrivalTime
-      })
-    });
-    var data = await res.json();
-    if (!res.ok) {
-      alert(data.error || 'Failed to schedule');
+// ── Schedule prompt (time + once/recurring) ─────────────────────────────────
+
+// Check durations in minutes (narrowbody baseline — matches server config)
+var CAL_CHECK_DURATIONS = { daily: 60, weekly: 135, A: 540, C: 30240, D: 108000 };
+
+function _calShowSchedulePrompt(aircraftId, date, checkType, prefillTime, isTurnaround) {
+  var existing = document.getElementById('calSchedulePrompt');
+  if (existing) existing.remove();
+
+  // Find aircraft registration for display
+  var reg = aircraftId;
+  if (_calData && _calData.aircraft) {
+    for (var i = 0; i < _calData.aircraft.length; i++) {
+      if (String(_calData.aircraft[i].id) === String(aircraftId)) {
+        reg = _calData.aircraft[i].registration;
+        break;
+      }
+    }
+  }
+
+  var checkLabel = (CAL_LABELS[checkType] || checkType) + ' Check';
+  var dateParts = date.split('-');
+  var dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+  var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var dateDisplay = dayNames[dateObj.getDay()] + ' ' + _calFmtDate(dateObj);
+  var needsTime = !prefillTime && !isTurnaround;
+  var timeVal = prefillTime || '03:00';
+
+  var html = '<div id="calSchedulePrompt" onclick="_calCloseSchedulePrompt()" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;justify-content:center;align-items:center;z-index:10000;">'
+    + '<div onclick="event.stopPropagation()" style="background:#161b22;border:1px solid #30363d;border-radius:8px;min-width:380px;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">'
+    // Header
+    + '<div style="padding:1rem 1.5rem;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;">'
+    + '<h3 style="margin:0;color:#f0f6fc;font-size:1rem;">Schedule ' + checkLabel + '</h3>'
+    + '<button onclick="_calCloseSchedulePrompt()" style="background:none;border:none;color:#8b949e;font-size:1.5rem;cursor:pointer;padding:0;line-height:1;">&times;</button>'
+    + '</div>'
+    // Body
+    + '<div style="padding:1.25rem 1.5rem;">'
+    + '<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">'
+    + '<span style="color:var(--accent-color);font-family:\'Courier New\',monospace;font-weight:600;font-size:0.95rem;">' + reg + '</span>'
+    + '<span style="color:#8b949e;font-size:0.85rem;">' + dateDisplay + '</span>'
+    + '</div>'
+    // Time input (hidden for turnaround drops — time is fixed)
+    + (isTurnaround
+      ? '<input type="hidden" id="calSchedTime" value="' + timeVal + '">'
+        + '<div style="margin-bottom:1rem;padding:0.5rem 0.6rem;background:#0d1117;border:1px solid #30363d;border-radius:6px;">'
+        + '<span style="color:#8b949e;font-size:0.75rem;">At outstation during turnaround, </span>'
+        + '<span style="color:#f0f6fc;font-family:\'Courier New\',monospace;font-size:0.95rem;">' + timeVal + ' UTC</span>'
+        + '</div>'
+      : '<div style="margin-bottom:1rem;">'
+        + '<label style="display:block;color:#8b949e;font-size:0.75rem;margin-bottom:0.35rem;text-transform:uppercase;letter-spacing:0.05em;">Start Time (UTC)</label>'
+        + '<input type="time" id="calSchedTime" value="' + timeVal + '" style="width:100%;padding:0.5rem;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f0f6fc;font-size:0.95rem;font-family:\'Courier New\',monospace;">'
+        + '</div>'
+    )
+    // Clash warning (hidden by default)
+    + '<div id="calSchedClash" style="display:none;padding:0.6rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);border-radius:6px;margin-bottom:1rem;">'
+    + '<p style="color:#f85149;margin:0;font-size:0.8rem;" id="calSchedClashMsg"></p>'
+    + '</div>'
+    + '</div>'
+    // Footer — once / recurring buttons
+    + '<div style="padding:1rem 1.5rem;border-top:1px solid #30363d;display:flex;gap:0.75rem;">'
+    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',false)" style="flex:1;padding:0.5rem 1rem;background:#238636;border:1px solid #2ea043;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Schedule Once</button>'
+    + '<button onclick="_calScheduleConfirm(\'' + aircraftId + '\',\'' + date + '\',\'' + checkType + '\',true)" style="flex:1;padding:0.5rem 1rem;background:#1f6feb;border:1px solid #388bfd;border-radius:6px;color:white;cursor:pointer;font-size:0.85rem;font-weight:500;">Recurring Weekly</button>'
+    + '</div>'
+    + '</div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // If time is editable, wire up live clash checking
+  if (needsTime) {
+    var timeInput = document.getElementById('calSchedTime');
+    if (timeInput) {
+      timeInput.addEventListener('input', function() {
+        _calCheckTimeClash(aircraftId, date, checkType, this.value);
+      });
+      // Check initial value
+      _calCheckTimeClash(aircraftId, date, checkType, timeVal);
+    }
+  }
+}
+
+function _calCloseSchedulePrompt() {
+  var el = document.getElementById('calSchedulePrompt');
+  if (el) el.remove();
+}
+
+function _calCheckTimeClash(aircraftId, date, checkType, timeStr) {
+  var clashDiv = document.getElementById('calSchedClash');
+  var clashMsg = document.getElementById('calSchedClashMsg');
+  if (!clashDiv || !clashMsg) return;
+
+  var flights = _calFlightIndex[aircraftId + ':' + date] || [];
+  if (flights.length === 0) { clashDiv.style.display = 'none'; return; }
+
+  var startMins = _calParseTime(timeStr);
+  var duration = CAL_CHECK_DURATIONS[checkType] || 60;
+  var endMins = startMins + duration;
+
+  for (var i = 0; i < flights.length; i++) {
+    var f = flights[i];
+    var fDep = _calParseTime(f.departureTime);
+    var fArr = _calParseTime(f.arrivalTime);
+    // Handle overnight flights
+    if (fArr <= fDep) fArr += 1440;
+    // Check overlap
+    if (startMins < fArr && endMins > fDep) {
+      clashMsg.textContent = 'Clashes with ' + (f.flightNum || '') + ' ' + f.depCode + '\u2192' + f.arrCode + ' (' + f.departureTime + '\u2013' + f.arrivalTime + ')';
+      clashDiv.style.display = '';
       return;
     }
-    // Notify user this was scheduled on the turnaround
-    var msg = 'Daily check scheduled during turnaround';
-    if (flightNum) msg += ' after ' + flightNum;
-    msg += ' (' + depCode + '\u2192' + arrCode + ')';
-    msg += ' arriving at ' + arrivalTime;
-    _calShowNotice(msg);
+  }
+  clashDiv.style.display = 'none';
+}
 
-    _calDragCheck = null;
+async function _calScheduleConfirm(aircraftId, date, checkType, recurring) {
+  var timeInput = document.getElementById('calSchedTime');
+  var startTime = timeInput ? timeInput.value : '03:00';
+
+  // Client-side clash check — block if clashing
+  var flights = _calFlightIndex[aircraftId + ':' + date] || [];
+  var startMins = _calParseTime(startTime);
+  var duration = CAL_CHECK_DURATIONS[checkType] || 60;
+  var endMins = startMins + duration;
+
+  for (var i = 0; i < flights.length; i++) {
+    var f = flights[i];
+    var fDep = _calParseTime(f.departureTime);
+    var fArr = _calParseTime(f.arrivalTime);
+    if (fArr <= fDep) fArr += 1440;
+    if (startMins < fArr && endMins > fDep) {
+      alert('Cannot schedule — clashes with ' + (f.flightNum || '') + ' ' + f.depCode + '\u2192' + f.arrCode);
+      return;
+    }
+  }
+
+  // Show loading state in the modal
+  var footer = document.querySelector('#calSchedulePrompt div:last-child > div:last-child');
+  if (footer) {
+    footer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.5rem;">'
+      + '<span class="cell-spinner" style="width:14px;height:14px;border-width:2px;color:var(--accent-color);"></span>'
+      + '<span style="color:#8b949e;font-size:0.85rem;">Scheduling' + (recurring ? ' 8 weeks' : '') + '\u2026</span>'
+      + '</div>';
+  }
+
+  // Build list of dates to schedule
+  var dates = [date];
+  if (recurring) {
+    // Schedule same weekday for 8 weeks ahead
+    var baseDate = new Date(date + 'T00:00:00Z');
+    for (var w = 1; w <= 7; w++) {
+      var nextDate = new Date(baseDate);
+      nextDate.setUTCDate(nextDate.getUTCDate() + w * 7);
+      dates.push(_calDateStr(nextDate));
+    }
+  }
+
+  // Schedule all dates
+  var successCount = 0;
+  var errors = [];
+  for (var di = 0; di < dates.length; di++) {
+    try {
+      var res = await fetch('/api/fleet/maintenance/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aircraftId: aircraftId,
+          checkType: checkType,
+          scheduledDate: dates[di],
+          startTime: startTime
+        })
+      });
+      var data = await res.json();
+      if (res.ok) {
+        successCount++;
+      } else {
+        errors.push(dates[di] + ': ' + (data.error || 'Failed'));
+      }
+    } catch (err) {
+      errors.push(dates[di] + ': ' + err.message);
+    }
+  }
+
+  _calCloseSchedulePrompt();
+
+  if (successCount > 0) {
+    var msg = checkType.charAt(0).toUpperCase() + checkType.slice(1) + ' check scheduled';
+    if (recurring) msg += ' for ' + successCount + ' weeks';
+    msg += ' at ' + startTime;
+    _calShowNotice(msg);
     loadCalendarData();
-  } catch (err) {
-    console.error('Error scheduling on turnaround:', err);
-    alert('Failed to schedule maintenance');
+  }
+  if (errors.length > 0) {
+    alert('Some dates failed:\n' + errors.join('\n'));
   }
 }
 
@@ -906,9 +1042,7 @@ var _calArmedPlacement = null;
 
 function _calTapSidebarItem(item) {
   _calArmedPlacement = {
-    aircraftId: item.getAttribute('data-aircraft-id'),
-    checkType: item.getAttribute('data-check-type'),
-    registration: item.getAttribute('data-registration')
+    checkType: item.getAttribute('data-check-type')
   };
   // Highlight the item
   var items = document.querySelectorAll('.cal-sidebar-item');
