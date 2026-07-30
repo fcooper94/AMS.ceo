@@ -1,5 +1,28 @@
 let allAircraft = [];
 let aircraftTypes = [];
+let currentMaintenanceTab = 'status';
+let calendarLoaded = false;
+
+function switchMaintenanceTab(tab) {
+  currentMaintenanceTab = tab;
+  var statusEl = document.getElementById('statusTabContent');
+  var calEl = document.getElementById('calendarTabContent');
+  if (statusEl) statusEl.style.display = tab === 'status' ? '' : 'none';
+  if (calEl) calEl.style.display = tab === 'calendar' ? '' : 'none';
+  // Update tab button styles
+  document.querySelectorAll('.maint-tab').forEach(function(btn) {
+    if (btn.getAttribute('data-tab') === tab) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  // Lazy-load calendar on first switch
+  if (tab === 'calendar' && !calendarLoaded && typeof initCalendar === 'function') {
+    calendarLoaded = true;
+    initCalendar();
+  }
+}
 
 // Generate deterministic random interval for A, C, and D checks based on aircraft ID
 function getCheckIntervalForAircraft(aircraftId, checkType) {
@@ -656,6 +679,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // Periodically refresh data from server (every 30 seconds)
 setInterval(() => {
   if (document.visibilityState === 'visible') {
-    loadMaintenanceData();
+    if (currentMaintenanceTab === 'status') {
+      loadMaintenanceData();
+    } else if (currentMaintenanceTab === 'calendar' && typeof loadCalendarData === 'function') {
+      loadCalendarData();
+    }
   }
 }, 30000);

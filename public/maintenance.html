@@ -1,6 +1,6 @@
 <!-- TITLE: Aircraft Maintenance - AMS.ceo -->
 <!-- SUBTITLE: Maintenance Status -->
-<!-- SCRIPTS: /js/maintenance.js -->
+<!-- SCRIPTS: /js/maintenance.js,/js/maintenance-calendar.js -->
 
 <style>
   .check-status {
@@ -389,14 +389,318 @@
       flex-direction: row;
     }
   }
+
+  /* Tab switcher */
+  .maint-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 0.75rem;
+  }
+  .maint-tab {
+    padding: 0.4rem 1.2rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid var(--border-color);
+    background: var(--surface-elevated);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .maint-tab:first-child { border-radius: 4px 0 0 4px; }
+  .maint-tab:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+  .maint-tab.active {
+    background: var(--accent-color);
+    color: #fff;
+    border-color: var(--accent-color);
+  }
+
+  /* Calendar grid */
+  .cal-header-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+  }
+  .cal-nav-btn {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .cal-nav-btn:hover { background: var(--border-color); color: var(--text-primary); }
+  .cal-week-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 180px;
+    text-align: center;
+  }
+  .cal-today-btn {
+    background: var(--accent-color);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .cal-today-btn:hover { opacity: 0.85; }
+
+  .cal-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(var(--surface-rgb, 15,23,42), 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    pointer-events: none;
+  }
+
+  .cal-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .cal-table th {
+    padding: 0.4rem 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--surface-elevated);
+  }
+  .cal-table th.cal-today-col {
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--accent-color);
+  }
+  .cal-table th.cal-reg-col {
+    text-align: left;
+    width: 90px;
+    min-width: 90px;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background: var(--surface-elevated);
+  }
+  .cal-type-header td {
+    background: var(--surface-elevated);
+    padding: 0.35rem 0.5rem;
+    border-bottom: 2px solid var(--accent-color);
+    color: var(--accent-color);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  .cal-cell {
+    position: relative;
+    height: 36px;
+    border-bottom: 1px solid var(--border-color);
+    border-right: 1px solid rgba(255,255,255,0.03);
+    vertical-align: top;
+    padding: 2px;
+    overflow: visible;
+  }
+  .cal-cell.cal-today-col {
+    background: rgba(59, 130, 246, 0.04);
+  }
+  .cal-cell.drag-over {
+    outline: 2px dashed var(--accent-color);
+    background: rgba(59, 130, 246, 0.1) !important;
+  }
+  .cal-reg-cell {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--surface);
+  }
+  .cal-reg-cell .reg {
+    color: var(--accent-color);
+    font-weight: 600;
+    font-size: 0.75rem;
+    font-family: monospace;
+  }
+  .cal-reg-cell .ac-status {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
+  /* Maintenance blocks */
+  .cal-block {
+    position: absolute;
+    top: 2px;
+    height: calc(100% - 4px);
+    border-radius: 3px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 2;
+    min-width: 18px;
+  }
+  .cal-block:hover { opacity: 0.85; }
+  .cal-block.check-daily { background: #F59E0B; }
+  .cal-block.check-weekly { background: #8B5CF6; }
+  .cal-block.check-A { background: #17A2B8; }
+  .cal-block.check-C { background: #6B7280; }
+  .cal-block.check-D { background: #4B5563; }
+  /* Multi-day bar spanning across cells */
+  .cal-block.cal-span-bar {
+    z-index: 3;
+  }
+  .cal-span-arrow {
+    font-size: 0.7rem;
+    opacity: 0.7;
+  }
+  /* Flight blocks (background context) */
+  .cal-flight {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 2px;
+    background: rgba(59, 130, 246, 0.10);
+    border-left: 2px solid rgba(59, 130, 246, 0.35);
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: flex-end;
+    padding: 0 2px 1px;
+    z-index: 1;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .cal-flight.cal-flight-droppable {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .cal-flight.cal-flight-droppable:hover {
+    background: rgba(59, 130, 246, 0.18);
+  }
+  .cal-flight.drag-over-flight {
+    background: rgba(59, 130, 246, 0.25);
+    border-left-color: var(--accent-color);
+  }
+
+  /* Sidebar panel */
+  .cal-sidebar {
+    position: fixed;
+    bottom: 3rem;
+    right: 1.5rem;
+    z-index: 100;
+    width: 280px;
+    max-height: 420px;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .cal-sidebar-header {
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-elevated);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: move;
+    user-select: none;
+  }
+  .cal-sidebar-header h3 {
+    margin: 0;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+  }
+  .cal-sidebar-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+    line-height: 1;
+  }
+  .cal-sidebar-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0.4rem;
+  }
+  .cal-sidebar-item {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.35rem;
+    cursor: grab;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .cal-sidebar-item:hover { background: var(--surface); }
+  .cal-sidebar-item:active { cursor: grabbing; }
+  .cal-sidebar-item .check-badge {
+    display: inline-block;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .cal-sidebar-item .severity-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .severity-expired { background: rgba(239,68,68,0.15); color: #ef4444; }
+  .severity-warning { background: rgba(217,119,6,0.15); color: #d97706; }
 </style>
 
 <div class="dashboard-container">
   <main class="main-content">
-    <div class="page-header">
+    <div class="page-header" style="margin-bottom: 0.5rem;">
       <h1 id="maintenanceTitle">AIRCRAFT MAINTENANCE</h1>
-      <p class="subtitle">MAINTENANCE CHECK STATUS</p>
     </div>
+
+    <!-- Tab switcher -->
+    <div class="maint-tabs">
+      <button class="maint-tab active" data-tab="status" onclick="switchMaintenanceTab('status')">Status</button>
+      <button class="maint-tab" data-tab="calendar" onclick="switchMaintenanceTab('calendar')">Calendar</button>
+    </div>
+
+    <!-- ═══ STATUS TAB ═══ -->
+    <div id="statusTabContent">
 
     <!-- Summary Boxes -->
     <div class="maint-summary-row">
@@ -505,6 +809,50 @@
         </div>
       </div>
     </div>
+    </div><!-- /statusTabContent -->
+
+    <!-- ═══ CALENDAR TAB ═══ -->
+    <div id="calendarTabContent" style="display: none;">
+      <div class="ops-panel full-width">
+        <div class="cal-header-bar">
+          <button class="cal-nav-btn" onclick="calNavWeek(-1)" title="Previous week">&#9664; Prev</button>
+          <span class="cal-week-label" id="calWeekLabel">Loading...</span>
+          <button class="cal-nav-btn" onclick="calNavWeek(1)" title="Next week">Next &#9654;</button>
+          <button class="cal-today-btn" onclick="calGoToday()">Today</button>
+          <div style="margin-left: auto;">
+            <button onclick="calShowMaintenanceModal()" style="padding: 0.4rem 0.65rem; background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 0.75rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.35rem;" title="Configure auto-maintenance for all aircraft">
+              <span style="font-size: 0.85rem;">&#128295;</span> Auto-Schedule Settings
+            </button>
+          </div>
+        </div>
+        <div class="panel-body" style="padding: 0; overflow-x: auto; position: relative;">
+          <div class="cal-loading-overlay" id="calLoadingOverlay" style="display: none;">
+            <span class="cell-spinner" style="width:16px;height:16px;border-width:2px;color:var(--accent-color);"></span>
+            Loading...
+          </div>
+          <table class="cal-table" id="calGrid">
+            <thead id="calHead"></thead>
+            <tbody id="calBody">
+              <tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text-muted);">
+                <span class="cell-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;color:var(--accent-color);"></span>Loading calendar...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /calendarTabContent -->
+
+    <!-- Drag sidebar for pending checks -->
+    <div class="cal-sidebar" id="calSidebar" style="display: none;">
+      <div class="cal-sidebar-header" id="calSidebarHeader">
+        <h3>Pending Checks</h3>
+        <button class="cal-sidebar-close" onclick="document.getElementById('calSidebar').style.display='none';">&times;</button>
+      </div>
+      <div class="cal-sidebar-list" id="calSidebarList">
+        <div style="padding:0.5rem;color:var(--text-muted);font-size:0.75rem;">No pending checks</div>
+      </div>
+    </div>
+
   </main>
 </div>
 

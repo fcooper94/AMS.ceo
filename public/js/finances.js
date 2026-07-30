@@ -236,7 +236,7 @@ function wkRow(label, weeks, key, isExpense, group) {
     const v = w[key] || 0;
     const prefix = isExpense && v > 0 ? '-' : '';
     const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
-    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
   }
   return `<tr style="background:${tint};border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
 }
@@ -246,7 +246,7 @@ function wkSubTotal(label, weeks, key, isExpense) {
   for (const w of weeks) {
     const v = w[key] || 0;
     const prefix = isExpense && v > 0 ? '-' : '';
-    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-weight:600;font-family:'Courier New',monospace;color:var(--text-muted);font-size:0.75rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;font-weight:600;font-family:'Courier New',monospace;color:var(--text-muted);font-size:0.75rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
   }
   return `<tr style="border-bottom:1px solid rgba(255,255,255,0.06);">${cells}</tr>`;
 }
@@ -258,7 +258,7 @@ function wkTotal(label, weeks, key, isExpense, group) {
   for (const w of weeks) {
     const v = w[key] || 0;
     const prefix = isExpense && v > 0 ? '-' : '';
-    cells += `<td style="padding:0.45rem 0.6rem;text-align:right;font-weight:700;font-family:'Courier New',monospace;color:${valColor};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.45rem 0.6rem;font-weight:700;font-family:'Courier New',monospace;color:${valColor};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
   }
   return `<tr style="background:${g.bg};border-top:1px solid ${g.border};border-bottom:1px solid ${g.border};">${cells}</tr>`;
 }
@@ -273,7 +273,7 @@ function wkHighlight(label, weeks, key) {
     const v = w[key] || 0;
     const color = v > 0 ? 'var(--success-color)' : v < 0 ? '#f85149' : 'var(--text-muted)';
     const sign = v < 0 ? '-' : '';
-    cells += `<td style="padding:0.5rem 0.6rem;text-align:right;font-weight:700;font-family:'Courier New',monospace;color:${color};font-size:0.85rem;">${sign}${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.5rem 0.6rem;font-weight:700;font-family:'Courier New',monospace;color:${color};font-size:0.85rem;">${sign}${fmtNum(Math.abs(v))}</td>`;
   }
   return `<tr style="background:rgba(255,255,255,0.03);border-top:2px solid var(--border-color);border-bottom:2px solid var(--border-color);">${cells}</tr>`;
 }
@@ -281,7 +281,7 @@ function wkHighlight(label, weeks, key) {
 function wkStatRow(label, weeks, key) {
   let cells = `<td style="padding:0.3rem 0.6rem;color:var(--text-secondary);font-size:0.8rem;">${label}</td>`;
   for (const w of weeks) {
-    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:var(--text-secondary);font-size:0.8rem;">${(w[key] || 0).toLocaleString()}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;font-family:'Courier New',monospace;color:var(--text-secondary);font-size:0.8rem;">${(w[key] || 0).toLocaleString()}</td>`;
   }
   return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">${cells}</tr>`;
 }
@@ -310,7 +310,7 @@ function wkOutgoingToggleRow(label, isExpanded, toggleFn, weeks, key) {
     const v = w[key] || 0;
     const prefix = v > 0 ? '-' : '';
     const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
-    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${prefix}${fmtNum(Math.abs(v))}</td>`;
   }
   return `<tr onclick="${toggleFn}()" style="background:rgba(248,81,73,0.015);border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;" onmouseenter="this.style.background='rgba(248,81,73,0.03)'" onmouseleave="this.style.background='rgba(248,81,73,0.015)'">${cells}</tr>`;
 }
@@ -332,7 +332,7 @@ function wkRevenueToggleRow(label, isExpanded, toggleFn, weeks, breakdownKey) {
   for (const w of weeks) {
     const v = Object.values(w[breakdownKey] || {}).reduce((s, x) => s + x, 0);
     const color = v === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
-    cells += `<td style="padding:0.3rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${fmtNum(v)}</td>`;
+    cells += `<td style="padding:0.3rem 0.6rem;font-family:'Courier New',monospace;color:${color};font-size:0.8rem;">${fmtNum(v)}</td>`;
   }
   return `<tr onclick="${toggleFn}()" style="background:rgba(16,185,129,0.02);border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;" onmouseenter="this.style.background='rgba(16,185,129,0.05)'" onmouseleave="this.style.background='rgba(16,185,129,0.02)'">${cells}</tr>`;
 }
@@ -347,7 +347,7 @@ function wkBreakdownRow(label, weeks, jsonKey, subKey) {
   for (const w of weeks) {
     const v = ((w[jsonKey] || {})[subKey]) || 0;
     const color = v === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(52,211,153,0.7)';
-    cells += `<td style="padding:0.25rem 0.6rem;text-align:right;font-family:'Courier New',monospace;color:${color};font-size:0.75rem;">${fmtNum(v)}</td>`;
+    cells += `<td style="padding:0.25rem 0.6rem;font-family:'Courier New',monospace;color:${color};font-size:0.75rem;">${fmtNum(v)}</td>`;
   }
   return `<tr style="background:rgba(16,185,129,0.01);border-bottom:1px solid rgba(255,255,255,0.02);">${cells}</tr>`;
 }

@@ -3880,6 +3880,330 @@ router.get('/maintenance', async (req, res) => {
 });
 
 /**
+ * Maintenance calendar — weekly view data
+ * Returns maintenance blocks for a 7-day window plus pending/due checks for the sidebar.
+ */
+router.get('/maintenance/calendar', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) return res.status(400).json({ error: 'No active world selected' });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const membership = await WorldMembership.findOne({ where: { userId: user.id, worldId: activeWorldId } });
+    if (!membership) return res.status(404).json({ error: 'Not a member of this world' });
+
+    const world = await World.findByPk(activeWorldId);
+    const gameNow = world ? new Date(world.currentTime) : new Date();
+
+    // Parse weekStart (must be a Monday YYYY-MM-DD) or default to current game-time week
+    let weekStart;
+    if (req.query.weekStart) {
+      weekStart = new Date(req.query.weekStart + 'T00:00:00Z');
+    } else {
+      weekStart = new Date(gameNow);
+      const dow = weekStart.getUTCDay(); // 0=Sun
+      const diff = dow === 0 ? -6 : 1 - dow; // shift to Monday
+      weekStart.setUTCDate(weekStart.getUTCDate() + diff);
+      weekStart.setUTCHours(0, 0, 0, 0);
+    }
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+    // Fetch fleet (exclude on_order)
+    const fleet = await UserAircraft.findAll({
+      where: { worldMembershipId: membership.id, status: { [Op.ne]: 'on_order' } },
+      include: [{ model: Aircraft, as: 'aircraft' }],
+      order: [['registration', 'ASC']]
+    });
+
+    // Fetch all active maintenance for this fleet
+    const allMaint = await RecurringMaintenance.findAll({
+      where: { status: 'active', scheduledDate: { [Op.ne]: null } },
+      include: [{ model: UserAircraft, as: 'aircraft', where: { worldMembershipId: membership.id }, attributes: ['id'] }]
+    });
+
+    // Build maintenance blocks for this week
+    // Include: records starting within the week, AND multi-day C/D records starting before that extend into it
+    const maintenanceBlocks = [];
+    for (const m of allMaint) {
+      const schedStr = String(m.scheduledDate).split('T')[0];
+      const durationMins = m.duration || CHECK_DURATIONS[m.checkType] || 60;
+      const spanDays = Math.max(1, Math.ceil(durationMins / 1440));
+
+      // End date of the check
+      const checkEnd = new Date(schedStr + 'T00:00:00Z');
+      checkEnd.setUTCDate(checkEnd.getUTCDate() + spanDays - 1);
+      const checkEndStr = checkEnd.toISOString().split('T')[0];
+
+      // Does this check overlap with the displayed week?
+      if (checkEndStr < weekStartStr || schedStr > weekEndStr) continue;
+
+      const extendsBeforeWeek = schedStr < weekStartStr;
+      const extendsAfterWeek = checkEndStr > weekEndStr;
+
+      if (spanDays <= 1) {
+        // Single-day check — one block
+        maintenanceBlocks.push({
+          id: m.id, aircraftId: m.aircraftId, checkType: m.checkType,
+          scheduledDate: schedStr, startTime: m.startTime || '00:00',
+          duration: durationMins, spanDays: 1, dayInSpan: 1,
+          extendsBeforeWeek: false, extendsAfterWeek: false
+        });
+      } else {
+        // Multi-day — emit one block per visible day
+        for (let d = 0; d < spanDays; d++) {
+          const dayDate = new Date(schedStr + 'T00:00:00Z');
+          dayDate.setUTCDate(dayDate.getUTCDate() + d);
+          const dayStr = dayDate.toISOString().split('T')[0];
+          if (dayStr < weekStartStr || dayStr > weekEndStr) continue;
+          maintenanceBlocks.push({
+            id: m.id, aircraftId: m.aircraftId, checkType: m.checkType,
+            scheduledDate: schedStr, displayDate: dayStr,
+            startTime: d === 0 ? (m.startTime || '00:00') : '00:00',
+            duration: durationMins, spanDays, dayInSpan: d + 1,
+            extendsBeforeWeek: d === 0 && extendsBeforeWeek,
+            extendsAfterWeek: (d === spanDays - 1) && extendsAfterWeek
+          });
+        }
+      }
+    }
+
+    // Pending checks (due/overdue) for the sidebar
+    const todayStr = gameNow.toISOString().split('T')[0];
+    const currentMinutes = gameNow.getUTCHours() * 60 + gameNow.getUTCMinutes();
+    const pendingChecks = [];
+    const checkTypes = ['daily', 'weekly', 'A', 'C', 'D'];
+
+    // Build a set of (aircraftId, checkType) that already have a scheduled record coming up
+    const scheduledSet = new Set();
+    for (const m of allMaint) {
+      const schedStr = String(m.scheduledDate).split('T')[0];
+      if (schedStr >= todayStr) scheduledSet.add(m.aircraftId + ':' + m.checkType);
+    }
+
+    for (const ac of fleet) {
+      if (ac.status === 'maintenance' || ac.status === 'storage' || ac.status === 'recalling') continue;
+      const acType = ac.aircraft?.type || 'Narrowbody';
+      for (const ct of checkTypes) {
+        if (scheduledSet.has(ac.id + ':' + ct)) continue;
+
+        let severity = null;
+        let expiryText = '';
+
+        if (ct === 'A') {
+          const lastHrs = parseFloat(ac.lastACheckHours) || 0;
+          const curHrs = parseFloat(ac.totalFlightHours) || 0;
+          const interval = ac.aCheckIntervalHours || 900;
+          const remaining = interval - (curHrs - lastHrs);
+          if (!ac.lastACheckDate || remaining < 0) { severity = 'expired'; expiryText = 'Overdue'; }
+          else if (remaining < 100) { severity = 'warning'; expiryText = remaining.toFixed(0) + ' hrs left'; }
+        } else {
+          const fieldMap = { daily: 'lastDailyCheckDate', weekly: 'lastWeeklyCheckDate', C: 'lastCCheckDate', D: 'lastDCheckDate' };
+          const intervals = { daily: 2, weekly: 8, C: ac.cCheckIntervalDays || 730, D: ac.dCheckIntervalDays || 2190 };
+          const lastDate = ac[fieldMap[ct]];
+          if (!lastDate) { severity = 'expired'; expiryText = 'Never performed'; }
+          else {
+            const expiry = new Date(lastDate);
+            expiry.setDate(expiry.getDate() + intervals[ct]);
+            if (gameNow >= expiry) { severity = 'expired'; expiryText = 'Overdue'; }
+            else {
+              const daysLeft = (expiry - gameNow) / (24 * 60 * 60 * 1000);
+              const warnDays = ct === 'daily' ? 0.5 : ct === 'weekly' ? 2 : ct === 'C' ? 60 : 180;
+              if (daysLeft <= warnDays) { severity = 'warning'; expiryText = Math.ceil(daysLeft) + ' day' + (Math.ceil(daysLeft) !== 1 ? 's' : '') + ' left'; }
+            }
+          }
+        }
+
+        if (severity) {
+          const durMins = getCheckDurationMinutes(ct, acType);
+          pendingChecks.push({
+            aircraftId: ac.id,
+            registration: ac.registration,
+            aircraftType: ac.aircraft?.model || 'Unknown',
+            checkType: ct,
+            severity,
+            expiryText,
+            durationMinutes: durMins,
+            durationDisplay: durMins >= 1440 ? Math.ceil(durMins / 1440) + 'd' : durMins >= 60 ? Math.floor(durMins / 60) + 'h ' + (durMins % 60 > 0 ? durMins % 60 + 'm' : '') : durMins + 'm'
+          });
+        }
+      }
+    }
+
+    // ── Flight blocks (background context for scheduling around) ──────────
+    const fleetIds = fleet.map(ac => ac.id);
+    const allFlightsForCal = fleetIds.length > 0 ? await ScheduledFlight.findAll({
+      where: { aircraftId: { [Op.in]: fleetIds }, isActive: true },
+      include: [{
+        model: Route, as: 'route', attributes: ['routeNumber', 'returnRouteNumber', 'turnaroundTime'],
+        include: [
+          { model: Airport, as: 'departureAirport', attributes: ['icaoCode'] },
+          { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode'] }
+        ]
+      }]
+    }) : [];
+
+    // Map dayOfWeek (0=Sun) to calendar dates (Mon-Sun)
+    // weekStart is Monday; dayDates[0]=Mon(idx1)..dayDates[6]=Sun(idx0)
+    const dowToDateIdx = [6, 0, 1, 2, 3, 4, 5]; // Sun=6, Mon=0, Tue=1 ...
+    const dayDates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      dayDates.push(d.toISOString().split('T')[0]);
+    }
+
+    const flightBlocks = [];
+    for (const fl of allFlightsForCal) {
+      const dateIdx = dowToDateIdx[fl.dayOfWeek];
+      const depTime = fl.departureTime || '00:00';
+      const durationMins = fl.totalDurationMinutes || 120;
+      const depParts = depTime.split(':');
+      const depMins = parseInt(depParts[0], 10) * 60 + parseInt(depParts[1] || '0', 10);
+      const arrMins = depMins + durationMins;
+
+      // Compute arrival time string (may wrap past midnight)
+      const arrHH = String(Math.floor((arrMins % 1440) / 60)).padStart(2, '0');
+      const arrMM = String((arrMins % 1440) % 60).padStart(2, '0');
+      const arrivalTimeStr = arrHH + ':' + arrMM;
+
+      const route = fl.route;
+      const depCode = route?.departureAirport?.icaoCode || '???';
+      const arrCode = route?.arrivalAirport?.icaoCode || '???';
+      const flightNum = route?.routeNumber || '';
+      const turnaround = route?.turnaroundTime || 45;
+
+      flightBlocks.push({
+        aircraftId: fl.aircraftId,
+        date: dayDates[dateIdx],
+        departureTime: depTime,
+        arrivalTime: arrivalTimeStr,
+        durationMinutes: durationMins,
+        arrivalDayOffset: fl.arrivalDayOffset || 0,
+        depCode, arrCode, flightNum, turnaround
+      });
+    }
+
+    // Aircraft summary for the grid
+    const aircraftList = fleet.map(ac => ({
+      id: ac.id,
+      registration: ac.registration,
+      aircraftType: ac.aircraft?.model || 'Unknown',
+      type: ac.aircraft?.type || 'Narrowbody',
+      icaoCode: ac.aircraft?.icaoCode || '',
+      status: ac.status,
+      autoScheduleDaily: ac.autoScheduleDaily !== false,
+      autoScheduleWeekly: ac.autoScheduleWeekly !== false,
+      autoScheduleA: ac.autoScheduleA !== false,
+      autoScheduleC: ac.autoScheduleC !== false,
+      autoScheduleD: ac.autoScheduleD !== false
+    }));
+
+    res.json({
+      weekStart: weekStartStr,
+      weekEnd: weekEndStr,
+      gameTime: gameNow.toISOString(),
+      aircraft: aircraftList,
+      maintenanceBlocks,
+      flightBlocks,
+      pendingChecks
+    });
+  } catch (error) {
+    console.error('Error fetching maintenance calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance calendar data' });
+  }
+});
+
+/**
+ * Manually schedule a maintenance check on a specific future date.
+ * Unlike perform-check, this does NOT ground the aircraft immediately.
+ */
+router.post('/maintenance/schedule', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const activeWorldId = req.session?.activeWorldId;
+    if (!activeWorldId) return res.status(400).json({ error: 'No active world selected' });
+
+    const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const membership = await WorldMembership.findOne({ where: { userId: user.id, worldId: activeWorldId } });
+    if (!membership) return res.status(404).json({ error: 'Not a member of this world' });
+
+    const { aircraftId, checkType, scheduledDate, startTime } = req.body;
+    if (!aircraftId || !checkType || !scheduledDate) {
+      return res.status(400).json({ error: 'aircraftId, checkType, and scheduledDate are required' });
+    }
+
+    const validTypes = ['daily', 'weekly', 'A', 'C', 'D'];
+    if (!validTypes.includes(checkType)) {
+      return res.status(400).json({ error: 'Invalid checkType: ' + checkType });
+    }
+
+    // Verify ownership
+    const aircraft = await UserAircraft.findOne({
+      where: { id: aircraftId, worldMembershipId: membership.id },
+      include: [{ model: Aircraft, as: 'aircraft' }]
+    });
+    if (!aircraft) return res.status(404).json({ error: 'Aircraft not found' });
+
+    const rejectStatuses = ['on_order', 'storage', 'recalling', 'sold', 'scrapping', 'leased_out'];
+    if (rejectStatuses.includes(aircraft.status)) {
+      return res.status(400).json({ error: 'Cannot schedule maintenance for ' + aircraft.status + ' aircraft' });
+    }
+
+    // Validate date is not in the past
+    const world = await World.findByPk(activeWorldId);
+    const gameNow = world ? new Date(world.currentTime) : new Date();
+    const schedDate = new Date(scheduledDate + 'T00:00:00Z');
+    if (schedDate < new Date(gameNow.toISOString().split('T')[0] + 'T00:00:00Z')) {
+      return res.status(400).json({ error: 'Cannot schedule maintenance in the past' });
+    }
+
+    // Check for duplicate
+    const existing = await RecurringMaintenance.findOne({
+      where: { aircraftId, checkType, scheduledDate, status: 'active' }
+    });
+    if (existing) {
+      return res.status(409).json({ error: checkType + ' check already scheduled on ' + scheduledDate });
+    }
+
+    // Compute duration
+    const acType = aircraft.aircraft?.type || 'Narrowbody';
+    const durationMins = getCheckDurationMinutes(checkType, acType);
+
+    // Pick a time slot if not provided
+    let resolvedStartTime = startTime;
+    if (!resolvedStartTime) {
+      const slot = await findAvailableSlotOnDate(aircraftId, scheduledDate, durationMins, checkType, membership.id);
+      resolvedStartTime = slot || '03:00';
+    }
+
+    // Create the maintenance record
+    const record = await RecurringMaintenance.create({
+      aircraftId,
+      checkType,
+      scheduledDate,
+      startTime: resolvedStartTime,
+      duration: durationMins,
+      status: 'active'
+    });
+
+    res.json({
+      id: record.id,
+      message: checkType + ' check scheduled for ' + aircraft.registration + ' on ' + scheduledDate + ' at ' + resolvedStartTime,
+      maintenanceRecord: record.toJSON()
+    });
+  } catch (error) {
+    console.error('Error scheduling maintenance:', error);
+    res.status(500).json({ error: 'Failed to schedule maintenance' });
+  }
+});
+
+/**
  * Record a maintenance check
  */
 router.post('/maintenance/:aircraftId/check', async (req, res) => {

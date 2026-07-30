@@ -84,6 +84,20 @@ class WorldTimeService {
     return ids;
   }
 
+  // Player-only membership IDs — AI airlines skip the maintenance system entirely
+  async _getPlayerMembershipIds(worldId) {
+    const cacheKey = 'player:' + worldId;
+    const cached = this._membershipCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiry) return cached.ids;
+    const memberships = await WorldMembership.findAll({
+      where: { worldId, isActive: true, isAI: false },
+      attributes: ['id']
+    });
+    const ids = memberships.map(m => m.id);
+    this._membershipCache.set(cacheKey, { ids, expiry: Date.now() + this._membershipCacheTTL });
+    return ids;
+  }
+
   /**
    * Get per-world processing state (throttle timestamps + busy flags).
    * Each world gets its own state so a slow world can't starve others.
@@ -2869,7 +2883,8 @@ class WorldTimeService {
             console.log(`[Delivery] ✓ ${ua.registration} delivered successfully (status=${ua.status}, type=${ua.acquisitionType})`);
 
             // Auto-schedule maintenance if preferences were set at order time
-            if (ua.status === 'active') {
+            // AI airlines skip maintenance entirely — no RecurringMaintenance rows needed
+            if (ua.status === 'active' && !membership.isAI) {
               const autoCheckTypes = [];
               if (ua.autoScheduleDaily) autoCheckTypes.push('daily');
               if (ua.autoScheduleWeekly) autoCheckTypes.push('weekly');
@@ -3184,8 +3199,10 @@ class WorldTimeService {
     if (!worldState) return;
 
     try {
-      // Get all memberships for this world (cached)
-      const membershipIds = await this._getMembershipIds(worldId);
+      // AI airlines skip the maintenance system entirely — their checks are
+      // always valid, no RecurringMaintenance rows, no grounding. Only player
+      // aircraft go through scheduling, completion, and expiry grounding.
+      const membershipIds = await this._getPlayerMembershipIds(worldId);
       if (membershipIds.length === 0) return;
 
       // Get current game day of week (0 = Sunday, 6 = Saturday)
@@ -3217,7 +3234,8 @@ class WorldTimeService {
           model: UserAircraft,
           as: 'aircraft',
           attributes: ['id', 'registration', 'totalFlightHours', 'lastDailyCheckDate',
-            'lastWeeklyCheckDate', 'lastACheckDate', 'lastCCheckDate', 'lastDCheckDate'],
+            'lastWeeklyCheckDate', 'lastACheckDate', 'lastCCheckDate', 'lastDCheckDate',
+            'status', 'maintenanceUntil', 'worldMembershipId'],
           where: { worldMembershipId: { [Op.in]: membershipIds } }
         }],
         // Chronological settle: a big catch-up window completes many checks in
@@ -3337,6 +3355,18 @@ class WorldTimeService {
               simLog(`🔧 ${checkType} Check also validates lower checks for ${aircraft.registration}`);
             }
 
+            // If aircraft was grounded for expired daily check, un-ground it now
+            // that the check is complete — but only if no heavy check or manual
+            // check is holding it (maintenanceUntil still in the future).
+            if (aircraft.status === 'maintenance' && updateData.lastDailyCheckDate) {
+              const maintUntil = aircraft.maintenanceUntil ? new Date(aircraft.maintenanceUntil) : null;
+              const heldByManual = maintUntil && currentGameTime < maintUntil;
+              if (!heldByManual) {
+                updateData.status = 'active';
+                simLog(`✓ ${aircraft.registration} returned to service after daily check completion`);
+              }
+            }
+
             await UserAircraft.update(updateData, { where: { id: aircraft.id } });
 
             // Mark all one-time scheduled maintenance as completed
@@ -3355,46 +3385,49 @@ class WorldTimeService {
           }
         }
       }
-      // Catch-up: fix aircraft with expired daily/weekly checks after server gaps
-      // If maintenance records were deleted by refresh before processMaintenance could handle them,
-      // lastDailyCheckDate gets stuck in the past. Fix by updating any aircraft whose daily check
-      // is expired but has active daily check patterns (meaning checks ARE scheduled).
+      // Ground active aircraft whose daily check has expired. The aircraft
+      // stays grounded until the next daily check completes (which stamps
+      // lastDailyCheckDate and restores status='active' — see above).
+      // Respects the same per-airline 15% concurrency cap as heavy checks.
       try {
-        const expiredAircraft = await UserAircraft.findAll({
+        const dailyExpiryMs = CHECK_INTERVALS.daily * 24 * 60 * 60 * 1000;
+        const dailyCutoff = new Date(currentGameTime.getTime() - dailyExpiryMs);
+        // End-of-day grace: daily interval=2, so expired after day 2 at 23:59:59
+        dailyCutoff.setUTCHours(23, 59, 59, 999);
+
+        const expiredDailyAircraft = await UserAircraft.findAll({
           where: {
             worldMembershipId: { [Op.in]: membershipIds },
+            status: 'active',
             [Op.or]: [
               { lastDailyCheckDate: null },
-              { lastDailyCheckDate: { [Op.lt]: new Date(currentGameTime.getTime() - 2 * 24 * 60 * 60 * 1000) } }
+              { lastDailyCheckDate: { [Op.lt]: dailyCutoff } }
             ]
-          }
+          },
+          attributes: ['id', 'registration', 'worldMembershipId']
         });
 
-        // Batch-check which expired aircraft have active daily maintenance (1 query vs N)
-        const expiredIds = expiredAircraft.map(a => a.id);
-        const dailyMaintRecords = expiredIds.length > 0 ? await RecurringMaintenance.findAll({
-          where: { aircraftId: { [Op.in]: expiredIds }, checkType: 'daily', status: 'active' },
-          attributes: ['aircraftId']
-        }) : [];
-        const hasDailySet = new Set(dailyMaintRecords.map(m => m.aircraftId));
+        if (expiredDailyAircraft.length > 0) {
+          // Reuse the staggering cap from processAutomaticHeavyMaintenance
+          const fleetCounts = new Map();
+          const maintCounts = new Map();
+          for (const mid of membershipIds) {
+            const total = await UserAircraft.count({ where: { worldMembershipId: mid, status: { [Op.ne]: 'on_order' } } });
+            const inMaint = await UserAircraft.count({ where: { worldMembershipId: mid, status: 'maintenance' } });
+            fleetCounts.set(mid, total);
+            maintCounts.set(mid, inMaint);
+          }
+          const groundCap = (mid) => Math.max(1, Math.ceil((fleetCounts.get(mid) || 1) * 0.15));
 
-        for (const aircraft of expiredAircraft) {
-          const hasDailyMaint = hasDailySet.has(aircraft.id);
-
-          if (hasDailyMaint) {
-            // Daily checks are scheduled but lastDailyCheckDate fell behind - catch up
-            // Set to yesterday so the next scheduled check completion will bring it current
-            const yesterday = new Date(currentGameTime);
-            yesterday.setDate(yesterday.getDate() - 1);
-            await aircraft.update({ lastDailyCheckDate: yesterday });
-            simLog(`🔧 Daily check catch-up for ${aircraft.registration}: set lastDailyCheckDate to ${yesterday.toISOString().split('T')[0]}`);
+          for (const ac of expiredDailyAircraft) {
+            if ((maintCounts.get(ac.worldMembershipId) || 0) >= groundCap(ac.worldMembershipId)) continue;
+            await ac.update({ status: 'maintenance' });
+            maintCounts.set(ac.worldMembershipId, (maintCounts.get(ac.worldMembershipId) || 0) + 1);
+            simLog(`⚠ ${ac.registration} GROUNDED — daily check expired`);
           }
         }
-      } catch (catchupErr) {
-        // Non-critical - don't break main maintenance processing
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Daily check catch-up error:', catchupErr.message);
-        }
+      } catch (groundErr) {
+        console.error('Daily grounding sweep error:', groundErr.message);
       }
 
       // Auto-schedule C and D checks the day before they expire
@@ -3613,11 +3646,13 @@ class WorldTimeService {
       // Import refreshAutoScheduledMaintenance from fleet routes
       const { refreshAutoScheduledMaintenance } = require('../routes/fleet');
 
-      // Get all memberships for this world (cached)
-      const membershipIds = await this._getMembershipIds(worldId);
+      // AI airlines skip maintenance entirely — only refresh player aircraft.
+      // With 1700+ AI aircraft at 1.5s each, refreshing them all blocked the
+      // cycle for 40+ minutes and starved player aircraft of timely updates.
+      const membershipIds = await this._getPlayerMembershipIds(worldId);
       if (membershipIds.length === 0) return;
 
-      // Get all aircraft with auto-scheduling enabled (exclude stored/sold/listed)
+      // Get all player aircraft with auto-scheduling enabled (exclude stored/sold/listed)
       const aircraftToRefresh = await UserAircraft.findAll({
         where: {
           worldMembershipId: { [Op.in]: membershipIds },
