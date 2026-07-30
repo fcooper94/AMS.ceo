@@ -24,7 +24,6 @@ function initCalendar() {
   var now = _calGetGameTime();
   _calWeekStart = _calGetMonday(now);
 
-  _calInitSidebarDrag();
   loadCalendarData();
 }
 
@@ -63,7 +62,11 @@ function _calDateStr(d) {
 // ── Week navigation ─────────────────────────────────────────────────────────
 
 function calNavWeek(dir) {
-  _calWeekStart.setUTCDate(_calWeekStart.getUTCDate() + dir * 7);
+  var next = new Date(_calWeekStart);
+  next.setUTCDate(next.getUTCDate() + dir * 7);
+  // Don't navigate before the current game-time week
+  if (dir < 0 && next < _calGetMonday(_calGetGameTime())) return;
+  _calWeekStart = next;
   loadCalendarData();
 }
 
@@ -297,7 +300,9 @@ async function _calApplyMaintenanceSettings() {
     autoScheduleD: !!(document.getElementById('calGlobal_D') || {}).checked
   };
 
+  var acCount = (_calData && _calData.aircraft) ? _calData.aircraft.length : 0;
   _calCloseMaintenanceModal();
+  _calShowProgress(acCount);
 
   try {
     var res = await fetch('/api/fleet/global-maintenance-settings', {
@@ -307,6 +312,7 @@ async function _calApplyMaintenanceSettings() {
     });
 
     var data = await res.json();
+    _calHideProgress();
     if (!res.ok) throw new Error(data.error || 'Failed to apply settings');
 
     // Update local data
@@ -325,16 +331,47 @@ async function _calApplyMaintenanceSettings() {
     // Reload calendar to reflect changes
     loadCalendarData();
   } catch (err) {
+    _calHideProgress();
     console.error('Error applying maintenance settings:', err);
     alert('Failed to apply settings: ' + err.message);
   }
+}
+
+// ── Progress overlay (full-screen, like scheduling page) ────────────────────
+
+function _calShowProgress(aircraftCount) {
+  var existing = document.getElementById('calProgressOverlay');
+  if (existing) existing.remove();
+
+  var html = '<div id="calProgressOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;justify-content:center;align-items:center;z-index:10001;">'
+    + '<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:2rem 3rem;text-align:center;min-width:350px;">'
+    + '<div style="margin-bottom:1.5rem;">'
+    + '<div style="width:60px;height:60px;border:4px solid rgba(88,166,255,0.2);border-top-color:#58a6ff;border-radius:50%;animation:calProgSpin 1s linear infinite;margin:0 auto;"></div>'
+    + '</div>'
+    + '<h3 style="color:#f0f6fc;margin:0 0 0.5rem 0;font-size:1.2rem;">Applying Settings</h3>'
+    + '<p style="color:#8b949e;margin:0 0 1rem 0;font-size:0.9rem;">'
+    + 'Processing <strong style="color:#58a6ff;">' + aircraftCount + '</strong> aircraft\u2026'
+    + '</p>'
+    + '<div style="background:#21262d;border-radius:6px;padding:0.75rem;margin-top:1rem;">'
+    + '<div style="display:flex;align-items:center;gap:0.5rem;justify-content:center;">'
+    + '<span style="font-size:1.1rem;">&#128295;</span>'
+    + '<span style="color:#8b949e;font-size:0.85rem;">Scheduling maintenance checks\u2026</span>'
+    + '</div></div></div></div>'
+    + '<style>@keyframes calProgSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function _calHideProgress() {
+  var overlay = document.getElementById('calProgressOverlay');
+  if (overlay) overlay.remove();
 }
 
 // ── Data loading ────────────────────────────────────────────────────────────
 
 async function loadCalendarData() {
   var overlay = document.getElementById('calLoadingOverlay');
-  if (overlay) overlay.style.display = '';
+  if (overlay && _calData) overlay.style.display = '';
   try {
     var weekStartStr = _calDateStr(_calWeekStart);
     var res = await fetch('/api/fleet/maintenance/calendar?weekStart=' + weekStartStr);
@@ -470,7 +507,7 @@ function _calRender() {
           var fWidthPct = Math.max(5, (fEffDur / 1440) * 100);
           // Make droppable when dragging a daily check for this aircraft
           var droppableClass = _calDragCheck && _calDragCheck.checkType === 'daily' ? ' cal-flight-droppable' : '';
-          var fLabel = flight.depCode + '\u2013' + flight.arrCode;
+          var fLabel = flight.arrIata || flight.arrCode || '?';
           html += '<div class="cal-flight' + droppableClass + '"';
           html += ' style="left:' + fLeftPct.toFixed(1) + '%;width:' + fWidthPct.toFixed(1) + '%;"';
           html += ' title="' + (flight.flightNum || '') + ' ' + flight.depCode + '\u2192' + flight.arrCode + ' dep ' + flight.departureTime + ' arr ' + flight.arrivalTime + '"';
@@ -591,45 +628,87 @@ function _calRenderSidebar() {
   var list = document.getElementById('calSidebarList');
   if (!sidebar || !list || !_calData) return;
 
-  // Show sidebar when there are pending checks (always useful for manual scheduling)
-  if (!_calData.pendingChecks || _calData.pendingChecks.length === 0) {
+  // Determine if any auto-schedule is disabled across the fleet
+  var ac = _calData.aircraft || [];
+  var anyManual = ac.some(function(a) {
+    return !a.autoScheduleDaily || !a.autoScheduleWeekly || !a.autoScheduleA || !a.autoScheduleC || !a.autoScheduleD;
+  });
+
+  if (!anyManual) {
     sidebar.style.display = 'none';
     return;
   }
 
   sidebar.style.display = '';
 
+  var checkTypes = ['daily', 'weekly', 'A', 'C', 'D'];
+  var checkNames = { daily: 'Daily Check', weekly: 'Weekly Check', A: 'A Check', C: 'C Check', D: 'D Check' };
+
+  // Find which check types are disabled on at least one aircraft
+  var disabledTypes = {};
+  var fieldMap = { daily: 'autoScheduleDaily', weekly: 'autoScheduleWeekly', A: 'autoScheduleA', C: 'autoScheduleC', D: 'autoScheduleD' };
+  for (var ct = 0; ct < checkTypes.length; ct++) {
+    var type = checkTypes[ct];
+    var field = fieldMap[type];
+    var disabledCount = ac.filter(function(a) { return !a[field]; }).length;
+    if (disabledCount > 0) disabledTypes[type] = disabledCount;
+  }
+
   var html = '';
-  // Sort: expired first, then by check type severity
-  var sorted = _calData.pendingChecks.slice().sort(function(a, b) {
-    var sevOrder = { expired: 0, warning: 1 };
-    var typeOrder = { D: 0, C: 1, A: 2, weekly: 3, daily: 4 };
-    var sd = (sevOrder[a.severity] || 9) - (sevOrder[b.severity] || 9);
-    if (sd !== 0) return sd;
-    return (typeOrder[a.checkType] || 9) - (typeOrder[b.checkType] || 9);
-  });
+  var pending = _calData.pendingChecks || [];
 
-  for (var i = 0; i < sorted.length; i++) {
-    var pc = sorted[i];
-    var color = CAL_COLORS[pc.checkType] || '#666';
-    var sevClass = pc.severity === 'expired' ? 'severity-expired' : 'severity-warning';
-    var sevLabel = pc.severity === 'expired' ? 'EXP' : 'DUE';
+  // Build lookup of pending checks by aircraftId:checkType
+  var pendingMap = {};
+  for (var pi = 0; pi < pending.length; pi++) {
+    var pk = pending[pi].aircraftId + ':' + pending[pi].checkType;
+    pendingMap[pk] = pending[pi];
+  }
 
-    html += '<div class="cal-sidebar-item" draggable="true"';
-    html += ' data-aircraft-id="' + pc.aircraftId + '"';
-    html += ' data-check-type="' + pc.checkType + '"';
-    html += ' data-registration="' + pc.registration + '"';
-    html += ' ondragstart="_calSidebarDragStart(event)"';
-    html += ' ondragend="_calSidebarDragEnd(event)"';
-    html += '>';
-    html += '<span class="check-badge" style="background:' + color + ';">' + CAL_LABELS[pc.checkType] + '</span>';
-    html += '<div style="flex:1;min-width:0;">';
-    html += '<div style="font-size:0.75rem;font-weight:600;color:var(--accent-color);font-family:monospace;">' + pc.registration + '</div>';
-    html += '<div style="font-size:0.6rem;color:var(--text-muted);">' + pc.aircraftType + ' \u00b7 ' + (pc.durationDisplay || '') + '</div>';
+  // Render a section per disabled check type
+  for (var ti = 0; ti < checkTypes.length; ti++) {
+    var cType = checkTypes[ti];
+    if (!disabledTypes[cType]) continue;
+
+    var color = CAL_COLORS[cType] || '#666';
+    html += '<div class="cal-sidebar-group">';
+    html += '<div class="cal-sidebar-type-header">';
+    html += '<span class="check-badge" style="background:' + color + ';">' + CAL_LABELS[cType] + '</span>';
+    html += '<span style="font-size:0.7rem;font-weight:600;color:var(--text-primary);">' + checkNames[cType] + '</span>';
     html += '</div>';
-    html += '<span class="severity-badge ' + sevClass + '">' + sevLabel + '</span>';
-    html += '<div style="font-size:0.55rem;color:var(--text-muted);max-width:60px;text-align:right;">' + pc.expiryText + '</div>';
+
+    // Show ALL aircraft with this check type disabled as draggable items
+    var field = fieldMap[cType];
+    for (var ai = 0; ai < ac.length; ai++) {
+      var a = ac[ai];
+      if (a[field]) continue; // auto-schedule on — skip
+
+      var pKey = a.id + ':' + cType;
+      var pItem = pendingMap[pKey];
+      var sevHtml = '';
+      if (pItem) {
+        var sevClass = pItem.severity === 'expired' ? 'severity-expired' : 'severity-warning';
+        var sevLabel = pItem.severity === 'expired' ? 'EXP' : 'DUE';
+        sevHtml = '<span class="severity-badge ' + sevClass + '">' + sevLabel + '</span>';
+      }
+
+      html += '<div class="cal-sidebar-item" draggable="true"';
+      html += ' data-aircraft-id="' + a.id + '"';
+      html += ' data-check-type="' + cType + '"';
+      html += ' data-registration="' + a.registration + '"';
+      html += ' ondragstart="_calSidebarDragStart(event)"';
+      html += ' ondragend="_calSidebarDragEnd(event)"';
+      html += '>';
+      html += '<span class="cal-sidebar-reg">' + a.registration + '</span>';
+      html += sevHtml;
+      html += '</div>';
+    }
+
     html += '</div>';
+  }
+
+  if (!html) {
+    sidebar.style.display = 'none';
+    return;
   }
 
   list.innerHTML = html;
@@ -819,41 +898,7 @@ function _calShowNotice(message) {
   }, 4000);
 }
 
-// ── Sidebar draggable header (move the panel) ───────────────────────────────
-
-function _calInitSidebarDrag() {
-  var header = document.getElementById('calSidebarHeader');
-  var sidebar = document.getElementById('calSidebar');
-  if (!header || !sidebar) return;
-
-  var isDragging = false, offsetX = 0, offsetY = 0;
-
-  header.addEventListener('mousedown', function(e) {
-    if (e.target.closest('.cal-sidebar-close')) return;
-    isDragging = true;
-    var rect = sidebar.getBoundingClientRect();
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
-    // Switch from bottom/right to top/left positioning
-    sidebar.style.top = rect.top + 'px';
-    sidebar.style.left = rect.left + 'px';
-    sidebar.style.bottom = 'auto';
-    sidebar.style.right = 'auto';
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', function(e) {
-    if (!isDragging) return;
-    var x = Math.max(0, Math.min(window.innerWidth - 100, e.clientX - offsetX));
-    var y = Math.max(0, Math.min(window.innerHeight - 50, e.clientY - offsetY));
-    sidebar.style.left = x + 'px';
-    sidebar.style.top = y + 'px';
-  });
-
-  document.addEventListener('mouseup', function() {
-    isDragging = false;
-  });
-}
+// (Sidebar drag-to-move removed — sidebar is now inline)
 
 // ── Touch support (tap-to-place) ────────────────────────────────────────────
 

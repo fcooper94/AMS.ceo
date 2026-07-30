@@ -1481,13 +1481,14 @@ async function _refreshAutoScheduledMaintenance(aircraftId, worldId = null, prov
     D: aircraft.autoScheduleD
   });
 
-  // Mandatory checks are ALWAYS auto-managed so an aircraft can never fly an
-  // expired check. The legacy per-aircraft autoSchedule* booleans defaulted
-  // off (opt-in), which left ~the entire fleet unmanaged and perpetually
-  // expired. They can't act as opt-out either: an explicit "off" is
-  // indistinguishable from the default. So all five checks are managed
-  // unconditionally; the flags are now vestigial (no schema change).
-  const enabledChecks = ['daily', 'weekly', 'A', 'C', 'D'];
+  // Respect per-aircraft autoSchedule flags (controlled via the
+  // Auto-Schedule Settings modal on the maintenance/scheduling pages).
+  const enabledChecks = [];
+  if (aircraft.autoScheduleDaily !== false) enabledChecks.push('daily');
+  if (aircraft.autoScheduleWeekly !== false) enabledChecks.push('weekly');
+  if (aircraft.autoScheduleA !== false) enabledChecks.push('A');
+  if (aircraft.autoScheduleC !== false) enabledChecks.push('C');
+  if (aircraft.autoScheduleD !== false) enabledChecks.push('D');
 
   maintLog(`[MAINT REFRESH] Managed checks for ${aircraft.registration}:`, enabledChecks);
 
@@ -1512,11 +1513,12 @@ async function _refreshAutoScheduledMaintenance(aircraftId, worldId = null, prov
   // Delete existing auto-scheduled maintenance so it can be recreated
   // with correct positioning based on current flight schedule
   // BUT protect in-progress C/D checks (they span multiple days)
+  // Query ALL check types so disabled ones get cleaned up too.
   try {
     const existingMaint = await RecurringMaintenance.findAll({
       where: {
         aircraftId,
-        checkType: { [Op.in]: enabledChecks },
+        checkType: { [Op.in]: ['daily', 'weekly', 'A', 'C', 'D'] },
         status: 'active'
       }
     });
@@ -4041,8 +4043,8 @@ router.get('/maintenance/calendar', async (req, res) => {
       include: [{
         model: Route, as: 'route', attributes: ['routeNumber', 'returnRouteNumber', 'turnaroundTime'],
         include: [
-          { model: Airport, as: 'departureAirport', attributes: ['icaoCode'] },
-          { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode'] }
+          { model: Airport, as: 'departureAirport', attributes: ['icaoCode', 'iataCode'] },
+          { model: Airport, as: 'arrivalAirport', attributes: ['icaoCode', 'iataCode'] }
         ]
       }]
     }) : [];
@@ -4072,8 +4074,12 @@ router.get('/maintenance/calendar', async (req, res) => {
       const arrivalTimeStr = arrHH + ':' + arrMM;
 
       const route = fl.route;
-      const depCode = route?.departureAirport?.icaoCode || '???';
-      const arrCode = route?.arrivalAirport?.icaoCode || '???';
+      const depAirport = route?.departureAirport;
+      const arrAirport = route?.arrivalAirport;
+      const depCode = depAirport?.icaoCode || '???';
+      const arrCode = arrAirport?.icaoCode || '???';
+      const depIata = depAirport?.iataCode || '';
+      const arrIata = arrAirport?.iataCode || '';
       const flightNum = route?.routeNumber || '';
       const turnaround = route?.turnaroundTime || 45;
 
@@ -4084,7 +4090,7 @@ router.get('/maintenance/calendar', async (req, res) => {
         arrivalTime: arrivalTimeStr,
         durationMinutes: durationMins,
         arrivalDayOffset: fl.arrivalDayOffset || 0,
-        depCode, arrCode, flightNum, turnaround
+        depCode, arrCode, depIata, arrIata, flightNum, turnaround
       });
     }
 
@@ -4782,81 +4788,109 @@ router.post('/global-maintenance-settings', async (req, res) => {
       where: { worldMembershipId: membership.id }
     });
 
-    // First, refresh auto-scheduled maintenance for all aircraft
-    // Then schedule immediate maintenance for expired checks (so it doesn't get deleted by refresh)
+    // ── FAST PATH: bulk-delete disabled check types in ONE query ──
+    // Instead of per-aircraft refresh (which does findAll+filter+destroy per aircraft),
+    // delete all future active records for disabled check types across the whole fleet.
+    const allCheckTypes = ['daily', 'weekly', 'A', 'C', 'D'];
+    const disabledChecks = allCheckTypes.filter(ct => !enabledChecks.includes(ct));
+    const aircraftIds = allAircraft.map(a => a.id);
+    const gameNowStr = gameNow.toISOString().split('T')[0];
+
+    if (disabledChecks.length > 0 && aircraftIds.length > 0) {
+      // Bulk-delete future maintenance for disabled check types (protect in-progress)
+      await sequelize.query(`
+        DELETE FROM recurring_maintenance
+        WHERE aircraft_id IN (:aircraftIds)
+          AND check_type IN (:disabledChecks)
+          AND status = 'active'
+          AND scheduled_date >= :gameNowStr
+      `, { replacements: { aircraftIds, disabledChecks, gameNowStr } });
+      console.log(`[GLOBAL MAINT] Bulk-deleted future ${disabledChecks.join(',')} checks for ${aircraftIds.length} aircraft`);
+    }
+
+    // If no checks are enabled, we're done — just the bulk delete above
     let maintenanceScheduled = 0;
     let immediateMaintenanceScheduled = 0;
-    const batchSize = 5;
 
-    for (let i = 0; i < allAircraft.length; i += batchSize) {
-      const batch = allAircraft.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.map(async (aircraft) => {
-          try {
-            // First: Refresh auto-scheduled maintenance (this will schedule future checks)
-            const result = await refreshAutoScheduledMaintenance(aircraft.id, activeWorldId);
-            const refreshCount = Array.isArray(result) ? result.length : 0;
+    if (enabledChecks.length > 0) {
+      // Also bulk-delete future records for ENABLED check types before re-creating
+      // (same as what refreshAutoScheduledMaintenance does per-aircraft, but in bulk)
+      await sequelize.query(`
+        DELETE FROM recurring_maintenance
+        WHERE aircraft_id IN (:aircraftIds)
+          AND check_type IN (:enabledChecks)
+          AND status = 'active'
+          AND scheduled_date > :gameNowStr
+      `, { replacements: { aircraftIds, enabledChecks, gameNowStr } });
 
-            // Second: Find the heaviest expired check that is being enabled
-            let heaviestExpiredCheck = null;
-            for (const ct of checkHierarchy) {
-              if (!enabledChecks.includes(ct)) continue;
-              if (isCheckExpired(aircraft, ct)) {
-                heaviestExpiredCheck = ct;
-                break;
-              }
-            }
+      // Now re-create only for enabled checks — run per-aircraft but skip the
+      // delete step (already done in bulk above) by calling create directly.
+      const batchSize = 10;
+      for (let i = 0; i < allAircraft.length; i += batchSize) {
+        const batch = allAircraft.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map(async (aircraft) => {
+            try {
+              // Create new auto-scheduled maintenance (skip per-aircraft delete — done in bulk)
+              const created = await createAutoScheduledMaintenance(aircraft.id, enabledChecks, activeWorldId, gameNow);
+              const refreshCount = Array.isArray(created) ? created.length : 0;
 
-            let immediateCount = 0;
-
-            // If there's an expired check, schedule it immediately (2 hours from now)
-            // This must happen AFTER refresh so it doesn't get deleted
-            if (heaviestExpiredCheck) {
-              const immediateStart = new Date(gameNow.getTime() + 2 * 60 * 60 * 1000);
-              const immediateStartTime = `${String(immediateStart.getUTCHours()).padStart(2, '0')}:${String(immediateStart.getUTCMinutes()).padStart(2, '0')}`;
-              const immediateDate = immediateStart.toISOString().split('T')[0];
-              const dayOfWeek = immediateStart.getUTCDay();
-              const duration = CHECK_DURATIONS[heaviestExpiredCheck];
-
-              // Check if there's already a maintenance scheduled for this check type within the next 7 days
-              const sevenDaysFromNow = new Date(gameNow);
-              sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-              const existingMaint = await RecurringMaintenance.findOne({
-                where: {
-                  aircraftId: aircraft.id,
-                  checkType: heaviestExpiredCheck,
-                  scheduledDate: {
-                    [Op.between]: [gameNow.toISOString().split('T')[0], sevenDaysFromNow.toISOString().split('T')[0]]
-                  },
-                  status: 'active'
+              // Find the heaviest expired check that is being enabled
+              let heaviestExpiredCheck = null;
+              for (const ct of checkHierarchy) {
+                if (!enabledChecks.includes(ct)) continue;
+                if (isCheckExpired(aircraft, ct)) {
+                  heaviestExpiredCheck = ct;
+                  break;
                 }
-              });
-
-              if (!existingMaint) {
-                // Create immediate maintenance
-                await RecurringMaintenance.create({
-                  aircraftId: aircraft.id,
-                  checkType: heaviestExpiredCheck,
-                  dayOfWeek,
-                  scheduledDate: immediateDate,
-                  startTime: immediateStartTime,
-                  duration,
-                  status: 'active'
-                });
-                immediateCount = 1;
-                console.log(`[GLOBAL MAINT] Scheduled immediate ${heaviestExpiredCheck} check for ${aircraft.registration} at ${immediateStartTime} on ${immediateDate}`);
               }
-            }
 
-            return { immediate: immediateCount, refresh: refreshCount };
-          } catch (err) {
-            console.error(`Error processing maintenance for aircraft ${aircraft.id}:`, err);
-            return { immediate: 0, refresh: 0 };
-          }
-        })
-      );
-      immediateMaintenanceScheduled += results.reduce((sum, r) => sum + r.immediate, 0);
-      maintenanceScheduled += results.reduce((sum, r) => sum + r.refresh, 0);
+              let immediateCount = 0;
+              if (heaviestExpiredCheck) {
+                const immediateStart = new Date(gameNow.getTime() + 2 * 60 * 60 * 1000);
+                const immediateStartTime = `${String(immediateStart.getUTCHours()).padStart(2, '0')}:${String(immediateStart.getUTCMinutes()).padStart(2, '0')}`;
+                const immediateDate = immediateStart.toISOString().split('T')[0];
+                const dayOfWeek = immediateStart.getUTCDay();
+                const duration = CHECK_DURATIONS[heaviestExpiredCheck];
+
+                const sevenDaysFromNow = new Date(gameNow);
+                sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+                const existingMaint = await RecurringMaintenance.findOne({
+                  where: {
+                    aircraftId: aircraft.id,
+                    checkType: heaviestExpiredCheck,
+                    scheduledDate: {
+                      [Op.between]: [gameNowStr, sevenDaysFromNow.toISOString().split('T')[0]]
+                    },
+                    status: 'active'
+                  }
+                });
+
+                if (!existingMaint) {
+                  await RecurringMaintenance.create({
+                    aircraftId: aircraft.id,
+                    checkType: heaviestExpiredCheck,
+                    dayOfWeek,
+                    scheduledDate: immediateDate,
+                    startTime: immediateStartTime,
+                    duration,
+                    status: 'active'
+                  });
+                  immediateCount = 1;
+                  console.log(`[GLOBAL MAINT] Scheduled immediate ${heaviestExpiredCheck} check for ${aircraft.registration} at ${immediateStartTime} on ${immediateDate}`);
+                }
+              }
+
+              return { immediate: immediateCount, refresh: refreshCount };
+            } catch (err) {
+              console.error(`Error processing maintenance for aircraft ${aircraft.id}:`, err);
+              return { immediate: 0, refresh: 0 };
+            }
+          })
+        );
+        immediateMaintenanceScheduled += results.reduce((sum, r) => sum + r.immediate, 0);
+        maintenanceScheduled += results.reduce((sum, r) => sum + r.refresh, 0);
+      }
     }
 
     res.json({

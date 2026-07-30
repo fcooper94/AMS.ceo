@@ -38,15 +38,18 @@ Airline management sim. Players run airlines across eras (1950→present): aircr
 ## Maintenance — fragile, be careful
 
 - Engine: `fleet.js` `createAutoScheduledMaintenance`, `worldTimeService.js` `processMaintenance`, `config/maintenanceConfig.js` (single source for durations).
+- **AI airlines skip maintenance entirely.** `processMaintenance` and `refreshMaintenanceSchedules` use `_getPlayerMembershipIds()`. AI deliveries skip auto-scheduling. No RecurringMaintenance rows for AI.
+- **Daily check grounding is real.** Expired dailies → `status='maintenance'` (15% per-airline cap). Un-grounded when next daily completes. Not display-only.
+- **Auto-schedule flags are respected.** `_refreshAutoScheduledMaintenance` reads per-aircraft `autoSchedule*` booleans. Delete query covers all 5 types so disabled checks get cleaned up.
 - **A-check expiry is HOURS-based** (`totalFlightHours − lastACheckHours`). Any completion path MUST anchor hours.
 - **PERFORM NOW** stamps in GAME time, sets `maintenance_until`. `processAutomaticHeavyMaintenance` restores.
 - **Auto-schedule uses `findAvailableSlotCached`** inside `createAutoScheduledMaintenance` (not `findAvailableSlotOnDate` — patching only that changes nothing).
 - Consecutive dailies keep 16h minimum gap. Slots randomised into free 15-min gaps with fleet de-clash.
 - `processMaintenance` settles chronologically (`ORDER BY scheduled_date`).
-- **"Checks vanish after load":** schedule endpoint fires background delete+recreate with 5s delay. Proper fix = transaction (someday).
 - Guard: scheduling aborts when clock invalid/<1980 (prevents epoch-dated orphan rows).
 - On-order aircraft have NULL check dates until delivery.
 - Per-world era scoping is essential — worlds run at different eras.
+- **Maintenance calendar** (`public/js/maintenance-calendar.js`): weekly Gantt view with flight blocks (IATA dest codes), drag-and-drop from sidebar (visible when auto-schedule off), turnaround scheduling for dailies.
 
 ## Scaling architecture (LIVE on Railway)
 
