@@ -1340,11 +1340,11 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           </div>
           ` : ''}
 
-          <div style="display: flex; gap: 0.4rem; align-items: center; margin-left: auto; flex-shrink: 0; flex-wrap: nowrap;">
-            <button id="cabinSaveLayoutBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; cursor: pointer; white-space: nowrap;">Save Layout</button>
-            <button id="cabinLoadLayoutBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; white-space: nowrap;">Load Layout</button>
-            <button id="cabinApplyBtn" class="btn btn-primary" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; white-space: nowrap;">Apply</button>
-            <button id="cabinCancelBtn" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; white-space: nowrap;">Cancel</button>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-left: auto; flex-shrink: 0; width: 220px;">
+            <button id="cabinSaveLayoutBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; cursor: pointer; text-align: center;">Save Config</button>
+            <button id="cabinLoadLayoutBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; text-align: center;">Load Config</button>
+            <button id="cabinApplyBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.5); color: #34d399; cursor: pointer; text-align: center;">Apply</button>
+            <button id="cabinCancelBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #f87171; cursor: pointer; text-align: center;">Cancel</button>
           </div>
         </div>
       </div>
@@ -2080,10 +2080,12 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
                    background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.75rem;
                    display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
         </div>
-        <button id="ddSaveLayoutBtn" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; cursor: pointer;">Save Layout</button>
-        <button id="ddLoadLayoutBtn" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer;">Load Layout</button>
-        <button id="ddApplyBtn" class="btn btn-primary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Apply</button>
-        <button id="ddCancelBtn" class="btn btn-secondary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Cancel</button>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-left: auto; flex-shrink: 0; width: 220px;">
+          <button id="ddSaveLayoutBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; cursor: pointer; text-align: center;">Save Config</button>
+          <button id="ddLoadLayoutBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; text-align: center;">Load Config</button>
+          <button id="ddApplyBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.5); color: #34d399; cursor: pointer; text-align: center;">Apply</button>
+          <button id="ddCancelBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #f87171; cursor: pointer; text-align: center;">Cancel</button>
+        </div>
       </div>
     </div>
   `;

@@ -711,9 +711,11 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
               <div id="cargoBarSegments" style="display:flex;width:100%;height:100%;border-radius:3px;overflow:hidden;">${buildBarSegments()}</div>
             </div>
           </div>
-          <div style="display:flex;gap:0.4rem;align-items:center;margin-left:auto;">
-            <button id="cargoApplyBtn" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-size:0.8rem;">Apply</button>
-            <button id="cargoCancelBtn" class="btn btn-secondary" style="padding:0.5rem 1.25rem;font-size:0.8rem;">Cancel</button>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-left: auto; flex-shrink: 0; width: 220px;">
+            <button id="cargoSaveConfigBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; cursor: pointer; text-align: center;">Save Config</button>
+            <button id="cargoLoadConfigBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; text-align: center;">Load Config</button>
+            <button id="cargoApplyBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.5); color: #34d399; cursor: pointer; text-align: center;">Apply</button>
+            <button id="cargoCancelBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #f87171; cursor: pointer; text-align: center;">Cancel</button>
           </div>
         </div>
         <div id="cargoTypeControls" style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:stretch;">
@@ -782,6 +784,71 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
     }
   });
   document.getElementById('cargoCancelBtn').addEventListener('click', () => { _hideCargoTooltip(); document.body.removeChild(overlay); });
+
+  // ── Save/Load cargo config handlers ───────────────────────────────
+  const cargoCatalogId = aircraft.variantId || (typeof aircraft.id === 'string' && aircraft.id.startsWith('used-') ? null : aircraft.id);
+  if (!cargoCatalogId) {
+    const sb = document.getElementById('cargoSaveConfigBtn'); const lb = document.getElementById('cargoLoadConfigBtn');
+    if (sb) sb.style.display = 'none'; if (lb) lb.style.display = 'none';
+  }
+  document.getElementById('cargoSaveConfigBtn')?.addEventListener('click', () => {
+    if (!cargoCatalogId || typeof _showLayoutNameModal !== 'function') return;
+    _showLayoutNameModal(overlay, async (name) => {
+      try {
+        const cargoData = {};
+        types.forEach(t => { cargoData[t] = config[t]; });
+        CARGO_TYPE_KEYS.forEach(t => { if (cargoData[t] == null) cargoData[t] = 0; });
+        const resp = await fetch('/api/fleet/cabin-layouts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aircraftId: cargoCatalogId, name, economySeats: 0, economyPlusSeats: 0, businessSeats: 0, firstSeats: 0, toilets: 0, cargoConfig: cargoData })
+        });
+        const btn = document.getElementById('cargoSaveConfigBtn');
+        if (resp.ok) { btn.textContent = 'Saved \u2713'; setTimeout(() => { btn.textContent = 'Save Config'; }, 2000); }
+        else { const err = await resp.json(); btn.textContent = err.error || 'Error'; setTimeout(() => { btn.textContent = 'Save Config'; }, 2000); }
+      } catch (e) { console.error('Save cargo config error:', e); }
+    });
+  });
+  document.getElementById('cargoLoadConfigBtn')?.addEventListener('click', async () => {
+    if (!cargoCatalogId) return;
+    try {
+      const resp = await fetch(`/api/fleet/cabin-layouts/${cargoCatalogId}`);
+      if (!resp.ok) return;
+      const { layouts } = await resp.json();
+      const cargoLayouts = (layouts || []).filter(l => l.cargoConfig && Object.values(l.cargoConfig).some(v => v > 0));
+      if (cargoLayouts.length === 0) {
+        const btn = document.getElementById('cargoLoadConfigBtn');
+        btn.textContent = 'No configs'; setTimeout(() => { btn.textContent = 'Load Config'; }, 2000); return;
+      }
+      let existing = document.getElementById('cargoLayoutDropdown');
+      if (existing) { existing.remove(); return; }
+      const dd = document.createElement('div');
+      dd.id = 'cargoLayoutDropdown';
+      dd.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:10001;min-width:220px;max-height:240px;overflow-y:auto;';
+      dd.innerHTML = cargoLayouts.map(l => {
+        const cc = l.cargoConfig || {};
+        const summary = Object.entries(cc).filter(([,v]) => v > 0).map(([k,v]) => `${Math.round(v/1000)}t ${k}`).slice(0, 3).join(', ');
+        return `<div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border-color);cursor:pointer;" class="layout-row" data-id="${l.id}"><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.8rem;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.name}</div><div style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${summary || 'Empty'}</div></div><button class="layout-delete" data-id="${l.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0 0.2rem;line-height:1;" title="Delete">&times;</button></div>`;
+      }).join('');
+      const loadBtn = document.getElementById('cargoLoadConfigBtn');
+      const rect = loadBtn.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 4) + 'px'; dd.style.left = Math.max(8, rect.right - 220) + 'px';
+      document.body.appendChild(dd);
+      dd.querySelectorAll('.layout-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.layout-delete')) return;
+          const layout = cargoLayouts.find(l => l.id === row.dataset.id);
+          if (!layout?.cargoConfig) return;
+          types.forEach(t => { config[t] = layout.cargoConfig[t] || 0; }); updateUI(); dd.remove();
+        });
+      });
+      dd.querySelectorAll('.layout-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => { e.stopPropagation(); await fetch(`/api/fleet/cabin-layouts/${btn.dataset.id}`, { method: 'DELETE' }); btn.closest('.layout-row').remove(); if (dd.children.length === 0) dd.remove(); });
+      });
+      const closeHandler = (e) => { if (!dd.contains(e.target) && e.target.id !== 'cargoLoadConfigBtn') { dd.remove(); document.removeEventListener('click', closeHandler); } };
+      setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    } catch (e) { console.error('Load cargo config error:', e); }
+  });
+
   updateUI();
 }
 
@@ -967,9 +1034,11 @@ function _showDualDeckConfigurator(aircraft, onApply, existingConfig) {
       </div>
 
       <!-- Action buttons -->
-      <div style="display:flex;gap:0.5rem;">
-        <button id="cargoApplyBtn" class="btn btn-primary" style="flex:1;padding:0.7rem;font-size:0.95rem;">Apply</button>
-        <button id="cargoCancelBtn" class="btn btn-secondary" style="flex:1;padding:0.7rem;font-size:0.95rem;">Cancel</button>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; width: 100%; max-width: 280px; margin-left: auto;">
+        <button id="cargoSaveConfigBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; cursor: pointer; text-align: center;">Save Config</button>
+        <button id="cargoLoadConfigBtn" class="btn" style="padding: 0.4rem 0; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; text-align: center;">Load Config</button>
+        <button id="cargoApplyBtn" class="btn" style="padding: 0.5rem 0; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.5); color: #34d399; cursor: pointer; text-align: center;">Apply</button>
+        <button id="cargoCancelBtn" class="btn" style="padding: 0.5rem 0; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #f87171; cursor: pointer; text-align: center;">Cancel</button>
       </div>
     </div>`;
 
@@ -1063,6 +1132,78 @@ function _showDualDeckConfigurator(aircraft, onApply, existingConfig) {
     }
   });
   document.getElementById('cargoCancelBtn').addEventListener('click', () => { _hideCargoTooltip(); document.body.removeChild(overlay); });
+
+  // ── Save/Load cargo config handlers (dual-deck) ───────────────────
+  const ddCargoCatalogId = aircraft.variantId || (typeof aircraft.id === 'string' && aircraft.id.startsWith('used-') ? null : aircraft.id);
+  if (!ddCargoCatalogId) {
+    const sb = document.getElementById('cargoSaveConfigBtn'); const lb = document.getElementById('cargoLoadConfigBtn');
+    if (sb) sb.style.display = 'none'; if (lb) lb.style.display = 'none';
+  }
+  document.getElementById('cargoSaveConfigBtn')?.addEventListener('click', () => {
+    if (!ddCargoCatalogId || typeof _showLayoutNameModal !== 'function') return;
+    _showLayoutNameModal(overlay, async (name) => {
+      try {
+        const totalCfg = {};
+        CARGO_TYPE_KEYS.forEach(t => { totalCfg[t] = (mainDeck[t] || 0) + (cargoHold[t] || 0); });
+        const resp = await fetch('/api/fleet/cabin-layouts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aircraftId: ddCargoCatalogId, name, economySeats: 0, economyPlusSeats: 0, businessSeats: 0, firstSeats: 0, toilets: 0, cargoConfig: totalCfg })
+        });
+        const btn = document.getElementById('cargoSaveConfigBtn');
+        if (resp.ok) { btn.textContent = 'Saved \u2713'; setTimeout(() => { btn.textContent = 'Save Config'; }, 2000); }
+        else { const err = await resp.json(); btn.textContent = err.error || 'Error'; setTimeout(() => { btn.textContent = 'Save Config'; }, 2000); }
+      } catch (e) { console.error('Save cargo config error:', e); }
+    });
+  });
+  document.getElementById('cargoLoadConfigBtn')?.addEventListener('click', async () => {
+    if (!ddCargoCatalogId) return;
+    try {
+      const resp = await fetch(`/api/fleet/cabin-layouts/${ddCargoCatalogId}`);
+      if (!resp.ok) return;
+      const { layouts } = await resp.json();
+      const cargoLayouts = (layouts || []).filter(l => l.cargoConfig && Object.values(l.cargoConfig).some(v => v > 0));
+      if (cargoLayouts.length === 0) {
+        const btn = document.getElementById('cargoLoadConfigBtn');
+        btn.textContent = 'No configs'; setTimeout(() => { btn.textContent = 'Load Config'; }, 2000); return;
+      }
+      let existing = document.getElementById('cargoLayoutDropdown');
+      if (existing) { existing.remove(); return; }
+      const dd = document.createElement('div');
+      dd.id = 'cargoLayoutDropdown';
+      dd.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:10001;min-width:220px;max-height:240px;overflow-y:auto;';
+      dd.innerHTML = cargoLayouts.map(l => {
+        const cc = l.cargoConfig || {};
+        const summary = Object.entries(cc).filter(([,v]) => v > 0).map(([k,v]) => `${Math.round(v/1000)}t ${k}`).slice(0, 3).join(', ');
+        return `<div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border-color);cursor:pointer;" class="layout-row" data-id="${l.id}"><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.8rem;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.name}</div><div style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${summary || 'Empty'}</div></div><button class="layout-delete" data-id="${l.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0 0.2rem;line-height:1;" title="Delete">&times;</button></div>`;
+      }).join('');
+      const loadBtn = document.getElementById('cargoLoadConfigBtn');
+      const rect = loadBtn.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 4) + 'px'; dd.style.left = Math.max(8, rect.right - 220) + 'px';
+      document.body.appendChild(dd);
+      dd.querySelectorAll('.layout-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.layout-delete')) return;
+          const layout = cargoLayouts.find(l => l.id === row.dataset.id);
+          if (!layout?.cargoConfig) return;
+          // Split total config proportionally between main deck and cargo hold
+          const total = layout.cargoConfig;
+          const mdRatio = mainDeckCap / (mainDeckCap + holdCap || 1);
+          CARGO_TYPE_KEYS.forEach(t => {
+            const v = total[t] || 0;
+            mainDeck[t] = Math.round(v * mdRatio);
+            cargoHold[t] = v - mainDeck[t];
+          });
+          updateUI(); dd.remove();
+        });
+      });
+      dd.querySelectorAll('.layout-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => { e.stopPropagation(); await fetch(`/api/fleet/cabin-layouts/${btn.dataset.id}`, { method: 'DELETE' }); btn.closest('.layout-row').remove(); if (dd.children.length === 0) dd.remove(); });
+      });
+      const closeHandler = (e) => { if (!dd.contains(e.target) && e.target.id !== 'cargoLoadConfigBtn') { dd.remove(); document.removeEventListener('click', closeHandler); } };
+      setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    } catch (e) { console.error('Load cargo config error:', e); }
+  });
+
   updateUI();
 }
 
