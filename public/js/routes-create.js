@@ -675,8 +675,14 @@ function populateFleetDropdown() {
 
   Object.keys(aircraftTypes).sort().forEach(typeKey => {
     const typeInfo = aircraftTypes[typeKey];
-    // Store aircraft data by UserAircraft ID for later lookup
-    aircraftDataById[typeInfo.userAircraftId] = typeInfo.aircraft;
+    // Store aircraft data by UserAircraft ID for later lookup (include cabin config from UserAircraft)
+    const srcUa = userFleet.find(ua => ua.id === typeInfo.userAircraftId);
+    aircraftDataById[typeInfo.userAircraftId] = Object.assign({}, typeInfo.aircraft, {
+      configuredEconomySeats: srcUa?.economySeats || 0,
+      configuredEconomyPlusSeats: srcUa?.economyPlusSeats || 0,
+      configuredBusinessSeats: srcUa?.businessSeats || 0,
+      configuredFirstSeats: srcUa?.firstSeats || 0
+    });
     // Store the UserAircraft ID in the value (not the Aircraft ID)
     html += `<option value='${typeInfo.userAircraftId}'>${typeInfo.displayName} (${typeInfo.count} available)</option>`;
   });
@@ -758,18 +764,16 @@ function updatePassengerClassAvailability(aircraftData) {
   const businessField    = document.getElementById('businessPrice');
   const firstField       = document.getElementById('firstPrice');
 
-  // Class availability. The per-aircraft has* flags default to false and aren't
-  // populated in seed data, so derive from aircraft type/capacity (respecting an
-  // explicit `true` flag if one is ever set). Cabin config and revenue already
-  // use the aircraft's configured seats, not these flags — this only ungated the
-  // pricing inputs.
-  const cap    = aircraftData?.passengerCapacity || 0;
-  const isWide = (aircraftData?.type || '') === 'Widebody';
+  // Class availability based on the aircraft's ACTUAL configured cabin.
+  // If the user configured only economy seats, don't show business/first pricing.
+  const hasConfiguredSeats = aircraftData && (aircraftData.configuredEconomySeats > 0 ||
+    aircraftData.configuredEconomyPlusSeats > 0 || aircraftData.configuredBusinessSeats > 0 ||
+    aircraftData.configuredFirstSeats > 0);
   const avail = {
-    economy:     aircraftData ? aircraftData.hasEconomy !== false : true,
-    economyPlus: aircraftData ? (aircraftData.hasEconomyPlus === true || isWide || cap >= 150) : true,
-    business:    aircraftData ? (aircraftData.hasBusiness === true || cap >= 50) : true,
-    first:       aircraftData ? (aircraftData.hasFirst === true || isWide || cap >= 250) : true
+    economy:     true,
+    economyPlus: hasConfiguredSeats ? aircraftData.configuredEconomyPlusSeats > 0 : true,
+    business:    hasConfiguredSeats ? aircraftData.configuredBusinessSeats > 0 : true,
+    first:       hasConfiguredSeats ? aircraftData.configuredFirstSeats > 0 : true
   };
 
   // ── Economy (always available, not era-gated) ──────────────────────────
@@ -849,15 +853,17 @@ function updateFieldLabel(field, isAvailable, note) {
   }
 }
 
-// Fetch global pricing defaults
-async function fetchGlobalPricing() {
+// Fetch global pricing defaults. Pass route distance for era-appropriate prices.
+async function fetchGlobalPricing(distanceNm) {
   try {
-    const response = await fetch('/api/pricing/global');
+    const url = distanceNm ? `/api/pricing/global?distance=${Math.round(distanceNm)}` : '/api/pricing/global';
+    const response = await fetch(url);
     if (response.ok) {
       globalPricing = await response.json();
-      console.log('Global pricing loaded:', globalPricing);
-      // Apply global defaults immediately if no aircraft selected
-      applyDefaultPricing(null);
+      // Apply defaults for the currently selected aircraft (if any)
+      const acSelect = document.getElementById('assignedAircraft');
+      const acData = acSelect?.value ? aircraftDataById[acSelect.value] : null;
+      applyDefaultPricing(acData);
     }
   } catch (error) {
     console.error('Error fetching global pricing:', error);
@@ -2150,6 +2156,16 @@ function displayAvailableAirports(airports) {
 // Select destination airport
 function selectDestinationAirport(airportId) {
   selectedDestinationAirport = availableAirports.find(a => a.id === airportId);
+
+  // Re-fetch distance-appropriate default pricing (clears stale values)
+  if (selectedDestinationAirport?.distance) {
+    // Clear existing prices so new defaults can fill them
+    ['economyPrice', 'economyPlusPrice', 'businessPrice', 'firstPrice'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el.disabled) el.value = '';
+    });
+    fetchGlobalPricing(selectedDestinationAirport.distance);
+  }
 
   // Update row selection visuals
   document.querySelectorAll('.airport-row').forEach(row => {

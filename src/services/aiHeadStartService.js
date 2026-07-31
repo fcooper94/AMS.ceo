@@ -262,14 +262,22 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
   const flightRows = [];
   let accumulatedProfit = 0;
 
-  // Assign 1–2 routes per aircraft, packing onto free days across the week.
+  // Pack multiple daily routes per aircraft, filling the 06:00-23:00 window.
+  const MAX_FLYING_DAY_MINS = 1020; // 17 hours
+  const DAY_START_MINS = 360; // 06:00
+
   for (const meta of fleetMeta) {
     const ac = meta.aircraft;
     const rangeNm = ac.rangeNm || (ac.cruiseSpeed || 450) * 12;
-    const usedDays = new Set();
-    const routesForThisAircraft = 1 + (Math.random() < 0.45 ? 1 : 0);
+    let usedMins = 0;
+    let nextDepMins = DAY_START_MINS;
+    let hasLongHaul = false;
 
-    for (let r = 0; r < routesForThisAircraft; r++) {
+    // Keep adding routes until the aircraft's day is full
+    for (let r = 0; r < 8; r++) {
+      const remainingMins = MAX_FLYING_DAY_MINS - usedMins;
+      if (remainingMins < 60) break;
+
       // Find the next viable destination for this aircraft.
       let picked = null;
       for (const opp of opportunities) {
@@ -286,43 +294,40 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
         if (!archetype.canFlyInternational && baseAirport.country !== dest.country) continue;
         if (distance > rangeNm * 0.95) continue;
         // Don't stack a long-haul route onto an aircraft that already has one.
-        if (usedDays.size > 0 && distance >= 2500) continue;
-        picked = { dest, distance, demand: opp.demand || 45, routeType: opp.routeType || 'mixed' };
+        if (hasLongHaul && distance >= 2500) continue;
+        if (usedMins > 0 && distance >= 2500) continue;
+
+        const paxCap = ac.passengerCapacity || 150;
+        let ta = 45;
+        if (paxCap > 250) ta = 75;
+        else if (paxCap > 150) ta = 60;
+        else if (paxCap < 80) ta = 30;
+        const rtMins = Math.ceil((distance / (ac.cruiseSpeed || 450)) * 60 * 2 + ta);
+        if (rtMins > remainingMins) continue;
+        if (nextDepMins + rtMins > 23 * 60) continue; // would land after 23:00
+
+        picked = { dest, distance, demand: opp.demand || 45, routeType: opp.routeType || 'mixed', rtMins, turnaround: ta };
         break;
       }
       if (!picked) break;
 
-      const { dest, distance, demand } = picked;
+      const { dest, distance, demand, rtMins, turnaround } = picked;
       usedDest.add(dest.id);
+      if (distance >= 2500) hasLongHaul = true;
 
-      // Days-of-week packed onto this aircraft's free days.
-      const want = daysPerWeekForDemand(demand);
-      const freeDays = DAY_ORDER.filter(d => !usedDays.has(d));
-      if (freeDays.length === 0) break;
-      const routeDays = freeDays.slice(0, Math.min(want, freeDays.length)).sort((a, b) => a - b);
-      routeDays.forEach(d => usedDays.add(d));
+      // All routes run daily
+      const routeDays = [0, 1, 2, 3, 4, 5, 6];
 
       const paxCapacity = ac.passengerCapacity || 150;
-      let turnaround = 45;
-      if (paxCapacity > 250) turnaround = 75;
-      else if (paxCapacity > 150) turnaround = 60;
-      else if (paxCapacity < 80) turnaround = 30;
 
-      // Curfew-aware departure: ≥06:00 local, and prefer an hour whose
-      // round trip lands back by ~23:00 local (overnight flying is fine,
-      // antisocial takeoffs/landings are not — mirrors aiDecisionService)
-      const rtMinutes = (distance / (ac.cruiseSpeed || 450)) * 60 * 2 + turnaround;
-      const baseUtcOffset = Math.round((parseFloat(airline.baseAirport?.longitude) || 0) / 15);
-      const candidates = [];
-      for (let h = 6; h <= 19; h++) {
-        const arrLocal = (h + rtMinutes / 60) % 24;
-        if (arrLocal >= 6 && arrLocal <= 23) candidates.push(h);
-      }
-      const depLocal = candidates.length > 0
-        ? candidates[Math.floor(Math.random() * candidates.length)]
-        : 6 + Math.floor(Math.random() * 14);
-      const depHour = ((depLocal - baseUtcOffset) % 24 + 24) % 24;
-      const depTime = `${String(depHour).padStart(2, '0')}:${String(Math.floor(Math.random() * 12) * 5).padStart(2, '0')}:00`;
+      // Sequential departure: start after previous route returns
+      const depHour = Math.floor(nextDepMins / 60);
+      const depMin = Math.round((nextDepMins % 60) / 5) * 5;
+      const depTime = `${String(depHour).padStart(2, '0')}:${String(depMin).padStart(2, '0')}:00`;
+
+      // Update time tracking
+      usedMins += rtMins;
+      nextDepMins += rtMins;
 
       const priceMod = (archetype.pricingModifier || 1.0) * (config.pricingModifier || 1.0);
       const economyPrice = Math.round(eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy') * priceMod);

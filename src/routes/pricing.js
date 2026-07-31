@@ -40,10 +40,10 @@ router.get('/global', async (req, res) => {
     });
 
     if (!pricing) {
-      // Return era-appropriate defaults based on a typical ~1000nm route
+      // Return era-appropriate defaults. Use route distance if provided, else 1000nm.
       const world = await World.findByPk(activeWorldId);
       const gameYear = world?.currentTime ? new Date(world.currentTime).getFullYear() : 2024;
-      const typicalDistance = 1000;
+      const typicalDistance = parseInt(req.query.distance) || 1000;
 
       const econ = eraEconomicService.calculateTicketPrice(typicalDistance, gameYear, 'economy');
       const eraMultiplier = eraEconomicService.getEraMultiplier(gameYear);

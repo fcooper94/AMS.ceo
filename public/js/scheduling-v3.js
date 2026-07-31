@@ -4770,6 +4770,12 @@ async function viewFlightDetailsWeekly(flightId) {
           <button onclick="closeFlightDetailsModal()" style="background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
         </div>
         <div style="padding: 1.25rem;">
+          <!-- Grounded banner -->
+          ${(aircraft.status === 'maintenance' || aircraft.status === 'cabin_refit' || getExpiredChecks(aircraft).length > 0) ? `
+          <div style="padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; background: rgba(248, 81, 73, 0.12); border: 1px solid rgba(248, 81, 73, 0.4); border-radius: 6px; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: #f85149; font-weight: 700; font-size: 0.8rem;">FLIGHT SUSPENDED</span>
+            <span style="color: #8b949e; font-size: 0.75rem;">— Aircraft ${aircraft.status === 'cabin_refit' ? 'undergoing cabin refit' : 'grounded for maintenance'}. No revenue earned.</span>
+          </div>` : ''}
           <!-- Header info row -->
           <div style="display: flex; gap: 2rem; margin-bottom: 1rem; font-size: 0.85rem; flex-wrap: wrap;">
             <div><span style="color: #8b949e;">Aircraft:</span> <span style="color: #f0f6fc; font-weight: 600;">${aircraft.registration}</span> <span style="color: #8b949e;">(${aircraft.aircraft.manufacturer} ${aircraft.aircraft.model})</span></div>
@@ -6436,8 +6442,8 @@ function generateAircraftRowWeekly(aircraft, dayColumns) {
         }
 
         // Main flight block - covers the full flight time (no separate pre/post-flight slivers in weekly view)
-        // Apply blur only if aircraft is actually grounded (not just in maintenance)
-        const flightBlockBlur = actuallyExpired.length > 0 ? 'filter: blur(2px); opacity: 0.4;' : '';
+        // Apply blur if aircraft has any check issues (expired or in-progress) or is in maintenance/refit
+        const flightBlockBlur = (hasExpiredChecks || aircraft.status === 'maintenance' || isInRefit) ? 'filter: blur(2px); opacity: 0.4;' : '';
         // Sightseeing tours: distinct teal block + safe click (no ScheduledFlight details).
         const isTourBlock = flight.isTour;
         const blockBg = isTourBlock ? 'linear-gradient(to right, #0d9488, #14b8a6)' : flightBg;
@@ -7364,7 +7370,7 @@ function generateAircraftRow(aircraft, timeColumns) {
         style="padding: 0.3rem 0.2rem 0.3rem 0.2rem; text-align: center; background: var(--surface-elevated); ${borderStyle} height: 65px; min-width: ${cellWidth}; position: relative; vertical-align: top; overflow: visible;"
         title="${hasExpiredChecks ? groundedTooltip : ''}"
       >
-        ${renderFlightBlocks(cellFlights, dateStr, actuallyExpired.length > 0)}${renderMaintenanceBlocks(cellMaintenance, cellFlights, aircraft)}
+        ${renderFlightBlocks(cellFlights, dateStr, hasExpiredChecks || aircraft.status === 'maintenance' || aircraft.status === 'cabin_refit')}${renderMaintenanceBlocks(cellMaintenance, cellFlights, aircraft)}
         ${expiredOverlay}
       </td>
     `;

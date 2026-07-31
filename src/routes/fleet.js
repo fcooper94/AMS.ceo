@@ -2596,7 +2596,7 @@ router.post('/purchase', async (req, res) => {
         acquisitionType: 'purchase',
         condition: condition || 'New',
         conditionPercentage: conditionPercentage || 100,
-        ageYears: ageYears || 0,
+        ageYears: Math.floor(ageYears) || 0,
         purchasePrice: price,
         maintenanceCostPerHour,
         fuelBurnPerHour,
@@ -3235,7 +3235,7 @@ router.post('/lease', async (req, res) => {
       acquisitionType: 'lease',
       condition: condition || 'New',
       conditionPercentage: conditionPercentage || 100,
-      ageYears: ageYears || 0,
+      ageYears: Math.floor(ageYears) || 0,
       purchasePrice: purchasePrice || null,
       leaseWeeklyPayment: weeklyPayment,
       leaseDurationMonths: parseInt(leaseDurationMonths),
@@ -3401,6 +3401,12 @@ router.post('/bulk-lease', async (req, res) => {
       autoScheduleA,
       autoScheduleC,
       autoScheduleD,
+      // Cabin configuration
+      economySeats,
+      economyPlusSeats,
+      businessSeats,
+      firstSeats,
+      toilets,
       // Cargo allocation (new JSON format)
       cargoConfig: _blkLeaseCargoConfig,
       mainDeckCargoConfig: _blkLeaseMainDeckCargoConfig,
@@ -3532,6 +3538,12 @@ router.post('/bulk-lease', async (req, res) => {
     const cInterval = 600 + Math.floor(Math.random() * 120);
     const dInterval = 2190 + Math.floor(Math.random() * 1460);
 
+    // Cabin outfitting cost (one-off, same as single lease)
+    const blkLeaseEraMult = eraEconomicService.getEraMultiplier(
+      blkLeaseGameTime ? blkLeaseGameTime.getFullYear() : 2024);
+    const blkLeaseOutfittingCost = cabinOutfittingCost(
+      { economySeats, economyPlusSeats, businessSeats, firstSeats }, blkLeaseEraMult);
+
     // Transaction: create all leased aircraft + deduct first payment
     const createdAircraft = [];
     const t = await sequelize.transaction();
@@ -3540,13 +3552,14 @@ router.post('/bulk-lease', async (req, res) => {
         transaction: t, lock: t.LOCK.UPDATE
       });
 
-      // Only charge first weekly payment for the 1st aircraft (immediate delivery)
+      // Only charge first weekly payment + outfitting for the 1st aircraft (immediate delivery)
       // On-order aircraft pay at delivery via processDeliveries
-      if (lockedMembership.balance < weeklyPayment) {
+      const firstPayment = weeklyPayment + blkLeaseOutfittingCost;
+      if (lockedMembership.balance < firstPayment) {
         await t.rollback();
         return res.status(400).json({
-          error: 'Insufficient funds for first lease payment',
-          required: weeklyPayment,
+          error: 'Insufficient funds for first lease payment and cabin outfitting',
+          required: firstPayment,
           available: lockedMembership.balance
         });
       }
@@ -3574,15 +3587,21 @@ router.post('/bulk-lease', async (req, res) => {
           autoScheduleA: autoScheduleA === true,
           autoScheduleC: autoScheduleC === true,
           autoScheduleD: autoScheduleD === true,
-          cargoLightKg: cargoLightKg || null,
-          cargoStandardKg: cargoStandardKg || null,
-          cargoHeavyKg: cargoHeavyKg || null,
-          mainDeckLightKg: mainDeckLightKg || null,
-          mainDeckStandardKg: mainDeckStandardKg || null,
-          mainDeckHeavyKg: mainDeckHeavyKg || null,
-          cargoHoldLightKg: cargoHoldLightKg || null,
-          cargoHoldStandardKg: cargoHoldStandardKg || null,
-          cargoHoldHeavyKg: cargoHoldHeavyKg || null,
+          // Cabin configuration (parseInt guards — all are INTEGER columns)
+          economySeats: economySeats != null ? parseInt(economySeats) || null : null,
+          economyPlusSeats: economyPlusSeats != null ? parseInt(economyPlusSeats) || null : null,
+          businessSeats: businessSeats != null ? parseInt(businessSeats) || null : null,
+          firstSeats: firstSeats != null ? parseInt(firstSeats) || null : null,
+          toilets: toilets != null ? parseInt(toilets) || null : null,
+          cargoLightKg: cargoLightKg != null ? parseInt(cargoLightKg) || null : null,
+          cargoStandardKg: cargoStandardKg != null ? parseInt(cargoStandardKg) || null : null,
+          cargoHeavyKg: cargoHeavyKg != null ? parseInt(cargoHeavyKg) || null : null,
+          mainDeckLightKg: mainDeckLightKg != null ? parseInt(mainDeckLightKg) || null : null,
+          mainDeckStandardKg: mainDeckStandardKg != null ? parseInt(mainDeckStandardKg) || null : null,
+          mainDeckHeavyKg: mainDeckHeavyKg != null ? parseInt(mainDeckHeavyKg) || null : null,
+          cargoHoldLightKg: cargoHoldLightKg != null ? parseInt(cargoHoldLightKg) || null : null,
+          cargoHoldStandardKg: cargoHoldStandardKg != null ? parseInt(cargoHoldStandardKg) || null : null,
+          cargoHoldHeavyKg: cargoHoldHeavyKg != null ? parseInt(cargoHoldHeavyKg) || null : null,
           cargoConfig: cargoConfig || null,
           mainDeckCargoConfig: mainDeckCargoConfig || null,
           cargoHoldCargoConfig: cargoHoldCargoConfig || null
@@ -3621,8 +3640,8 @@ router.post('/bulk-lease', async (req, res) => {
         createdAircraft.push(userAircraft);
       }
 
-      // Deduct first weekly payment for 1st aircraft only
-      lockedMembership.balance = parseFloat(lockedMembership.balance) - weeklyPayment;
+      // Deduct first weekly payment + outfitting for 1st aircraft only
+      lockedMembership.balance = parseFloat(lockedMembership.balance) - weeklyPayment - blkLeaseOutfittingCost;
       await lockedMembership.save({ transaction: t });
 
       await t.commit();

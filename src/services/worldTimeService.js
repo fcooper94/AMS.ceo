@@ -1434,6 +1434,7 @@ class WorldTimeService {
         }, {
           model: UserAircraft,
           as: 'aircraft',
+          where: { status: 'active' },
           include: [{ model: Aircraft, as: 'aircraft' }]
         }]
       });

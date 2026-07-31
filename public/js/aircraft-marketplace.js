@@ -3717,6 +3717,12 @@ async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
         autoScheduleA: autoSchedulePrefs.autoScheduleA || false,
         autoScheduleC: autoSchedulePrefs.autoScheduleC || false,
         autoScheduleD: autoSchedulePrefs.autoScheduleD || false,
+        // Cabin configuration
+        economySeats: selectedCabinConfig?.economySeats || null,
+        economyPlusSeats: selectedCabinConfig?.economyPlusSeats || null,
+        businessSeats: selectedCabinConfig?.businessSeats || null,
+        firstSeats: selectedCabinConfig?.firstSeats || null,
+        toilets: selectedCabinConfig?.toilets || null,
         cargoConfig: selectedCargoConfig?.cargoConfig || null,
         mainDeckCargoConfig: selectedCargoConfig?.mainDeckCargoConfig || null,
         cargoHoldCargoConfig: selectedCargoConfig?.cargoHoldCargoConfig || null

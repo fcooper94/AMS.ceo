@@ -248,50 +248,8 @@ async function getPlayerRouteTargets(worldId, airlineId, baseAirportId, worldYea
  * Returns { frequency, daysOfWeek }.
  */
 function calculateSmartFrequency(demandScore, aircraftCapacity, personality) {
-  const isSmallAircraft = aircraftCapacity < 100;
-
-  let daysPerWeek;
-  if (demandScore < 15 && isSmallAircraft) {
-    daysPerWeek = 2 + Math.floor(Math.random() * 2); // 2-3
-  } else if (demandScore < 15) {
-    daysPerWeek = 3;
-  } else if (demandScore < 30) {
-    daysPerWeek = 3 + Math.floor(Math.random() * 3); // 3-5
-  } else if (demandScore < 60) {
-    daysPerWeek = 7;
-  } else {
-    daysPerWeek = 7;
-  }
-
-  // Personality modifier
-  if (personality === 'aggressive' && demandScore >= 40) {
-    daysPerWeek = 7;
-  }
-  if (personality === 'conservative' && demandScore < 40) {
-    daysPerWeek = Math.max(2, daysPerWeek - 1);
-  }
-
-  daysPerWeek = Math.min(7, Math.max(2, daysPerWeek));
-
-  if (daysPerWeek === 7) {
-    return { frequency: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
-  }
-
-  // Pick evenly spaced days, always including Mon (1) and Fri (5)
-  const days = new Set();
-  days.add(1); // Monday
-  if (daysPerWeek >= 3) days.add(5); // Friday
-  if (daysPerWeek >= 4) days.add(3); // Wednesday
-  if (daysPerWeek >= 5) days.add(0); // Sunday
-  if (daysPerWeek >= 6) days.add(4); // Thursday
-
-  const allDays = [0, 1, 2, 3, 4, 5, 6];
-  while (days.size < daysPerWeek) {
-    const remaining = allDays.filter(d => !days.has(d));
-    days.add(remaining[Math.floor(Math.random() * remaining.length)]);
-  }
-
-  return { frequency: 'weekly', daysOfWeek: [...days].sort((a, b) => a - b) };
+  // Always run daily — most efficient use of aircraft, matches real-world ops
+  return { frequency: 'daily', daysOfWeek: [0, 1, 2, 3, 4, 5, 6] };
 }
 
 /**
@@ -479,23 +437,39 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     ]
   });
 
-  // Days already flown per aircraft (so we can pack several routes onto one
-  // aircraft across the week) and whether it already runs a long-haul route.
-  const usedDaysByAircraft = {};
+  // Calculate daily flying minutes per aircraft so we can pack multiple routes
+  // per aircraft per day (like a real airline schedule). 06:00-23:00 = 1020 min window.
+  const MAX_FLYING_DAY_MINS = 1020; // 17 hours
+  const DAY_START_MINS = 360; // 06:00
+  const usedMinsByAircraft = {};
+  const latestReturnByAircraft = {}; // minutes from midnight when aircraft is free
   const hasLongHaulByAircraft = {};
+  const usedDaysByAircraft = {}; // kept for route daysOfWeek packing
   for (const route of routes) {
     if (!route.assignedAircraftId) continue;
+    const dist = parseFloat(route.distance) || 0;
+    const speed = 450; // approximate; actual speed used at scheduling time
+    const turnaround = parseInt(route.turnaroundTime) || 45;
+    const roundTripMins = Math.ceil((dist / speed) * 60 * 2 + turnaround);
+    usedMinsByAircraft[route.assignedAircraftId] = (usedMinsByAircraft[route.assignedAircraftId] || 0) + roundTripMins;
+    // Track latest return time
+    const depTime = route.scheduledDepartureTime || '06:00:00';
+    const [dh, dm] = depTime.split(':').map(Number);
+    const returnMin = dh * 60 + dm + roundTripMins;
+    latestReturnByAircraft[route.assignedAircraftId] = Math.max(
+      latestReturnByAircraft[route.assignedAircraftId] || DAY_START_MINS, returnMin);
+    if (dist >= 2500) hasLongHaulByAircraft[route.assignedAircraftId] = true;
     const set = usedDaysByAircraft[route.assignedAircraftId] || (usedDaysByAircraft[route.assignedAircraftId] = new Set());
     (route.daysOfWeek || []).forEach(d => set.add(d));
-    if ((parseFloat(route.distance) || 0) >= 2500) hasLongHaulByAircraft[route.assignedAircraftId] = true;
   }
-  // Aircraft that can take (more) routes: none yet, or a short/medium airframe with
-  // spare days left in its week. Long-haul aircraft keep a single (multi-day) route.
+  // Aircraft with spare time in the day can take more routes.
+  // Long-haul aircraft (multi-day round trips) keep their single route.
   const unassignedAircraft = fleet.filter(ac => {
-    const used = usedDaysByAircraft[ac.id];
-    if (!used || used.size === 0) return true;
+    const used = usedMinsByAircraft[ac.id] || 0;
+    if (used === 0) return true;
     if (hasLongHaulByAircraft[ac.id]) return false;
-    return used.size <= 4;
+    // Enough time for at least a 1-hour round trip (short hop)?
+    return used < MAX_FLYING_DAY_MINS - 60;
   });
 
   // Assess financial health
@@ -508,9 +482,9 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
     ? (totalRevenue - totalCosts) / routes.length
     : 0;
 
-  // 1. Create routes for aircraft that still have spare capacity in their week
+  // 1. Create routes for aircraft that still have spare capacity in their day
   if (unassignedAircraft.length > 0) {
-    await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear, usedDaysByAircraft);
+    await tryCreateRoutes(airline, world, config, unassignedAircraft, routes, gameTime, worldYear, usedDaysByAircraft, usedMinsByAircraft, latestReturnByAircraft);
   }
 
   // 2. Expand. New routes look unprofitable while they mature (~8-12 weeks), so
@@ -637,10 +611,10 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
 }
 
 /**
- * Try to create routes for aircraft that have none.
- * Includes player targeting, smart frequency, smart departure times, proper range check.
+ * Try to create routes for aircraft with spare capacity.
+ * Packs multiple short routes per aircraft per day to maximise utilisation.
  */
-async function tryCreateRoutes(airline, world, config, unassignedAircraft, existingRoutes, gameTime, worldYear, usedDaysByAircraft = {}) {
+async function tryCreateRoutes(airline, world, config, unassignedAircraft, existingRoutes, gameTime, worldYear, usedDaysByAircraft = {}, usedMinsByAircraft = {}, latestReturnByAircraft = {}) {
   if (!airline.baseAirportId) return;
 
   // Get top destination opportunities by demand
@@ -713,97 +687,107 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     attributes: ['id', 'arrivalAirportId', 'scheduledDepartureTime']
   });
 
+  const MAX_FLYING_DAY_MINS = 1020; // 17 hours (06:00-23:00)
+  const DAY_START_MINS = 360; // 06:00
+  const archetype = AIRLINE_ARCHETYPES[airline.airlineType] || AIRLINE_ARCHETYPES.fullService;
+
   for (const aircraft of unassignedAircraft) {
-    if (sorted.length === 0) break;
+    // Pack multiple routes onto this aircraft until its day is full.
+    // Each iteration adds one route; we loop until no more fit.
+    const maxRoutes = 6; // safety cap per cycle
+    let routesAdded = 0;
 
-    const destData = sorted.shift();
-    let destAirport = destData.airport || destData;
-    if (!destAirport.id) continue;
+    for (let attempt = 0; attempt < maxRoutes && sorted.length > 0; attempt++) {
+      const acUsedMins = usedMinsByAircraft[aircraft.id] || 0;
+      const acFreeAt = latestReturnByAircraft[aircraft.id] || DAY_START_MINS;
+      const remainingMins = MAX_FLYING_DAY_MINS - acUsedMins;
+      if (remainingMins < 60) break; // not enough time for even a short hop
 
-    if (!destAirport.latitude || !destAirport.longitude) {
-      destAirport = await Airport.findByPk(destAirport.id);
-      if (!destAirport) continue;
-    }
+      // Find the best destination that fits in the remaining time
+      let picked = null;
+      let pickedIdx = -1;
+      for (let si = 0; si < sorted.length; si++) {
+        const destData = sorted[si];
+        let destAirport = destData.airport || destData;
+        if (!destAirport.id) continue;
+        if (!destAirport.latitude || !destAirport.longitude) continue;
 
-    // Distance calculation
-    const distance = calculateDistanceNm(
-      parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
-      parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
-    );
+        const distance = calculateDistanceNm(
+          parseFloat(baseAirport.latitude), parseFloat(baseAirport.longitude),
+          parseFloat(destAirport.latitude), parseFloat(destAirport.longitude)
+        );
 
-    // Archetype constraints
-    const archetype = AIRLINE_ARCHETYPES[airline.airlineType] || AIRLINE_ARCHETYPES.fullService;
-    if (distance > (archetype.maxRouteDistance || 99999)) continue;
-    if (archetype.minRouteDistance && distance < archetype.minRouteDistance) continue;
-    if (!archetype.canFlyInternational && baseAirport.country !== destAirport.country) continue;
+        // Archetype / range constraints
+        if (distance > (archetype.maxRouteDistance || 99999)) continue;
+        if (archetype.minRouteDistance && distance < archetype.minRouteDistance) continue;
+        if (!archetype.canFlyInternational && baseAirport.country !== destAirport.country) continue;
+        const rangeNm = aircraft.aircraft?.rangeNm;
+        const maxRange = rangeNm || (aircraft.aircraft?.cruiseSpeed || 450) * 12;
+        if (distance > maxRange * 0.95) continue;
+        // Don't stack a long-haul on a busy aircraft
+        if (acUsedMins > 0 && distance >= 2500) continue;
 
-    // Proper aircraft range check
-    const rangeNm = aircraft.aircraft?.rangeNm;
-    const maxRange = rangeNm || (aircraft.aircraft?.cruiseSpeed || 450) * 12;
-    if (distance > maxRange * 0.95) continue; // 5% buffer for winds/routing
+        const cruiseSpd = aircraft.aircraft?.cruiseSpeed || 450;
+        const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
+        let turnaroundTime = 45;
+        if (paxCapacity > 250) turnaroundTime = 75;
+        else if (paxCapacity > 150) turnaroundTime = 60;
+        else if (paxCapacity < 80) turnaroundTime = 30;
+        const roundTripMins = Math.ceil((distance / cruiseSpd) * 60 * 2 + turnaroundTime);
 
-    // Check slot availability
-    try {
-      const slotCheck = await airportSlotService.canCreateRoute(
-        airline.baseAirportId, destAirport.id, world.id
-      );
-      if (!slotCheck.allowed) continue;
-    } catch (err) {
-      continue;
-    }
+        // Does this route fit in the remaining day?
+        if (roundTripMins > remainingMins) continue;
+        // Would it land after 23:00?
+        if (acFreeAt + roundTripMins > 23 * 60) continue;
 
-    // Generate flight numbers
-    const outboundNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-    existingFlightNums.add(outboundNum);
-    const returnNum = generateFlightNumber(airline.iataCode, existingFlightNums);
-    existingFlightNums.add(returnNum);
+        picked = { destData, destAirport, distance, roundTripMins, turnaroundTime, cruiseSpd, paxCapacity };
+        pickedIdx = si;
+        break;
+      }
 
-    // Calculate pricing
-    const archetypePriceMod = archetype.pricingModifier || 1.0;
-    const economyPrice = Math.round(eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy') * config.pricingModifier * archetypePriceMod);
-    const businessPrice = Math.round(economyPrice * 2.5);
-    const firstPrice = Math.round(economyPrice * 4);
+      if (!picked) break; // no route fits this aircraft's remaining time
+      sorted.splice(pickedIdx, 1); // remove from candidates
 
-    // Turnaround time
-    const paxCapacity = aircraft.aircraft?.passengerCapacity || 150;
-    let turnaroundTime = 45;
-    if (paxCapacity > 250) turnaroundTime = 75;
-    else if (paxCapacity > 150) turnaroundTime = 60;
-    else if (paxCapacity < 80) turnaroundTime = 30;
+      const { destData, distance, roundTripMins, turnaroundTime, cruiseSpd, paxCapacity } = picked;
+      let { destAirport } = picked;
 
-    // Smart departure time — curfew-aware: departs base ≥06:00 local and
-    // aims to land back ≤23:00 local (see generateSmartDepartureTime)
-    const existingTimesOnPair = competingRoutes
-      .filter(r => r.arrivalAirportId === destAirport.id)
-      .map(r => r.scheduledDepartureTime);
-    const cruiseSpd = aircraft.aircraft?.cruiseSpeed || 450;
-    const roundTripMinutes = (distance / cruiseSpd) * 60 * 2 + turnaroundTime;
-    const baseLng = parseFloat(airline.baseAirport?.longitude) || 0;
-    const departureTime = generateSmartDepartureTime(
-      destData.routeType || 'mixed',
-      airline.aiPersonality,
-      existingTimesOnPair,
-      { roundTripMinutes, baseUtcOffset: Math.round(baseLng / 15) }
-    );
+      // Ensure full airport data
+      if (!destAirport.latitude || !destAirport.longitude) {
+        destAirport = await Airport.findByPk(destAirport.id);
+        if (!destAirport) continue;
+      }
 
-    // Smart frequency
-    const demandScore = destData.demand || 50;
-    const { frequency: smartFreq, daysOfWeek: smartDays } = calculateSmartFrequency(
-      demandScore, paxCapacity, airline.aiPersonality
-    );
+      // Check slot availability
+      try {
+        const slotCheck = await airportSlotService.canCreateRoute(
+          airline.baseAirportId, destAirport.id, world.id
+        );
+        if (!slotCheck.allowed) continue;
+      } catch (err) {
+        continue;
+      }
 
-    // Pack this route onto the aircraft's FREE days so one aircraft can run several
-    // routes across the week without clashing with its existing flights.
-    const used = usedDaysByAircraft[aircraft.id] || new Set();
-    const dayOrder = [1, 2, 3, 4, 5, 6, 0];
-    const freeDays = dayOrder.filter(d => !used.has(d));
-    if (freeDays.length === 0) continue; // aircraft's week is already full
-    // Don't stack a long-haul (multi-day) route on top of existing routes.
-    if (used.size > 0 && distance >= 2500) continue;
-    let routeDays = smartDays.filter(d => freeDays.includes(d));
-    if (routeDays.length === 0) {
-      routeDays = freeDays.slice(0, Math.max(1, Math.min(freeDays.length, smartDays.length)));
-    }
+      // Generate flight numbers
+      const outboundNum = generateFlightNumber(airline.iataCode, existingFlightNums);
+      existingFlightNums.add(outboundNum);
+      const returnNum = generateFlightNumber(airline.iataCode, existingFlightNums);
+      existingFlightNums.add(returnNum);
+
+      // Calculate pricing
+      const archetypePriceMod = archetype.pricingModifier || 1.0;
+      const economyPrice = Math.round(eraEconomicService.calculateTicketPrice(distance, worldYear, 'economy') * config.pricingModifier * archetypePriceMod);
+      const businessPrice = Math.round(economyPrice * 2.5);
+      const firstPrice = Math.round(economyPrice * 4);
+
+      // Departure time: start after current routes finish (pack sequentially)
+      const depMins = Math.max(DAY_START_MINS, acFreeAt);
+      const depHour = Math.floor(depMins / 60);
+      const depMin = Math.round((depMins % 60) / 5) * 5; // round to nearest 5 min
+      const departureTime = `${String(depHour).padStart(2, '0')}:${String(depMin).padStart(2, '0')}:00`;
+
+      // All routes run daily
+      const demandScore = destData.demand || 50;
+      const routeDays = [0, 1, 2, 3, 4, 5, 6];
 
     try {
       const route = await Route.create({
@@ -858,8 +842,12 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
 
       await scheduleAIFlights(route, aircraft);
 
-      const freqLabel = smartDays.length === 7 ? 'daily' : `${smartDays.length}x/week`;
-      aiLog(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm, ${freqLabel})`);
+      // Update time tracking for this aircraft so next iteration packs correctly
+      usedMinsByAircraft[aircraft.id] = (usedMinsByAircraft[aircraft.id] || 0) + roundTripMins;
+      latestReturnByAircraft[aircraft.id] = depMins + roundTripMins;
+      routesAdded++;
+
+      aiLog(`[AI-DECISION] ${airline.airlineName} created route ${outboundNum}: ${baseAirport.icaoCode}-${destAirport.icaoCode} (${distance}nm, daily, dep ${departureTime})`);
 
       // Notify player if this competes with their routes
       const playerCompeting = await Route.findOne({
@@ -876,7 +864,7 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
       if (playerCompeting) {
         await notifyPlayer(world.id,
           `New Competitor: ${baseAirport.icaoCode}-${destAirport.icaoCode}`,
-          `${airline.airlineName} has launched ${outboundNum} on the ${baseAirport.icaoCode}-${destAirport.icaoCode} route (${freqLabel}), competing with your ${playerCompeting.routeNumber}.`,
+          `${airline.airlineName} has launched ${outboundNum} on the ${baseAirport.icaoCode}-${destAirport.icaoCode} route (daily), competing with your ${playerCompeting.routeNumber}.`,
           gameTime,
           { type: 'operations', icon: 'route', priority: 3, link: '/competition' }
         );
@@ -884,7 +872,8 @@ async function tryCreateRoutes(airline, world, config, unassignedAircraft, exist
     } catch (err) {
       console.error(`[AI-DECISION] Failed to create route for ${airline.airlineName}: ${err.message}`);
     }
-  }
+    } // end inner packing loop
+  } // end aircraft loop
 }
 
 /**

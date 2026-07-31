@@ -2035,6 +2035,7 @@ async function findActiveTemplates(worldTime, membershipFilter) {
       {
         model: UserAircraft,
         as: 'aircraft',
+        where: { status: 'active' },
         attributes: ['id', 'registration', 'ageYears', 'conditionPercentage'],
         include: [
           {
