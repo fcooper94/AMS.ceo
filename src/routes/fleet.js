@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
-const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale, WeeklyFinancial } = require('../models');
+const { WorldMembership, UserAircraft, Aircraft, User, Airport, RecurringMaintenance, ScheduledFlight, Route, World, Notification, UsedAircraftForSale, WeeklyFinancial, CabinLayout } = require('../models');
 const worldTimeService = require('../services/worldTimeService');
 const { REGISTRATION_RULES, validateRegistrationSuffix, getRegistrationPrefix, hasSpecificRule } = require(path.join(__dirname, '../../public/js/registrationPrefixes.js'));
 const { migrateOldConfig } = require('../config/cargoTypes');
@@ -6540,6 +6540,112 @@ router.post('/:aircraftId/scrap', async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing scrap:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Helper: resolve authenticated membership (no aircraft lookup)
+async function getAuthenticatedMembership(req) {
+  const activeWorldId = req.session?.activeWorldId;
+  if (!activeWorldId) throw Object.assign(new Error('No active world selected'), { status: 404 });
+  if (!req.user) throw Object.assign(new Error('Not authenticated'), { status: 401 });
+  const user = await User.findOne({ where: { vatsimId: req.user.vatsimId } });
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+  const membership = await WorldMembership.findOne({ where: { userId: user.id, worldId: activeWorldId } });
+  if (!membership) throw Object.assign(new Error('Not a member of this world'), { status: 404 });
+  return { user, membership, activeWorldId };
+}
+
+// ─── Saved Cabin Layouts ─────────────────────────────────────────────
+
+/**
+ * GET /api/fleet/cabin-layouts/:aircraftId
+ * List saved layouts for a specific aircraft variant
+ */
+router.get('/cabin-layouts/:aircraftId', async (req, res) => {
+  try {
+    const { membership } = await getAuthenticatedMembership(req);
+    const layouts = await CabinLayout.findAll({
+      where: { worldMembershipId: membership.id, aircraftId: req.params.aircraftId },
+      order: [['name', 'ASC']]
+    });
+    res.json({ layouts });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/fleet/cabin-layouts
+ * Save a cabin+cargo layout preset
+ */
+router.post('/cabin-layouts', async (req, res) => {
+  try {
+    const { membership } = await getAuthenticatedMembership(req);
+    const { aircraftId, name, economySeats, economyPlusSeats, businessSeats, firstSeats, toilets, cargoConfig } = req.body;
+
+    if (!aircraftId || !name?.trim()) {
+      return res.status(400).json({ error: 'Aircraft ID and layout name are required' });
+    }
+
+    const trimmedName = name.trim().substring(0, 60);
+
+    // Cap at 20 layouts per aircraft variant per membership
+    const count = await CabinLayout.count({
+      where: { worldMembershipId: membership.id, aircraftId }
+    });
+    const existing = await CabinLayout.findOne({
+      where: { worldMembershipId: membership.id, aircraftId, name: trimmedName }
+    });
+    if (!existing && count >= 20) {
+      return res.status(400).json({ error: 'Maximum 20 saved layouts per aircraft type' });
+    }
+
+    const data = {
+      economySeats: parseInt(economySeats) || 0,
+      economyPlusSeats: parseInt(economyPlusSeats) || 0,
+      businessSeats: parseInt(businessSeats) || 0,
+      firstSeats: parseInt(firstSeats) || 0,
+      toilets: parseInt(toilets) || 0,
+      cargoConfig: cargoConfig || null
+    };
+
+    let layout;
+    if (existing) {
+      await existing.update(data);
+      layout = existing;
+    } else {
+      layout = await CabinLayout.create({
+        worldMembershipId: membership.id,
+        aircraftId,
+        name: trimmedName,
+        ...data
+      });
+    }
+
+    res.json({ layout });
+  } catch (error) {
+    console.error('Error saving cabin layout:', error);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/fleet/cabin-layouts/:layoutId
+ * Delete a saved layout
+ */
+router.delete('/cabin-layouts/:layoutId', async (req, res) => {
+  try {
+    const { membership } = await getAuthenticatedMembership(req);
+    const layout = await CabinLayout.findOne({
+      where: { id: req.params.layoutId, worldMembershipId: membership.id }
+    });
+    if (!layout) {
+      return res.status(404).json({ error: 'Layout not found' });
+    }
+    await layout.destroy();
+    res.json({ success: true });
+  } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
 });

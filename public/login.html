@@ -13,6 +13,8 @@
   <link rel="apple-touch-icon" href="/img/icon.svg">
   <title>Sign In · AMS.ceo</title>
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/theme-light.css">
+  <script>try{const t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}</script>
   <style>
     body {
       min-height: 100vh;
@@ -168,6 +170,7 @@
       <div><button type="button" class="link-btn" onclick="toggleForgot()">Forgot password?</button></div>
       <div class="row">Don't have an account? <a href="/register">Register</a></div>
       <div class="row"><a href="/">&larr; Back</a></div>
+      <div class="row"><a href="#" id="themeToggle" onclick="var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('theme',t);this.textContent=t==='light'?'Dark Mode':'Light Mode';return false;"></a><script>document.getElementById('themeToggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Dark Mode':'Light Mode';</script></div>
     </div>
 
     <div id="forgotBlock">

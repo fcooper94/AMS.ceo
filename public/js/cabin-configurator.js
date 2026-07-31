@@ -679,12 +679,11 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   // Landscape mode: SVG is built in portrait coords, then rotated -90° so nose points left
   const lsViewW = landscape ? svgH : fW;
   const lsViewH = landscape ? fW : svgH;
-  // In landscape: large rendering so individual seats are clearly visible.
-  // Height = fuselage cross-section scaled up; width from aspect ratio + stretch.
+  // In landscape: fit to container width by default. Zoom controls adjust scale.
   const lsH = isSmallAircraft ? 200 : 320;
   const lsW = Math.round(lsH * (lsViewW / lsViewH));
   const lsStyle = landscape
-    ? `height:${lsH}px;width:${lsW}px;flex-shrink:0;`
+    ? `width:100%;height:auto;flex-shrink:0;`
     : `width:100%;height:100%;`;
 
   let html = `
@@ -1017,6 +1016,35 @@ function _ccMoney(v) {
   return typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Math.round(v).toLocaleString('en-US');
 }
 
+function _showLayoutNameModal(parentOverlay, onConfirm) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;justify-content:center;align-items:center;padding:1rem;';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;padding:1.25rem;width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <div style="font-weight:700;font-size:0.95rem;color:var(--text-primary);margin-bottom:0.75rem;">Save Layout</div>
+      <input id="layoutNameInput" type="text" maxlength="60" placeholder="e.g. High-density Economy"
+        style="width:100%;padding:0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:0.85rem;box-sizing:border-box;" />
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;justify-content:flex-end;">
+        <button id="layoutNameCancel" class="btn btn-secondary" style="padding:0.4rem 1rem;font-size:0.8rem;">Cancel</button>
+        <button id="layoutNameSave" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.8rem;">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const input = document.getElementById('layoutNameInput');
+  input.focus();
+  const doSave = () => {
+    const name = input.value.trim();
+    if (!name) { input.style.borderColor = '#ef4444'; return; }
+    document.body.removeChild(modal);
+    onConfirm(name);
+  };
+  document.getElementById('layoutNameSave').addEventListener('click', doSave);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); });
+  document.getElementById('layoutNameCancel').addEventListener('click', () => document.body.removeChild(modal));
+  modal.addEventListener('click', (e) => { if (e.target === modal) document.body.removeChild(modal); });
+}
+
 function _showRefitConfirmModal(configuratorOverlay, confirmInfo, onApply, result, refitCost) {
   const { registration, days, aircraftName } = confirmInfo;
   const modal = document.createElement('div');
@@ -1312,16 +1340,23 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           </div>
           ` : ''}
 
-          <div style="display: flex; gap: 0.4rem; align-items: center; margin-left: auto;">
-            <button id="cabinApplyBtn" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-size: 0.8rem;">Apply</button>
-            <button id="cabinCancelBtn" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.8rem;">Cancel</button>
+          <div style="display: flex; gap: 0.4rem; align-items: center; margin-left: auto; flex-shrink: 0; flex-wrap: nowrap;">
+            <button id="cabinSaveLayoutBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; cursor: pointer; white-space: nowrap;">Save Layout</button>
+            <button id="cabinLoadLayoutBtn" class="btn" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer; white-space: nowrap;">Load Layout</button>
+            <button id="cabinApplyBtn" class="btn btn-primary" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; white-space: nowrap;">Apply</button>
+            <button id="cabinCancelBtn" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.7rem; white-space: nowrap;">Cancel</button>
           </div>
         </div>
       </div>
 
-      <!-- Landscape diagram area — scrollable in both directions -->
-      <div id="cabinDiagramScroll" style="flex: 1; min-height: 0; background: rgba(0,0,0,0.2); overflow: auto; padding: 0.5rem 0.75rem;">
-        <div id="cabinDiagramContainer" style="display: flex; flex-direction: column; align-items: center; min-width: 100%;"></div>
+      <!-- Landscape diagram area — fit-to-width by default, zoomable -->
+      <div id="cabinDiagramScroll" style="flex: 1; min-height: 0; background: rgba(0,0,0,0.2); overflow: auto; padding: 0.5rem 0.75rem; position: relative;">
+        <div id="cabinZoomControls" style="position:sticky;top:4px;left:0;z-index:10;display:flex;gap:3px;margin-bottom:4px;">
+          <button onclick="window._cabinZoom(-1)" style="width:26px;height:26px;background:var(--surface);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">&minus;</button>
+          <button onclick="window._cabinZoom(0)" style="height:26px;padding:0 8px;background:var(--surface);border:1px solid var(--border-color);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:0.65rem;white-space:nowrap;" id="cabinZoomLabel">Fit</button>
+          <button onclick="window._cabinZoom(1)" style="width:26px;height:26px;background:var(--surface);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;">+</button>
+        </div>
+        <div id="cabinDiagramContainer" style="display: flex; flex-direction: column; align-items: center; min-width: 100%; transform-origin: top left;"></div>
       </div>
     </div>
   `;
@@ -1667,6 +1702,141 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     document.body.removeChild(overlay);
   });
 
+  // ── Zoom controls ─────────────────────────────────────────────────
+  let _cabinZoomLevel = 0; // 0 = fit, positive = zoomed in
+  const ZOOM_STEPS = [100, 150, 200]; // percentage of container width
+  window._cabinZoom = function(dir) {
+    if (dir === 0) { _cabinZoomLevel = 0; } // reset
+    else { _cabinZoomLevel = Math.max(0, Math.min(ZOOM_STEPS.length - 1, _cabinZoomLevel + dir)); }
+    const container = document.getElementById('cabinDiagramContainer');
+    const label = document.getElementById('cabinZoomLabel');
+    if (!container) return;
+    if (_cabinZoomLevel === 0) {
+      container.style.width = '100%';
+      if (label) label.textContent = 'Fit';
+    } else {
+      container.style.width = ZOOM_STEPS[_cabinZoomLevel] + '%';
+      if (label) label.textContent = ZOOM_STEPS[_cabinZoomLevel] + '%';
+    }
+  };
+
+  // ── Save/Load layout handlers ─────────────────────────────────────
+  // Resolve catalog Aircraft UUID: marketplace used aircraft have "used-" prefixed IDs
+  // and store the real catalog UUID in variantId. Fleet reconfig passes ua.aircraft directly.
+  const catalogAircraftId = aircraft.variantId || (typeof aircraft.id === 'string' && aircraft.id.startsWith('used-') ? null : aircraft.id);
+
+  // Hide save/load if we can't resolve the catalog ID
+  if (!catalogAircraftId) {
+    const sb = document.getElementById('cabinSaveLayoutBtn');
+    const lb = document.getElementById('cabinLoadLayoutBtn');
+    if (sb) sb.style.display = 'none';
+    if (lb) lb.style.display = 'none';
+  }
+
+  document.getElementById('cabinSaveLayoutBtn')?.addEventListener('click', () => {
+    if (!catalogAircraftId) return;
+    _showLayoutNameModal(overlay, async (name) => {
+      try {
+        const cargoState = typeof window !== 'undefined'
+          ? (window.selectedCargoConfig?.cargoConfig || null) : null;
+        const resp = await fetch('/api/fleet/cabin-layouts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            aircraftId: catalogAircraftId,
+            name,
+            economySeats: config.economy,
+            economyPlusSeats: config.economyPlus,
+            businessSeats: config.business,
+            firstSeats: config.first,
+            toilets,
+            cargoConfig: cargoState
+          })
+        });
+        const btn = document.getElementById('cabinSaveLayoutBtn');
+        if (resp.ok) {
+          btn.textContent = 'Saved \u2713';
+          setTimeout(() => { btn.textContent = 'Save Layout'; }, 2000);
+        } else {
+          const err = await resp.json();
+          btn.textContent = err.error || 'Error';
+          setTimeout(() => { btn.textContent = 'Save Layout'; }, 2000);
+        }
+      } catch (e) { console.error('Save layout error:', e); }
+    });
+  });
+
+  document.getElementById('cabinLoadLayoutBtn').addEventListener('click', async () => {
+    try {
+      const resp = await fetch(`/api/fleet/cabin-layouts/${catalogAircraftId}`);
+      if (!resp.ok) return;
+      const { layouts } = await resp.json();
+      if (!layouts || layouts.length === 0) {
+        const btn = document.getElementById('cabinLoadLayoutBtn');
+        btn.textContent = 'No saved layouts';
+        setTimeout(() => { btn.textContent = 'Load Layout'; }, 2000);
+        return;
+      }
+      // Show dropdown
+      let existing = document.getElementById('cabinLayoutDropdown');
+      if (existing) { existing.remove(); return; } // toggle off
+      const dd = document.createElement('div');
+      dd.id = 'cabinLayoutDropdown';
+      dd.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:10001;min-width:220px;max-height:240px;overflow-y:auto;';
+      dd.innerHTML = layouts.map(l => `
+        <div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border-color);cursor:pointer;" class="layout-row" data-id="${l.id}">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:0.8rem;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.name}</div>
+            <div style="font-size:0.65rem;color:var(--text-muted);">${l.firstSeats ? l.firstSeats+'F ' : ''}${l.businessSeats ? l.businessSeats+'J ' : ''}${l.economyPlusSeats ? l.economyPlusSeats+'W ' : ''}${l.economySeats}Y</div>
+          </div>
+          <button class="layout-delete" data-id="${l.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0 0.2rem;line-height:1;" title="Delete">&times;</button>
+        </div>
+      `).join('');
+      // Position relative to the load button
+      const loadBtn = document.getElementById('cabinLoadLayoutBtn');
+      const rect = loadBtn.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 4) + 'px';
+      dd.style.left = Math.max(8, rect.right - 220) + 'px';
+      document.body.appendChild(dd);
+      // Click to load a layout
+      dd.querySelectorAll('.layout-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.layout-delete')) return;
+          const layout = layouts.find(l => l.id === row.dataset.id);
+          if (!layout) return;
+          config.first = layout.firstSeats || 0;
+          config.business = layout.businessSeats || 0;
+          config.economyPlus = layout.economyPlusSeats || 0;
+          toilets = layout.toilets || 0;
+          if (layout.cargoConfig && typeof window !== 'undefined') {
+            window.selectedCargoConfig = { cargoConfig: layout.cargoConfig };
+          }
+          recalcEconomy();
+          updateUI();
+          dd.remove();
+        });
+      });
+      // Delete button
+      dd.querySelectorAll('.layout-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          await fetch(`/api/fleet/cabin-layouts/${id}`, { method: 'DELETE' });
+          btn.closest('.layout-row').remove();
+          if (dd.children.length === 0) dd.remove();
+        });
+      });
+      // Close on outside click
+      const closeHandler = (e) => {
+        if (!dd.contains(e.target) && e.target.id !== 'cabinLoadLayoutBtn') {
+          dd.remove();
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    } catch (e) { console.error('Load layout error:', e); }
+  });
+
   updateUI();
 
   // Pin the modal width after the first render — the diagram's drawn length
@@ -1910,6 +2080,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
                    background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 0.75rem;
                    display: flex; align-items: center; justify-content: center; padding: 0;">+</button>
         </div>
+        <button id="ddSaveLayoutBtn" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; cursor: pointer;">Save Layout</button>
+        <button id="ddLoadLayoutBtn" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa; cursor: pointer;">Load Layout</button>
         <button id="ddApplyBtn" class="btn btn-primary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Apply</button>
         <button id="ddCancelBtn" class="btn btn-secondary" style="padding: 0.5rem 1.5rem; font-size: 0.8rem;">Cancel</button>
       </div>
@@ -2107,6 +2279,128 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
 
   document.getElementById('ddCancelBtn').addEventListener('click', () => {
     document.body.removeChild(overlay);
+  });
+
+  // ── Save/Load layout handlers (double-deck) ──────────────────────
+  const ddCatalogAircraftId = aircraft.variantId || (typeof aircraft.id === 'string' && aircraft.id.startsWith('used-') ? null : aircraft.id);
+
+  if (!ddCatalogAircraftId) {
+    const sb = document.getElementById('ddSaveLayoutBtn');
+    const lb = document.getElementById('ddLoadLayoutBtn');
+    if (sb) sb.style.display = 'none';
+    if (lb) lb.style.display = 'none';
+  }
+
+  document.getElementById('ddSaveLayoutBtn')?.addEventListener('click', () => {
+    if (!ddCatalogAircraftId) return;
+    _showLayoutNameModal(overlay, async (name) => {
+      try {
+        const cargoState = typeof window !== 'undefined'
+          ? (window.selectedCargoConfig?.cargoConfig || null) : null;
+        const resp = await fetch('/api/fleet/cabin-layouts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            aircraftId: ddCatalogAircraftId,
+            name,
+            economySeats: upperConfig.economy + mainConfig.economy,
+            economyPlusSeats: upperConfig.economyPlus + mainConfig.economyPlus,
+            businessSeats: upperConfig.business + mainConfig.business,
+            firstSeats: upperConfig.first + mainConfig.first,
+            toilets,
+            cargoConfig: cargoState
+          })
+        });
+        const btn = document.getElementById('ddSaveLayoutBtn');
+        if (resp.ok) {
+          btn.textContent = 'Saved \u2713';
+          setTimeout(() => { btn.textContent = 'Save Layout'; }, 2000);
+        } else {
+          const err = await resp.json();
+          btn.textContent = err.error || 'Error';
+          setTimeout(() => { btn.textContent = 'Save Layout'; }, 2000);
+        }
+      } catch (e) { console.error('Save layout error:', e); }
+    });
+  });
+
+  document.getElementById('ddLoadLayoutBtn').addEventListener('click', async () => {
+    try {
+      if (!ddCatalogAircraftId) return;
+      const resp = await fetch(`/api/fleet/cabin-layouts/${ddCatalogAircraftId}`);
+      if (!resp.ok) return;
+      const { layouts } = await resp.json();
+      if (!layouts || layouts.length === 0) {
+        const btn = document.getElementById('ddLoadLayoutBtn');
+        btn.textContent = 'No saved layouts';
+        setTimeout(() => { btn.textContent = 'Load Layout'; }, 2000);
+        return;
+      }
+      let existing = document.getElementById('ddLayoutDropdown');
+      if (existing) { existing.remove(); return; }
+      const dd = document.createElement('div');
+      dd.id = 'ddLayoutDropdown';
+      dd.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:10001;min-width:220px;max-height:240px;overflow-y:auto;';
+      dd.innerHTML = layouts.map(l => `
+        <div style="display:flex;align-items:center;gap:0.4rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border-color);cursor:pointer;" class="layout-row" data-id="${l.id}">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:0.8rem;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.name}</div>
+            <div style="font-size:0.65rem;color:var(--text-muted);">${l.firstSeats ? l.firstSeats+'F ' : ''}${l.businessSeats ? l.businessSeats+'J ' : ''}${l.economyPlusSeats ? l.economyPlusSeats+'W ' : ''}${l.economySeats}Y</div>
+          </div>
+          <button class="layout-delete" data-id="${l.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0 0.2rem;line-height:1;" title="Delete">&times;</button>
+        </div>
+      `).join('');
+      const loadBtn = document.getElementById('ddLoadLayoutBtn');
+      const rect = loadBtn.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 4) + 'px';
+      dd.style.left = Math.max(8, rect.right - 220) + 'px';
+      document.body.appendChild(dd);
+      dd.querySelectorAll('.layout-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.layout-delete')) return;
+          const layout = layouts.find(l => l.id === row.dataset.id);
+          if (!layout) return;
+          // For double-deck: split evenly between upper and main decks
+          // (user can adjust after loading)
+          const splitSeats = (total, upperPct) => {
+            const upper = Math.round(total * upperPct);
+            return [upper, total - upper];
+          };
+          const totalCap = aircraft.passengerCapacity || 1;
+          const upperPct = (upperSpec?.capacity || totalCap * 0.3) / totalCap;
+          const [uF, mF] = splitSeats(layout.firstSeats || 0, upperPct);
+          const [uJ, mJ] = splitSeats(layout.businessSeats || 0, upperPct);
+          const [uW, mW] = splitSeats(layout.economyPlusSeats || 0, 0);
+          const [uY, mY] = splitSeats(layout.economySeats || 0, 0);
+          upperConfig.first = uF; mainConfig.first = mF;
+          upperConfig.business = uJ; mainConfig.business = mJ;
+          upperConfig.economyPlus = uW + mW; mainConfig.economyPlus = 0;
+          upperConfig.economy = 0; mainConfig.economy = 0;
+          toilets = layout.toilets || 0;
+          if (layout.cargoConfig && typeof window !== 'undefined') {
+            window.selectedCargoConfig = { cargoConfig: layout.cargoConfig };
+          }
+          recalcEconomy();
+          updateUI();
+          dd.remove();
+        });
+      });
+      dd.querySelectorAll('.layout-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await fetch(`/api/fleet/cabin-layouts/${btn.dataset.id}`, { method: 'DELETE' });
+          btn.closest('.layout-row').remove();
+          if (dd.children.length === 0) dd.remove();
+        });
+      });
+      const closeHandler = (e) => {
+        if (!dd.contains(e.target) && e.target.id !== 'ddLoadLayoutBtn') {
+          dd.remove();
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    } catch (e) { console.error('Load layout error:', e); }
   });
 
   updateUI();

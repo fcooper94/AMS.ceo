@@ -9,6 +9,7 @@ const Route = require('./Route');
 const ScheduledFlight = require('./ScheduledFlight');
 const RecurringMaintenance = require('./RecurringMaintenance');
 const PricingDefault = require('./PricingDefault');
+const CabinLayout = require('./CabinLayout');
 const AirportRouteDemand = require('./AirportRouteDemand');
 const SystemSettings = require('./SystemSettings');
 const UsedAircraftForSale = require('./UsedAircraftForSale');
@@ -90,6 +91,10 @@ RecurringMaintenance.belongsTo(UserAircraft, { foreignKey: 'aircraft_id', as: 'a
 WorldMembership.hasMany(PricingDefault, { foreignKey: 'world_membership_id', as: 'pricingDefaults' });
 PricingDefault.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
 
+// CabinLayout associations
+WorldMembership.hasMany(CabinLayout, { foreignKey: 'world_membership_id', as: 'cabinLayouts' });
+CabinLayout.belongsTo(WorldMembership, { foreignKey: 'world_membership_id', as: 'membership' });
+
 // AirportRouteDemand associations
 Airport.hasMany(AirportRouteDemand, { foreignKey: 'from_airport_id', as: 'demandFromRoutes' });
 Airport.hasMany(AirportRouteDemand, { foreignKey: 'to_airport_id', as: 'demandToRoutes' });
@@ -151,5 +156,6 @@ module.exports = {
   AirspaceRestriction,
   MarketingCampaign,
   SightseeingTour,
-  Payment
+  Payment,
+  CabinLayout
 };
