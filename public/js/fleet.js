@@ -340,7 +340,7 @@ async function showAircraftDetails(userAircraftId) {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:2000;display:flex;justify-content:center;align-items:center;padding:1rem;';
 
   overlay.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:880px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;">
+    <div class="fleet-detail-card" style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:100%;max-width:880px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;">
 
       <!-- Header Bar -->
       <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1rem;border-bottom:1px solid var(--border-color);flex-shrink:0;">
@@ -356,8 +356,8 @@ async function showAircraftDetails(userAircraftId) {
       <div style="display:flex;gap:0.75rem;padding:0.5rem 1rem;">
 
         <!-- Left: Image + Ownership -->
-        <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
-          <div style="width:300px;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:130px;">
+        <div class="fleet-detail-image" style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:0.4rem;">
+          <div style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-elevated);min-height:130px;">
             ${acCodes.length > 0 ? `<img src="${imgBase}${acCodes[0]}" alt="${acName}" style="max-width:100%;max-height:100%;object-fit:contain;filter:invert(1);mix-blend-mode:screen;"              data-fallbacks='${JSON.stringify(acCodes.slice(1))}' data-base-url="${imgBase}"
               onerror="var fb=JSON.parse(this.dataset.fallbacks);if(fb.length>0){this.dataset.fallbacks=JSON.stringify(fb.slice(1));this.src=this.dataset.baseUrl+fb[0];}else{this.parentElement.innerHTML=window.aircraftNoImage();}">` : window.aircraftNoImage()}
           </div>
