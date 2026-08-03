@@ -1373,6 +1373,28 @@ class WorldTimeService {
         }
       }
 
+      // Hub feeder map: count each airline's domestic routes per airport so
+      // international routes can get a connecting-traffic load factor boost.
+      const airportIds = new Set();
+      for (const r of allActiveRoutes) { airportIds.add(r.departureAirportId); airportIds.add(r.arrivalAirportId); }
+      const airportCountryRows = await Airport.findAll({
+        where: { id: { [Op.in]: [...airportIds] } },
+        attributes: ['id', 'country'],
+        raw: true
+      });
+      const airportCountryMap = new Map(airportCountryRows.map(a => [a.id, a.country]));
+      // Key: "membershipId|airportId" → feeder count
+      const hubFeederMap = new Map();
+      for (const r of allActiveRoutes) {
+        const depCountry = airportCountryMap.get(r.departureAirportId);
+        const arrCountry = airportCountryMap.get(r.arrivalAirportId);
+        if (!depCountry || !arrCountry || depCountry !== arrCountry) continue; // not domestic
+        for (const hubId of [r.departureAirportId, r.arrivalAirportId]) {
+          const key = `${r.worldMembershipId}|${hubId}`;
+          hubFeederMap.set(key, (hubFeederMap.get(key) || 0) + 1);
+        }
+      }
+
       // All membership attributes (reputation, contractor tiers, isAI)
       const allMemberships = await WorldMembership.findAll({
         where: { worldId, isActive: true },
@@ -1401,7 +1423,7 @@ class WorldTimeService {
       }
 
       // Store on instance for processFlightRevenue to read (cleared below)
-      this._flightCycleCache = { routesByPair, membershipAttrMap, membershipAttrObj, competitorAcMap };
+      this._flightCycleCache = { routesByPair, membershipAttrMap, membershipAttrObj, competitorAcMap, hubFeederMap, airportCountryMap };
 
       // Find templates completing today. ONE query; the day-offset is derived
       // in JS from the actual duration rather than trusted from the stored
@@ -2019,7 +2041,24 @@ class WorldTimeService {
         // Combine all factors
         loadFactor = baseLF * demandFactor * maturityFactor * prestigeFactor * priceFactor * competitionFactor * timeFactor * variance;
 
-        // 10. Undersupply floor: when the route's real market dwarfs the seats
+        // 10. Hub feeding bonus: international routes departing from a hub with
+        // the airline's own domestic feeders get a load factor boost from
+        // connecting passengers. Diminishing returns; cap +0.20.
+        if (cache?.hubFeederMap && cache?.airportCountryMap) {
+          const depCountry = cache.airportCountryMap.get(route.departureAirportId);
+          const arrCountry = cache.airportCountryMap.get(route.arrivalAirportId);
+          if (depCountry && arrCountry && depCountry !== arrCountry) {
+            const feederKey = `${route.worldMembershipId}|${route.departureAirportId}`;
+            const feederCount = cache.hubFeederMap.get(feederKey) || 0;
+            if (feederCount > 0) {
+              // 1 feeder≈+4%, 3≈+9%, 5≈+13%, 8≈+16%, 15+≈+20%
+              const hubBonus = 0.20 * (1 - Math.exp(-feederCount / 5));
+              loadFactor += hubBonus;
+            }
+          }
+        }
+
+        // 11. Undersupply floor: when the route's real market dwarfs the seats
         // on offer, the plane fills regardless of ramp/competition — demand
         // with no supply. Uses the same demandToPax the cargo engine uses.
         // 2x undersupply → no lift; 20x+ → floor ~0.95 at fair pricing.
