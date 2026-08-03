@@ -13,6 +13,8 @@
 
 const { WorldMembership, Route, UserAircraft, Aircraft, Airport, ScheduledFlight, Notification, Loan } = require('../models');
 const { Op } = require('sequelize');
+const { getRegistrationPrefix: _getRegPrefix } = require('../../public/js/registrationPrefixes');
+const { generateAIRegistration: _genAIReg } = require('./aiRegistrationService');
 
 // AI decision logs gated behind DEBUG_AI (or DEBUG_SIM). Set DEBUG_AI=1 to see.
 const DEBUG_AI = process.env.DEBUG_AI === '1' || process.env.DEBUG_SIM === '1';
@@ -1237,23 +1239,10 @@ async function tryBuyAircraft(airline, world, config, currentFleet, worldYear, g
   const leaseWeeklyPayment = leaseWeekly;
   const leaseDurationMonths = 36;
 
-  // Generate registration
+  // Generate registration using proper ICAO prefix for the airline's country
   const existingRegs = new Set(currentFleet.map(ac => ac.registration));
-  const prefixes = {
-    'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-',
-    'Japan': 'JA-', 'Australia': 'VH-', 'Canada': 'C-', 'Brazil': 'PT-'
-  };
-  const prefix = prefixes[airline.region] || 'XX-';
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let reg;
-  for (let i = 0; i < 100; i++) {
-    reg = prefix;
-    const suffLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
-    for (let j = 0; j < suffLen; j++) {
-      reg += chars[Math.floor(Math.random() * 26)];
-    }
-    if (!existingRegs.has(reg)) break;
-  }
+  const prefix = _getRegPrefix(airline.region);
+  const reg = _genAIReg(prefix, existingRegs);
 
   try {
     const now = new Date(gameTime || new Date());
@@ -1674,11 +1663,9 @@ async function tryUpgradeFleet(airline, world, config, fleet, routes, worldYear,
     if (!method) continue;
 
     // Acquire replacement (reuse tryBuyAircraft logic is complex, do inline)
-    const prefix = { 'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-' }[airline.region] || 'XX-';
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let reg = prefix;
-    const suffLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
-    for (let j = 0; j < suffLen; j++) reg += chars[Math.floor(Math.random() * 26)];
+    const prefix = _getRegPrefix(airline.region);
+    const fleetRegs = new Set((await UserAircraft.findAll({ where: { worldMembershipId: airline.id }, attributes: ['registration'] })).map(a => a.registration));
+    const reg = _genAIReg(prefix, fleetRegs);
 
     const now = new Date(gameTime);
     try {
@@ -1966,21 +1953,10 @@ async function tryAcquireAirship(airline, world, worldYear, gameTime, currentFle
     // Airships are cheap but still need affordability check (max 10% of balance)
     if (price > balance * 0.10) return;
 
-    // Generate registration
+    // Generate registration using proper ICAO prefix for the airline's country
     const existingRegs = new Set(currentFleet.map(ac => ac.registration));
-    const prefixes = {
-      'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-',
-      'Japan': 'JA-', 'Australia': 'VH-', 'Canada': 'C-', 'Brazil': 'PT-'
-    };
-    const prefix = prefixes[airline.region] || 'XX-';
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let reg = prefix;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      reg = prefix;
-      const suffLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
-      for (let j = 0; j < suffLen; j++) reg += chars[Math.floor(Math.random() * 26)];
-      if (!existingRegs.has(reg)) break;
-    }
+    const prefix = _getRegPrefix(airline.region);
+    const reg = _genAIReg(prefix, existingRegs);
 
     const now = new Date(gameTime || new Date());
     const ua = await UserAircraft.create({

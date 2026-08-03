@@ -48,36 +48,8 @@ function getRegionFromCountry(country) {
   return regionMap[country] || 'Europe';
 }
 
-/**
- * Generate a registration prefix based on country
- */
-function getRegistrationPrefix(country) {
-  const prefixes = {
-    'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-',
-    'Japan': 'JA-', 'Australia': 'VH-', 'Canada': 'C-', 'Brazil': 'PT-',
-    'China': 'B-', 'India': 'VT-', 'Italy': 'I-', 'Spain': 'EC-',
-    'Netherlands': 'PH-', 'Switzerland': 'HB-', 'Sweden': 'SE-',
-    'South Africa': 'ZS-', 'Singapore': '9V-', 'United Arab Emirates': 'A6-',
-    'South Korea': 'HL', 'Thailand': 'HS-', 'Turkey': 'TC-'
-  };
-  return prefixes[country] || 'XX-';
-}
-
-/**
- * Generate a random registration for an AI aircraft
- */
-function generateRegistration(prefix, existingRegs) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  for (let i = 0; i < 100; i++) {
-    let reg = prefix;
-    const suffixLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
-    for (let j = 0; j < suffixLen; j++) {
-      reg += chars[Math.floor(Math.random() * 26)];
-    }
-    if (!existingRegs.has(reg)) return reg;
-  }
-  return prefix + 'AI' + Math.floor(Math.random() * 10000);
-}
+const { getRegistrationPrefix } = require('../../public/js/registrationPrefixes');
+const { generateAIRegistration: generateRegistration } = require('./aiRegistrationService');
 
 /**
  * Spawn AI airlines for a single-player world.

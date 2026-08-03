@@ -69,27 +69,8 @@ function getMaxCapacityForAirport(airportType) {
   }
 }
 
-const REG_PREFIXES = {
-  'United Kingdom': 'G-', 'United States': 'N', 'France': 'F-', 'Germany': 'D-',
-  'Japan': 'JA-', 'Australia': 'VH-', 'Canada': 'C-', 'Brazil': 'PT-',
-  'China': 'B-', 'India': 'VT-', 'Italy': 'I-', 'Spain': 'EC-',
-  'Netherlands': 'PH-', 'Switzerland': 'HB-', 'Sweden': 'SE-',
-  'South Africa': 'ZS-', 'Singapore': '9V-', 'United Arab Emirates': 'A6-',
-  'South Korea': 'HL', 'Thailand': 'HS-', 'Turkey': 'TC-'
-};
-
-function makeRegistration(prefix, existingRegs) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const suffixLen = prefix.endsWith('-') ? 4 : (prefix.length === 1 ? 5 : 4);
-  for (let i = 0; i < 100; i++) {
-    let reg = prefix;
-    for (let j = 0; j < suffixLen; j++) reg += chars[Math.floor(Math.random() * 26)];
-    if (!existingRegs.has(reg)) { existingRegs.add(reg); return reg; }
-  }
-  const fallback = prefix + 'AI' + Math.floor(Math.random() * 10000);
-  existingRegs.add(fallback);
-  return fallback;
-}
+const { getRegistrationPrefix, REGISTRATION_RULES } = require('../../public/js/registrationPrefixes');
+const { generateAIRegistration } = require('./aiRegistrationService');
 
 function makeFlightNumber(iataCode, existingNumbers) {
   for (let i = 0; i < 200; i++) {
@@ -211,7 +192,7 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
   if (pool.length === 0) return 0;
 
   const startingCapital = eraEconomicService.getStartingCapital(worldYear);
-  const regPrefix = REG_PREFIXES[airline.region] || 'XX-';
+  const regPrefix = getRegistrationPrefix(airline.region);
   const existingRegs = new Set();
 
   const membershipId = airline.id;
@@ -225,7 +206,7 @@ async function headStartAirline(airline, world, config, worldYear, eraAircraft, 
   for (let i = 0; i < fleetSize; i++) {
     const ac = pickAircraftWithCommonality(pool, preferredFamily);
     if (i === 0) preferredFamily = require('../utils/aircraftFamily').aircraftFamilyKey(ac.manufacturer, ac.model);
-    const reg = makeRegistration(regPrefix, existingRegs);
+    const reg = generateAIRegistration(regPrefix, existingRegs);
     const purchasePrice = parseFloat(ac.purchasePrice) || 50000000;
     fleetCost += purchasePrice;
     const uaId = crypto.randomUUID();

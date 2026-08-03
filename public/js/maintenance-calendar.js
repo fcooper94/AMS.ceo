@@ -67,6 +67,8 @@ function calNavWeek(dir) {
   var next = new Date(_calWeekStart);
   next.setUTCDate(next.getUTCDate() + dir * 7);
   var currentMonday = _calGetMonday(_calGetGameTime());
+  // Don't navigate before the current week
+  if (dir < 0 && next < currentMonday) return;
   // Don't navigate beyond 8 weeks ahead
   var maxMonday = new Date(currentMonday);
   maxMonday.setUTCDate(maxMonday.getUTCDate() + CAL_MAX_WEEKS_AHEAD * 7);
