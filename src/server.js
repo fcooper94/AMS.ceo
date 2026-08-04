@@ -853,7 +853,8 @@ server.listen(PORT, () => {
           ADD COLUMN IF NOT EXISTS scrap_price DECIMAL(15,2),
           ADD COLUMN IF NOT EXISTS scrap_airport_code VARCHAR(4),
           ADD COLUMN IF NOT EXISTS scrap_company_name VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS scrap_available_at TIMESTAMP WITH TIME ZONE
+          ADD COLUMN IF NOT EXISTS scrap_available_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS cabin_upgrades JSONB
       `);
     } catch (_) { /* user_aircraft table may not exist yet */ }
     try {

@@ -1,5 +1,5 @@
 const World = require('../models/World');
-const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, RecurringMaintenance, Notification } = require('../models');
+const { WorldMembership, User, ScheduledFlight, Route, UserAircraft, Aircraft, Airport, RecurringMaintenance, Notification } = require('../models');
 const { Op } = require('sequelize');
 const { calculateFlightDurationMs } = require('../utils/flightCalculations');
 const path = require('path');
@@ -2058,7 +2058,20 @@ class WorldTimeService {
           }
         }
 
-        // 11. Undersupply floor: when the route's real market dwarfs the seats
+        // 11. Cabin upgrade LF bonus: installed amenities attract passengers
+        if (aircraft?.cabinUpgrades) {
+          try {
+            const { computeUpgradeBonuses } = require('../../public/js/cabinUpgrades');
+            const seatCounts = {
+              economy: aircraft.economySeats || 0, economyPlus: aircraft.economyPlusSeats || 0,
+              business: aircraft.businessSeats || 0, first: aircraft.firstSeats || 0
+            };
+            const bonuses = computeUpgradeBonuses(aircraft.cabinUpgrades, seatCounts, worldYear);
+            loadFactor += bonuses.lfBoost;
+          } catch (_) { /* cabinUpgrades module unavailable */ }
+        }
+
+        // 12. Undersupply floor: when the route's real market dwarfs the seats
         // on offer, the plane fills regardless of ramp/competition — demand
         // with no supply. Uses the same demandToPax the cargo engine uses.
         // 2x undersupply → no lift; 20x+ → floor ~0.95 at fair pricing.
@@ -2263,7 +2276,22 @@ class WorldTimeService {
       // shop between airlines. ~3% per competitor, floor 0.88 (4+ competitors).
       const yieldFactor = competitorCount === 0 ? 1.0
         : Math.max(0.88, 1.0 - competitorCount * 0.03);
-      const adjustedTicketRevenue = Math.round(ticketRevenue * yieldFactor);
+      // Cabin upgrade yield bonus
+      let upgradeYieldMult = 1;
+      if (aircraft?.cabinUpgrades) {
+        try {
+          const { computeUpgradeBonuses } = require('../../public/js/cabinUpgrades');
+          const seatCounts = {
+            economy: aircraft.economySeats || 0,
+            economyPlus: aircraft.economyPlusSeats || 0,
+            business: aircraft.businessSeats || 0,
+            first: aircraft.firstSeats || 0
+          };
+          const bonuses = computeUpgradeBonuses(aircraft.cabinUpgrades, seatCounts, worldYear);
+          upgradeYieldMult = bonuses.yieldMult;
+        } catch (_) { /* cabinUpgrades module unavailable */ }
+      }
+      const adjustedTicketRevenue = Math.round(ticketRevenue * yieldFactor * upgradeYieldMult);
 
       const totalRevenue = adjustedTicketRevenue + cargoRevenue;
 
@@ -3430,7 +3458,8 @@ class WorldTimeService {
       // lastDailyCheckDate and restores status='active' — see above).
       // Respects the same per-airline 15% concurrency cap as heavy checks.
       try {
-        const dailyExpiryMs = CHECK_INTERVALS.daily * 24 * 60 * 60 * 1000;
+        const { CHECK_INTERVALS: _chkInt } = require('../config/maintenanceConfig');
+        const dailyExpiryMs = _chkInt.daily * 24 * 60 * 60 * 1000;
         const dailyCutoff = new Date(currentGameTime.getTime() - dailyExpiryMs);
         // End-of-day grace: daily interval=2, so expired after day 2 at 23:59:59
         dailyCutoff.setUTCHours(23, 59, 59, 999);

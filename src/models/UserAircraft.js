@@ -471,6 +471,12 @@ const UserAircraft = sequelize.define('UserAircraft', {
     allowNull: true,
     field: 'cargo_hold_cargo_config',
     comment: 'JSON object with cargo hold kg per cargo type (cargo aircraft only)'
+  },
+  cabinUpgrades: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cabin_upgrades',
+    comment: 'JSON: { economy: ["personalIFE",...], business: [...], first: ["cocktailBar",...] }'
   }
 }, {
   tableName: 'user_aircraft',

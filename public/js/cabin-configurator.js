@@ -1016,13 +1016,226 @@ function _ccMoney(v) {
   return typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Math.round(v).toLocaleString('en-US');
 }
 
+function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, acType, aircraft, scopeFilter, onChanged) {
+  if (typeof getAvailableUpgrades !== 'function') return;
+
+  const isSeatScope = scopeFilter === 'seat';
+  const panelTitle = isSeatScope ? 'Seat Upgrades' : 'Aircraft Upgrades';
+
+  // For seat upgrades, show era-unlocked classes (even with 0 seats — but disabled)
+  // For aircraft upgrades, just use 'economy' as the class filter (they apply to all)
+  const eraGate = { business: 1978, economyPlus: 1992 };
+  const allClasses = ['first', 'business', 'economyPlus', 'economy']
+    .filter(c => !eraGate[c] || gameYear >= eraGate[c]);
+  const classesToShow = isSeatScope ? allClasses : ['economy'];
+
+  const eraMult = typeof eraEconomicService !== 'undefined' ? eraEconomicService.getEraMultiplier(gameYear) : 0.1;
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;justify-content:center;align-items:center;padding:1rem;';
+
+  const classLabels = { first: 'First Class', business: 'Business', economyPlus: 'Economy Plus', economy: 'Economy' };
+  const CLASS_COLORS_MAP = { first: '#f59e0b', business: '#a78bfa', economyPlus: '#34d399', economy: '#10b981' };
+
+  // Build upgrade rows — for seat upgrades, group by class; for aircraft, flat list
+  let listHtml = '';
+  const allUpgradesByKey = {}; // track which class each upgrade targets
+
+  if (isSeatScope) {
+    // Per-class sections
+    for (const c of classesToShow) {
+      const available = getAvailableUpgrades(c, gameYear, acType, 'seat');
+      if (available.length === 0) continue;
+      const seatCount = config[c] || 0;
+      const installed = new Set(upgrades[c] || []);
+      listHtml += `<div style="margin-bottom:0.6rem;">
+        <div style="font-size:0.65rem;font-weight:700;color:${CLASS_COLORS_MAP[c] || '#ccc'};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.3rem;border-bottom:1px solid var(--border-color);padding-bottom:0.2rem;">${classLabels[c]} <span style="font-weight:400;color:var(--text-muted);">(${seatCount} seats)</span></div>`;
+      const noSeats = seatCount === 0;
+      for (const upg of available) {
+        allUpgradesByKey[upg.key] = c;
+        const isInstalled = installed.has(upg.key);
+        const isObsolete = upg.eraObsolete && gameYear > upg.eraObsolete;
+        const isDisabled = noSeats;
+        const perSeatCost = Math.round((upg.costPerSeat2024 || 0) * eraMult);
+        const totalCost = perSeatCost * seatCount;
+        const dimStyle = (isObsolete || isDisabled) ? 'opacity:0.4;' : '';
+        const cursorStyle = isDisabled ? 'cursor:not-allowed;' : 'cursor:pointer;';
+        listHtml += `
+          <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:4px;${dimStyle}${cursorStyle}" class="upgrade-row">
+            <input type="checkbox" data-key="${upg.key}" data-cls="${c}" ${isInstalled && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} style="flex-shrink:0;width:14px;height:14px;${isDisabled ? 'cursor:not-allowed;' : ''}" />
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">${upg.name}${isObsolete ? ' <span style="font-size:0.55rem;color:#f59e0b;">(outdated)</span>' : ''}</div>
+              <div style="font-size:0.55rem;color:var(--text-muted);">${upg.description || ''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:600;">$${perSeatCost.toLocaleString('en-US')}/seat</div>
+              ${seatCount > 0 ? `<div style="font-size:0.5rem;color:var(--text-muted);">${seatCount} seats = $${totalCost.toLocaleString('en-US')}</div>` : `<div style="font-size:0.5rem;color:var(--text-muted);font-style:italic;">Add seats to enable</div>`}
+              <div style="font-size:0.5rem;color:var(--text-muted);">+${upg.yieldPct}% yield · +${upg.loadFactorPct}% LF</div>
+            </div>
+          </label>`;
+      }
+      listHtml += '</div>';
+    }
+  } else {
+    // Aircraft-wide: gather from ALL classes to catch class-restricted items like the bar
+    const seen = new Set();
+    const available = [];
+    for (const c of ['economy', 'economyPlus', 'business', 'first']) {
+      for (const upg of getAvailableUpgrades(c, gameYear, acType, 'aircraft')) {
+        if (!seen.has(upg.key)) { seen.add(upg.key); available.push(upg); }
+      }
+    }
+    const installed = new Set(upgrades._aircraft || []);
+    const catGroups = {};
+    for (const upg of available) { const cat = upg.category || 'other'; if (!catGroups[cat]) catGroups[cat] = []; catGroups[cat].push(upg); }
+    const categories = typeof UPGRADE_CATEGORIES !== 'undefined' ? UPGRADE_CATEGORIES : [];
+    for (const cat of categories) {
+      const items = catGroups[cat.key];
+      if (!items || items.length === 0) continue;
+      listHtml += `<div style="margin-bottom:0.5rem;">
+        <div style="font-size:0.6rem;font-weight:700;color:${cat.color};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.3rem;">${cat.label}</div>`;
+      for (const upg of items) {
+        allUpgradesByKey[upg.key] = '_aircraft';
+        const isObsolete = upg.eraObsolete && gameYear > upg.eraObsolete;
+        const lumpCost = Math.round((upg.lumpCost2024 || 0) * eraMult);
+
+        // Special handling for cocktail bar
+        if (upg.key === 'cocktailBar') {
+          const barOn = !!barState;
+          const barCls = barState?.class || 'first';
+          const barDef = upg.seatReduction || {};
+          const fRows = barDef.first || 2;
+          const bRows = barDef.business || 3;
+          const fPerRow = classPerRow('first') || 4;
+          const bPerRow = classPerRow('business') || 6;
+          listHtml += `
+            <div style="padding:0.4rem 0.5rem;border-radius:4px;border:1px solid ${barOn ? 'rgba(244,114,182,0.4)' : 'var(--border-color)'};margin-bottom:0.3rem;${barOn ? 'background:rgba(244,114,182,0.06);' : ''}">
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="barToggle" ${barOn ? 'checked' : ''} style="flex-shrink:0;width:14px;height:14px;" />
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">${upg.name}</div>
+                  <div style="font-size:0.55rem;color:var(--text-muted);">${upg.description || ''}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                  <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:600;">$${lumpCost.toLocaleString('en-US')}</div>
+                  <div style="font-size:0.5rem;color:var(--text-muted);">+${upg.yieldPct}% yield · +${upg.loadFactorPct}% LF</div>
+                </div>
+              </div>
+              <div id="barOptions" style="margin-top:0.4rem;padding-top:0.3rem;border-top:1px solid var(--border-color);${barOn ? '' : 'display:none;'}">
+                <div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:0.3rem;">Install in:</div>
+                <div style="display:flex;gap:0.4rem;">
+                  <button class="bar-class-btn" data-bar-class="first" style="flex:1;padding:0.3rem;font-size:0.65rem;font-weight:600;border-radius:4px;cursor:pointer;border:1px solid ${barCls === 'first' ? '#f59e0b' : 'var(--border-color)'};background:${barCls === 'first' ? 'rgba(245,158,11,0.15)' : 'var(--surface)'};color:${barCls === 'first' ? '#f59e0b' : 'var(--text-muted)'};">
+                    First Class<br><span style="font-weight:400;font-size:0.5rem;">Replaces ${fRows} rows (${fRows * fPerRow} seats)</span>
+                  </button>
+                  <button class="bar-class-btn" data-bar-class="business" style="flex:1;padding:0.3rem;font-size:0.65rem;font-weight:600;border-radius:4px;cursor:pointer;border:1px solid ${barCls === 'business' ? '#a78bfa' : 'var(--border-color)'};background:${barCls === 'business' ? 'rgba(139,92,246,0.15)' : 'var(--surface)'};color:${barCls === 'business' ? '#a78bfa' : 'var(--text-muted)'};">
+                    Business<br><span style="font-weight:400;font-size:0.5rem;">Replaces ${bRows} rows (${bRows * bPerRow} seats)</span>
+                  </button>
+                </div>
+                <div style="font-size:0.5rem;color:var(--text-muted);margin-top:0.25rem;font-style:italic;">Drag the bar in the cabin diagram to reposition</div>
+              </div>
+            </div>`;
+          continue; // skip the generic template below
+        }
+
+        const isInstalled = installed.has(upg.key);
+        listHtml += `
+          <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:4px;cursor:pointer;${isObsolete ? 'opacity:0.5;' : ''}" class="upgrade-row">
+            <input type="checkbox" data-key="${upg.key}" data-cls="_aircraft" ${isInstalled ? 'checked' : ''} style="flex-shrink:0;width:14px;height:14px;" />
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">${upg.name}${isObsolete ? ' <span style="font-size:0.55rem;color:#f59e0b;">(outdated)</span>' : ''}</div>
+              <div style="font-size:0.55rem;color:var(--text-muted);">${upg.description || ''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:600;">$${lumpCost.toLocaleString('en-US')}</div>
+              <div style="font-size:0.5rem;color:var(--text-muted);">+${upg.yieldPct}% yield · +${upg.loadFactorPct}% LF</div>
+            </div>
+          </label>`;
+      }
+      listHtml += '</div>';
+    }
+  }
+
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:440px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary);">${panelTitle}</div>
+        <button id="upgradeCloseBtn" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:0.75rem 1rem;">
+        ${listHtml || '<div style="color:var(--text-muted);font-size:0.8rem;">No upgrades available for this era.</div>'}
+      </div>
+      <div style="padding:0.5rem 1rem;border-top:1px solid var(--border-color);text-align:right;">
+        <button id="upgradeDoneBtn" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.8rem;">Done</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Handle checkbox changes
+  modal.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const key = cb.dataset.key;
+      const targetCls = cb.dataset.cls || cls;
+      if (!upgrades[targetCls]) upgrades[targetCls] = [];
+      const def = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[key] : null;
+      if (cb.checked) {
+        if (!upgrades[targetCls].includes(key)) upgrades[targetCls].push(key);
+        // Handle replaces: auto-remove superseded upgrade
+        if (def?.replaces && upgrades[targetCls].includes(def.replaces)) {
+          upgrades[targetCls] = upgrades[targetCls].filter(k => k !== def.replaces);
+          const replacedCb = modal.querySelector(`input[data-key="${def.replaces}"]`);
+          if (replacedCb) replacedCb.checked = false;
+        }
+      } else {
+        upgrades[targetCls] = upgrades[targetCls].filter(k => k !== key);
+      }
+    });
+  });
+
+  // Bar toggle + class picker
+  const barToggle = modal.querySelector('#barToggle');
+  if (barToggle) {
+    barToggle.addEventListener('change', () => {
+      const barOpts = modal.querySelector('#barOptions');
+      if (barToggle.checked) {
+        barState = { class: barState?.class || 'first', position: barState?.position ?? 0.5 };
+        if (barOpts) barOpts.style.display = '';
+      } else {
+        barState = null;
+        if (barOpts) barOpts.style.display = 'none';
+      }
+    });
+  }
+  modal.querySelectorAll('.bar-class-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newCls = btn.dataset.barClass;
+      if (barState) barState.class = newCls;
+      else barState = { class: newCls, position: 0.5 };
+      // Update button styles
+      modal.querySelectorAll('.bar-class-btn').forEach(b => {
+        const active = b.dataset.barClass === newCls;
+        const color = newCls === 'first' ? '#f59e0b' : '#a78bfa';
+        b.style.borderColor = active ? color : 'var(--border-color)';
+        b.style.background = active ? `rgba(${newCls === 'first' ? '245,158,11' : '139,92,246'},0.15)` : 'var(--surface)';
+        b.style.color = active ? color : 'var(--text-muted)';
+      });
+    });
+  });
+
+  const close = () => { document.body.removeChild(modal); onChanged(); };
+  modal.querySelector('#upgradeCloseBtn').addEventListener('click', close);
+  modal.querySelector('#upgradeDoneBtn').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+}
+
 function _showLayoutNameModal(parentOverlay, onConfirm) {
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;justify-content:center;align-items:center;padding:1rem;';
   modal.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;padding:1.25rem;width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
       <div style="font-weight:700;font-size:0.95rem;color:var(--text-primary);margin-bottom:0.75rem;">Save Layout</div>
-      <input id="layoutNameInput" type="text" maxlength="60" placeholder="e.g. High-density Economy"
+      <input id="layoutNameInput" type="text" maxlength="20" placeholder="e.g. 3-Class Premium"
         style="width:100%;padding:0.5rem;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:0.85rem;box-sizing:border-box;" />
       <div style="display:flex;gap:0.5rem;margin-top:0.75rem;justify-content:flex-end;">
         <button id="layoutNameCancel" class="btn btn-secondary" style="padding:0.4rem 1rem;font-size:0.8rem;">Cancel</button>
@@ -1180,6 +1393,30 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   // Mid-cabin service area positions (fractional 0–1, front to rear)
   let midPositions = existingConfig?.midPositions ? [...existingConfig.midPositions] : [];
 
+  // ── Cabin upgrades state ─────────────────────────────────────────
+  const upgrades = {
+    first: [...(existingConfig?.cabinUpgrades?.first || [])],
+    business: [...(existingConfig?.cabinUpgrades?.business || [])],
+    economyPlus: [...(existingConfig?.cabinUpgrades?.economyPlus || [])],
+    economy: [...(existingConfig?.cabinUpgrades?.economy || [])],
+    _aircraft: [...(existingConfig?.cabinUpgrades?._aircraft || [])]
+  };
+  const gameYear = (() => {
+    try {
+      const wt = typeof window !== 'undefined' && typeof window.getGlobalWorldTime === 'function' ? window.getGlobalWorldTime() : null;
+      return wt ? wt.getFullYear() : new Date().getFullYear();
+    } catch (_) { return new Date().getFullYear(); }
+  })();
+  // Bar state: { class: 'first'|'business', position: 0.5 } or null
+  let barState = existingConfig?.cabinUpgrades?._bar || null;
+
+  function barRowsForClass(cls) {
+    if (!barState || barState.class !== cls) return 0;
+    const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES.cocktailBar : null;
+    if (!barDef?.seatReduction) return 0;
+    return barDef.seatReduction[cls] || 0;
+  }
+
   function ensureMidPositions() {
     const midPairs = Math.max(0, Math.floor(toilets / 2) - 2);
     // Grow array with evenly spaced defaults
@@ -1218,8 +1455,9 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   function calcSpaceUsed(seatCount, cabinClass) {
     const perRow = classPerRow(cabinClass);
-    if (perRow === 0 || seatCount === 0) return 0;
-    return Math.ceil(seatCount / perRow) * PITCH[cabinClass];
+    if (perRow === 0 && seatCount === 0) return barRowsForClass(cabinClass) * PITCH[cabinClass];
+    const seatRows = perRow > 0 ? Math.ceil(seatCount / perRow) : 0;
+    return (seatRows + barRowsForClass(cabinClass)) * PITCH[cabinClass];
   }
 
   function totalPax() {
@@ -1349,6 +1587,13 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
         </div>
       </div>
 
+      <!-- Upgrade buttons row -->
+      <div style="display:flex;gap:0.4rem;padding:0.3rem 0.75rem;border-top:1px solid var(--border-color);flex-shrink:0;align-items:center;">
+        <button id="seatUpgradesBtn" class="cabin-upgrade-btn" data-scope="seat" style="padding:0.3rem 0.7rem;font-size:0.65rem;font-weight:600;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:4px;color:#a78bfa;cursor:pointer;">&#9881; Seat Upgrades</button>
+        <button id="aircraftUpgradesBtn" class="cabin-upgrade-btn" data-scope="aircraft" style="padding:0.3rem 0.7rem;font-size:0.65rem;font-weight:600;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:4px;color:#60a5fa;cursor:pointer;">&#9992; Aircraft Upgrades</button>
+        <span id="upgradesSummary" style="font-size:0.55rem;color:var(--text-muted);margin-left:auto;"></span>
+      </div>
+
       <!-- Landscape diagram area — fit-to-width by default, zoomable -->
       <div id="cabinDiagramScroll" style="flex: 1; min-height: 0; background: rgba(0,0,0,0.2); overflow: auto; padding: 0.5rem 0.75rem; position: relative;">
         <div id="cabinZoomControls" style="position:sticky;top:4px;left:0;z-index:10;display:flex;gap:3px;margin-bottom:4px;">
@@ -1456,6 +1701,55 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
     const shape = isAirship ? 'capsule' : 'plane';
     container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape) + renderLegend();
+    // Overlay bar block on the diagram if bar is active
+    if (barState) {
+      const svg = container.querySelector('svg');
+      if (svg) {
+        const brackets = svg.querySelectorAll('.class-bracket-label');
+        let barTarget = null;
+        brackets.forEach(lbl => {
+          if (lbl.textContent.trim().toUpperCase() === (barState.class === 'first' ? 'FIRST' : 'BUSINESS')) {
+            const bracket = lbl.closest('g') || lbl.parentElement;
+            const lines = bracket ? bracket.querySelectorAll('line') : [];
+            if (lines.length >= 1) {
+              // Bracket lines give us the Y extent of that class section
+              const ys = [...lines].map(l => [parseFloat(l.getAttribute('y1')), parseFloat(l.getAttribute('y2'))]).flat();
+              barTarget = { minY: Math.min(...ys), maxY: Math.max(...ys) };
+            }
+          }
+        });
+        if (!barTarget) {
+          // Fallback: find class section from seat-bounds metadata
+          const meta = svg.querySelector('.seat-bounds-meta');
+          if (meta) {
+            barTarget = { minY: parseFloat(meta.dataset.startY) || 0, maxY: parseFloat(meta.dataset.endY) || 100 };
+          }
+        }
+        if (barTarget) {
+          const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES.cocktailBar : null;
+          const barRows = barDef?.seatReduction?.[barState.class] || 2;
+          const ROW_H = 14; // approximate row height in SVG units
+          const barH = barRows * ROW_H;
+          const range = barTarget.maxY - barTarget.minY - barH;
+          const barY = barTarget.minY + (barState.position || 0.5) * Math.max(0, range);
+          const barColor = barState.class === 'first' ? '#f59e0b' : '#a78bfa';
+          // Insert bar rect into the SVG (landscape: X = portrait Y)
+          const barEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          barEl.classList.add('bar-overlay');
+          barEl.innerHTML = `
+            <rect x="${barY}" y="2" width="${barH}" height="${fuselageWidth - 4}" rx="3"
+              fill="${barColor}" fill-opacity="0.2" stroke="${barColor}" stroke-width="1" stroke-dasharray="4,2"/>
+            <text x="${barY + barH/2}" y="${fuselageWidth/2}" text-anchor="middle" dominant-baseline="central"
+              font-size="8" font-weight="700" fill="${barColor}" opacity="0.8"
+              transform="rotate(-90, ${barY + barH/2}, ${fuselageWidth/2})">BAR</text>
+            <rect class="bar-drag-handle" x="${barY}" y="2" width="${barH}" height="${fuselageWidth - 4}"
+              fill="transparent" cursor="grab" pointer-events="all" style="touch-action:none;"
+              data-bar-min-y="${barTarget.minY}" data-bar-max-y="${barTarget.maxY}" data-bar-h="${barH}"/>
+          `;
+          svg.appendChild(barEl);
+        }
+      }
+    }
   }
 
   // Drag handling for mid-cabin service areas
@@ -1551,6 +1845,64 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   overlay.addEventListener('mouseup', _endMidDrag);
   overlay.addEventListener('mouseleave', _endMidDrag);
   overlay.addEventListener('touchend', _endMidDrag);
+
+  // ── Bar drag handling ─────────────────────────────────────────────
+  let _barDrag = null;
+
+  function setupBarDragHandles() {
+    const container = document.getElementById('cabinDiagramContainer');
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+    svg.querySelectorAll('.bar-drag-handle').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => _startBarDrag(e, handle));
+      handle.addEventListener('touchstart', (e) => _startBarDrag(e, handle), { passive: false });
+    });
+    function _startBarDrag(e, handle) {
+      e.preventDefault(); e.stopPropagation();
+      const minY = parseFloat(handle.dataset.barMinY);
+      const maxY = parseFloat(handle.dataset.barMaxY);
+      const barH = parseFloat(handle.dataset.barH);
+      _barDrag = { minY, maxY, barH };
+      document.body.style.cursor = 'grabbing';
+      const scrollEl = document.getElementById('cabinDiagramScroll');
+      if (scrollEl) scrollEl.style.overflow = 'hidden';
+    }
+  }
+
+  function _moveBarDrag(e) {
+    if (!_barDrag) return;
+    e.preventDefault();
+    const container = document.getElementById('cabinDiagramContainer');
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+    const pt = _dragPoint(e);
+    const svgX = _screenToSvgY(svg, pt.x, pt.y);
+    const range = _barDrag.maxY - _barDrag.minY - _barDrag.barH;
+    if (range <= 0) return;
+    const frac = Math.max(0, Math.min(1, (svgX - _barDrag.minY) / range));
+    if (barState) {
+      barState.position = Math.round(frac * 20) / 20; // snap to 5% increments
+      renderDiagram();
+      setupMidDragHandles();
+      setupBarDragHandles();
+    }
+  }
+  overlay.addEventListener('mousemove', _moveBarDrag);
+  overlay.addEventListener('touchmove', _moveBarDrag, { passive: false });
+
+  function _endBarDrag() {
+    if (_barDrag) {
+      document.body.style.cursor = '';
+      _barDrag = null;
+      const scrollEl = document.getElementById('cabinDiagramScroll');
+      if (scrollEl) scrollEl.style.overflow = 'auto';
+    }
+  }
+  overlay.addEventListener('mouseup', _endBarDrag);
+  overlay.addEventListener('mouseleave', _endBarDrag);
+  overlay.addEventListener('touchend', _endBarDrag);
   overlay.addEventListener('touchcancel', _endMidDrag);
 
   function updateUI() {
@@ -1627,6 +1979,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     ensureMidPositions();
     renderDiagram();
     setupMidDragHandles();
+    if (typeof setupBarDragHandles === 'function') setupBarDragHandles();
   }
 
   // Toilet buttons
@@ -1681,13 +2034,20 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   });
 
   document.getElementById('cabinApplyBtn').addEventListener('click', () => {
+    // Filter out empty upgrade arrays
+    const cleanUpgrades = {};
+    for (const [cls, keys] of Object.entries(upgrades)) {
+      if (keys.length > 0) cleanUpgrades[cls] = [...keys];
+    }
     const result = {
       firstSeats: config.first,
       businessSeats: config.business,
       economyPlusSeats: config.economyPlus,
       economySeats: config.economy,
       toilets: toilets,
-      midPositions: midPositions.length > 0 ? [...midPositions] : undefined
+      midPositions: midPositions.length > 0 ? [...midPositions] : undefined,
+      cabinUpgrades: Object.keys(cleanUpgrades).length > 0 || barState
+        ? { ...cleanUpgrades, ...(barState ? { _bar: barState } : {}) } : null
     };
     if (options?.refitConfirm) {
       _showRefitConfirmModal(overlay, options.refitConfirm, onApply, result,
@@ -1700,6 +2060,43 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
 
   document.getElementById('cabinCancelBtn').addEventListener('click', () => {
     document.body.removeChild(overlay);
+  });
+
+  // ── Cabin upgrade buttons ──────────────────────────────────────────
+  function updateUpgradeSummary() {
+    const allKeys = new Set();
+    for (const keys of Object.values(upgrades)) { if (Array.isArray(keys)) keys.forEach(k => allKeys.add(k)); }
+    const el = document.getElementById('upgradesSummary');
+    if (el) el.textContent = allKeys.size > 0 ? allKeys.size + ' upgrade' + (allKeys.size > 1 ? 's' : '') + ' installed' : '';
+    // Update button badges
+    const seatBtn = document.getElementById('seatUpgradesBtn');
+    const acBtn = document.getElementById('aircraftUpgradesBtn');
+    if (seatBtn) {
+      const seatCount = [...allKeys].filter(k => { const d = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[k] : null; return d?.scope === 'seat'; }).length;
+      seatBtn.innerHTML = (seatCount ? '\u2713 ' : '\u2699 ') + 'Seat Upgrades' + (seatCount ? ' (' + seatCount + ')' : '');
+    }
+    if (acBtn) {
+      const acCount = [...allKeys].filter(k => { const d = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[k] : null; return d?.scope === 'aircraft'; }).length;
+      acBtn.innerHTML = (acCount ? '\u2713 ' : '\u2708 ') + 'Aircraft Upgrades' + (acCount ? ' (' + acCount + ')' : '');
+    }
+  }
+  updateUpgradeSummary();
+
+  document.getElementById('seatUpgradesBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Show seat upgrades — pick the first class with seats, or economy
+    const activeClasses = ['first', 'business', 'economyPlus', 'economy'].filter(c => config[c] > 0);
+    const cls = activeClasses[0] || 'economy';
+    _showCabinUpgradePanel(overlay, cls, upgrades, config, gameYear, acType, aircraft, 'seat', () => {
+      recalcEconomy(); updateUI(); updateUpgradeSummary();
+    });
+  });
+
+  document.getElementById('aircraftUpgradesBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _showCabinUpgradePanel(overlay, 'economy', upgrades, config, gameYear, acType, aircraft, 'aircraft', () => {
+      recalcEconomy(); updateUI(); updateUpgradeSummary();
+    });
   });
 
   // ── Zoom controls ─────────────────────────────────────────────────
@@ -1750,7 +2147,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
             businessSeats: config.business,
             firstSeats: config.first,
             toilets,
-            cargoConfig: cargoState
+            cargoConfig: cargoState,
+            cabinUpgrades: upgrades
           })
         });
         const btn = document.getElementById('cabinSaveLayoutBtn');
@@ -1811,8 +2209,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           if (layout.cargoConfig && typeof window !== 'undefined') {
             window.selectedCargoConfig = { cargoConfig: layout.cargoConfig };
           }
+          // Restore cabin upgrades
+          if (layout.cabinUpgrades) {
+            for (const k of ['first', 'business', 'economyPlus', 'economy', '_aircraft']) {
+              upgrades[k] = Array.isArray(layout.cabinUpgrades[k]) ? [...layout.cabinUpgrades[k]] : [];
+            }
+          } else {
+            for (const k of ['first', 'business', 'economyPlus', 'economy', '_aircraft']) upgrades[k] = [];
+          }
           recalcEconomy();
           updateUI();
+          if (typeof updateUpgradeSummary === 'function') updateUpgradeSummary();
           dd.remove();
         });
       });
@@ -2310,7 +2717,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
             businessSeats: upperConfig.business + mainConfig.business,
             firstSeats: upperConfig.first + mainConfig.first,
             toilets,
-            cargoConfig: cargoState
+            cargoConfig: cargoState,
+            cabinUpgrades: typeof upgrades !== 'undefined' ? upgrades : null
           })
         });
         const btn = document.getElementById('ddSaveLayoutBtn');
@@ -2381,6 +2789,14 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
           toilets = layout.toilets || 0;
           if (layout.cargoConfig && typeof window !== 'undefined') {
             window.selectedCargoConfig = { cargoConfig: layout.cargoConfig };
+          }
+          // Restore cabin upgrades (double-deck shares same upgrades state)
+          if (layout.cabinUpgrades) {
+            for (const k of ['first', 'business', 'economyPlus', 'economy', '_aircraft']) {
+              if (typeof upgrades !== 'undefined' && upgrades[k] !== undefined) {
+                upgrades[k] = Array.isArray(layout.cabinUpgrades[k]) ? [...layout.cabinUpgrades[k]] : [];
+              }
+            }
           }
           recalcEconomy();
           updateUI();

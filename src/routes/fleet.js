@@ -6219,7 +6219,7 @@ router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
       return res.status(400).json({ error: 'Aircraft must be active to start a cabin refit' });
     }
 
-    const { economySeats, economyPlusSeats, businessSeats, firstSeats, toilets } = req.body;
+    const { economySeats, economyPlusSeats, businessSeats, firstSeats, toilets, cabinUpgrades } = req.body;
 
     // Determine refit duration based on aircraft type and capacity
     const acType = aircraft.aircraft?.type || 'Narrowbody';
@@ -6275,6 +6275,7 @@ router.post('/:aircraftId/reconfig-cabin', async (req, res) => {
     if (businessSeats !== undefined) updateData.businessSeats = businessSeats;
     if (firstSeats !== undefined) updateData.firstSeats = firstSeats;
     if (toilets !== undefined) updateData.toilets = toilets;
+    if (cabinUpgrades !== undefined) updateData.cabinUpgrades = cabinUpgrades;
 
     await aircraft.update(updateData);
 
@@ -6582,13 +6583,13 @@ router.get('/cabin-layouts/:aircraftId', async (req, res) => {
 router.post('/cabin-layouts', async (req, res) => {
   try {
     const { membership } = await getAuthenticatedMembership(req);
-    const { aircraftId, name, economySeats, economyPlusSeats, businessSeats, firstSeats, toilets, cargoConfig } = req.body;
+    const { aircraftId, name, economySeats, economyPlusSeats, businessSeats, firstSeats, toilets, cargoConfig, cabinUpgrades } = req.body;
 
     if (!aircraftId || !name?.trim()) {
       return res.status(400).json({ error: 'Aircraft ID and layout name are required' });
     }
 
-    const trimmedName = name.trim().substring(0, 60);
+    const trimmedName = name.trim().substring(0, 20);
 
     // Cap at 20 layouts per aircraft variant per membership
     const count = await CabinLayout.count({
@@ -6607,7 +6608,8 @@ router.post('/cabin-layouts', async (req, res) => {
       businessSeats: parseInt(businessSeats) || 0,
       firstSeats: parseInt(firstSeats) || 0,
       toilets: parseInt(toilets) || 0,
-      cargoConfig: cargoConfig || null
+      cargoConfig: cargoConfig || null,
+      cabinUpgrades: cabinUpgrades || null
     };
 
     let layout;

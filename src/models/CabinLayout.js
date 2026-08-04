@@ -24,7 +24,7 @@ const CabinLayout = sequelize.define('CabinLayout', {
     comment: 'Catalog Aircraft variant UUID (e.g. Boeing 777-200)'
   },
   name: {
-    type: DataTypes.STRING(60),
+    type: DataTypes.STRING(20),
     allowNull: false
   },
   economySeats: {
@@ -56,6 +56,12 @@ const CabinLayout = sequelize.define('CabinLayout', {
     allowNull: true,
     field: 'cargo_config',
     comment: 'Cargo allocation JSON (same shape as UserAircraft.cargoConfig)'
+  },
+  cabinUpgrades: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'cabin_upgrades',
+    comment: 'Cabin upgrade selections JSON: { economy: [...], _aircraft: [...] }'
   }
 }, {
   tableName: 'cabin_layouts',

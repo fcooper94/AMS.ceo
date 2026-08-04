@@ -2570,15 +2570,6 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
     ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
 
-  // Show contract signing animation
-  if (isNewOrder) {
-    const txnPrice = transactionUnitPrice(selectedAircraft.purchasePrice, 1);
-    const deposit = Math.round(txnPrice * 0.30);
-    await showContractSigningAnimation('order', aircraftName, registration, deposit);
-  } else {
-    await showContractSigningAnimation('purchase', aircraftName, registration, selectedAircraft.purchasePrice);
-  }
-
   showProcessingOverlay('purchase');
 
   try {
@@ -2634,6 +2625,12 @@ async function confirmPurchase(registration, autoSchedulePrefs = {}) {
     hideProcessingOverlay();
 
     if (response.ok) {
+      if (isNewOrder) {
+        const txnPrice = transactionUnitPrice(selectedAircraft.purchasePrice, 1);
+        await showContractSigningAnimation('order', aircraftName, registration, Math.round(txnPrice * 0.30));
+      } else {
+        await showContractSigningAnimation('purchase', aircraftName, registration, selectedAircraft.purchasePrice);
+      }
       if (data.orderType === 'new') {
         showSuccessMessage(`Aircraft ordered! ${data.aircraft.registration} — Available immediately. Deposit: ${formatCurrency(data.deposit)}`, data.newBalance);
       } else {
@@ -2661,11 +2658,9 @@ async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
     ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
 
-  // Show contract animation with total deposit amount
   const displayReg = qty > 1 ? `${registrations[0]} (+${qty - 1} more)` : registrations[0];
   const txnUnit = transactionUnitPrice(selectedAircraft.purchasePrice, qty);
   const totalDeposit = Math.round(txnUnit * 0.30) * qty;
-  await showContractSigningAnimation('order', aircraftName, displayReg, totalDeposit);
 
   showProcessingOverlay('purchase');
 
@@ -2706,6 +2701,7 @@ async function confirmMultiPurchase(registrations, autoSchedulePrefs = {}) {
     hideProcessingOverlay();
 
     if (response.ok) {
+      await showContractSigningAnimation('order', aircraftName, displayReg, totalDeposit);
       const regList = data.aircraft.map(a => a.registration).join(', ');
       showSuccessMessage(`${qty} aircraft ordered! Deposit: ${formatCurrency(data.totalDeposit)}. Registrations: ${regList}`, data.newBalance);
       clearAircraftCache();
@@ -3699,7 +3695,6 @@ async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
 
   const displayReg = qty > 1 ? `${registrations[0]} (+${qty - 1} more)` : registrations[0];
-  await showContractSigningAnimation('lease', aircraftName, displayReg, leaseOrderWeeklyRate * qty);
 
   showProcessingOverlay('lease');
 
@@ -3733,6 +3728,7 @@ async function confirmBulkLease(registrations, autoSchedulePrefs = {}) {
     hideProcessingOverlay();
 
     if (response.ok) {
+      await showContractSigningAnimation('lease', aircraftName, displayReg, leaseOrderWeeklyRate * qty);
       const regList = data.aircraft.map(a => a.registration).join(', ');
       showSuccessMessage(`${qty} aircraft leased! Weekly: ${formatCurrency(data.totalWeeklyPayment)}. Registrations: ${regList}`, data.newBalance);
       clearAircraftCache();
@@ -4084,9 +4080,6 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
   const aircraftName = selectedAircraft.variant
     ? `${selectedAircraft.manufacturer} ${selectedAircraft.model}${selectedAircraft.model.endsWith('-') || selectedAircraft.variant.startsWith('-') ? selectedAircraft.variant : '-' + selectedAircraft.variant}`
     : `${selectedAircraft.manufacturer} ${selectedAircraft.model}`;
-  await showContractSigningAnimation('lease', aircraftName, registration, selectedAircraft.leasePrice || selectedAircraft.weeklyLease);
-
-  // Show processing overlay
   showProcessingOverlay('lease');
 
   try {
@@ -4149,13 +4142,9 @@ async function confirmLease(registration, autoSchedulePrefs = {}, leaseDurationM
     hideProcessingOverlay();
 
     if (response.ok) {
-      // Show success message
+      await showContractSigningAnimation('lease', aircraftName, registration, selectedAircraft.leasePrice || selectedAircraft.weeklyLease);
       showSuccessMessage(`Aircraft leased successfully! Registration: ${data.aircraft.registration}`, data.newBalance);
-
-      // Clear cached inventory so next load fetches fresh data
       clearAircraftCache();
-
-      // Reload marketplace info to update balance
       fetchWorldInfo();
     } else {
       // Show error message

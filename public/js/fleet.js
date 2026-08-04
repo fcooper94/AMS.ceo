@@ -1891,7 +1891,8 @@ function reconfigureCabin(userAircraftId) {
     economyPlusSeats: ua.economyPlusSeats,
     businessSeats: ua.businessSeats,
     firstSeats: ua.firstSeats,
-    toilets: ua.toilets
+    toilets: ua.toilets,
+    cabinUpgrades: ua.cabinUpgrades || null
   } : null;
 
   if (typeof showCabinConfigurator !== 'function') return;
@@ -1916,7 +1917,8 @@ function reconfigureCabin(userAircraftId) {
           economyPlusSeats: config.economyPlusSeats || 0,
           businessSeats: config.businessSeats || 0,
           firstSeats: config.firstSeats || 0,
-          toilets: config.toilets || 0
+          toilets: config.toilets || 0,
+          cabinUpgrades: config.cabinUpgrades || null
         })
       });
       const data = await res.json();
