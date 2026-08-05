@@ -580,7 +580,7 @@ function seatsPerRow(aircraftType, cabinClass) {
 // --- Schematic seat map renderer ---
 // Pure airline-style seat map: clean rectangles, row numbers, seat letters.
 // Horizontal layout: X = cabin length (nose-left), Y = cross-section (top-down).
-function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions) {
+function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions, aircraft) {
   if (!deckLayout) return null;
 
   // Sizing constants
@@ -594,8 +594,7 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const SERVICE_DEPTH = 30; // galley/WC block along cabin (X)
   const SERVICE_SPACING = 3;
   const EXIT_DEPTH = 3;
-  const MARGIN = { top: 20, left: 16, right: 8, bottom: 8 };
-  const LETTERS = ['A','B','C','D','E','F','G','H','J','K'];
+  const MARGIN = { top: 20, left: 8, right: 8, bottom: 8 };
   const classOrder = ['first', 'business', 'economyPlus', 'economy'];
 
   // Build sections
@@ -643,33 +642,93 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     midAtRow[pos].push(i);
   }
 
+  // Cache Y positions per class (needed before row X calculation)
+  const seatYByClass = {};
+  for (const s of sections) {
+    if (!seatYByClass[s.cls]) seatYByClass[s.cls] = computeSeatYPositions(s.groups);
+  }
+
   // Pre-calculate row X positions
   let cx = 0; // current X along cabin
-  if (hasFront) cx += SERVICE_DEPTH + SERVICE_SPACING + EXIT_DEPTH + 2;
+  if (hasFront) cx += SERVICE_DEPTH + SERVICE_SPACING + 10;
   if (isCompactLav) cx += 20 + SERVICE_SPACING;
 
   const rowPositions = [];
   let gRow = 0;
+  let prevSectionCls = null;
   for (const s of sections) {
+    prevSectionCls = s.cls;
     for (let r = 0; r < s.numRows; r++) {
-      if (midAtRow[gRow]) cx += EXIT_DEPTH + SERVICE_DEPTH + SERVICE_SPACING + 2;
+      if (midAtRow[gRow]) cx += SERVICE_DEPTH + SERVICE_SPACING + 2;
       rowPositions.push({ x: cx, s, row: r, cls: s.cls, pitch: s.pitch });
       cx += s.pitch + ROW_GAP;
       gRow++;
     }
     cx += 3; // class gap
   }
-  if (hasRear || isCompactLav) cx += SERVICE_SPACING + SERVICE_DEPTH + EXIT_DEPTH + 2;
+  if (hasRear || isCompactLav) cx += SERVICE_SPACING + SERVICE_DEPTH + 2;
   const cabinLen = cx;
 
-  const svgW = MARGIN.left + cabinLen + MARGIN.right;
+  const contentW = MARGIN.left + cabinLen + MARGIN.right;
   const svgH = MARGIN.top + crossH + MARGIN.bottom;
+  // Lock the viewBox width to the maximum possible for this aircraft type,
+  // so adding/removing seats doesn't resize the SVG.
+  const maxPerRow = maxGroups.reduce((s, g) => s + g, 0) || 6;
+  const maxPossibleRows = Math.ceil((aircraft?.passengerCapacity || 300) / maxPerRow);
+  const maxCabinLen = (hasFront ? SERVICE_DEPTH + SERVICE_SPACING + 10 : 0)
+    + maxPossibleRows * (CLASS_PITCH.economy + ROW_GAP) + 20
+    + (hasRear || isCompactLav ? SERVICE_SPACING + SERVICE_DEPTH + 2 : 0) + 10;
+  const svgW = Math.max(contentW, MARGIN.left + maxCabinLen + MARGIN.right);
 
-  let html = `<svg viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;" xmlns="http://www.w3.org/2000/svg">`;
-  html += `<rect width="${svgW}" height="${svgH}" fill="rgba(9,18,31,0.5)" rx="4"/>`;
+  // ── Precompute Y positions for each class ──────────────────────
+  // Seats fill the full cross-section height. Fewer seats abreast = taller seats.
+  function computeSeatYPositions(groups) {
+    const totalSeats = groups.reduce((a, b) => a + b, 0);
+    const aisles = groups.length - 1;
+    const totalAisleH = aisles * AISLE_GAP;
+    const availableForSeats = crossH - totalAisleH - (totalSeats - 1) * SEAT_GAP;
+    const seatH = Math.max(SEAT_ACROSS, availableForSeats / totalSeats);
+    const positions = [];
+    let y = 0;
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (let gs = 0; gs < groups[gi]; gs++) {
+        positions.push({ y, h: seatH });
+        y += seatH + SEAT_GAP;
+      }
+      if (gi < groups.length - 1) y += AISLE_GAP - SEAT_GAP;
+    }
+    return positions;
+  }
+  // ── Fuselage taper dimensions ───────────────────────────────────
+  const noseLen = 20;  // how far the nose taper extends
+  const tailLen = 15;  // how far the tail taper extends
+  const fuseH = crossH + 6; // slightly taller than cabin
+  const fuseY = -3;    // offset above cabin top
+
+  // Use actual content width for viewBox so it fills naturally — the fixed max
+  // is only used if content exceeds it. This prevents empty space on the right.
+  const actualW = MARGIN.left + cabinLen + MARGIN.right + 30;
+  let html = `<svg viewBox="0 0 ${actualW} ${svgH}" preserveAspectRatio="xMinYMid meet" style="width:100%;height:auto;" xmlns="http://www.w3.org/2000/svg">`;
 
   const ox = MARGIN.left; // origin X
   const oy = MARGIN.top;  // origin Y
+
+  // ── Fuselage background shape (tapered nose + tail) ─────────────
+  // The straight section covers all content (galley → WC). Taper extends beyond.
+  const fuseX1 = ox - 2;                 // left edge of straight section
+  const fuseX2 = ox + cabinLen + 2;      // right edge of straight section
+  const fuseCY = oy + crossH / 2;
+  const fuseTop = oy + fuseY;
+  const fuseBot = fuseTop + fuseH;
+  html += `<path d="
+    M ${fuseX1} ${fuseTop}
+    Q ${fuseX1 - noseLen * 0.5} ${fuseTop}, ${fuseX1 - noseLen} ${fuseCY}
+    Q ${fuseX1 - noseLen * 0.5} ${fuseBot}, ${fuseX1} ${fuseBot}
+    L ${fuseX2} ${fuseBot}
+    Q ${fuseX2 + tailLen * 0.5} ${fuseBot}, ${fuseX2 + tailLen} ${fuseCY}
+    Q ${fuseX2 + tailLen * 0.5} ${fuseTop}, ${fuseX2} ${fuseTop}
+    Z
+  " fill="rgba(15,23,35,0.55)" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>`;
 
   // ── Helper: draw a service block ────────────────────────────────
   function svcBlock(x, label) {
@@ -683,8 +742,7 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
 
   // Front service
   if (hasFront) {
-    exitMark(0);
-    svcBlock(EXIT_DEPTH + 1, 'GALLEY');
+    svcBlock(0, 'GALLEY');
   }
 
   // ── Draw seat rows ──────────────────────────────────────────────
@@ -699,14 +757,18 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     const isLast = rp.row === s.numRows - 1;
     const seatsThisRow = isLast ? s.lastRowSeats : s.perRow;
 
-    // Mid service
+    // Mid service (draggable)
     if (midAtRow[gRow]) {
-      const mx = rp.x - SERVICE_DEPTH - SERVICE_SPACING - EXIT_DEPTH;
-      exitMark(mx);
-      svcBlock(mx + EXIT_DEPTH + 1, 'WC');
+      const midIndices = midAtRow[gRow];
+      const mx = rp.x - SERVICE_DEPTH - SERVICE_SPACING;
+      svcBlock(mx, 'WC');
+      // Drag handle for each mid-service area at this position
+      for (const hidx of midIndices) {
+        html += `<rect class="mid-drag-handle" data-mid-idx="${hidx}" x="${ox + mx}" y="${oy}" width="${SERVICE_DEPTH}" height="${crossH}" fill="rgba(148,163,184,0.0)" stroke="none" cursor="grab" pointer-events="all" style="touch-action:none;" onmouseover="this.setAttribute('fill','rgba(148,163,184,0.12)');this.setAttribute('stroke','rgba(148,163,184,0.4)');this.setAttribute('stroke-width','1')" onmouseout="this.setAttribute('fill','rgba(148,163,184,0.0)');this.setAttribute('stroke','none')"/>`;
+      }
     }
 
-    // Class divider
+    // Class divider + seat letters at start of each new class
     if (prevCls && rp.cls !== prevCls) {
       html += `<line x1="${x - 2}" y1="${oy - 3}" x2="${x - 2}" y2="${oy + crossH + 3}" stroke="rgba(148,163,184,0.15)" stroke-width="0.8" stroke-dasharray="2,2"/>`;
     }
@@ -718,21 +780,18 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     // Class colour pip
     html += `<rect x="${x}" y="${oy - 2}" width="${rp.pitch}" height="1.5" fill="${cc.bg}" opacity="0.5" rx="0.5"/>`;
 
-    // Seats — laid out vertically (Y) within the cross-section
-    let seatIdx = 0;
-    let sy = oy;
-    for (let gi = 0; gi < s.groups.length; gi++) {
-      for (let gs = 0; gs < s.groups[gi]; gs++) {
-        const empty = seatIdx >= seatsThisRow;
-        html += `<rect x="${x + 0.5}" y="${sy + 0.5}" width="${rp.pitch - 1}" height="${SEAT_ACROSS - 1}" rx="${SEAT_R}" ` +
-          `fill="${empty ? 'rgba(51,65,85,0.15)' : cc.bg}" ` +
-          `stroke="${empty ? 'rgba(71,85,105,0.2)' : cc.border}" ` +
-          `stroke-width="${empty ? 0.4 : 0.8}" ` +
-          `opacity="${empty ? 0.25 : 0.85}"/>`;
-        sy += SEAT_ACROSS + SEAT_GAP;
-        seatIdx++;
-      }
-      if (gi < s.groups.length - 1) sy += AISLE_GAP - SEAT_GAP; // aisle
+    // Seats — fill full cross-section, wider seats for fewer abreast
+    const yPositions = seatYByClass[rp.cls] || [];
+    for (let seatIdx = 0; seatIdx < yPositions.length; seatIdx++) {
+      const sp = yPositions[seatIdx];
+      const sy = oy + sp.y;
+      const sh = sp.h;
+      const empty = seatIdx >= seatsThisRow;
+      html += `<rect x="${x + 0.5}" y="${sy + 0.5}" width="${rp.pitch - 1}" height="${sh - 1}" rx="${SEAT_R}" ` +
+        `fill="${empty ? 'rgba(51,65,85,0.15)' : cc.bg}" ` +
+        `stroke="${empty ? 'rgba(71,85,105,0.2)' : cc.border}" ` +
+        `stroke-width="${empty ? 0.4 : 0.8}" ` +
+        `opacity="${empty ? 0.25 : 0.85}"/>`;
     }
 
     rowNum++;
@@ -742,23 +801,10 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   // Rear service
   if (hasRear || isCompactLav) {
     const lastRp = rowPositions[rowPositions.length - 1];
-    const rx = lastRp ? lastRp.x + lastRp.pitch + 4 : cabinLen - SERVICE_DEPTH - EXIT_DEPTH - 4;
+    const rx = lastRp ? lastRp.x + lastRp.pitch + 4 : cabinLen - SERVICE_DEPTH - 4;
     svcBlock(rx, 'WC');
-    exitMark(rx + SERVICE_DEPTH + 1);
   }
 
-  // ── Seat letters (left side) ────────────────────────────────────
-  let ly = oy;
-  let li = 0;
-  for (let gi = 0; gi < maxGroups.length; gi++) {
-    for (let gs = 0; gs < maxGroups[gi]; gs++) {
-      const letter = li < LETTERS.length ? LETTERS[li] : '';
-      html += `<text x="${ox - 3}" y="${ly + SEAT_ACROSS / 2}" text-anchor="end" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="5" font-weight="600" font-family="system-ui,sans-serif">${letter}</text>`;
-      ly += SEAT_ACROSS + SEAT_GAP;
-      li++;
-    }
-    if (gi < maxGroups.length - 1) ly += AISLE_GAP - SEAT_GAP;
-  }
 
   // ── Metadata for drag compatibility ─────────────────────────────
   const startX = rowPositions.length > 0 ? rowPositions[0].x : 0;
@@ -1299,7 +1345,8 @@ function _ccMoney(v) {
   return typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Math.round(v).toLocaleString('en-US');
 }
 
-function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, acType, aircraft, scopeFilter, onChanged) {
+function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, acType, aircraft, scopeFilter, onChanged, barAccessor) {
+  // barAccessor: { get: () => barState, set: (v) => { barState = v; } } or null
   if (typeof getAvailableUpgrades !== 'function') return;
 
   const isSeatScope = scopeFilter === 'seat';
@@ -1384,13 +1431,15 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
 
         // Special handling for cocktail bar
         if (upg.key === 'cocktailBar') {
-          const barOn = !!barState;
-          const barCls = barState?.class || 'first';
+          const _bs = barAccessor ? barAccessor.get() : null;
+          const barOn = !!_bs;
+          const barCls = _bs?.class || 'first';
           const barDef = upg.seatReduction || {};
           const fRows = barDef.first || 2;
           const bRows = barDef.business || 3;
-          const fPerRow = classPerRow('first') || 4;
-          const bPerRow = classPerRow('business') || 6;
+          const isWide = (acType === 'Widebody');
+          const fPerRow = isWide ? 4 : 2;
+          const bPerRow = isWide ? 6 : 4;
           listHtml += `
             <div style="padding:0.4rem 0.5rem;border-radius:4px;border:1px solid ${barOn ? 'rgba(244,114,182,0.4)' : 'var(--border-color)'};margin-bottom:0.3rem;${barOn ? 'background:rgba(244,114,182,0.06);' : ''}">
               <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1478,23 +1527,26 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
 
   // Bar toggle + class picker
   const barToggle = modal.querySelector('#barToggle');
-  if (barToggle) {
+  if (barToggle && barAccessor) {
     barToggle.addEventListener('change', () => {
       const barOpts = modal.querySelector('#barOptions');
+      const cur = barAccessor.get();
       if (barToggle.checked) {
-        barState = { class: barState?.class || 'first', position: barState?.position ?? 0.5 };
+        barAccessor.set({ class: cur?.class || 'first', position: cur?.position ?? 0.5 });
         if (barOpts) barOpts.style.display = '';
       } else {
-        barState = null;
+        barAccessor.set(null);
         if (barOpts) barOpts.style.display = 'none';
       }
     });
   }
   modal.querySelectorAll('.bar-class-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!barAccessor) return;
       const newCls = btn.dataset.barClass;
-      if (barState) barState.class = newCls;
-      else barState = { class: newCls, position: 0.5 };
+      const cur = barAccessor.get();
+      if (cur) { cur.class = newCls; barAccessor.set(cur); }
+      else barAccessor.set({ class: newCls, position: 0.5 });
       // Update button styles
       modal.querySelectorAll('.bar-class-btn').forEach(b => {
         const active = b.dataset.barClass === newCls;
@@ -1984,7 +2036,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
     const shape = isAirship ? 'capsule' : 'plane';
     // Try schematic seat map first; fall back to legacy fuselage renderer
-    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions) : null;
+    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions, aircraft) : null;
     container.innerHTML = (seatMapHtml || renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape, aircraft)) + renderLegend();
     // Overlay bar block on the diagram if bar is active
     if (barState) {
@@ -2374,14 +2426,15 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const cls = activeClasses[0] || 'economy';
     _showCabinUpgradePanel(overlay, cls, upgrades, config, gameYear, acType, aircraft, 'seat', () => {
       recalcEconomy(); updateUI(); updateUpgradeSummary();
-    });
+    }, null);
   });
 
   document.getElementById('aircraftUpgradesBtn')?.addEventListener('click', (e) => {
     e.stopPropagation();
+    const barAcc = { get: () => barState, set: (v) => { barState = v; } };
     _showCabinUpgradePanel(overlay, 'economy', upgrades, config, gameYear, acType, aircraft, 'aircraft', () => {
       recalcEconomy(); updateUI(); updateUpgradeSummary();
-    });
+    }, barAcc);
   });
 
   // ── Zoom controls ─────────────────────────────────────────────────
