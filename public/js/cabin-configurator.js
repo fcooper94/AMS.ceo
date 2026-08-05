@@ -3023,7 +3023,7 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
         <!-- Upper Deck -->
         <div style="flex: 1; padding: 0.75rem; display: flex; flex-direction: column; align-items: center; border-right: 1px solid var(--border-color); min-height: 0;">
           <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); letter-spacing: 0.05em;">UPPER DECK</div>
-          <div style="font-size: 0.5rem; color: var(--text-muted); margin-bottom: 0.4rem;">${upperCapacity} seats · ${ddConfig.upperLayout.economy.join('-')} economy</div>
+          <div style="font-size: 0.5rem; color: var(--text-muted); margin-bottom: 0.4rem;">${ddConfig.upperLayout.economy.join('-')} economy</div>
 
           <div style="width: 100%; max-width: 280px; margin-bottom: 0.4rem;">
             <div style="height: 3px; background: var(--surface-elevated); border-radius: 2px; overflow: hidden;">
@@ -3036,6 +3036,10 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
             ${buildDeckCtrl('upper', 'business', ddConfig.upperLayout, upperConfig)}
             ${buildDeckCtrl('upper', 'economyPlus', ddConfig.upperLayout, upperConfig)}
             ${buildDeckCtrl('upper', 'economy', ddConfig.upperLayout, upperConfig)}
+            <div style="display:flex;justify-content:space-between;padding:0.2rem 0.5rem;font-size:0.55rem;color:var(--text-muted);border-top:1px solid var(--border-color);margin-top:0.15rem;">
+              <span>This deck: <strong id="upperDeckTotal" style="color:var(--text-primary);">${upperConfig.first + upperConfig.business + upperConfig.economyPlus + upperConfig.economy}</strong></span>
+              <span>Both decks: <strong id="upperCombinedTotal" style="color:var(--accent-color);">—</strong></span>
+            </div>
           </div>
 
           <div id="upperDiagram" style="flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; align-items: start; overflow: hidden;"></div>
@@ -3044,7 +3048,7 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
         <!-- Main Deck -->
         <div style="flex: 1; padding: 0.75rem; display: flex; flex-direction: column; align-items: center; min-height: 0;">
           <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); letter-spacing: 0.05em;">MAIN DECK</div>
-          <div style="font-size: 0.5rem; color: var(--text-muted); margin-bottom: 0.4rem;">${mainCapacity} seats · ${ddConfig.mainLayout.economy.join('-')} economy</div>
+          <div style="font-size: 0.5rem; color: var(--text-muted); margin-bottom: 0.4rem;">${ddConfig.mainLayout.economy.join('-')} economy</div>
 
           <div style="width: 100%; max-width: 280px; margin-bottom: 0.4rem;">
             <div style="height: 3px; background: var(--surface-elevated); border-radius: 2px; overflow: hidden;">
@@ -3057,6 +3061,10 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
             ${buildDeckCtrl('main', 'business', ddConfig.mainLayout, mainConfig)}
             ${buildDeckCtrl('main', 'economyPlus', ddConfig.mainLayout, mainConfig)}
             ${buildDeckCtrl('main', 'economy', ddConfig.mainLayout, mainConfig)}
+            <div style="display:flex;justify-content:space-between;padding:0.2rem 0.5rem;font-size:0.55rem;color:var(--text-muted);border-top:1px solid var(--border-color);margin-top:0.15rem;">
+              <span>This deck: <strong id="mainDeckTotal" style="color:var(--text-primary);">${mainConfig.first + mainConfig.business + mainConfig.economyPlus + mainConfig.economy}</strong></span>
+              <span>Both decks: <strong id="mainCombinedTotal" style="color:var(--accent-color);">—</strong></span>
+            </div>
           </div>
 
           <div id="mainDiagram" style="flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; align-items: start; overflow: hidden;"></div>
@@ -3073,7 +3081,8 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
       <div style="padding: 0.6rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; flex-shrink: 0;">
         <div style="display: flex; align-items: baseline; gap: 0.4rem;">
           <span id="ddTotalPax" style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${totalPax()}</span>
-          <span style="font-size: 0.65rem; color: var(--text-muted);">passengers</span>
+          <span style="font-size: 0.65rem; color: var(--text-muted);">total pax</span>
+          <span id="ddClassBreakdown" style="font-size: 0.55rem; color: var(--text-muted); margin-left: 0.5rem;"></span>
         </div>
         <div id="ddLegend" style="display: flex; gap: 0.5rem; flex: 1; flex-wrap: wrap;"></div>
         <div style="display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; background: var(--surface-elevated); border-radius: 5px; border: 1px solid rgba(148,163,184,0.2);">
@@ -3131,6 +3140,35 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
       if (me) me.textContent = mainConfig[cls];
     }
 
+    // Deck totals
+    const upperTotal = upperConfig.first + upperConfig.business + upperConfig.economyPlus + upperConfig.economy;
+    const mainTotal = mainConfig.first + mainConfig.business + mainConfig.economyPlus + mainConfig.economy;
+    const combinedTotal = upperTotal + mainTotal;
+    const udt = document.getElementById('upperDeckTotal');
+    if (udt) udt.textContent = upperTotal;
+    const mdt = document.getElementById('mainDeckTotal');
+    if (mdt) mdt.textContent = mainTotal;
+    const uct = document.getElementById('upperCombinedTotal');
+    if (uct) uct.textContent = combinedTotal;
+    const mct = document.getElementById('mainCombinedTotal');
+    if (mct) mct.textContent = combinedTotal;
+
+    // Update header total + class breakdown
+    const totalEl = document.getElementById('ddTotalPax');
+    if (totalEl) totalEl.textContent = combinedTotal;
+    const bkdn = document.getElementById('ddClassBreakdown');
+    if (bkdn) {
+      const parts = [];
+      for (const cls of ['first', 'business', 'economyPlus', 'economy']) {
+        const total = (upperConfig[cls] || 0) + (mainConfig[cls] || 0);
+        if (total > 0) {
+          const cc = CLASS_COLORS[cls];
+          parts.push(`<span style="color:${cc.bg};">${cc.code} ${total}</span>`);
+        }
+      }
+      bkdn.innerHTML = parts.join(' · ');
+    }
+
     // Space bars
     for (const [id, dc, layout, ts] of [
       ['upperSpaceBar', upperConfig, ddConfig.upperLayout, upperTotalSpace],
@@ -3159,10 +3197,7 @@ function showDoubleDeckConfigurator(aircraft, ddConfig, onApply, existingConfig,
       }
     }
 
-    // Summary
-    const totalEl = document.getElementById('ddTotalPax');
-    if (totalEl) totalEl.textContent = totalPax();
-
+    // Summary (total already updated above)
     const total = {
       first: upperConfig.first + mainConfig.first,
       business: upperConfig.business + mainConfig.business,
