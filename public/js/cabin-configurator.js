@@ -594,7 +594,7 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const SERVICE_DEPTH = 30; // galley/WC block along cabin (X)
   const SERVICE_SPACING = 3;
   const EXIT_DEPTH = 3;
-  const MARGIN = { top: 20, left: 8, right: 8, bottom: 8 };
+  const MARGIN = { top: 12, left: 10, right: 10, bottom: 8 };
   const classOrder = ['first', 'business', 'economyPlus', 'economy'];
 
   // Build sections
@@ -678,9 +678,12 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const cabinLen = cx;
 
   const contentW = MARGIN.left + cabinLen + MARGIN.right;
-  const svgH = MARGIN.top + crossH + MARGIN.bottom;
-  // Lock the viewBox width to the maximum possible for this aircraft type,
-  // so adding/removing seats doesn't resize the SVG.
+
+  // Extra vertical space for a universal aircraft silhouette
+  const wingPad = Math.max(24, Math.min(78, crossH * 0.68));
+  const svgH = MARGIN.top + wingPad + crossH + wingPad + MARGIN.bottom;
+
+  // Lock the viewBox width to the maximum possible for this aircraft type
   const maxPerRow = maxGroups.reduce((s, g) => s + g, 0) || 6;
   const maxPossibleRows = Math.ceil((aircraft?.passengerCapacity || 300) / maxPerRow);
   const maxCabinLen = (hasFront ? SERVICE_DEPTH + SERVICE_SPACING + 10 : 0)
@@ -689,7 +692,6 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const svgW = Math.max(contentW, MARGIN.left + maxCabinLen + MARGIN.right);
 
   // ── Precompute Y positions for each class ──────────────────────
-  // Seats fill the full cross-section height. Fewer seats abreast = taller seats.
   function computeSeatYPositions(groups) {
     const totalSeats = groups.reduce((a, b) => a + b, 0);
     const aisles = groups.length - 1;
@@ -707,39 +709,89 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     }
     return positions;
   }
-  // ── Fuselage taper dimensions ───────────────────────────────────
-  const noseLen = 20;  // how far the nose taper extends
-  const tailLen = 15;  // how far the tail taper extends
-  const fuseH = crossH + 6; // slightly taller than cabin
-  const fuseY = -3;    // offset above cabin top
 
-  // Use actual content width for viewBox so it fills naturally — the fixed max
-  // is only used if content exceeds it. This prevents empty space on the right.
-  const actualW = MARGIN.left + cabinLen + MARGIN.right + 30;
-  // Enforce minimum viewBox width so small configs don't scale up absurdly
-  const minViewW = 500;
-  const viewW = Math.max(actualW, minViewW);
-  let html = `<svg viewBox="0 0 ${viewW} ${svgH}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;max-height:55vh;" xmlns="http://www.w3.org/2000/svg">`;
+  // ── Universal aircraft silhouette dimensions ───────────────────
+  const fuseWall = Math.max(5, Math.min(12, crossH * 0.07));
+  const fuseH = crossH + fuseWall * 2;
+  const noseLen = Math.max(34, Math.min(105, crossH * 0.72));
+  const tailLen = Math.max(48, Math.min(145, crossH * 0.95));
 
-  const ox = MARGIN.left; // origin X
-  const oy = MARGIN.top;  // origin Y
+  const actualW = MARGIN.left + cabinLen + MARGIN.right + noseLen + tailLen;
+  const container = document.getElementById('cabinDiagramContainer');
 
-  // ── Fuselage background shape (tapered nose + tail) ─────────────
-  // The straight section covers all content (galley → WC). Taper extends beyond.
-  const fuseX1 = ox - 2;                 // left edge of straight section
-  const fuseX2 = ox + cabinLen + 2;      // right edge of straight section
+  // Track the widest render so far — viewBox can grow but never shrink
+  if (container) {
+    if (!container._maxViewW || actualW > container._maxViewW) {
+      container._maxViewW = actualW;
+    }
+  }
+  const useW = container?._maxViewW || actualW;
+
+  let html = `<svg viewBox="0 0 ${useW} ${svgH}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;max-height:55vh;" xmlns="http://www.w3.org/2000/svg">`;
+
+  const ox = MARGIN.left + noseLen;
+  const oy = MARGIN.top + wingPad;
+
+  // ── Universal plane-like silhouette ─────────────────────────────
+  const fuseX1 = ox - fuseWall;
+  const fuseX2 = ox + cabinLen + fuseWall;
   const fuseCY = oy + crossH / 2;
-  const fuseTop = oy + fuseY;
-  const fuseBot = fuseTop + fuseH;
-  html += `<path d="
-    M ${fuseX1} ${fuseTop}
-    Q ${fuseX1 - noseLen * 0.5} ${fuseTop}, ${fuseX1 - noseLen} ${fuseCY}
-    Q ${fuseX1 - noseLen * 0.5} ${fuseBot}, ${fuseX1} ${fuseBot}
-    L ${fuseX2} ${fuseBot}
-    Q ${fuseX2 + tailLen * 0.5} ${fuseBot}, ${fuseX2 + tailLen} ${fuseCY}
-    Q ${fuseX2 + tailLen * 0.5} ${fuseTop}, ${fuseX2} ${fuseTop}
-    Z
-  " fill="rgba(15,23,35,0.55)" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>`;
+  const fuseTop = fuseCY - fuseH / 2;
+  const fuseBot = fuseCY + fuseH / 2;
+  const noseX = fuseX1 - noseLen;
+  const tailX = fuseX2 + tailLen;
+
+  // Wing position and span
+  const wingRootX = fuseX1 + Math.max(cabinLen * 0.50, Math.min(cabinLen * 0.62, cabinLen - 36));
+  const wingChord = Math.max(30, Math.min(88, cabinLen * 0.18));
+  const wingHalfSpan = Math.max(wingPad * 0.82, fuseH * 0.82);
+  const wingTipX = wingRootX + wingChord * 0.55;
+
+  // Tailplane
+  const tailRootX = fuseX2 + tailLen * 0.42;
+  const tailChord = Math.max(18, Math.min(46, tailLen * 0.30));
+  const tailHalfSpan = Math.max(fuseH * 0.48, wingPad * 0.42);
+
+  // Upper wing
+  html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY - fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY - wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY - wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY - fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
+  // Lower wing
+  html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY + fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY + wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY + wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY + fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
+
+  // Upper stabiliser
+  html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY - fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY - tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY - tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY - fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
+  // Lower stabiliser
+  html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY + fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY + tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY + tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY + fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
+
+  // Fuselage body
+  html += `<path d="M ${fuseX1} ${fuseTop} C ${fuseX1 - noseLen * 0.28} ${fuseTop}, ${noseX + noseLen * 0.22} ${fuseCY - fuseH * 0.22}, ${noseX} ${fuseCY} C ${noseX + noseLen * 0.22} ${fuseCY + fuseH * 0.22}, ${fuseX1 - noseLen * 0.28} ${fuseBot}, ${fuseX1} ${fuseBot} L ${fuseX2} ${fuseBot} C ${fuseX2 + tailLen * 0.18} ${fuseBot}, ${tailX - tailLen * 0.20} ${fuseCY + fuseH * 0.18}, ${tailX} ${fuseCY} C ${tailX - tailLen * 0.20} ${fuseCY - fuseH * 0.18}, ${fuseX2 + tailLen * 0.18} ${fuseTop}, ${fuseX2} ${fuseTop} Z" fill="rgba(15,23,35,0.76)" stroke="rgba(148,163,184,0.28)" stroke-width="1.2"/>`;
+
+  // Inner floor
+  html += `<rect x="${ox - 1}" y="${oy - 1}" width="${cabinLen + 2}" height="${crossH + 2}" rx="${Math.max(3, fuseWall * 0.45)}" fill="rgba(10,18,30,0.28)" stroke="rgba(148,163,184,0.10)" stroke-width="0.6"/>`;
+
+  // Cockpit windows — two trapezoid panels per side, angling along the nose
+  const cwX1 = noseX + noseLen * 0.35;  // front of window (toward nose)
+  const cwX2 = noseX + noseLen * 0.60;  // middle divider
+  const cwX3 = fuseX1 - noseLen * 0.05; // rear of window (toward cabin)
+  const cwGap = fuseH * 0.04;           // gap from centreline
+
+  // The fuselage narrows toward the nose, so windows are narrower at front
+  const cwOuterFront = fuseH * 0.14;    // outer edge distance at front
+  const cwOuterMid = fuseH * 0.22;      // outer edge distance at middle
+  const cwOuterRear = fuseH * 0.28;     // outer edge distance at rear
+
+  // Upper side: front window
+  html += `<path d="M ${cwX1} ${fuseCY - cwGap - cwOuterFront * 0.3} L ${cwX2} ${fuseCY - cwGap - cwOuterMid} L ${cwX2} ${fuseCY - cwGap - cwOuterMid * 0.45} L ${cwX1} ${fuseCY - cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+  // Upper side: rear window
+  html += `<path d="M ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid} L ${cwX3} ${fuseCY - cwGap - cwOuterRear} L ${cwX3} ${fuseCY - cwGap - cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+
+  // Lower side: front window
+  html += `<path d="M ${cwX1} ${fuseCY + cwGap + cwOuterFront * 0.3} L ${cwX2} ${fuseCY + cwGap + cwOuterMid} L ${cwX2} ${fuseCY + cwGap + cwOuterMid * 0.45} L ${cwX1} ${fuseCY + cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+  // Lower side: rear window
+  html += `<path d="M ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid} L ${cwX3} ${fuseCY + cwGap + cwOuterRear} L ${cwX3} ${fuseCY + cwGap + cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+
+  // Centreline and wing-root shading
+  html += `<line x1="${noseX + noseLen * 0.72}" y1="${fuseCY}" x2="${tailX - tailLen * 0.12}" y2="${fuseCY}" stroke="rgba(148,163,184,0.055)" stroke-width="0.8"/>`;
+  html += `<rect x="${wingRootX - wingChord * 0.22}" y="${fuseTop + 1}" width="${wingChord * 0.72}" height="${fuseH - 2}" rx="3" fill="rgba(71,85,105,0.10)"/>`;
 
   // ── Helper: draw a service block ────────────────────────────────
   function svcBlock(x, label) {
