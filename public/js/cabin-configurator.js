@@ -577,9 +577,201 @@ function seatsPerRow(aircraftType, cabinClass) {
   return layout[cabinClass].reduce((s, g) => s + g, 0);
 }
 
-// --- Shared fuselage SVG renderer ---
+// --- Schematic seat map renderer ---
+// Pure airline-style seat map: clean rectangles, row numbers, seat letters.
+// Horizontal layout: X = cabin length (nose-left), Y = cross-section (top-down).
+function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions) {
+  if (!deckLayout) return null;
+
+  // Sizing constants
+  const SEAT_ACROSS = 14;  // seat height in cross-section (Y)
+  const SEAT_DEEP = 12;    // seat depth along cabin (X) — base for economy
+  const SEAT_GAP = 2;      // gap between adjacent seats (Y)
+  const SEAT_R = 2;        // corner radius
+  const AISLE_GAP = 10;    // aisle width (Y)
+  const ROW_GAP = 2;       // gap between rows (X)
+  const CLASS_PITCH = { economy: 14, economyPlus: 17, business: 22, first: 30 };
+  const SERVICE_DEPTH = 30; // galley/WC block along cabin (X)
+  const SERVICE_SPACING = 3;
+  const EXIT_DEPTH = 3;
+  const MARGIN = { top: 20, left: 16, right: 8, bottom: 8 };
+  const LETTERS = ['A','B','C','D','E','F','G','H','J','K'];
+  const classOrder = ['first', 'business', 'economyPlus', 'economy'];
+
+  // Build sections
+  const sections = [];
+  for (const cls of classOrder) {
+    const count = seatConfig[cls];
+    if (!count || count <= 0) continue;
+    const groups = deckLayout[cls];
+    if (!groups) continue;
+    const perRow = groups.reduce((s, g) => s + g, 0);
+    const numRows = Math.ceil(count / perRow);
+    const lastRowSeats = count - (numRows - 1) * perRow;
+    sections.push({ cls, groups, perRow, numRows, lastRowSeats, pitch: CLASS_PITCH[cls] || 14 });
+  }
+  if (sections.length === 0) return null;
+
+  // Cross-section height (Y): use largest abreast config
+  const maxGroups = sections.reduce((best, s) => {
+    const total = s.groups.reduce((a, b) => a + b, 0);
+    return total > best.total ? { groups: s.groups, total } : best;
+  }, { groups: sections[0].groups, total: 0 }).groups;
+  const totalAcross = maxGroups.reduce((s, g) => s + g, 0);
+  const numAisles = maxGroups.length - 1;
+  const crossH = totalAcross * (SEAT_ACROSS + SEAT_GAP) - SEAT_GAP + numAisles * AISLE_GAP;
+
+  // Toilet/service areas
+  const isCompactLav = toiletCount === 1;
+  const totalPairs = Math.floor(toiletCount / 2);
+  const hasFront = !isCompactLav && toiletCount > 0;
+  const hasRear = !isCompactLav && totalPairs >= 2;
+  const midPairs = isCompactLav ? 0 : Math.max(0, totalPairs - 2);
+  let midPos = midPosFractions ? [...midPosFractions] : [];
+  while (midPos.length < midPairs) midPos.push((midPos.length + 1) / (midPairs + 1));
+  if (midPos.length > midPairs) midPos.length = midPairs;
+
+  // Total rows for mid-service positioning
+  const allRows = [];
+  for (const s of sections) for (let r = 0; r < s.numRows; r++) allRows.push(s);
+  const totalRows = allRows.length;
+  const midAtRow = {};
+  for (let i = 0; i < midPairs; i++) {
+    const frac = midPos[i] || (i + 1) / (midPairs + 1);
+    const pos = Math.max(1, Math.min(totalRows - 1, Math.round(frac * totalRows)));
+    if (!midAtRow[pos]) midAtRow[pos] = [];
+    midAtRow[pos].push(i);
+  }
+
+  // Pre-calculate row X positions
+  let cx = 0; // current X along cabin
+  if (hasFront) cx += SERVICE_DEPTH + SERVICE_SPACING + EXIT_DEPTH + 2;
+  if (isCompactLav) cx += 20 + SERVICE_SPACING;
+
+  const rowPositions = [];
+  let gRow = 0;
+  for (const s of sections) {
+    for (let r = 0; r < s.numRows; r++) {
+      if (midAtRow[gRow]) cx += EXIT_DEPTH + SERVICE_DEPTH + SERVICE_SPACING + 2;
+      rowPositions.push({ x: cx, s, row: r, cls: s.cls, pitch: s.pitch });
+      cx += s.pitch + ROW_GAP;
+      gRow++;
+    }
+    cx += 3; // class gap
+  }
+  if (hasRear || isCompactLav) cx += SERVICE_SPACING + SERVICE_DEPTH + EXIT_DEPTH + 2;
+  const cabinLen = cx;
+
+  const svgW = MARGIN.left + cabinLen + MARGIN.right;
+  const svgH = MARGIN.top + crossH + MARGIN.bottom;
+
+  let html = `<svg viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;" xmlns="http://www.w3.org/2000/svg">`;
+  html += `<rect width="${svgW}" height="${svgH}" fill="rgba(9,18,31,0.5)" rx="4"/>`;
+
+  const ox = MARGIN.left; // origin X
+  const oy = MARGIN.top;  // origin Y
+
+  // ── Helper: draw a service block ────────────────────────────────
+  function svcBlock(x, label) {
+    html += `<rect x="${ox + x}" y="${oy}" width="${SERVICE_DEPTH}" height="${crossH}" rx="2" fill="rgba(71,85,105,0.3)" stroke="rgba(148,163,184,0.2)" stroke-width="0.8"/>`;
+    html += `<text x="${ox + x + SERVICE_DEPTH/2}" y="${oy + crossH/2}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.45)" font-size="5.5" font-weight="600" font-family="system-ui,sans-serif">${label}</text>`;
+  }
+
+  function exitMark(x) {
+    html += `<rect x="${ox + x}" y="${oy - 1}" width="${EXIT_DEPTH}" height="${crossH + 2}" fill="rgba(239,68,68,0.25)" rx="1"/>`;
+  }
+
+  // Front service
+  if (hasFront) {
+    exitMark(0);
+    svcBlock(EXIT_DEPTH + 1, 'GALLEY');
+  }
+
+  // ── Draw seat rows ──────────────────────────────────────────────
+  let rowNum = 1;
+  let prevCls = null;
+  gRow = 0;
+
+  for (const rp of rowPositions) {
+    const x = ox + rp.x;
+    const cc = CLASS_COLORS[rp.cls];
+    const s = rp.s;
+    const isLast = rp.row === s.numRows - 1;
+    const seatsThisRow = isLast ? s.lastRowSeats : s.perRow;
+
+    // Mid service
+    if (midAtRow[gRow]) {
+      const mx = rp.x - SERVICE_DEPTH - SERVICE_SPACING - EXIT_DEPTH;
+      exitMark(mx);
+      svcBlock(mx + EXIT_DEPTH + 1, 'WC');
+    }
+
+    // Class divider
+    if (prevCls && rp.cls !== prevCls) {
+      html += `<line x1="${x - 2}" y1="${oy - 3}" x2="${x - 2}" y2="${oy + crossH + 3}" stroke="rgba(148,163,184,0.15)" stroke-width="0.8" stroke-dasharray="2,2"/>`;
+    }
+    prevCls = rp.cls;
+
+    // Row number above
+    html += `<text x="${x + rp.pitch / 2}" y="${oy - 5}" text-anchor="middle" fill="rgba(148,163,184,0.4)" font-size="5.5" font-weight="600" font-family="system-ui,sans-serif">${rowNum}</text>`;
+
+    // Class colour pip
+    html += `<rect x="${x}" y="${oy - 2}" width="${rp.pitch}" height="1.5" fill="${cc.bg}" opacity="0.5" rx="0.5"/>`;
+
+    // Seats — laid out vertically (Y) within the cross-section
+    let seatIdx = 0;
+    let sy = oy;
+    for (let gi = 0; gi < s.groups.length; gi++) {
+      for (let gs = 0; gs < s.groups[gi]; gs++) {
+        const empty = seatIdx >= seatsThisRow;
+        html += `<rect x="${x + 0.5}" y="${sy + 0.5}" width="${rp.pitch - 1}" height="${SEAT_ACROSS - 1}" rx="${SEAT_R}" ` +
+          `fill="${empty ? 'rgba(51,65,85,0.15)' : cc.bg}" ` +
+          `stroke="${empty ? 'rgba(71,85,105,0.2)' : cc.border}" ` +
+          `stroke-width="${empty ? 0.4 : 0.8}" ` +
+          `opacity="${empty ? 0.25 : 0.85}"/>`;
+        sy += SEAT_ACROSS + SEAT_GAP;
+        seatIdx++;
+      }
+      if (gi < s.groups.length - 1) sy += AISLE_GAP - SEAT_GAP; // aisle
+    }
+
+    rowNum++;
+    gRow++;
+  }
+
+  // Rear service
+  if (hasRear || isCompactLav) {
+    const lastRp = rowPositions[rowPositions.length - 1];
+    const rx = lastRp ? lastRp.x + lastRp.pitch + 4 : cabinLen - SERVICE_DEPTH - EXIT_DEPTH - 4;
+    svcBlock(rx, 'WC');
+    exitMark(rx + SERVICE_DEPTH + 1);
+  }
+
+  // ── Seat letters (left side) ────────────────────────────────────
+  let ly = oy;
+  let li = 0;
+  for (let gi = 0; gi < maxGroups.length; gi++) {
+    for (let gs = 0; gs < maxGroups[gi]; gs++) {
+      const letter = li < LETTERS.length ? LETTERS[li] : '';
+      html += `<text x="${ox - 3}" y="${ly + SEAT_ACROSS / 2}" text-anchor="end" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="5" font-weight="600" font-family="system-ui,sans-serif">${letter}</text>`;
+      ly += SEAT_ACROSS + SEAT_GAP;
+      li++;
+    }
+    if (gi < maxGroups.length - 1) ly += AISLE_GAP - SEAT_GAP;
+  }
+
+  // ── Metadata for drag compatibility ─────────────────────────────
+  const startX = rowPositions.length > 0 ? rowPositions[0].x : 0;
+  const endX = rowPositions.length > 0 ? rowPositions[rowPositions.length - 1].x + rowPositions[rowPositions.length - 1].pitch : cabinLen;
+  html += `<rect class="seat-bounds-meta" data-start-y="${startX}" data-end-y="${endX}" data-total-rows="${totalRows}" width="0" height="0" visibility="hidden"/>`;
+
+  html += '</svg>';
+  return html;
+}
+
+// --- Shared fuselage SVG renderer (legacy/fallback) ---
 // landscape: if true, renders nose-left horizontal orientation
-function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null, shape = 'plane') {
+function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = true, toiletCount = 0, cargoDeckPct = 0, landscape = false, midPosFractions = null, shape = 'plane', aircraft = null) {
   const isCapsule = shape === 'capsule';
   if (!deckLayout) return '';
 
@@ -686,30 +878,37 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     ? `width:100%;height:auto;flex-shrink:0;`
     : `width:100%;height:100%;`;
 
-  let html = `
-    <svg viewBox="0 0 ${lsViewW} ${lsViewH}" preserveAspectRatio="xMinYMid meet" style="${lsStyle}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stop-color="rgba(100,116,139,0.15)"/>
-          <stop offset="50%" stop-color="rgba(100,116,139,0.05)"/>
-          <stop offset="100%" stop-color="rgba(100,116,139,0.15)"/>
-        </linearGradient>
-        <clipPath id="${clipId}"><path d="${fuselagePath}"/></clipPath>
-      </defs>
-  `;
+  // ── Check for hand-drawn aircraft visual ──────────────────────────
+  const visual = (aircraft && typeof AircraftSilhouettes !== 'undefined')
+    ? AircraftSilhouettes.resolve(aircraft) : null;
 
-  // Landscape: open rotation group — rotates entire portrait drawing -90° so nose points LEFT
-  if (landscape) html += `<g transform="translate(0,${fW}) rotate(-90)">`;
+  let html = '';
 
-  html += `<path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.35)" stroke-width="0.8"/>`;
+  if (!visual) {
+    // ── GENERIC RENDERER (no artwork) ─────────────────────────────────
+    html = `
+      <svg viewBox="0 0 ${lsViewW} ${lsViewH}" preserveAspectRatio="xMinYMid meet" style="${lsStyle}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="rgba(100,116,139,0.15)"/>
+            <stop offset="50%" stop-color="rgba(100,116,139,0.05)"/>
+            <stop offset="100%" stop-color="rgba(100,116,139,0.15)"/>
+          </linearGradient>
+          <clipPath id="${clipId}"><path d="${fuselagePath}"/></clipPath>
+        </defs>
+    `;
+    if (landscape) html += `<g transform="translate(0,${fW}) rotate(-90)">`;
+    html += `<path d="${fuselagePath}" fill="url(#${gradId})" stroke="rgba(100,116,139,0.35)" stroke-width="0.8"/>`;
+  }
 
   // Helper: makes text readable in landscape mode by counter-rotating +90° around its anchor
-  const _tr = landscape
+  // (only used in generic mode; visual mode is already horizontal)
+  const _tr = (landscape && !visual)
     ? (x, y) => ` transform="rotate(90,${x},${y})"`
     : () => '';
 
   // Cockpit area — simple darkened nose with label (like professional seatmaps)
-  if (showCockpit) {
+  if (showCockpit && !visual) {
     // Darkened cockpit floor filling the nose (matches fuselage cubic bezier)
     html += `<path d="M${fuseLeft + 1},${noseH}
               C${fuseLeft},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},${2}
@@ -726,7 +925,9 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // All cabin content clipped to fuselage outline
   let bulkheadLabelY = null; // pax/cargo divider Y; label drawn above the body after the clip closes
-  html += `<g clip-path="url(#${clipId})">`;
+  html += visual
+    ? `<g class="live-cabin-content">`
+    : `<g clip-path="url(#${clipId})">`;
 
   const seatStartY = isCapsule ? noseH + 6 : (showCockpit ? noseH + 8 : noseH - 10);
   let curY = seatStartY;
@@ -915,7 +1116,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
 
   // Seat letter labels at the start of each class section (like airline seatmaps)
   // Uses airline convention: A, B, C, D, E, F, G, H, J, K (skip I)
-  if (landscape) {
+  if (landscape && !visual) {
     const SEAT_LETTERS = ['A','B','C','D','E','F','G','H','J','K'];
     const labelledClasses = new Set();
     for (const b of classBrackets) {
@@ -968,19 +1169,21 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   }
 
   // Window dots along fuselage walls (skip near doors and service areas)
-  const windowSpacing = 10;
-  const windowR = 1.5;
-  for (let wy = noseH + 15; wy < svgH - tailH - 10; wy += windowSpacing) {
-    const nearDoor = exitDoorPositions.some(dy => Math.abs(wy - dy) < 12);
-    const inServiceArea = serviceAreaRanges.some(r => wy >= r.y1 - 3 && wy <= r.y2 + 3);
-    if (!nearDoor && !inServiceArea) {
-      html += `<circle cx="${fuseLeft + 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
-      html += `<circle cx="${fuseRight - 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+  if (!visual) {
+    const windowSpacing = 10;
+    const windowR = 1.5;
+    for (let wy = noseH + 15; wy < svgH - tailH - 10; wy += windowSpacing) {
+      const nearDoor = exitDoorPositions.some(dy => Math.abs(wy - dy) < 12);
+      const inServiceArea = serviceAreaRanges.some(r => wy >= r.y1 - 3 && wy <= r.y2 + 3);
+      if (!nearDoor && !inServiceArea) {
+        html += `<circle cx="${fuseLeft + 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+        html += `<circle cx="${fuseRight - 3}" cy="${wy}" r="${windowR}" fill="rgba(148,163,184,0.12)" stroke="rgba(148,163,184,0.22)" stroke-width="0.4"/>`;
+      }
     }
   }
 
   // Class section bracket labels (rendered outside the fuselage wall)
-  if (landscape && classBrackets.length > 0) {
+  if (landscape && !visual && classBrackets.length > 0) {
     const bracketX = fuseLeft - 2; // just outside left fuselage wall (becomes top in landscape)
     for (const b of classBrackets) {
       const by1 = b.startY + 2;
@@ -1001,10 +1204,90 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   // Hidden metadata for drag bounds (portrait Y coords of seat area)
   html += `<rect class="seat-bounds-meta" data-start-y="${seatAreaStartY}" data-end-y="${seatAreaEndY}" data-total-rows="${totalRows}" width="0" height="0" visibility="hidden"/>`;
 
-  // Close landscape rotation group
-  if (landscape) html += `</g>`;
+  if (visual) {
+    // ── VISUAL RENDERER — combine artwork + cabin into one SVG ────────
+    // The cabin content in `html` was built in portrait coords (nose at top).
+    // We need to rotate it -90° and scale it into the visual's cabinBox.
+    //
+    // Portrait cabin bounds:
+    //   X: seatLeft → seatRight (width = seatWidth)
+    //   Y: noseH → noseH + totalH
+    //
+    // Visual cabinBox is horizontal (nose-left).
+    // After rotating -90°: portrait Y becomes horizontal X, portrait X becomes vertical Y.
+    // Rotated bounds: width = totalH (portrait height), height = seatWidth (portrait width).
 
+    const cb = visual.cabinBox;
+
+    /*
+     * Map the ACTUAL generated cabin content bounds — not the full generic
+     * SVG which includes invisible nose/tail padding.
+     *
+     * contentX1..X2 = usable cabin width (fuselage walls + door margin)
+     * contentY1..Y2 = first service area to last rendered row (seatStartY → curY)
+     *
+     * After rotating -90°:
+     *   portrait contentH → visual horizontal (cabinBox width)
+     *   portrait contentW → visual vertical (cabinBox height)
+     */
+    const contentX1 = fuseLeft - 8;
+    const contentX2 = fuseRight + 8;
+    const contentY1 = seatStartY;
+    const contentY2 = curY;
+
+    const contentW = contentX2 - contentX1;
+    const contentH = contentY2 - contentY1;
+
+    const scaleHorizontal = cb.width / contentH;
+    const scaleVertical = cb.height / contentW;
+
+    const cabinTransform = [
+      `translate(${cb.x} ${cb.y + cb.height})`,
+      `scale(${scaleHorizontal.toFixed(6)} ${scaleVertical.toFixed(6)})`,
+      `rotate(-90)`,
+      `translate(${(-contentX1).toFixed(3)} ${(-contentY1).toFixed(3)})`
+    ].join(' ');
+
+    const vw = visual.viewBox.width;
+    const vh = visual.viewBox.height;
+    const visualClipId = clipId + '_vis';
+
+    const combined = `
+      <svg viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="xMidYMid meet"
+           style="width:100%;height:auto;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="rgba(100,116,139,0.15)"/>
+            <stop offset="50%" stop-color="rgba(100,116,139,0.05)"/>
+            <stop offset="100%" stop-color="rgba(100,116,139,0.15)"/>
+          </linearGradient>
+          <clipPath id="${visualClipId}">
+            <path d="${visual.fuselagePath}"/>
+          </clipPath>
+        </defs>
+
+        ${typeof AircraftSilhouettes !== 'undefined' ? AircraftSilhouettes.getStyles() : ''}
+
+        <g class="aircraft-rear" pointer-events="none">${visual.rearArtwork || ''}</g>
+
+        <g class="aircraft-body" pointer-events="none">${visual.bodyArtwork || ''}</g>
+
+        <g clip-path="url(#${visualClipId})">
+          <g transform="${cabinTransform}">
+            ${html}
+          </g>
+        </g>
+
+        <g class="aircraft-front" pointer-events="none">${visual.frontArtwork || ''}</g>
+      </svg>
+    `;
+    return combined;
+  }
+
+  // ── Generic fallback — close SVG ────────────────────────────────────
+  if (landscape) html += `</g>`;
   html += `</svg>`;
+
   return html;
 }
 
@@ -1700,7 +1983,9 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       : 0;
     const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
     const shape = isAirship ? 'capsule' : 'plane';
-    container.innerHTML = renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape) + renderLegend();
+    // Try schematic seat map first; fall back to legacy fuselage renderer
+    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions) : null;
+    container.innerHTML = (seatMapHtml || renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape, aircraft)) + renderLegend();
     // Overlay bar block on the diagram if bar is active
     if (barState) {
       const svg = container.querySelector('svg');
