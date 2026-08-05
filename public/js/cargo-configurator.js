@@ -277,11 +277,10 @@ function renderContainerHold(config, types, totalCapacity, holdHeight, idSuffix,
     <!-- Fuselage outline -->
     <path d="${fuselage}" fill="url(#fg${sfx})" stroke="rgba(100,116,139,0.35)" stroke-width="1.2"/>
     ${landscape ? (isCapsule ? '' : `
-    <!-- Cockpit — darkened nose + label + bulkhead line (matches cabin) -->
+    <!-- Cockpit area (no label in cargo config) -->
     <path d="M${bL + 1},${noseH} C${bL},${noseH * 0.45} ${cx - 2},${noseH * 0.04} ${cx},2 C${cx + 2},${noseH * 0.04} ${bR},${noseH * 0.45} ${bR - 1},${noseH} Z"
           fill="rgba(15,23,42,0.45)" stroke="none"/>
     <line x1="${bL + 2}" y1="${noseH}" x2="${bR - 2}" y2="${noseH}" stroke="rgba(100,116,139,0.4)" stroke-width="0.8"/>
-    <text x="${cx}" y="${noseH * 0.6}" text-anchor="middle" dominant-baseline="central" fill="rgba(148,163,184,0.35)" font-size="${cockpitFont}" font-weight="700" font-family="system-ui, sans-serif" letter-spacing="${cockpitLS}"${_tr(cx, noseH * 0.6)}>COCKPIT</text>
     `) : `
     <!-- Center line -->
     <line x1="${cx}" y1="${bodyTop + 4}" x2="${cx}" y2="${bodyBot - 4}" stroke="rgba(100,116,139,0.07)" stroke-width="0.5" stroke-dasharray="3,3"/>
