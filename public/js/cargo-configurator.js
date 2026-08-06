@@ -626,7 +626,12 @@ function _resolveExistingDeckConfig(existingConfig, field, oldFields, totalConfi
 function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
   // Section mode (combi main deck / belly hold): override capacity, label, types.
   const totalCapacity = options?.sectionCapacity || aircraft.cargoCapacityKg;
-  const sectionLabel = options?.sectionLabel || null;
+  // Single-deck pure freighters (e.g. Bristol 170 — nose-loading, no belly
+  // holds; mainDeck/hold capacities deliberately null in the catalog): the
+  // whole volume IS the main deck, so title it that way. Dual-deck freighters
+  // never reach here (they get _showDualDeckConfigurator).
+  const sectionLabel = options?.sectionLabel
+    || (aircraft.type === 'Cargo' ? 'Main Deck' : null);
   const types = options?.types || getAvailableCargoTypes(aircraft.type);
   if (types.length === 0) return;
 
@@ -739,9 +744,10 @@ function _showSingleConfigurator(aircraft, onApply, existingConfig, options) {
         ? Math.min(0.5, (aircraft.passengerCapacity * 100) / (aircraft.cargoCapacityKg + aircraft.passengerCapacity * 100))
         : 0);
 
-  // Belly compartments to overlay as bulkhead dividers. Skipped on a combi's
-  // MAIN DECK section (that's the main freight deck, not a lower-deck hold).
-  const bellyHolds = (options?.sectionLabel && /main deck/i.test(options.sectionLabel))
+  // Belly compartments to overlay as bulkhead dividers. Skipped on any MAIN
+  // DECK section — a combi's freight deck or a single-deck pure freighter's
+  // whole volume (uses the RESOLVED label so the freighter default applies).
+  const bellyHolds = (sectionLabel && /main deck/i.test(sectionLabel))
     ? null : getAircraftHolds(aircraft);
   const bellySize = _bellySizeClass(aircraft);
   // Shorter fuselage (and so fewer pallet rows) for smaller aircraft.

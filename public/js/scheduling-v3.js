@@ -4714,10 +4714,23 @@ async function viewFlightDetailsWeekly(flightId) {
     `;
   }
 
-  // Calculate aircraft available time (when post-flight ends and aircraft is ready for duty)
-  const availableMins = arrHomeMins + postFlightTotal;
-  // Earliest departure = available + pre-flight buffer so the new flight clears conflict checks
-  const earliestDepMins = availableMins + preFlightTotal;
+  // Calculate aircraft available time (when post-flight ends and aircraft is
+  // ready for duty). Use the STORED template arrival when present — the
+  // server's conflict check works from it, and the client-side recomputed
+  // arrHomeMins can drift ±5min (wind/rounding), making the suggested time
+  // bounce as a 409 conflict.
+  let effArrHomeMins = arrHomeMins;
+  if (flight.arrivalTime) {
+    const [sh, sm] = String(flight.arrivalTime).substring(0, 5).split(':').map(Number);
+    if (Number.isFinite(sh) && Number.isFinite(sm)) {
+      effArrHomeMins = sh * 60 + sm + ((flight.arrivalDayOffset || 0) * 1440);
+    }
+  }
+  const availableMins = effArrHomeMins + postFlightTotal;
+  // Earliest departure = available + pre-flight buffer so the new flight clears
+  // conflict checks. Round UP to the 5-min grid — rounding down re-creates the
+  // conflict the buffer exists to avoid.
+  const earliestDepMins = Math.ceil((availableMins + preFlightTotal) / 5) * 5;
   let availableText = '';
   let availableTimeForNextFlight = ''; // HH:MM format for route creation
   if (dCheckDue) {
