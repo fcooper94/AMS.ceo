@@ -90,10 +90,17 @@
     .captcha-row { display: flex; align-items: center; gap: 0.6rem; }
     .captcha-problem { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
     .captcha-row .lp-input { flex: 1; }
-    .auth-links { margin-top: 0.9rem; text-align: center; font-size: 0.8rem; color: var(--text-secondary); }
-    .auth-links a { color: var(--accent-color); text-decoration: none; }
-    .auth-links a:hover { text-decoration: underline; }
-    .auth-links .row { margin-top: 0.5rem; }
+    .auth-links { margin-top: 1.25rem; text-align: center; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+    .auth-links .lp-btn-secondary {
+      display: inline-block; width: auto; padding: 0.5rem 1.5rem; border-radius: 4px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; text-align: center;
+      text-decoration: none; border: 1px solid var(--border-color); color: var(--text-primary);
+      background: transparent; transition: all 0.15s; letter-spacing: 0.3px;
+    }
+    .auth-links .lp-btn-secondary:hover { border-color: var(--accent-color); color: var(--accent-color); background: rgba(59,130,246,0.06); }
+    .auth-links .meta-row { display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.25rem; }
+    .auth-links .meta-row a { font-size: 0.75rem; color: var(--text-muted); text-decoration: none; }
+    .auth-links .meta-row a:hover { color: var(--text-secondary); }
     .pw-strength { margin-top: 0.35rem; display: none; }
     .pw-bar { height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; margin-bottom: 0.3rem; }
     .pw-fill { height: 100%; width: 0; border-radius: 2px; transition: width 0.25s, background 0.25s; }
@@ -162,9 +169,12 @@
     <button class="lp-btn lp-btn-primary" onclick="localRegister()">Create Account</button>
 
     <div class="auth-links">
-      <div>Already have an account? <a href="/login">Sign in</a></div>
-      <div class="row"><a href="/">&larr; Back</a></div>
-      <div class="row"><a href="#" id="themeToggle" onclick="var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('theme',t);this.textContent=t==='light'?'Dark Mode':'Light Mode';return false;"></a><script>document.getElementById('themeToggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Dark Mode':'Light Mode';</script></div>
+      <a href="/login" class="lp-btn-secondary">Already have an account? Sign in</a>
+      <div class="meta-row">
+        <a href="/">&larr; Back</a>
+        <a href="#" id="themeToggle" onclick="var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('theme',t);this.textContent=t==='light'?'Dark Mode':'Light Mode';return false;"></a>
+        <script>document.getElementById('themeToggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Dark Mode':'Light Mode';</script>
+      </div>
     </div>
   </div>
 

@@ -102,12 +102,19 @@
       color: #6ee7b7;
       font-size: 0.8rem;
     }
-    .auth-links { margin-top: 1.25rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary); }
-    .auth-links a { color: var(--accent-color); text-decoration: none; }
-    .auth-links a:hover { text-decoration: underline; }
-    .auth-links .row { margin-top: 0.5rem; }
-    .link-btn { background: none; border: none; color: var(--accent-color); cursor: pointer; font-size: 0.82rem; padding: 0; }
-    .link-btn:hover { text-decoration: underline; }
+    .auth-links { margin-top: 1.25rem; text-align: center; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+    .link-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; padding: 0.25rem 0; }
+    .link-btn:hover { color: var(--accent-color); }
+    .auth-links .lp-btn-secondary {
+      display: inline-block; width: auto; padding: 0.5rem 1.5rem; border-radius: 4px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; text-align: center;
+      text-decoration: none; border: 1px solid var(--border-color); color: var(--text-primary);
+      background: transparent; transition: all 0.15s; letter-spacing: 0.3px;
+    }
+    .auth-links .lp-btn-secondary:hover { border-color: var(--accent-color); color: var(--accent-color); background: rgba(59,130,246,0.06); }
+    .auth-links .meta-row { display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.25rem; }
+    .auth-links .meta-row a, .auth-links .meta-row button { font-size: 0.75rem; color: var(--text-muted); text-decoration: none; background: none; border: none; cursor: pointer; padding: 0; }
+    .auth-links .meta-row a:hover, .auth-links .meta-row button:hover { color: var(--text-secondary); }
     #forgotBlock { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
 
     /* PIN popup overlay */
@@ -167,10 +174,13 @@
     <button class="lp-btn lp-btn-primary" onclick="localLogin()">Sign In</button>
 
     <div class="auth-links">
-      <div><button type="button" class="link-btn" onclick="toggleForgot()">Forgot password?</button></div>
-      <div class="row">Don't have an account? <a href="/register">Register</a></div>
-      <div class="row"><a href="/">&larr; Back</a></div>
-      <div class="row"><a href="#" id="themeToggle" onclick="var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('theme',t);this.textContent=t==='light'?'Dark Mode':'Light Mode';return false;"></a><script>document.getElementById('themeToggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Dark Mode':'Light Mode';</script></div>
+      <button type="button" class="link-btn" onclick="toggleForgot()">Forgot password?</button>
+      <a href="/register" class="lp-btn-secondary">Create an Account</a>
+      <div class="meta-row">
+        <a href="/">&larr; Back</a>
+        <a href="#" id="themeToggle" onclick="var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('theme',t);this.textContent=t==='light'?'Dark Mode':'Light Mode';return false;"></a>
+        <script>document.getElementById('themeToggle').textContent=document.documentElement.getAttribute('data-theme')==='light'?'Dark Mode':'Light Mode';</script>
+      </div>
     </div>
 
     <div id="forgotBlock">
