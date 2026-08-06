@@ -24,6 +24,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'passenger',
     canFlyInternational: false,
     pricingModifier: 1.10,      // Slight premium (fewer alternatives)
+    fleetScale: [0.15, 0.35],   // Small operations: 15-35% of difficulty cap
   },
   domestic: {
     label: 'Domestic',
@@ -32,6 +33,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'passenger',
     canFlyInternational: false,
     pricingModifier: 1.0,
+    fleetScale: [0.25, 0.55],   // Mid-size domestic carriers
   },
   shortHaul: {
     label: 'Short Haul',
@@ -40,6 +42,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'both',
     canFlyInternational: true,
     pricingModifier: 0.97,      // Competitive pricing
+    fleetScale: [0.30, 0.65],   // Medium to large
   },
   longHaul: {
     label: 'Long Haul',
@@ -49,6 +52,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'both',
     canFlyInternational: true,
     pricingModifier: 1.0,
+    fleetScale: [0.50, 1.0],    // Large flag carriers — biggest fleets
   },
   cargo: {
     label: 'Cargo',
@@ -57,6 +61,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'cargo',
     canFlyInternational: true,
     pricingModifier: 1.0,
+    fleetScale: [0.20, 0.50],   // Modest cargo fleets
   },
   fullService: {
     label: 'Full Service',
@@ -65,6 +70,7 @@ const AIRLINE_ARCHETYPES = {
     transportType: 'both',
     canFlyInternational: true,
     pricingModifier: 1.05,      // Slight premium for service
+    fleetScale: [0.60, 1.0],    // Major airlines — largest operations
   }
 };
 
@@ -141,12 +147,12 @@ const AI_DIFFICULTY = {
   easy: {
     // Starting conditions
     startingBalanceMultiplier: 1.5,      // 50% more money than player
-    maxFleetSize: 8,
+    maxFleetSize: 30,                    // Scaled by era — see getMaxFleetForEra()
 
     // Decision making
-    decisionIntervalGameDays: { min: 3, max: 5 },  // 3-5 day random intervals
+    decisionIntervalGameDays: { min: 1, max: 3 },  // 1-3 day random intervals
     routeSelectionAccuracy: 0.6,         // 60% chance of picking optimal route
-    expansionRate: 'slow',
+    expansionRate: 'moderate',
 
     // Pricing
     pricingStrategy: 'premium',          // Prices slightly above market
@@ -191,9 +197,9 @@ const AI_DIFFICULTY = {
 
   medium: {
     startingBalanceMultiplier: 1.2,
-    maxFleetSize: 15,
+    maxFleetSize: 50,
 
-    decisionIntervalGameDays: { min: 1, max: 3 },  // 1-3 day random intervals
+    decisionIntervalGameDays: { min: 0.5, max: 2 },  // Half-day to 2 day intervals
     routeSelectionAccuracy: 0.8,
     expansionRate: 'moderate',
 
@@ -236,9 +242,9 @@ const AI_DIFFICULTY = {
 
   hard: {
     startingBalanceMultiplier: 1.0,      // Same money as player
-    maxFleetSize: 25,
+    maxFleetSize: 75,
 
-    decisionIntervalGameDays: { min: 0.5, max: 1.5 },  // Half-day to 1.5 day random intervals
+    decisionIntervalGameDays: { min: 0.5, max: 1 },  // Half-day to 1 day intervals
     routeSelectionAccuracy: 0.95,
     expansionRate: 'fast',
 
@@ -323,11 +329,42 @@ function pickPersonality(difficulty) {
   return 'aggressive';
 }
 
+/**
+ * Era-scaled max fleet size, varied by airline archetype.
+ * A regional carrier stays small (4-10 aircraft) while a full-service
+ * flag carrier grows to 30-50+. Era progression means 1950s fleets are
+ * smaller than 2010s fleets, even for the same archetype.
+ *
+ * Each airline's ambition is set at spawn from the archetype's fleetScale
+ * range [min, max] — stored on the membership as aiFleetAmbition (0-1).
+ * If not set, a random value is picked from the range.
+ *
+ * @param {object} config - AI_DIFFICULTY[level]
+ * @param {number} year - current game year
+ * @param {string} [archetypeKey] - airline archetype key
+ * @param {number} [ambition] - 0-1 within archetype's scale range (random if null)
+ * @returns {number}
+ */
+function getMaxFleetForEra(config, year, archetypeKey, ambition) {
+  // Era scale: 1950 = 30%, 1970 = 50%, 1990 = 75%, 2010+ = 100%
+  const eraFrac = Math.min(1, Math.max(0.3, (year - 1950) / 75));
+
+  // Archetype fleet scale — how big this type of airline gets
+  const archetype = archetypeKey ? AIRLINE_ARCHETYPES[archetypeKey] : null;
+  const scale = archetype?.fleetScale || [0.3, 0.7];
+  // Ambition picks a point within the archetype's scale range
+  const amb = ambition != null ? ambition : (Math.random() * 0.6 + 0.2);
+  const fleetFrac = scale[0] + amb * (scale[1] - scale[0]);
+
+  return Math.max(3, Math.round(config.maxFleetSize * fleetFrac * eraFrac));
+}
+
 module.exports = {
   AI_DIFFICULTY,
   AIRLINE_ARCHETYPES,
   getAICount,
   getForecastCompetitors,
+  getMaxFleetForEra,
   pickPersonality,
   pickArchetype
 };

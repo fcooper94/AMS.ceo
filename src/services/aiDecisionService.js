@@ -29,7 +29,7 @@ function fmtUSD(v) {
   if (a >= 1e3) return neg + '$' + Math.round(a / 1e3) + 'K';
   return neg + '$' + Math.round(a);
 }
-const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
+const { AI_DIFFICULTY, AIRLINE_ARCHETYPES, getMaxFleetForEra, pickPersonality, pickArchetype } = require('../data/aiDifficultyConfig');
 const { getAllBanks, calculateOfferRate, calculateFixedPayment, calculateMaxLoanAmount, TERM_RANGES } = require('../data/bankConfig');
 const { pickAIContractorTier } = require('../data/contractorConfig');
 const eraEconomicService = require('./eraEconomicService');
@@ -398,7 +398,7 @@ async function processAIDecisions(worldId, gameTime) {
         ]
       },
       include: [{ model: Airport, as: 'baseAirport' }],
-      limit: 10,
+      limit: 20,
       order: [['aiLastDecisionTime', 'ASC']]
     });
 
@@ -416,6 +416,30 @@ async function processAIDecisions(worldId, gameTime) {
   } catch (error) {
     console.error('[AI-DECISION] processAIDecisions error:', error.message);
   }
+}
+
+/**
+ * Infer an airline archetype from its existing routes and fleet.
+ * Used when no archetype is stored on the membership (legacy airlines).
+ */
+function _inferArchetype(routes, fleet) {
+  if (!routes || routes.length === 0) {
+    // No routes — guess from fleet
+    if (fleet.length === 0) return 'domestic';
+    const avgCap = fleet.reduce((s, a) => s + (a.aircraft?.passengerCapacity || 0), 0) / fleet.length;
+    if (avgCap === 0) return 'cargo';
+    if (avgCap < 80) return 'regional';
+    if (avgCap < 200) return 'domestic';
+    return 'fullService';
+  }
+  const avgDist = routes.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0) / routes.length;
+  const hasCargo = fleet.some(a => a.aircraft?.type === 'Cargo');
+  if (hasCargo && routes.length <= 3) return 'cargo';
+  if (avgDist < 600) return 'regional';
+  if (avgDist < 1200) return 'domestic';
+  if (avgDist < 2200) return 'shortHaul';
+  if (avgDist > 3000) return 'longHaul';
+  return 'fullService';
 }
 
 /**
@@ -497,25 +521,30 @@ async function runDecisionCycle(airline, world, config, gameTime, worldYear) {
   const expansionThreshold = startingCapital * 0.3;
   const isFreshStart = fleet.length === 0 && routes.length === 0;
   const bleedingBadly = avgProfitPerRoute < 0 && balance < startingCapital * 0.5;
-  const canExpand = balance > expansionThreshold && fleet.length < config.maxFleetSize && !bleedingBadly;
+  // Derive a stable fleet ambition from the airline name (deterministic 0-1 hash)
+  const _nameHash = (airline.airlineName || '').split('').reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+  const _ambition = (Math.abs(_nameHash) % 100) / 100;
+  // Detect archetype from base airport airline data or default to route profile
+  const _archetype = airline.aiArchetype || _inferArchetype(routes, fleet);
+  const eraFleetCap = getMaxFleetForEra(config, worldYear, _archetype, _ambition);
+  const canExpand = balance > expansionThreshold && fleet.length < eraFleetCap && !bleedingBadly;
 
   if (canExpand) {
-    // Quick-start: AI grows fast for the first ~6 game weeks to keep the early game
-    // lively and competitive, then eases into a realistic pace. earlyBoost fades
-    // 1 → 0 across that window.
+    // Quick-start: AI grows fast for the first ~6 months to keep the game
+    // lively and competitive, then settles into a steady growth pace.
     const worldAgeDays = world.startDate
       ? Math.max(0, (gameTime.getTime() - new Date(world.startDate).getTime()) / 86400000)
       : 999;
-    const earlyBoost = Math.max(0, 1 - worldAgeDays / 42);
+    const earlyBoost = Math.max(0, 1 - worldAgeDays / 180);
 
-    // Base ramp by fleet size (the realistic later-game pace), lifted during the
-    // quick-start window so new AI airlines get established quickly.
-    let expandChance = fleet.length < 3 ? 0.9 : fleet.length < 6 ? 0.6 : 0.35;
-    expandChance = Math.min(1, expandChance + earlyBoost * 0.5);
+    // Base ramp by fleet size — stays reasonably aggressive so AI airlines
+    // keep growing throughout the game, not just the first few weeks.
+    let expandChance = fleet.length < 5 ? 0.9 : fleet.length < 15 ? 0.7 : fleet.length < 30 ? 0.5 : 0.35;
+    expandChance = Math.min(1, expandChance + earlyBoost * 0.4);
 
     // In the strong early phase a small airline can pick up two aircraft in one
     // cycle, so the map fills out fast at the start.
-    const maxBuys = (earlyBoost > 0.6 && fleet.length < 4) ? 2 : 1;
+    const maxBuys = (earlyBoost > 0.3 && fleet.length < 10) ? 2 : 1;
     for (let i = 0; i < maxBuys; i++) {
       if (isFreshStart || Math.random() < expandChance) {
         await tryBuyAircraft(airline, world, config, fleet, worldYear, gameTime);
