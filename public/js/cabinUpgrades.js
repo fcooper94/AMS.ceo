@@ -150,7 +150,7 @@ const CABIN_UPGRADES = {
   },
   wifi: {
     name: 'Wi-Fi',
-    description: 'Basic satellite internet connectivity',
+    description: 'Basic Ku-band satellite internet',
     category: 'connectivity', scope: 'aircraft',
     eraStart: 2008, eraObsolete: null,
     classes: ['economy', 'economyPlus', 'business', 'first'],
@@ -165,20 +165,97 @@ const CABIN_UPGRADES = {
     lumpCost2024: 180000, yieldPct: 4, loadFactorPct: 1.5,
     replaces: 'wifi'
   },
+  starlinkWifi: {
+    name: 'Starlink Aviation Wi-Fi',
+    description: 'Low-latency LEO satellite internet — streaming-capable at every seat',
+    category: 'connectivity', scope: 'aircraft',
+    eraStart: 2023, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 250000, yieldPct: 5, loadFactorPct: 2,
+    replaces: 'highSpeedWifi'
+  },
 
-  // ─── Premium ──────────────────────────────────────────────────────
-  cocktailBar: {
-    name: 'Lounge / Cocktail Bar',
-    description: 'Onboard bar area with standing room and drinks service',
+  // ─── Cabin amenities (aircraft-wide) ───────────────────────────────
+  largerOverheadBins: {
+    name: 'Larger Overhead Bins',
+    description: 'Pivot bins for roller bags — every passenger gets space',
+    category: 'comfort', scope: 'aircraft',
+    eraStart: 2005, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 40000, yieldPct: 0.5, loadFactorPct: 1
+  },
+  lavatoryUpgrade: {
+    name: 'Premium Lavatories',
+    description: 'Spacious lavatories with vanity lighting and amenities',
+    category: 'comfort', scope: 'aircraft',
+    eraStart: 1990, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 20000, yieldPct: 0.5, loadFactorPct: 0.5
+  },
+  galleyUpgrade: {
+    name: 'Full-Service Galley',
+    description: 'Upgraded galley with convection ovens and hot meal service',
+    category: 'comfort', scope: 'aircraft',
+    eraStart: 1975, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 30000, yieldPct: 1, loadFactorPct: 0.5
+  },
+  liveTV: {
+    name: 'Live TV',
+    description: 'Real-time satellite TV channels (requires seatback screens)',
+    category: 'entertainment', scope: 'aircraft',
+    eraStart: 2003, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 60000, yieldPct: 1.5, loadFactorPct: 1,
+    requires: 'personalIFE'
+  },
+  noiseCancellation: {
+    name: 'Active Noise Reduction',
+    description: 'Cabin-wide acoustic dampening and vibration isolation',
+    category: 'comfort', scope: 'aircraft',
+    eraStart: 2010, eraObsolete: null,
+    classes: ['economy', 'economyPlus', 'business', 'first'],
+    lumpCost2024: 55000, yieldPct: 1.5, loadFactorPct: 1
+  },
+  // ─── Premium — Bar tiers (independent per class) ───────────────────
+  // Each class (first/business) can have ONE bar tier installed.
+  // Higher tiers replace lower ones within the same class.
+  // All tiers consume the same number of rows — visual style differs.
+  premiumLounge: {
+    name: 'Premium Lounge',
+    description: 'Full cocktail lounge with bartender, plush sofas and standing room',
     category: 'premium', scope: 'aircraft',
     eraStart: 1958, eraObsolete: null,
     classes: ['first', 'business'],
     widebodyOnly: true,
-    costPerSeat2024: 0, // lump-sum, not per-seat
-    lumpCost2024: 85000,
-    yieldPct: 8,
-    loadFactorPct: 2,
-    seatReduction: { first: 2, business: 3 } // rows consumed
+    lumpCost2024: 100000,
+    yieldPct: 10, loadFactorPct: 2.5,
+    isBar: true, barTier: 3,
+    seatReduction: { first: 2, business: 3 }
+  },
+  attendedBar: {
+    name: 'Attended Bar',
+    description: 'Staffed bar counter with sofa seating and table service',
+    category: 'premium', scope: 'aircraft',
+    eraStart: 1980, eraObsolete: null,
+    classes: ['first', 'business'],
+    widebodyOnly: true,
+    lumpCost2024: 65000,
+    yieldPct: 6, loadFactorPct: 1.5,
+    isBar: true, barTier: 2,
+    seatReduction: { first: 2, business: 3 }
+  },
+  snackBar: {
+    name: 'Snack Bar',
+    description: 'Self-service counter with drinks, snacks and light refreshments',
+    category: 'premium', scope: 'aircraft',
+    eraStart: 2005, eraObsolete: null,
+    classes: ['first', 'business'],
+    widebodyOnly: true,
+    lumpCost2024: 35000,
+    yieldPct: 3, loadFactorPct: 1,
+    isBar: true, barTier: 1,
+    seatReduction: { first: 2, business: 3 }
   }
 };
 
@@ -215,6 +292,7 @@ function getAvailableUpgrades(cls, year, acType, scopeFilter) {
     const startYear = (cls === 'economy' || cls === 'economyPlus') && def.eraStartEconomy
       ? def.eraStartEconomy : def.eraStart;
     if (year < startYear) continue;
+    if (def.eraObsolete && year > def.eraObsolete) continue;
     if (def.widebodyOnly && acType !== 'Widebody') continue;
     result.push({ key, ...getUpgradeForClass(def, cls) });
   }

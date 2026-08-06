@@ -600,11 +600,15 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const classOrder = ['first', 'business', 'economyPlus', 'economy'];
 
   // Build sections
-  // Bar seat reduction: compute per-class
-  const barDef_ = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES.cocktailBar : null;
+  // Bar seat reduction: compute per-class (works with any bar tier)
+  function _getBarDef(cls) {
+    if (!barState || !barState[cls]) return null;
+    const tierKey = barState[cls].tier || 'premiumLounge';
+    return typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[tierKey] : null;
+  }
   function barRowsFor_(cls) {
-    if (!barState || !barState[cls]) return 0;
-    return (barDef_?.seatReduction?.[cls]) || 2;
+    const def = _getBarDef(cls);
+    return def ? (def.seatReduction?.[cls] || 2) : 0;
   }
 
   const sections = [];
@@ -910,11 +914,13 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     html += `<rect x="${x}" y="${oy - 2}" width="${rp.pitch}" height="1.5" fill="${isBarRow ? '#f472b6' : cc.bg}" opacity="0.5" rx="0.5"/>`;
 
     if (isBarRow) {
-      // ── Render bar block instead of seats ────────────────────────
+      // ── Render bar block — visual varies by tier ─────────────────
       if (!barDrawn[rp.cls]) {
         const barWidth = clsBarRows * (rp.pitch + ROW_GAP) - ROW_GAP;
         const barColor = rp.cls === 'first' ? '#f59e0b' : '#a78bfa';
         const barColorDim = rp.cls === 'first' ? 'rgba(245,158,11,' : 'rgba(167,139,250,';
+        const barTierKey = barState?.[rp.cls]?.tier || 'premiumLounge';
+        const barTierNum = (typeof CABIN_UPGRADES !== 'undefined' && CABIN_UPGRADES[barTierKey]?.barTier) || 3;
         const bx = x;
         const by = oy;
         const bw = barWidth;
@@ -923,37 +929,50 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
         const bcy = by + bh / 2;
         const pad = 2;
 
-        // Background
-        html += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="${barColorDim}0.10)"/>`;
+        // Background — richer for higher tiers
+        const bgOpacity = barTierNum === 1 ? '0.06' : barTierNum === 2 ? '0.10' : '0.14';
+        html += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="${barColorDim}${bgOpacity})"/>`;
 
-        // Top sofa — long rounded rectangle along upper edge
         const sofaH = Math.max(6, bh * 0.14);
-        html += `<rect x="${bx + pad}" y="${by + pad}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.30)" stroke="${barColorDim}0.20)" stroke-width="0.6"/>`;
-
-        // Bottom sofa
-        html += `<rect x="${bx + pad}" y="${by + bh - pad - sofaH}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.30)" stroke="${barColorDim}0.20)" stroke-width="0.6"/>`;
-
-        // Counter bar in the centre — prominent
         const counterH = Math.max(5, bh * 0.08);
-        html += `<rect x="${bx + pad + 2}" y="${bcy - counterH / 2}" width="${bw - pad * 2 - 4}" height="${counterH}" rx="2" fill="${barColorDim}0.45)" stroke="${barColorDim}0.25)" stroke-width="0.5"/>`;
 
-        // Stools along counter — both sides
-        const stoolCount = Math.min(6, Math.floor((bw - pad * 2 - 4) / 10));
-        const stoolSpacing = (bw - pad * 2 - 4) / (stoolCount + 1);
-        for (let si = 1; si <= stoolCount; si++) {
-          const sx = bx + pad + 2 + si * stoolSpacing;
-          html += `<circle cx="${sx}" cy="${bcy - counterH / 2 - 5}" r="2.5" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.4"/>`;
-          html += `<circle cx="${sx}" cy="${bcy + counterH / 2 + 5}" r="2.5" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.4"/>`;
+        if (barTierNum === 1) {
+          // ── Snack Bar: simple counter only, no sofas/stools ──────
+          html += `<rect x="${bx + pad + 2}" y="${bcy - counterH / 2}" width="${bw - pad * 2 - 4}" height="${counterH}" rx="2" fill="${barColorDim}0.35)" stroke="${barColorDim}0.20)" stroke-width="0.5"/>`;
+          // Small shelf dots along counter
+          const dotCount = Math.min(5, Math.floor((bw - pad * 2 - 4) / 12));
+          const dotSpacing = (bw - pad * 2 - 4) / (dotCount + 1);
+          for (let di = 1; di <= dotCount; di++) {
+            html += `<rect x="${bx + pad + 2 + di * dotSpacing - 2}" y="${bcy - counterH / 2 - 4}" width="4" height="3" rx="1" fill="${barColorDim}0.20)"/>`;
+          }
+        } else if (barTierNum === 2) {
+          // ── Attended Bar: counter + sofas, no stools ─────────────
+          html += `<rect x="${bx + pad}" y="${by + pad}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.5"/>`;
+          html += `<rect x="${bx + pad}" y="${by + bh - pad - sofaH}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.5"/>`;
+          html += `<rect x="${bx + pad + 2}" y="${bcy - counterH / 2}" width="${bw - pad * 2 - 4}" height="${counterH}" rx="2" fill="${barColorDim}0.40)" stroke="${barColorDim}0.22)" stroke-width="0.5"/>`;
+        } else {
+          // ── Premium Lounge: full treatment — sofas, counter, stools
+          html += `<rect x="${bx + pad}" y="${by + pad}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.30)" stroke="${barColorDim}0.20)" stroke-width="0.6"/>`;
+          html += `<rect x="${bx + pad}" y="${by + bh - pad - sofaH}" width="${bw - pad * 2}" height="${sofaH}" rx="3" fill="${barColorDim}0.30)" stroke="${barColorDim}0.20)" stroke-width="0.6"/>`;
+          html += `<rect x="${bx + pad + 2}" y="${bcy - counterH / 2}" width="${bw - pad * 2 - 4}" height="${counterH}" rx="2" fill="${barColorDim}0.45)" stroke="${barColorDim}0.25)" stroke-width="0.5"/>`;
+          const stoolCount = Math.min(6, Math.floor((bw - pad * 2 - 4) / 10));
+          const stoolSpacing = (bw - pad * 2 - 4) / (stoolCount + 1);
+          for (let si = 1; si <= stoolCount; si++) {
+            const sx = bx + pad + 2 + si * stoolSpacing;
+            html += `<circle cx="${sx}" cy="${bcy - counterH / 2 - 5}" r="2.5" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.4"/>`;
+            html += `<circle cx="${sx}" cy="${bcy + counterH / 2 + 5}" r="2.5" fill="${barColorDim}0.25)" stroke="${barColorDim}0.15)" stroke-width="0.4"/>`;
+          }
         }
 
-        // Label
-        html += `<text x="${bcx}" y="${bcy}" text-anchor="middle" dominant-baseline="central" fill="${barColor}" font-size="8" font-weight="700" font-family="system-ui,sans-serif" opacity="0.55" letter-spacing="2">BAR</text>`;
+        // Label — tier name
+        const barLabel = barTierNum === 1 ? 'SNACK' : barTierNum === 2 ? 'BAR' : 'LOUNGE';
+        html += `<text x="${bcx}" y="${bcy}" text-anchor="middle" dominant-baseline="central" fill="${barColor}" font-size="8" font-weight="700" font-family="system-ui,sans-serif" opacity="0.55" letter-spacing="2">${barLabel}</text>`;
 
-        // Outer border
-        html += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="none" stroke="${barColor}" stroke-width="0.8" opacity="0.4"/>`;
+        // Outer border — thicker for premium
+        const borderW = barTierNum === 1 ? '0.6' : barTierNum === 2 ? '0.8' : '1.0';
+        html += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="none" stroke="${barColor}" stroke-width="${borderW}" opacity="0.4"/>`;
 
-        // Drag handle (invisible interactive overlay)
-        // Store the class row range so the drag system knows valid positions
+        // Drag handle
         html += `<rect class="bar-drag-handle" x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="transparent" cursor="grab" pointer-events="all" style="touch-action:none;" data-bar-class="${rp.cls}" data-bar-rows="${clsBarRows}" onmouseover="this.style.outline='2px solid ${barColor}'" onmouseout="this.style.outline='none'"/>`;
 
         barDrawn[rp.cls] = true;
@@ -1008,8 +1027,10 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
 
 
   // ── Metadata for drag compatibility ─────────────────────────────
-  const startX = rowPositions.length > 0 ? rowPositions[0].x : 0;
-  const endX = rowPositions.length > 0 ? rowPositions[rowPositions.length - 1].x + rowPositions[rowPositions.length - 1].pitch : cabinLen;
+  // Use absolute viewBox X coords (including ox offset) so drag handler
+  // can map screen coords directly to row positions.
+  const startX = rowPositions.length > 0 ? ox + rowPositions[0].x : ox;
+  const endX = rowPositions.length > 0 ? ox + rowPositions[rowPositions.length - 1].x + rowPositions[rowPositions.length - 1].pitch : ox + cabinLen;
   html += `<rect class="seat-bounds-meta" data-start-y="${startX}" data-end-y="${endX}" data-total-rows="${totalRows}" width="0" height="0" visibility="hidden"/>`;
 
   html += '</svg>';
@@ -1636,11 +1657,13 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
         const cellId = `upg_${upg.key}_${c}`;
 
         listHtml += `<div id="${cellId}" class="upgrade-cell" data-key="${upg.key}" data-cls="${c}" data-installed="${installed ? '1' : '0'}" data-disabled="${disabled ? '1' : '0'}" data-color="${color}" data-per-seat="${perSeatCost}" data-seats="${seatCount}" style="padding:0.3rem;text-align:center;cursor:${disabled ? 'not-allowed' : 'pointer'};${disabled ? 'opacity:0.25;' : ''}border-radius:4px;transition:background 0.15s;">
-          <div class="upg-check" style="width:22px;height:22px;border-radius:5px;border:2px solid ${installed ? color : 'rgba(148,163,184,0.25)'};background:${installed ? color : 'transparent'};display:inline-flex;align-items:center;justify-content:center;transition:all 0.15s;">
-            ${installed ? '<svg width="14" height="14" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/></svg>' : ''}
+          <div class="upg-check" style="display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.55rem;font-weight:700;letter-spacing:0.3px;transition:all 0.15s;border:1px solid ${installed ? color : 'rgba(148,163,184,0.3)'};background:${installed ? color : 'transparent'};color:${installed ? '#fff' : 'rgba(148,163,184,0.6)'};"
+            onmouseenter="var p=this.parentElement;if(p.dataset.installed==='1'){this.textContent='Remove';this.style.background='#EF4444';this.style.borderColor='#EF4444';}else if(p.dataset.disabled!=='1'){this.style.background='rgba(16,185,129,0.15)';this.style.borderColor='#10B981';this.style.color='#10B981';}"
+            onmouseleave="var p=this.parentElement;if(p.dataset.installed==='1'){this.textContent='✓ Added';var c=p.dataset.color||'#10b981';this.style.background=c;this.style.borderColor=c;}else{this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)';this.style.color='rgba(148,163,184,0.6)';}">
+            ${installed ? '✓ Added' : 'Add to order'}
           </div>
-          <div style="font-size:0.6rem;font-weight:600;color:var(--text-secondary);margin-top:0.15rem;">$${perSeatCost.toLocaleString('en-US')}/seat</div>
-          ${seatCount > 0 ? `<div style="font-size:0.5rem;color:var(--text-muted);">$${totalCost.toLocaleString('en-US')} total</div>` : ''}
+          <div style="font-size:0.55rem;font-weight:600;color:var(--text-secondary);margin-top:0.15rem;">$${perSeatCost.toLocaleString('en-US')}/seat</div>
+          ${seatCount > 0 ? `<div style="font-size:0.45rem;color:var(--text-muted);">$${totalCost.toLocaleString('en-US')} total</div>` : ''}
         </div>`;
       }
       listHtml += '</div>';
@@ -1667,85 +1690,103 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
     for (const cat of categories) {
       const items = catGroups[cat.key];
       if (!items || items.length === 0) continue;
-      listHtml += `<div style="margin-bottom:0.5rem;">
-        <div style="font-size:0.6rem;font-weight:700;color:${cat.color};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.3rem;">${cat.label}</div>`;
+      listHtml += `<div style="margin-bottom:0.7rem;">
+        <div style="font-size:0.7rem;font-weight:700;color:${cat.color};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">${cat.label}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">`;
       for (const upg of items) {
         allUpgradesByKey[upg.key] = '_aircraft';
-        const isObsolete = upg.eraObsolete && gameYear > upg.eraObsolete;
         const lumpCost = Math.round((upg.lumpCost2024 || 0) * eraMult);
 
-        // Special handling for cocktail bar
-        if (upg.key === 'cocktailBar') {
+        // Bar tiers — each bar upgrade renders per-class toggle tiles
+        if (upg.isBar) {
           const _bars = barAccessor ? barAccessor.get() : null;
-          const barDef = upg.seatReduction || {};
-          const fRows = barDef.first || 2;
-          const bRows = barDef.business || 3;
-          // Get seats-per-row from standard layouts
-          const stdLayout = typeof CABIN_LAYOUTS !== 'undefined' ? CABIN_LAYOUTS[acType] : null;
-          const fPerRow = stdLayout?.first ? stdLayout.first.reduce((a, b) => a + b, 0) : (acType === 'Widebody' ? 4 : 2);
-          const bPerRow = stdLayout?.business ? stdLayout.business.reduce((a, b) => a + b, 0) : (acType === 'Widebody' ? 4 : 4);
-          const fMinSeats = (fRows + 1) * fPerRow;
-          const bMinSeats = (bRows + 1) * bPerRow;
-          const hasFirst = (config.first || 0) >= fMinSeats;
-          const hasBusiness = (config.business || 0) >= bMinSeats;
-          const canHaveBar = hasFirst || hasBusiness;
-          const fBarOn = !!(_bars && _bars.first);
-          const bBarOn = !!(_bars && _bars.business);
-          const fDisabled = !hasFirst;
-          const bDisabled = !hasBusiness;
+          const barRows = upg.seatReduction || {};
+          const classColors = { first: '#f59e0b', business: '#a78bfa' };
+          const classLabelsShort = { first: 'First Class', business: 'Business' };
+          // Compute seats-per-row from layout (SEAT_LAYOUTS is module-level)
+          const _barPerRow = (bc) => {
+            const layout = typeof SEAT_LAYOUTS !== 'undefined' ? SEAT_LAYOUTS[acType] : null;
+            return layout && layout[bc] ? layout[bc].reduce((s, g) => s + g, 0) : (acType === 'Widebody' ? 4 : 2);
+          };
+          let barTileHtml = '';
+          for (const bc of ['first', 'business']) {
+            const rows = barRows[bc] || 2;
+            const perRow = _barPerRow(bc);
+            const minSeats = (rows + 1) * perRow;
+            const hasSeats = (config[bc] || 0) >= minSeats;
+            const isOn = !!(_bars && _bars[bc] && _bars[bc].tier === upg.key);
+            const hasOtherTier = !!(_bars && _bars[bc] && _bars[bc].tier !== upg.key);
+            const disabled = !hasSeats;
+            const color = classColors[bc];
+            const dimColor = bc === 'first' ? 'rgba(245,158,11,' : 'rgba(139,92,246,';
+            barTileHtml += `
+              <div class="bar-toggle-tile" data-bar-class="${bc}" data-bar-tier="${upg.key}" data-on="${isOn ? '1' : '0'}" style="flex:1;display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.55rem;border-radius:4px;border:1px solid ${isOn ? color : 'var(--border-color)'};background:${isOn ? dimColor + '0.08)' : 'transparent'};cursor:${disabled ? 'not-allowed' : 'pointer'};${disabled ? 'opacity:0.35;pointer-events:none;' : ''}transition:all 0.15s;">
+                <div>
+                  <div style="font-size:0.7rem;font-weight:600;color:${disabled ? 'var(--text-muted)' : color};">${classLabelsShort[bc]}</div>
+                  <div style="font-size:0.55rem;color:var(--text-muted);">${disabled ? 'Need ' + minSeats + '+ seats' : (hasOtherTier ? 'Switch to this tier' : 'Replaces ' + rows + ' rows')}</div>
+                </div>
+                <div class="bar-btn" style="padding:0.2rem 0.5rem;border-radius:4px;font-size:0.6rem;font-weight:700;border:1px solid ${isOn ? color : 'rgba(148,163,184,0.3)'};background:${isOn ? color : 'transparent'};color:${isOn ? '#fff' : 'rgba(148,163,184,0.6)'};min-width:68px;text-align:center;transition:all 0.15s;"
+                  onmouseenter="var t=this.closest('.bar-toggle-tile');if(t.dataset.on==='1'){this.textContent='Remove';this.style.background='#EF4444';this.style.borderColor='#EF4444';}else{this.style.background='${dimColor}0.15)';this.style.borderColor='${color}';this.style.color='${color}';}"
+                  onmouseleave="var t=this.closest('.bar-toggle-tile');if(t.dataset.on==='1'){this.textContent='✓ Added';this.style.background='${color}';this.style.borderColor='${color}';this.style.color='#fff';}else{this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)';this.style.color='rgba(148,163,184,0.6)';}">
+                  ${isOn ? '✓ Added' : 'Add to order'}
+                </div>
+              </div>`;
+          }
           listHtml += `
-            <div style="padding:0.4rem 0.5rem;border-radius:4px;border:1px solid var(--border-color);margin-bottom:0.3rem;">
-              <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.3rem;">${upg.name}</div>
-              <div style="font-size:0.55rem;color:var(--text-muted);margin-bottom:0.4rem;">${upg.description || ''} · $${lumpCost.toLocaleString('en-US')} each · +${upg.yieldPct}% yield · +${upg.loadFactorPct}% LF</div>
+            <div style="width:100%;padding:0.55rem 0.65rem;border-radius:6px;border:1px solid var(--border-color);box-sizing:border-box;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.15rem;">
+                <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary);">${upg.name}</div>
+                <div style="font-size:0.7rem;color:var(--text-secondary);font-weight:600;">$${lumpCost.toLocaleString('en-US')}</div>
+              </div>
+              <div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:0.4rem;">${upg.description || ''} · <span style="color:#34d399;">&#9650; ${upg.yieldPct}% revenue</span> · <span style="color:#60a5fa;">&#9650; ${upg.loadFactorPct}% LF</span></div>
               <div style="display:flex;gap:0.4rem;">
-                <label style="flex:1;display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0.5rem;border-radius:4px;border:1px solid ${fBarOn ? '#f59e0b' : 'var(--border-color)'};background:${fBarOn ? 'rgba(245,158,11,0.12)' : 'var(--surface)'};cursor:${fDisabled ? 'not-allowed' : 'pointer'};${fDisabled ? 'opacity:0.35;' : ''}">
-                  <input type="checkbox" class="bar-toggle" data-bar-class="first" ${fBarOn ? 'checked' : ''} ${fDisabled ? 'disabled' : ''} style="flex-shrink:0;width:13px;height:13px;"/>
-                  <div>
-                    <div style="font-size:0.65rem;font-weight:600;color:${fDisabled ? 'var(--text-muted)' : '#f59e0b'};">First Class Bar</div>
-                    <div style="font-size:0.5rem;color:var(--text-muted);">${fDisabled ? 'Need ' + fMinSeats + '+ seats' : 'Replaces ' + fRows + ' rows (' + fRows * fPerRow + ' seats)'}</div>
-                  </div>
-                </label>
-                <label style="flex:1;display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0.5rem;border-radius:4px;border:1px solid ${bBarOn ? '#a78bfa' : 'var(--border-color)'};background:${bBarOn ? 'rgba(139,92,246,0.12)' : 'var(--surface)'};cursor:${bDisabled ? 'not-allowed' : 'pointer'};${bDisabled ? 'opacity:0.35;' : ''}">
-                  <input type="checkbox" class="bar-toggle" data-bar-class="business" ${bBarOn ? 'checked' : ''} ${bDisabled ? 'disabled' : ''} style="flex-shrink:0;width:13px;height:13px;"/>
-                  <div>
-                    <div style="font-size:0.65rem;font-weight:600;color:${bDisabled ? 'var(--text-muted)' : '#a78bfa'};">Business Bar</div>
-                    <div style="font-size:0.5rem;color:var(--text-muted);">${bDisabled ? 'Need ' + bMinSeats + '+ seats' : 'Replaces ' + bRows + ' rows (' + bRows * bPerRow + ' seats)'}</div>
-                  </div>
-                </label>
+                ${barTileHtml}
               </div>
             </div>`;
           continue; // skip the generic template below
         }
 
         const isInstalled = installed.has(upg.key);
+        // Check prerequisite: requires a seat-scope upgrade in at least one class
+        const reqKey = upg.requires || null;
+        const reqMet = !reqKey || ['first','business','economyPlus','economy'].some(c => (upgrades[c] || []).includes(reqKey));
+        const isLocked = reqKey && !reqMet;
+        const reqName = reqKey && typeof CABIN_UPGRADES !== 'undefined' && CABIN_UPGRADES[reqKey] ? CABIN_UPGRADES[reqKey].name : reqKey;
+        const _acColor = isInstalled ? '#10B981' : 'rgba(148,163,184,0.5)';
         listHtml += `
-          <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:4px;cursor:pointer;${isObsolete ? 'opacity:0.5;' : ''}" class="upgrade-row">
-            <input type="checkbox" data-key="${upg.key}" data-cls="_aircraft" ${isInstalled ? 'checked' : ''} style="flex-shrink:0;width:14px;height:14px;" />
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);">${upg.name}${isObsolete ? ' <span style="font-size:0.55rem;color:#f59e0b;">(outdated)</span>' : ''}</div>
-              <div style="font-size:0.55rem;color:var(--text-muted);">${upg.description || ''}</div>
+          <div style="width:calc(50% - 0.2rem);padding:0.55rem 0.65rem;border-radius:6px;cursor:${isLocked ? 'not-allowed' : 'pointer'};border:1px solid ${isInstalled ? 'rgba(16,185,129,0.3)' : 'var(--border-color)'};background:${isInstalled ? 'rgba(16,185,129,0.06)' : 'transparent'};transition:all 0.15s;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;${isLocked ? 'opacity:0.4;' : ''}" class="upgrade-row" data-key="${upg.key}" data-cls="_aircraft" data-installed="${isInstalled ? '1' : '0'}" data-locked="${isLocked ? '1' : '0'}">
+            <div>
+              <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary);margin-bottom:0.2rem;">${upg.name}</div>
+              <div style="font-size:0.65rem;color:var(--text-muted);line-height:1.35;margin-bottom:0.35rem;">${upg.description || ''}${isLocked ? ' <span style="color:#EF4444;">Requires ' + reqName + '</span>' : ''}</div>
             </div>
-            <div style="text-align:right;flex-shrink:0;">
-              <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:600;">$${lumpCost.toLocaleString('en-US')}</div>
-              <div style="font-size:0.5rem;color:var(--text-muted);">+${upg.yieldPct}% yield · +${upg.loadFactorPct}% LF</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:600;">$${lumpCost.toLocaleString('en-US')}</span>
+                <span style="font-size:0.6rem;margin-left:0.3rem;"><span style="color:#34d399;">&#9650; ${upg.yieldPct}% revenue</span> <span style="color:#60a5fa;">&#9650; ${upg.loadFactorPct}% load factor</span></span>
+              </div>
+              <div class="ac-upg-btn" style="padding:0.2rem 0.55rem;border-radius:4px;font-size:0.6rem;font-weight:700;letter-spacing:0.3px;border:1px solid ${_acColor};background:${isInstalled ? '#10B981' : 'transparent'};color:${isInstalled ? '#fff' : 'rgba(148,163,184,0.6)'};transition:all 0.15s;white-space:nowrap;min-width:78px;text-align:center;"
+                onmouseenter="var r=this.closest('.upgrade-row');if(r&&r.dataset.installed==='1'){this.textContent='Remove';this.style.background='#EF4444';this.style.borderColor='#EF4444';}else{this.style.background='rgba(16,185,129,0.15)';this.style.borderColor='#10B981';this.style.color='#10B981';}"
+                onmouseleave="var r=this.closest('.upgrade-row');if(r&&r.dataset.installed==='1'){this.textContent='✓ Added';this.style.background='#10B981';this.style.borderColor='#10B981';}else{this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.5)';this.style.color='rgba(148,163,184,0.6)';}">
+                ${isInstalled ? '✓ Added' : 'Add to order'}
+              </div>
             </div>
-          </label>`;
+          </div>`;
       }
-      listHtml += '</div>';
+      listHtml += '</div></div>';
     }
   }
 
   modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:8px;width:${isSeatScope ? '780px' : '440px'};max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
-      <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary);">${panelTitle}</div>
-        <button id="upgradeCloseBtn" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+    <div style="background:var(--surface);border:1px solid var(--border-color);border-radius:10px;width:${isSeatScope ? '820px' : '720px'};max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;font-size:1.05rem;color:var(--text-primary);">${panelTitle}</div>
+        <button id="upgradeCloseBtn" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:0.75rem 1rem;">
-        ${listHtml || '<div style="color:var(--text-muted);font-size:0.8rem;">No upgrades available for this era.</div>'}
+      <div style="flex:1;overflow-y:auto;padding:0.85rem 1.25rem;">
+        ${listHtml || '<div style="color:var(--text-muted);font-size:0.9rem;">No upgrades available for this era.</div>'}
       </div>
-      <div style="padding:0.5rem 1rem;border-top:1px solid var(--border-color);text-align:right;">
-        <button id="upgradeDoneBtn" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.8rem;">Done</button>
+      <div style="padding:0.6rem 1.25rem;border-top:1px solid var(--border-color);text-align:right;">
+        <button id="upgradeDoneBtn" class="btn btn-primary" style="padding:0.5rem 1.5rem;font-size:0.9rem;">Done</button>
       </div>
     </div>
   `;
@@ -1757,9 +1798,10 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
     const check = cell.querySelector('.upg-check');
     const color = cell.dataset.color || '#10b981';
     if (check) {
-      check.style.borderColor = on ? color : 'rgba(148,163,184,0.25)';
+      check.style.borderColor = on ? color : 'rgba(148,163,184,0.3)';
       check.style.background = on ? color : 'transparent';
-      check.innerHTML = on ? '<svg width="14" height="14" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/></svg>' : '';
+      check.style.color = on ? '#fff' : 'rgba(148,163,184,0.6)';
+      check.textContent = on ? '✓ Added' : 'Add to order';
     }
     cell.dataset.installed = on ? '1' : '0';
   }
@@ -1841,42 +1883,83 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
     });
   });
 
-  // Standard checkbox handler (for aircraft upgrades)
-  modal.querySelectorAll('input[type="checkbox"][data-key]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const key = cb.dataset.key;
-      const targetCls = cb.dataset.cls || cls;
+  // Click handler for aircraft upgrade rows
+  modal.querySelectorAll('.upgrade-row[data-key]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.bar-toggle-tile')) return;
+      if (row.dataset.locked === '1') return;
+      const key = row.dataset.key;
+      const targetCls = row.dataset.cls || cls;
       if (!upgrades[targetCls]) upgrades[targetCls] = [];
       const def = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[key] : null;
-      if (cb.checked) {
+      const isOn = row.dataset.installed === '1';
+      if (!isOn) {
         if (!upgrades[targetCls].includes(key)) upgrades[targetCls].push(key);
         if (def?.replaces && upgrades[targetCls].includes(def.replaces)) {
           upgrades[targetCls] = upgrades[targetCls].filter(k => k !== def.replaces);
-          const rcb = modal.querySelector(`input[data-key="${def.replaces}"][data-cls="${targetCls}"]`);
-          if (rcb) rcb.checked = false;
+          const replacedRow = modal.querySelector(`.upgrade-row[data-key="${def.replaces}"][data-cls="${targetCls}"]`);
+          if (replacedRow) _updateAcRow(replacedRow, false);
         }
+        _updateAcRow(row, true);
       } else {
         upgrades[targetCls] = upgrades[targetCls].filter(k => k !== key);
+        _updateAcRow(row, false);
       }
     });
   });
+  function _updateAcRow(row, on) {
+    row.dataset.installed = on ? '1' : '0';
+    row.style.borderColor = on ? 'rgba(16,185,129,0.3)' : 'var(--border-color)';
+    row.style.background = on ? 'rgba(16,185,129,0.06)' : 'transparent';
+    const btn = row.querySelector('.ac-upg-btn');
+    if (btn) {
+      btn.style.borderColor = on ? '#10B981' : 'rgba(148,163,184,0.5)';
+      btn.style.background = on ? '#10B981' : 'transparent';
+      btn.style.color = on ? '#fff' : 'rgba(148,163,184,0.6)';
+      btn.textContent = on ? '✓ Added' : 'Add to order';
+    }
+  }
 
   // Initial total
   updateTotalCost();
 
-  // Bar toggles — independent per class
-  modal.querySelectorAll('.bar-toggle').forEach(cb => {
-    cb.addEventListener('change', () => {
+  // Bar toggles — independent per class, with tier support
+  modal.querySelectorAll('.bar-toggle-tile').forEach(tile => {
+    tile.addEventListener('click', () => {
       if (!barAccessor) return;
-      const cls = cb.dataset.barClass;
+      const cls = tile.dataset.barClass;
+      const tier = tile.dataset.barTier;
+      const isOn = tile.dataset.on === '1';
       let cur = barAccessor.get() || {};
-      if (cb.checked) {
-        cur[cls] = { rowOffset: 0 };
+      const color = cls === 'first' ? '#f59e0b' : '#a78bfa';
+      const dimBg = cls === 'first' ? 'rgba(245,158,11,0.08)' : 'rgba(139,92,246,0.08)';
+
+      if (!isOn) {
+        // Install this tier (preserve rowOffset if switching tiers)
+        const prevOffset = cur[cls]?.rowOffset || 0;
+        cur[cls] = { rowOffset: prevOffset, tier: tier };
       } else {
+        // Remove bar from this class
         delete cur[cls];
         if (!cur.first && !cur.business) cur = null;
       }
       barAccessor.set(cur);
+
+      // Update ALL bar tiles for this class (deselect other tiers)
+      modal.querySelectorAll(`.bar-toggle-tile[data-bar-class="${cls}"]`).forEach(t => {
+        const tTier = t.dataset.barTier;
+        const tOn = cur && cur[cls] && cur[cls].tier === tTier;
+        t.dataset.on = tOn ? '1' : '0';
+        t.style.borderColor = tOn ? color : 'var(--border-color)';
+        t.style.background = tOn ? dimBg : 'transparent';
+        const btn = t.querySelector('.bar-btn');
+        if (btn) {
+          btn.style.borderColor = tOn ? color : 'rgba(148,163,184,0.3)';
+          btn.style.background = tOn ? color : 'transparent';
+          btn.style.color = tOn ? '#fff' : 'rgba(148,163,184,0.6)';
+          btn.textContent = tOn ? '✓ Added' : 'Add to order';
+        }
+      });
     });
   });
 
@@ -2030,9 +2113,21 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const pr = classPerRow(cls);
     return pr > 0 ? Math.floor((seats || 0) / pr) * pr : (seats || 0);
   }
+  // When restoring from a saved config that has a bar, the saved seat counts
+  // are NET (after bar deduction). Add back bar-consumed seats so the raw
+  // config count is correct — otherwise validateBar sees too few seats and
+  // removes the bar on re-open.
+  function _barSeatsToRestore(cls) {
+    const bar = existingConfig?.cabinUpgrades?._bar;
+    if (!bar || !bar[cls]) return 0;
+    const tierKey = bar[cls].tier || 'premiumLounge';
+    const def = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[tierKey] : null;
+    const rows = def?.seatReduction?.[cls] || 0;
+    return rows * classPerRow(cls);
+  }
   const config = {
-    first:       roundToRow(existingConfig?.firstSeats, 'first'),
-    business:    roundToRow(existingConfig?.businessSeats, 'business'),
+    first:       roundToRow((existingConfig?.firstSeats || 0) + _barSeatsToRestore('first'), 'first'),
+    business:    roundToRow((existingConfig?.businessSeats || 0) + _barSeatsToRestore('business'), 'business'),
     economyPlus: roundToRow(existingConfig?.economyPlusSeats, 'economyPlus'),
     economy:     0
   };
@@ -2077,12 +2172,19 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   // Migrate old single-class format
   if (barState && barState.class) {
     const old = barState;
-    barState = { [old.class]: { rowOffset: old.rowOffset || 0 } };
+    barState = { [old.class]: { rowOffset: old.rowOffset || 0, tier: 'premiumLounge' } };
+  }
+  // Migrate old entries without tier
+  if (barState) {
+    for (const cls of ['first', 'business']) {
+      if (barState[cls] && !barState[cls].tier) barState[cls].tier = 'premiumLounge';
+    }
   }
 
   function barRowsForClass(cls) {
     if (!barState || !barState[cls]) return 0;
-    const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES.cocktailBar : null;
+    const tierKey = barState[cls].tier || 'premiumLounge';
+    const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[tierKey] : null;
     if (!barDef?.seatReduction) return 0;
     return barDef.seatReduction[cls] || 0;
   }
@@ -2133,9 +2235,10 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   // Auto-remove bar if the class no longer has enough seats
   function validateBar() {
     if (!barState) return;
-    const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES.cocktailBar : null;
     for (const cls of ['first', 'business']) {
       if (!barState[cls]) continue;
+      const tierKey = barState[cls].tier || 'premiumLounge';
+      const barDef = typeof CABIN_UPGRADES !== 'undefined' ? CABIN_UPGRADES[tierKey] : null;
       const perRow = classPerRow(cls);
       const barRows = (barDef?.seatReduction?.[cls]) || 2;
       const minSeats = (barRows + 1) * perRow;
@@ -2448,9 +2551,14 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const svg = container.querySelector('svg');
     if (!svg) return;
 
+    // Remove old listeners to prevent stacking on re-render
+    if (svg._seatTipOver) svg.removeEventListener('mouseover', svg._seatTipOver);
+    if (svg._seatTipOut) svg.removeEventListener('mouseout', svg._seatTipOut);
+
     const classLabels = { first: 'First Class', business: 'Business', economyPlus: 'Economy Plus', economy: 'Economy' };
 
-    svg.addEventListener('mouseover', (e) => {
+    svg._seatTipOver = (e) => {
+      if (_midDrag || _barDrag) return; // don't show tooltips during drag
       const seat = e.target.closest('.cabin-seat');
       if (!seat) return;
       const seatId = seat.dataset.seat;
@@ -2495,15 +2603,17 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       tip.style.left = Math.min(rect.right + 8, window.innerWidth - 210) + 'px';
       tip.style.top = Math.max(8, rect.top - 20) + 'px';
       tip.style.display = 'block';
-    });
+    };
 
-    svg.addEventListener('mouseout', (e) => {
+    svg._seatTipOut = (e) => {
       const seat = e.target.closest('.cabin-seat');
       if (!seat) { tip.style.display = 'none'; return; }
-      // Check if we moved to another seat
       const related = e.relatedTarget?.closest?.('.cabin-seat');
       if (!related) tip.style.display = 'none';
-    });
+    };
+
+    svg.addEventListener('mouseover', svg._seatTipOver);
+    svg.addEventListener('mouseout', svg._seatTipOut);
   }
 
   // Drag handling for mid-cabin service areas
@@ -2548,6 +2658,8 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       const currentRow = Math.round(midPositions[idx] * totalRows);
       _midDrag = { idx, startY, endY, totalRows, lastRow: currentRow };
       document.body.style.cursor = 'grabbing';
+      const tip = document.getElementById('seatTooltip');
+      if (tip) tip.style.display = 'none';
       const scrollEl = document.getElementById('cabinDiagramScroll');
       if (scrollEl) scrollEl.style.overflow = 'hidden';
     }
@@ -2583,6 +2695,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       midPositions[_midDrag.idx] = rowIdx / _midDrag.totalRows;
       renderDiagram();
       setupMidDragHandles();
+      setupBarDragHandles();
     }
   }
   overlay.addEventListener('mousemove', _moveMidDrag);
@@ -2618,49 +2731,46 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       e.preventDefault(); e.stopPropagation();
       const barRows = parseInt(handle.dataset.barRows) || 2;
       const barClass = handle.dataset.barClass;
-      // Count total rows in this class
       const perRow = classPerRow(barClass);
       const totalClassRows = perRow > 0 ? Math.ceil((config[barClass] || 0) / perRow) : 0;
-      _barDrag = { barRows, totalClassRows, barClass };
+      const maxOffset = Math.max(0, totalClassRows - barRows);
+      _barDrag = { barRows, totalClassRows, barClass, maxOffset, lastClientX: _dragPoint(e).x };
       document.body.style.cursor = 'grabbing';
+      const tip = document.getElementById('seatTooltip');
+      if (tip) tip.style.display = 'none';
       const scrollEl = document.getElementById('cabinDiagramScroll');
       if (scrollEl) scrollEl.style.overflow = 'hidden';
     }
-  }
-
-  function _screenToSvgX(svg, clientX) {
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = 0;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return 0;
-    return pt.matrixTransform(ctm.inverse()).x;
   }
 
   function _moveBarDrag(e) {
     if (!_barDrag) return;
     e.preventDefault();
     if (!barState || !barState[_barDrag.barClass]) { _barDrag = null; return; }
+    if (_barDrag.maxOffset <= 0) return;
     const container = document.getElementById('cabinDiagramContainer');
     if (!container) return;
     const svg = container.querySelector('svg');
     if (!svg) return;
+
     const pt = _dragPoint(e);
-    const svgX = _screenToSvgX(svg, pt.x);
-    const maxOffset = Math.max(0, _barDrag.totalClassRows - _barDrag.barRows);
-    if (maxOffset <= 0) return;
-    // Find the handle for THIS bar class
+    // Convert pixel drag distance to row offset change using SVG coordinate mapping
+    const curSvgX = _screenToSvgY(svg, pt.x, pt.y);
+    const lastSvgX = _screenToSvgY(svg, _barDrag.lastClientX, pt.y);
+    // Estimate row pitch from the handle width / bar rows
     const handle = svg.querySelector(`.bar-drag-handle[data-bar-class="${_barDrag.barClass}"]`);
     if (!handle) return;
-    const hx = parseFloat(handle.getAttribute('x'));
-    const hw = parseFloat(handle.getAttribute('width'));
-    const rowPitch = hw / _barDrag.barRows;
-    const delta = svgX - (hx + hw / 2);
-    const rowShift = Math.round(delta / rowPitch);
+    const rowPitch = parseFloat(handle.getAttribute('width')) / _barDrag.barRows;
+    if (rowPitch <= 0) return;
+
+    const deltaRows = Math.round((curSvgX - lastSvgX) / rowPitch);
+    if (deltaRows === 0) return;
+
     const currentOffset = barState[_barDrag.barClass].rowOffset || 0;
-    const newOffset = Math.max(0, Math.min(maxOffset, currentOffset + rowShift));
+    const newOffset = Math.max(0, Math.min(_barDrag.maxOffset, currentOffset + deltaRows));
     if (newOffset !== currentOffset) {
       barState[_barDrag.barClass].rowOffset = newOffset;
+      _barDrag.lastClientX = pt.x; // reset anchor after successful move
       renderDiagram();
       setupMidDragHandles();
       setupBarDragHandles();
