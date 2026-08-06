@@ -538,14 +538,8 @@ function displayAircraft(aircraftArray) {
       </div>
     `;
 
-    // Specs bar
-    html += `
-      <div class="market-specs">
-        <span><strong>${typeData.passengerCapacity || 'N/A'}</strong> pax</span>
-        <span><strong>${typeData.rangeNm || 'N/A'}</strong> nm</span>
-        <span style="margin-left: auto; color: var(--text-secondary);">${variantCount} variant${variantCount !== 1 ? 's' : ''}</span>
-      </div>
-    `;
+    // Horizontal rule under header
+    html += `<div style="border-top: 1px solid var(--border-color); margin: 0 0.5rem;"></div>`;
 
     // Column headers (LEASE/WK only once leasing exists, from 1970)
     const leasingExists = marketplaceWorldYear === null || marketplaceWorldYear >= 1970;
@@ -2237,6 +2231,7 @@ function openDeckCabinConfigurator(deck) {
   const deckSpec = (typeof getDeckSpec === 'function') ? getDeckSpec(selectedAircraft, deck) : null;
   if (!deckSpec) return;
   const existing = deck === 'upper' ? selectedCabinConfigUpper : selectedCabinConfigMain;
+  const otherDeckConfig = deck === 'upper' ? selectedCabinConfigMain : selectedCabinConfigUpper;
   showCabinConfigurator(selectedAircraft, (config) => {
     if (deck === 'upper') {
       selectedCabinConfigUpper = config; window.selectedCabinConfigUpper = config;
@@ -2245,8 +2240,20 @@ function openDeckCabinConfigurator(deck) {
       selectedCabinConfigMain = config; window.selectedCabinConfigMain = config;
       _markCabinRowConfigured('cabinConfigBtnMain', 'cabinConfigCheckMain', 'cabinConfigSummaryMain', config);
     }
+    // Sync non-bar upgrades to the other deck so both decks share the same upgrades
+    if (config.cabinUpgrades) {
+      const otherKey = deck === 'upper' ? 'selectedCabinConfigMain' : 'selectedCabinConfigUpper';
+      const other = deck === 'upper' ? selectedCabinConfigMain : selectedCabinConfigUpper;
+      if (other) {
+        if (!other.cabinUpgrades) other.cabinUpgrades = {};
+        for (const k of ['first', 'business', 'economyPlus', 'economy', '_aircraft']) {
+          if (config.cabinUpgrades[k]) other.cabinUpgrades[k] = [...config.cabinUpgrades[k]];
+        }
+        // Don't sync _bar — that's per-deck
+      }
+    }
     recomputeCombinedCabin();
-  }, existing, { deckSpec });
+  }, existing, { deckSpec, otherDeckConfig });
 }
 
 // Combine per-deck configs into the single selectedCabinConfig used at purchase.

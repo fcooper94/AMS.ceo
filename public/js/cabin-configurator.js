@@ -580,7 +580,7 @@ function seatsPerRow(aircraftType, cabinClass) {
 // --- Schematic seat map renderer ---
 // Pure airline-style seat map: clean rectangles, row numbers, seat letters.
 // Horizontal layout: X = cabin length (nose-left), Y = cross-section (top-down).
-function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions, aircraft, barState, deckSpec) {
+function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions, aircraft, barState, deckSpec, seatMapOpts) {
   if (!deckLayout) return null;
 
   const isUpperDeck = deckSpec && deckSpec.deck === 'upper';
@@ -829,8 +829,42 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const barClassRowIdx = { first: 0, business: 0 };
   const barDrawn = { first: false, business: false };
 
+  // ── Seat letter assignment ───────────────────────────────────────
+  // Full 10-abreast convention: K J H G · F E D · C B A (top→bottom in our layout)
+  // Narrower layouts pick from the edges inward, preserving window letters A/K.
+  const FULL_LETTERS = ['K','J','H','G','F','E','D','C','B','A']; // top→bottom
+  function seatLettersForGroups(groups) {
+    const total = groups.reduce((s, g) => s + g, 0);
+    if (total >= 10) return [...FULL_LETTERS];
+    // Map seat positions to the full-width equivalent so window seats keep A/K
+    const letters = [];
+    // Distribute groups symmetrically from edges
+    if (groups.length === 1) {
+      // Single group — centre letters
+      const start = Math.floor((10 - total) / 2);
+      for (let i = 0; i < total; i++) letters.push(FULL_LETTERS[start + i]);
+    } else if (groups.length === 2) {
+      // Two groups: left=top (K side), right=bottom (A side)
+      for (let i = 0; i < groups[0]; i++) letters.push(FULL_LETTERS[i]);
+      for (let i = 0; i < groups[1]; i++) letters.push(FULL_LETTERS[10 - groups[1] + i]);
+    } else {
+      // Three groups: left edge, centre, right edge
+      for (let i = 0; i < groups[0]; i++) letters.push(FULL_LETTERS[i]);
+      const centreStart = Math.floor((10 - groups[1]) / 2);
+      for (let i = 0; i < groups[1]; i++) letters.push(FULL_LETTERS[centreStart + i]);
+      for (let i = 0; i < groups[2]; i++) letters.push(FULL_LETTERS[10 - groups[2] + i]);
+    }
+    return letters;
+  }
+  // Pre-compute letters per class
+  const _lettersForClass = {};
+  for (const s of sections) {
+    if (!_lettersForClass[s.cls]) _lettersForClass[s.cls] = seatLettersForGroups(s.groups);
+  }
+
   // ── Draw seat rows ──────────────────────────────────────────────
-  let rowNum = 1;
+  let rowNum = (seatMapOpts && seatMapOpts.startRowNum) || 1;
+  const _upgrades = seatMapOpts?.upgrades;
   let prevCls = null;
   gRow = 0;
 
@@ -932,11 +966,16 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
         const sy = oy + sp.y;
         const sh = sp.h;
         const empty = seatIdx >= seatsThisRow;
-        html += `<rect x="${x + 0.5}" y="${sy + 0.5}" width="${rp.pitch - 1}" height="${sh - 1}" rx="${SEAT_R}" ` +
+        const clsLetters = _lettersForClass[rp.cls] || FULL_LETTERS;
+        const seatLetter = seatIdx < clsLetters.length ? clsLetters[seatIdx] : '';
+        const seatId = `${rowNum}${seatLetter}`;
+        html += `<rect class="${empty ? '' : 'cabin-seat'}" x="${x + 0.5}" y="${sy + 0.5}" width="${rp.pitch - 1}" height="${sh - 1}" rx="${SEAT_R}" ` +
           `fill="${empty ? 'rgba(51,65,85,0.15)' : cc.bg}" ` +
           `stroke="${empty ? 'rgba(71,85,105,0.2)' : cc.border}" ` +
           `stroke-width="${empty ? 0.4 : 0.8}" ` +
-          `opacity="${empty ? 0.25 : 0.85}"/>`;
+          `opacity="${empty ? 0.25 : 0.85}"` +
+          (empty ? '' : ` data-seat="${seatId}" data-cls="${rp.cls}" pointer-events="all" style="cursor:pointer;"`) +
+          `/>`;
       }
     }
 
@@ -962,7 +1001,8 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     bx += BULKHEAD_W + 2;
     // Cargo area
     html += `<rect x="${ox + bx}" y="${oy}" width="${CARGO_BLOCK_W}" height="${crossH}" rx="3" fill="rgba(251,146,60,0.08)" stroke="rgba(251,146,60,0.4)" stroke-width="0.8" stroke-dasharray="4,2"/>`;
-    html += `<text x="${ox + bx + CARGO_BLOCK_W / 2}" y="${oy + crossH / 2}" text-anchor="middle" dominant-baseline="central" fill="rgba(251,146,60,0.7)" font-size="8" font-weight="700" font-family="system-ui,sans-serif" letter-spacing="0.5">MAIN DECK CARGO</text>`;
+    const cargoLabel = CARGO_BLOCK_W > 90 ? 'MAIN DECK CARGO' : 'CARGO';
+    html += `<text x="${ox + bx + CARGO_BLOCK_W / 2}" y="${oy + crossH / 2}" text-anchor="middle" dominant-baseline="central" fill="rgba(251,146,60,0.7)" font-size="8" font-weight="700" font-family="system-ui,sans-serif" letter-spacing="0.5">${cargoLabel}</text>`;
   }
 
 
@@ -1081,7 +1121,7 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
   const lsH = isSmallAircraft ? 200 : 320;
   const lsW = Math.round(lsH * (lsViewW / lsViewH));
   const lsStyle = landscape
-    ? `width:100%;height:auto;flex-shrink:0;`
+    ? `width:100%;height:auto;max-height:55vh;flex-shrink:0;`
     : `width:100%;height:100%;`;
 
   // ── Check for hand-drawn aircraft visual ──────────────────────────
@@ -1388,8 +1428,8 @@ function renderFuselage(seatConfig, deckLayout, fWidth, svgId, showCockpit = tru
     }
   }
 
-  // Class section bracket labels (rendered outside the fuselage wall)
-  if (landscape && !visual && classBrackets.length > 0) {
+  // Class section bracket labels (rendered outside the fuselage wall — skip for airships)
+  if (landscape && !visual && !isCapsule && classBrackets.length > 0) {
     const bracketX = fuseLeft - 2; // just outside left fuselage wall (becomes top in landscape)
     for (const b of classBrackets) {
       const by1 = b.startY + 2;
@@ -1505,7 +1545,7 @@ function _ccMoney(v) {
   return typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Math.round(v).toLocaleString('en-US');
 }
 
-function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, acType, aircraft, scopeFilter, onChanged, barAccessor) {
+function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, acType, aircraft, scopeFilter, onChanged, barAccessor, otherDeckConfig) {
   // barAccessor: { get: () => barState, set: (v) => { barState = v; } } or null
   if (typeof getAvailableUpgrades !== 'function') return;
 
@@ -1582,7 +1622,10 @@ function _showCabinUpgradePanel(parentOverlay, cls, upgrades, config, gameYear, 
           listHtml += `<div style="padding:0.3rem;text-align:center;opacity:0.15;font-size:0.6rem;color:var(--text-muted);">—</div>`;
           continue;
         }
-        const seatCount = config[c] || 0;
+        const thisDeckSeats = config[c] || 0;
+        // For double-deck: cost reflects seats on BOTH decks
+        const otherSeats = otherDeckConfig ? (otherDeckConfig[c + 'Seats'] || 0) : 0;
+        const seatCount = thisDeckSeats + otherSeats;
         const noSeats = seatCount === 0;
         const installed = (upgrades[c] || []).includes(upg.key);
         const perSeatCost = Math.round((classUpg.costPerSeat2024 || 0) * eraMult);
@@ -2007,12 +2050,19 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
   let midPositions = existingConfig?.midPositions ? [...existingConfig.midPositions] : [];
 
   // ── Cabin upgrades state ─────────────────────────────────────────
+  // On double-deck aircraft, non-bar upgrades are shared across both decks.
+  // If this deck has no existing upgrades, seed from the other deck's config.
+  const otherDeckConfig = options?.otherDeckConfig;
+  const _ownUpg = existingConfig?.cabinUpgrades;
+  const _otherUpg = otherDeckConfig?.cabinUpgrades;
+  // Use own upgrades if set, otherwise inherit from other deck (except _bar)
+  const _src = (key) => _ownUpg?.[key]?.length ? _ownUpg[key] : (_otherUpg?.[key] || []);
   const upgrades = {
-    first: [...(existingConfig?.cabinUpgrades?.first || [])],
-    business: [...(existingConfig?.cabinUpgrades?.business || [])],
-    economyPlus: [...(existingConfig?.cabinUpgrades?.economyPlus || [])],
-    economy: [...(existingConfig?.cabinUpgrades?.economy || [])],
-    _aircraft: [...(existingConfig?.cabinUpgrades?._aircraft || [])]
+    first: [..._src('first')],
+    business: [..._src('business')],
+    economyPlus: [..._src('economyPlus')],
+    economy: [..._src('economy')],
+    _aircraft: [..._src('_aircraft')]
   };
   const gameYear = (() => {
     try {
@@ -2185,13 +2235,14 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
             <div style="color: var(--text-muted); font-size: 0.65rem;">${aircraft.manufacturer} ${aircraft.model}${aircraft.variant ? ' ' + aircraft.variant : ''} · ${acType}${deckSpec ? ' · ' + deckSpec.label : ''}</div>
           </div>
           <div style="padding: 0.4rem 0.75rem; background: var(--surface-elevated); border-radius: 6px; display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0;">
-            <span style="font-size: 0.7rem; color: var(--text-secondary);">Total</span>
+            <span style="font-size: 0.7rem; color: var(--text-secondary);">${deckSpec ? 'All Decks' : 'Total'}</span>
             <span id="cabinTotalPax" style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${totalPax()}</span>
+            ${deckSpec ? '<span id="cabinClassBreakdown" style="font-size:0.6rem;color:var(--text-muted);"></span>' : `
             <div style="width: 60px; height: 6px; background: var(--surface); border-radius: 3px; overflow: hidden;">
               <div id="cabinSpaceBar" style="height: 100%; border-radius: 3px; transition: width 0.3s ease, background 0.3s ease;
                    width: ${spaceUsedPercent()}%; background: ${spaceUsedPercent() > 95 ? '#EF4444' : '#10B981'};"></div>
             </div>
-            <span id="cabinSpacePercent" style="font-size: 0.5rem; color: var(--text-muted);">${spaceUsedPercent()}%</span>
+            <span id="cabinSpacePercent" style="font-size: 0.5rem; color: var(--text-muted);">${spaceUsedPercent()}%</span>`}
           </div>
         </div>
 
@@ -2355,9 +2406,103 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
     const shape = isAirship ? 'capsule' : 'plane';
     // Try schematic seat map first; fall back to legacy fuselage renderer
-    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions, aircraft, barState, deckSpec) : null;
+    // Compute row offset for upper deck (rows continue from main deck)
+    let startRowNum = 1;
+    if (deckSpec && deckSpec.deck === 'upper') {
+      const ddCfg = getDoubleDeckConfig(aircraft);
+      if (ddCfg) {
+        const mainCfg = window.selectedCabinConfigMain || otherDeckConfig;
+        let mainRows = 0;
+        if (mainCfg) {
+          // Use actual configured seat counts
+          for (const cls of ['first', 'business', 'economyPlus', 'economy']) {
+            const seats = mainCfg[cls + 'Seats'] || 0;
+            if (seats <= 0) continue;
+            const groups = ddCfg.mainLayout[cls];
+            if (groups) mainRows += Math.ceil(seats / groups.reduce((a, b) => a + b, 0));
+          }
+        } else {
+          // Main deck not yet configured — estimate from default all-economy capacity
+          const mainCap = (aircraft.passengerCapacity || 0) - Math.round((aircraft.passengerCapacity || 0) * (ddCfg.upperRatio || 0.2));
+          const econGroups = ddCfg.mainLayout.economy;
+          if (econGroups) mainRows = Math.ceil(mainCap / econGroups.reduce((a, b) => a + b, 0));
+        }
+        startRowNum = mainRows + 1;
+      }
+    }
+    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions, aircraft, barState, deckSpec, { startRowNum, upgrades }) : null;
     container.innerHTML = (seatMapHtml || renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape, aircraft)) + renderLegend();
     // Bar is now rendered inline by renderSeatMap — no overlay needed
+    _setupSeatTooltips(container, upgrades, gameYear, acType);
+  }
+
+  function _setupSeatTooltips(container, upgrades, gameYear, acType) {
+    let tip = document.getElementById('seatTooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'seatTooltip';
+      tip.style.cssText = 'position:fixed;z-index:10005;background:var(--surface-elevated);border:1px solid var(--border-color);border-radius:6px;padding:0.5rem 0.6rem;box-shadow:0 4px 16px rgba(0,0,0,0.5);pointer-events:none;display:none;max-width:200px;font-family:system-ui,sans-serif;';
+      document.body.appendChild(tip);
+    }
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const classLabels = { first: 'First Class', business: 'Business', economyPlus: 'Economy Plus', economy: 'Economy' };
+
+    svg.addEventListener('mouseover', (e) => {
+      const seat = e.target.closest('.cabin-seat');
+      if (!seat) return;
+      const seatId = seat.dataset.seat;
+      const cls = seat.dataset.cls;
+      if (!seatId || !cls) return;
+
+      // Installed upgrades for this class
+      const installed = new Set(upgrades?.[cls] || []);
+      // Available seat upgrades for this class/era
+      const available = typeof getAvailableUpgrades === 'function'
+        ? getAvailableUpgrades(cls, gameYear, acType, 'seat') : [];
+
+      // Star rating: installed count / total available (1-5 scale)
+      const totalAvail = Math.max(1, available.length);
+      const installedCount = available.filter(u => installed.has(u.key)).length;
+      const stars = Math.max(1, Math.round((installedCount / totalAvail) * 5));
+      const starHtml = '<span style="letter-spacing:1px;">' +
+        Array.from({ length: 5 }, (_, i) =>
+          `<span style="color:${i < stars ? '#F59E0B' : 'rgba(148,163,184,0.25)'};">★</span>`
+        ).join('') + '</span>';
+
+      // Upgrade list
+      let upgHtml = '';
+      if (available.length > 0) {
+        upgHtml = available.map(u => {
+          const on = installed.has(u.key);
+          return `<div style="font-size:0.55rem;color:${on ? '#10B981' : 'rgba(148,163,184,0.4)'};display:flex;align-items:center;gap:0.25rem;line-height:1.5;">` +
+            `<span>${on ? '●' : '○'}</span> ${u.name}</div>`;
+        }).join('');
+      }
+
+      const cc = CLASS_COLORS[cls];
+      tip.innerHTML =
+        `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">` +
+          `<span style="font-size:0.85rem;font-weight:700;color:var(--text-primary);">Seat ${seatId}</span>` +
+          `${starHtml}` +
+        `</div>` +
+        `<div style="font-size:0.6rem;color:${cc?.bg || '#ccc'};font-weight:600;margin-bottom:0.3rem;">${classLabels[cls] || cls}</div>` +
+        upgHtml;
+
+      const rect = seat.getBoundingClientRect();
+      tip.style.left = Math.min(rect.right + 8, window.innerWidth - 210) + 'px';
+      tip.style.top = Math.max(8, rect.top - 20) + 'px';
+      tip.style.display = 'block';
+    });
+
+    svg.addEventListener('mouseout', (e) => {
+      const seat = e.target.closest('.cabin-seat');
+      if (!seat) { tip.style.display = 'none'; return; }
+      // Check if we moved to another seat
+      const related = e.relatedTarget?.closest?.('.cabin-seat');
+      if (!related) tip.style.display = 'none';
+    });
   }
 
   // Drag handling for mid-cabin service areas
@@ -2543,7 +2688,25 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
       if (el) el.textContent = netSeats(cls);
     }
     const totalEl = document.getElementById('cabinTotalPax');
-    if (totalEl) totalEl.textContent = totalPax();
+    if (deckSpec) {
+      // Double-deck: show combined total from both decks + class breakdown
+      const otherCfg = deckSpec.deck === 'upper' ? window.selectedCabinConfigMain : window.selectedCabinConfigUpper;
+      const thisF = netSeats('first'), thisJ = netSeats('business'), thisW = netSeats('economyPlus'), thisY = netSeats('economy');
+      const oF = otherCfg?.firstSeats || 0, oJ = otherCfg?.businessSeats || 0;
+      const oW = otherCfg?.economyPlusSeats || 0, oY = otherCfg?.economySeats || 0;
+      const allTotal = thisF + thisJ + thisW + thisY + oF + oJ + oW + oY;
+      if (totalEl) totalEl.textContent = allTotal;
+      const bkdn = document.getElementById('cabinClassBreakdown');
+      if (bkdn) {
+        const parts = [];
+        for (const [code, color, count] of [['F', CLASS_COLORS.first.bg, thisF + oF], ['J', CLASS_COLORS.business.bg, thisJ + oJ], ['W', CLASS_COLORS.economyPlus.bg, thisW + oW], ['Y', CLASS_COLORS.economy.bg, thisY + oY]]) {
+          if (count > 0) parts.push(`<span style="color:${color};">${code} ${count}</span>`);
+        }
+        bkdn.innerHTML = parts.join(' · ');
+      }
+    } else {
+      if (totalEl) totalEl.textContent = totalPax();
+    }
     const pct = spaceUsedPercent();
     const barEl = document.getElementById('cabinSpaceBar');
     if (barEl) {
@@ -2720,7 +2883,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const cls = activeClasses[0] || 'economy';
     _showCabinUpgradePanel(overlay, cls, upgrades, config, gameYear, acType, aircraft, 'seat', () => {
       recalcEconomy(); updateUI(); updateUpgradeSummary();
-    }, null);
+    }, null, otherDeckConfig);
   });
 
   document.getElementById('aircraftUpgradesBtn')?.addEventListener('click', (e) => {
@@ -2728,7 +2891,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const barAcc = { get: () => barState, set: (v) => { barState = v; } };
     _showCabinUpgradePanel(overlay, 'economy', upgrades, config, gameYear, acType, aircraft, 'aircraft', () => {
       recalcEconomy(); updateUI(); updateUpgradeSummary();
-    }, barAcc);
+    }, barAcc, otherDeckConfig);
   });
 
   // ── Zoom controls ─────────────────────────────────────────────────
@@ -2849,7 +3012,15 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
           } else {
             for (const k of ['first', 'business', 'economyPlus', 'economy', '_aircraft']) upgrades[k] = [];
           }
+          // Restore economy: recalc first to get autoEconomy, then apply
+          // the saved count as a cap if it was deliberately reduced
+          econCapOverride = null;
           recalcEconomy();
+          const savedEcon = layout.economySeats || 0;
+          if (savedEcon < config.economy) {
+            econCapOverride = roundToRow(savedEcon, 'economy');
+            recalcEconomy();
+          }
           updateUI();
           if (typeof updateUpgradeSummary === 'function') updateUpgradeSummary();
           dd.remove();
