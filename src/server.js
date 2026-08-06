@@ -826,6 +826,7 @@ server.listen(PORT, () => {
       // Additive column for admin refunds (sync() won't alter an existing table).
       await sequelize.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP WITH TIME ZONE`);
       await require('./models/CabinLayout').sync();
+      await sequelize.query(`ALTER TABLE cabin_layouts ADD COLUMN IF NOT EXISTS cabin_upgrades JSONB`);
       await sequelize.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS credit_note_url TEXT`);
     } catch (e) { console.warn('[boot] payments table sync skipped:', e.message); }
     try {

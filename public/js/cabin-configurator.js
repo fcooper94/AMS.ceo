@@ -580,8 +580,10 @@ function seatsPerRow(aircraftType, cabinClass) {
 // --- Schematic seat map renderer ---
 // Pure airline-style seat map: clean rectangles, row numbers, seat letters.
 // Horizontal layout: X = cabin length (nose-left), Y = cross-section (top-down).
-function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions, aircraft, barState) {
+function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPosFractions, aircraft, barState, deckSpec) {
   if (!deckLayout) return null;
+
+  const isUpperDeck = deckSpec && deckSpec.deck === 'upper';
 
   // Sizing constants
   const SEAT_ACROSS = 14;  // seat height in cross-section (Y)
@@ -674,7 +676,16 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     }
     cx += 3; // class gap
   }
+
+  // Combi: cargo block at the aft end of the main deck (after rear WC).
+  // Only applies to main deck — upper deck on double-deckers is all-passenger.
+  const isCombi = aircraft && aircraft.isCombi && aircraft.cargoCapacityKg > 0 && !isUpperDeck;
+  const BULKHEAD_W = isCombi ? 4 : 0;
+  const CARGO_BLOCK_W = isCombi ? Math.max(60, Math.round(cx * 0.30)) : 0;
+
+  // Rear WC comes before cargo on combis (end of passenger cabin)
   if (hasRear || isCompactLav) cx += SERVICE_SPACING + SERVICE_DEPTH + 2;
+  if (isCombi) cx += BULKHEAD_W + CARGO_BLOCK_W + 4;
   const cabinLen = cx;
 
   const contentW = MARGIN.left + cabinLen + MARGIN.right;
@@ -741,7 +752,7 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const noseX = fuseX1 - noseLen;
   const tailX = fuseX2 + tailLen;
 
-  // Wing position and span
+  // Wing position and span (needed for wing-root shading even when hidden)
   const wingRootX = fuseX1 + Math.max(cabinLen * 0.50, Math.min(cabinLen * 0.62, cabinLen - 36));
   const wingChord = Math.max(30, Math.min(88, cabinLen * 0.18));
   const wingHalfSpan = Math.max(wingPad * 0.82, fuseH * 0.82);
@@ -752,15 +763,17 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const tailChord = Math.max(18, Math.min(46, tailLen * 0.30));
   const tailHalfSpan = Math.max(fuseH * 0.48, wingPad * 0.42);
 
-  // Upper wing
-  html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY - fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY - wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY - wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY - fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
-  // Lower wing
-  html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY + fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY + wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY + wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY + fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
+  if (!isUpperDeck) {
+    // Upper wing
+    html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY - fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY - wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY - wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY - fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
+    // Lower wing
+    html += `<path d="M ${wingRootX - wingChord * 0.45} ${fuseCY + fuseH * 0.24} L ${wingTipX + wingChord * 0.22} ${fuseCY + wingHalfSpan} L ${wingTipX + wingChord * 0.55} ${fuseCY + wingHalfSpan * 0.94} L ${wingRootX + wingChord * 0.52} ${fuseCY + fuseH * 0.10} Z" fill="rgba(51,65,85,0.38)" stroke="rgba(148,163,184,0.16)" stroke-width="0.8"/>`;
 
-  // Upper stabiliser
-  html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY - fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY - tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY - tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY - fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
-  // Lower stabiliser
-  html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY + fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY + tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY + tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY + fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
+    // Upper stabiliser
+    html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY - fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY - tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY - tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY - fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
+    // Lower stabiliser
+    html += `<path d="M ${tailRootX - tailChord * 0.35} ${fuseCY + fuseH * 0.16} L ${tailRootX + tailChord * 0.55} ${fuseCY + tailHalfSpan} L ${tailRootX + tailChord} ${fuseCY + tailHalfSpan * 0.86} L ${tailRootX + tailChord * 0.48} ${fuseCY + fuseH * 0.05} Z" fill="rgba(51,65,85,0.34)" stroke="rgba(148,163,184,0.14)" stroke-width="0.7"/>`;
+  }
 
   // Fuselage body
   html += `<path d="M ${fuseX1} ${fuseTop} C ${fuseX1 - noseLen * 0.28} ${fuseTop}, ${noseX + noseLen * 0.22} ${fuseCY - fuseH * 0.22}, ${noseX} ${fuseCY} C ${noseX + noseLen * 0.22} ${fuseCY + fuseH * 0.22}, ${fuseX1 - noseLen * 0.28} ${fuseBot}, ${fuseX1} ${fuseBot} L ${fuseX2} ${fuseBot} C ${fuseX2 + tailLen * 0.18} ${fuseBot}, ${tailX - tailLen * 0.20} ${fuseCY + fuseH * 0.18}, ${tailX} ${fuseCY} C ${tailX - tailLen * 0.20} ${fuseCY - fuseH * 0.18}, ${fuseX2 + tailLen * 0.18} ${fuseTop}, ${fuseX2} ${fuseTop} Z" fill="rgba(15,23,35,0.76)" stroke="rgba(148,163,184,0.28)" stroke-width="1.2"/>`;
@@ -768,30 +781,34 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   // Inner floor
   html += `<rect x="${ox - 1}" y="${oy - 1}" width="${cabinLen + 2}" height="${crossH + 2}" rx="${Math.max(3, fuseWall * 0.45)}" fill="rgba(10,18,30,0.28)" stroke="rgba(148,163,184,0.10)" stroke-width="0.6"/>`;
 
-  // Cockpit windows — two trapezoid panels per side, angling along the nose
-  const cwX1 = noseX + noseLen * 0.35;  // front of window (toward nose)
-  const cwX2 = noseX + noseLen * 0.60;  // middle divider
-  const cwX3 = fuseX1 - noseLen * 0.05; // rear of window (toward cabin)
-  const cwGap = fuseH * 0.04;           // gap from centreline
+  if (!isUpperDeck) {
+    // Cockpit windows — two trapezoid panels per side, angling along the nose
+    const cwX1 = noseX + noseLen * 0.35;  // front of window (toward nose)
+    const cwX2 = noseX + noseLen * 0.60;  // middle divider
+    const cwX3 = fuseX1 - noseLen * 0.05; // rear of window (toward cabin)
+    const cwGap = fuseH * 0.04;           // gap from centreline
 
-  // The fuselage narrows toward the nose, so windows are narrower at front
-  const cwOuterFront = fuseH * 0.14;    // outer edge distance at front
-  const cwOuterMid = fuseH * 0.22;      // outer edge distance at middle
-  const cwOuterRear = fuseH * 0.28;     // outer edge distance at rear
+    // The fuselage narrows toward the nose, so windows are narrower at front
+    const cwOuterFront = fuseH * 0.14;    // outer edge distance at front
+    const cwOuterMid = fuseH * 0.22;      // outer edge distance at middle
+    const cwOuterRear = fuseH * 0.28;     // outer edge distance at rear
 
-  // Upper side: front window
-  html += `<path d="M ${cwX1} ${fuseCY - cwGap - cwOuterFront * 0.3} L ${cwX2} ${fuseCY - cwGap - cwOuterMid} L ${cwX2} ${fuseCY - cwGap - cwOuterMid * 0.45} L ${cwX1} ${fuseCY - cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
-  // Upper side: rear window
-  html += `<path d="M ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid} L ${cwX3} ${fuseCY - cwGap - cwOuterRear} L ${cwX3} ${fuseCY - cwGap - cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+    // Upper side: front window
+    html += `<path d="M ${cwX1} ${fuseCY - cwGap - cwOuterFront * 0.3} L ${cwX2} ${fuseCY - cwGap - cwOuterMid} L ${cwX2} ${fuseCY - cwGap - cwOuterMid * 0.45} L ${cwX1} ${fuseCY - cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+    // Upper side: rear window
+    html += `<path d="M ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid} L ${cwX3} ${fuseCY - cwGap - cwOuterRear} L ${cwX3} ${fuseCY - cwGap - cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY - cwGap - cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
 
-  // Lower side: front window
-  html += `<path d="M ${cwX1} ${fuseCY + cwGap + cwOuterFront * 0.3} L ${cwX2} ${fuseCY + cwGap + cwOuterMid} L ${cwX2} ${fuseCY + cwGap + cwOuterMid * 0.45} L ${cwX1} ${fuseCY + cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
-  // Lower side: rear window
-  html += `<path d="M ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid} L ${cwX3} ${fuseCY + cwGap + cwOuterRear} L ${cwX3} ${fuseCY + cwGap + cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+    // Lower side: front window
+    html += `<path d="M ${cwX1} ${fuseCY + cwGap + cwOuterFront * 0.3} L ${cwX2} ${fuseCY + cwGap + cwOuterMid} L ${cwX2} ${fuseCY + cwGap + cwOuterMid * 0.45} L ${cwX1} ${fuseCY + cwGap} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+    // Lower side: rear window
+    html += `<path d="M ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid} L ${cwX3} ${fuseCY + cwGap + cwOuterRear} L ${cwX3} ${fuseCY + cwGap + cwOuterRear * 0.5} L ${cwX2 + 1} ${fuseCY + cwGap + cwOuterMid * 0.45} Z" fill="rgba(96,165,250,0.22)" stroke="rgba(148,197,255,0.18)" stroke-width="0.5"/>`;
+  }
 
   // Centreline and wing-root shading
   html += `<line x1="${noseX + noseLen * 0.72}" y1="${fuseCY}" x2="${tailX - tailLen * 0.12}" y2="${fuseCY}" stroke="rgba(148,163,184,0.055)" stroke-width="0.8"/>`;
-  html += `<rect x="${wingRootX - wingChord * 0.22}" y="${fuseTop + 1}" width="${wingChord * 0.72}" height="${fuseH - 2}" rx="3" fill="rgba(71,85,105,0.10)"/>`;
+  if (!isUpperDeck) {
+    html += `<rect x="${wingRootX - wingChord * 0.22}" y="${fuseTop + 1}" width="${wingChord * 0.72}" height="${fuseH - 2}" rx="3" fill="rgba(71,85,105,0.10)"/>`;
+  }
 
   // ── Helper: draw a service block ────────────────────────────────
   function svcBlock(x, label) {
@@ -849,9 +866,9 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
 
     barClassRowIdx[rp.cls] = clsRowIdx + 1;
 
-    // Row number above (skip for bar rows after the first)
+    // Row number above the fuselage outline
     if (!isBarRow || barClassRowIdx === 1) {
-      html += `<text x="${x + rp.pitch / 2}" y="${oy - 5}" text-anchor="middle" fill="rgba(148,163,184,0.4)" font-size="5.5" font-weight="600" font-family="system-ui,sans-serif">${isBarRow ? 'BAR' : rowNum}</text>`;
+      html += `<text x="${x + rp.pitch / 2}" y="${fuseTop - 4}" text-anchor="middle" fill="rgba(148,163,184,0.4)" font-size="5.5" font-weight="600" font-family="system-ui,sans-serif">${isBarRow ? 'BAR' : rowNum}</text>`;
     }
 
     // Class colour pip
@@ -927,11 +944,25 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
     gRow++;
   }
 
-  // Rear service
+  // Rear WC — placed at the end of the passenger cabin (before cargo on combis)
+  let rearWcEndX = 0;
   if (hasRear || isCompactLav) {
     const lastRp = rowPositions[rowPositions.length - 1];
     const rx = lastRp ? lastRp.x + lastRp.pitch + 4 : cabinLen - SERVICE_DEPTH - 4;
     svcBlock(rx, 'WC');
+    rearWcEndX = rx + SERVICE_DEPTH + 2;
+  }
+
+  // Combi: bulkhead + cargo block after the rear WC
+  if (isCombi && CARGO_BLOCK_W > 0) {
+    let bx = rearWcEndX || (rowPositions.length > 0 ? rowPositions[rowPositions.length - 1].x + rowPositions[rowPositions.length - 1].pitch + 4 : 0);
+    // Bulkhead divider
+    html += `<rect x="${ox + bx}" y="${oy - 3}" width="${BULKHEAD_W}" height="${crossH + 6}" rx="1" fill="rgba(100,116,139,0.45)" stroke="rgba(100,116,139,0.6)" stroke-width="0.5"/>`;
+    html += `<text x="${ox + bx + BULKHEAD_W / 2}" y="${fuseTop - 4}" text-anchor="middle" fill="rgba(200,210,220,0.6)" font-size="5" font-weight="700" letter-spacing="1" font-family="system-ui,sans-serif">BULKHEAD</text>`;
+    bx += BULKHEAD_W + 2;
+    // Cargo area
+    html += `<rect x="${ox + bx}" y="${oy}" width="${CARGO_BLOCK_W}" height="${crossH}" rx="3" fill="rgba(251,146,60,0.08)" stroke="rgba(251,146,60,0.4)" stroke-width="0.8" stroke-dasharray="4,2"/>`;
+    html += `<text x="${ox + bx + CARGO_BLOCK_W / 2}" y="${oy + crossH / 2}" text-anchor="middle" dominant-baseline="central" fill="rgba(251,146,60,0.7)" font-size="8" font-weight="700" font-family="system-ui,sans-serif" letter-spacing="0.5">MAIN DECK CARGO</text>`;
   }
 
 
@@ -2324,7 +2355,7 @@ function showCabinConfigurator(aircraft, onApply, existingConfig, options) {
     const showCockpit = deckSpec ? !!deckSpec.showCockpit : !isAirship;
     const shape = isAirship ? 'capsule' : 'plane';
     // Try schematic seat map first; fall back to legacy fuselage renderer
-    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions, aircraft, barState) : null;
+    const seatMapHtml = !isAirship ? renderSeatMap(config, layouts, acType, 'fuselageGrad', toilets, midPositions, aircraft, barState, deckSpec) : null;
     container.innerHTML = (seatMapHtml || renderFuselage(config, layouts, fuselageWidth, 'fuselageGrad', showCockpit, toilets, cdp, true, midPositions, shape, aircraft)) + renderLegend();
     // Bar is now rendered inline by renderSeatMap — no overlay needed
   }

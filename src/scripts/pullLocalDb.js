@@ -109,16 +109,23 @@ try {
   run(`${localAdmin} -c "CREATE DATABASE ${LOCAL_DB};"`);
 
   // 2. Dump schema + data (large tables always excluded; world tables excluded
-  //    unless --with-worlds)
+  //    unless --with-worlds).  Dump to a temp file first — piping directly to
+  //    psql can cause backpressure that stalls pg_dump long enough for
+  //    Railway's proxy to drop the connection.
   console.log('  [2/4] Dumping schema and reference tables from Railway...');
   const excludes = ['airport_route_demands', 'weekly_financials']
     .concat(WITH_WORLDS ? [] : WORLD_TABLES)
     .map(t => `--exclude-table-data=${t}`)
     .join(' ');
+  const dumpFile = path.join(os.tmpdir(), `ams-dbpull-${process.pid}.sql`);
   run(
-    `${PGDUMP} ${urlArgs(RAILWAY)} --no-owner --no-privileges ${excludes} ` +
-    `| ${localPsql} -q`
+    `${PGDUMP} ${urlArgs(RAILWAY)} --no-owner --no-privileges ${excludes} -f "${dumpFile}"`
   );
+  console.log('  [2b/4] Restoring dump to local database...');
+  run(
+    `${localPsql} -q -f "${dumpFile}"`
+  );
+  try { fs.unlinkSync(dumpFile); } catch (_) {}
 
   // Verify the dump actually landed — under cmd.exe a pipeline's exit code is
   // the LAST command's, so a pg_dump failure (e.g. server version mismatch)

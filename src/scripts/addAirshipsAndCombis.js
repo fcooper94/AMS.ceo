@@ -26,7 +26,7 @@ const NEW_AIRCRAFT = [
     description: 'Popular post-war piston-engined combi aircraft for passengers and freight.'
   },
   {
-    manufacturer: 'Douglas', model: 'DC-6', variant: 'CF', icaoCode: 'DC6', type: 'Narrowbody',
+    manufacturer: 'Douglas', model: 'DC-6', variant: 'Combi', icaoCode: 'DC6', type: 'Narrowbody',
     rangeCategory: 'Long Haul', rangeNm: 4200, cruiseSpeed: 275,
     passengerCapacity: 68, cargoCapacityKg: 9000, fuelCapacityLiters: 28500,
     purchasePrice: 18000000, usedPrice: 9000000, maintenanceCostPerHour: 1250,
@@ -66,7 +66,7 @@ const NEW_AIRCRAFT = [
     description: 'Quick Change variant allowing rapid conversion between passenger and cargo layouts.'
   },
   {
-    manufacturer: 'Boeing', model: '747-200', variant: 'Combi', icaoCode: 'B742', type: 'Widebody',
+    manufacturer: 'Boeing', model: '747', variant: '200 Combi', icaoCode: 'B742', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6700, cruiseSpeed: 493,
     passengerCapacity: 266, cargoCapacityKg: 45000, fuelCapacityLiters: 199000,
     purchasePrice: 125000000, usedPrice: 65000000, maintenanceCostPerHour: 6200,
@@ -76,7 +76,7 @@ const NEW_AIRCRAFT = [
     description: 'Classic jumbo jet with rear main deck cargo compartment.'
   },
   {
-    manufacturer: 'Boeing', model: '747-400', variant: 'M', icaoCode: 'B744', type: 'Widebody',
+    manufacturer: 'Boeing', model: '747', variant: '400 Combi', icaoCode: 'B744', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7260, cruiseSpeed: 493,
     passengerCapacity: 313, cargoCapacityKg: 50000, fuelCapacityLiters: 216800,
     purchasePrice: 220000000, usedPrice: 110000000, maintenanceCostPerHour: 7200,

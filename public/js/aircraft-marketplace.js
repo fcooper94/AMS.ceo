@@ -49,7 +49,7 @@ function getAircraftImageCodes(aircraft) {
   // For freighter/cargo variants, also try the passenger version
   if (aircraft.type === 'Cargo' || (aircraft.variant && /\bF\b|Freighter|Cargo/i.test(aircraft.variant))) {
     const FREIGHT_TO_PAX = {
-      'B77L': 'B777', 'B748': 'B747', 'A332': 'A330', 'B763': 'B767', 'MD11': 'MD11',
+      'B77L': 'B777', 'B748': 'B747', 'B744': 'B747', 'A332': 'A330', 'B763': 'B767', 'MD11': 'MD11',
       'B77F': 'B777', 'B74F': 'B747', 'A33F': 'A330', 'B76F': 'B767',
     };
     if (aircraft.icaoCode && FREIGHT_TO_PAX[aircraft.icaoCode]) {
@@ -480,6 +480,19 @@ function displayAircraft(aircraftArray) {
     }
     groupedAircraft[typeKey].variants.push(aircraft);
   });
+
+  // Sort variants within each group numerically by variant name
+  // e.g. 100, 200, 300, 600, 700, 700C, 800, 900, 900ER
+  for (const key of Object.keys(groupedAircraft)) {
+    groupedAircraft[key].variants.sort((a, b) => {
+      const va = a.variant || '';
+      const vb = b.variant || '';
+      const na = parseFloat(va) || 0;
+      const nb = parseFloat(vb) || 0;
+      if (na !== nb) return na - nb;
+      return va.localeCompare(vb);
+    });
+  }
 
   // Get condition class
   function getConditionClass(conditionPercent) {

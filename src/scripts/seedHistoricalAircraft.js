@@ -1677,7 +1677,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   // ========================================
 
   {
-    manufacturer: 'Boeing', model: '777', variant: 'F', icaoCode: 'B77L', type: 'Cargo',
+    manufacturer: 'Boeing', model: '777', variant: 'Freighter', icaoCode: 'B77L', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 5625, cruiseSpeed: 489,
     passengerCapacity: 0, cargoCapacityKg: 102000, mainDeckCapacityKg: 65000, cargoHoldCapacityKg: 37000,
     fuelCapacityLiters: 117340,
@@ -1689,7 +1689,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Boeing', model: '747', variant: '8F', icaoCode: 'B748', type: 'Cargo',
+    manufacturer: 'Boeing', model: '747', variant: '8 Freighter', icaoCode: 'B748', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4390, cruiseSpeed: 493,
     passengerCapacity: 0, cargoCapacityKg: 134000, mainDeckCapacityKg: 86000, cargoHoldCapacityKg: 48000,
     fuelCapacityLiters: 238610,
@@ -1701,7 +1701,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Airbus', model: 'A330', variant: '200F', icaoCode: 'A332', type: 'Cargo',
+    manufacturer: 'Airbus', model: 'A330', variant: '200 Freighter', icaoCode: 'A332', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4000, cruiseSpeed: 470,
     passengerCapacity: 0, cargoCapacityKg: 70000, mainDeckCapacityKg: 46000, cargoHoldCapacityKg: 24000,
     fuelCapacityLiters: 139090,
@@ -1713,7 +1713,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Boeing', model: '767', variant: '300F', icaoCode: 'B763', type: 'Cargo',
+    manufacturer: 'Boeing', model: '767', variant: '300 Freighter', icaoCode: 'B763', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 3255, cruiseSpeed: 470,
     passengerCapacity: 0, cargoCapacityKg: 54400, mainDeckCapacityKg: 36000, cargoHoldCapacityKg: 18400,
     fuelCapacityLiters: 91380,
@@ -1725,7 +1725,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'McDonnell Douglas', model: 'MD-11', variant: 'F', icaoCode: 'MD11', type: 'Cargo',
+    manufacturer: 'McDonnell Douglas', model: 'MD-11', variant: 'Freighter', icaoCode: 'MD11', type: 'Cargo',
     rangeCategory: 'Long Haul', rangeNm: 4030, cruiseSpeed: 490,
     passengerCapacity: 0, cargoCapacityKg: 88680, mainDeckCapacityKg: 58000, cargoHoldCapacityKg: 30680,
     fuelCapacityLiters: 146210,
@@ -2743,7 +2743,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Douglas', model: 'DC-6', variant: 'CF', icaoCode: 'DC6', type: 'Narrowbody',
+    manufacturer: 'Douglas', model: 'DC-6', variant: 'Combi', icaoCode: 'DC6', type: 'Narrowbody',
     rangeCategory: 'Long Haul', rangeNm: 4200, cruiseSpeed: 275,
     passengerCapacity: 68, cargoCapacityKg: 9000, fuelCapacityLiters: 28500,
     purchasePrice: 18000000, usedPrice: 9000000, maintenanceCostPerHour: 1250,
@@ -2787,7 +2787,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Boeing', model: '747-200', variant: 'Combi', icaoCode: 'B742', type: 'Widebody',
+    manufacturer: 'Boeing', model: '747', variant: '200 Combi', icaoCode: 'B742', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 6700, cruiseSpeed: 493,
     passengerCapacity: 266, cargoCapacityKg: 45000, fuelCapacityLiters: 199000,
     purchasePrice: 125000000, usedPrice: 65000000, maintenanceCostPerHour: 6200,
@@ -2798,7 +2798,7 @@ const COMPREHENSIVE_AIRCRAFT = [
   },
 
   {
-    manufacturer: 'Boeing', model: '747-400', variant: 'M', icaoCode: 'B744', type: 'Widebody',
+    manufacturer: 'Boeing', model: '747', variant: '400 Combi', icaoCode: 'B744', type: 'Widebody',
     rangeCategory: 'Long Haul', rangeNm: 7260, cruiseSpeed: 493,
     passengerCapacity: 313, cargoCapacityKg: 50000, fuelCapacityLiters: 216800,
     purchasePrice: 220000000, usedPrice: 110000000, maintenanceCostPerHour: 7200,
@@ -2806,6 +2806,18 @@ const COMPREHENSIVE_AIRCRAFT = [
     firstIntroduced: 1989, availableFrom: 1989, availableUntil: 2020,
     requiredPilots: 2, requiredCabinCrew: 11, isActive: true, isCombi: true,
     description: 'Modernised 747 Combi used extensively by KLM and other international carriers.'
+  },
+
+  {
+    manufacturer: 'Boeing', model: '747', variant: '400 Freighter', icaoCode: 'B744', type: 'Cargo',
+    rangeCategory: 'Long Haul', rangeNm: 4445, cruiseSpeed: 493,
+    passengerCapacity: 0, cargoCapacityKg: 113000, mainDeckCapacityKg: 73000, cargoHoldCapacityKg: 40000,
+    fuelCapacityLiters: 216840,
+    purchasePrice: 280000000, usedPrice: 140000000, maintenanceCostPerHour: 4200,
+    maintenanceCostPerMonth: 378000, fuelBurnPerHour: 11200,
+    firstIntroduced: 1993, availableFrom: 1993, availableUntil: 2018,
+    requiredPilots: 2, requiredCabinCrew: 0, isActive: true,
+    description: 'Dedicated freighter with nose door and full main deck cargo. Upper deck reserved for crew rest.'
   },
 
   {

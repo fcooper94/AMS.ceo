@@ -60,7 +60,7 @@ Rollback flags: `WINDOW_ENGINE=0`, `HOT_COLD=0`, `WORKER_LEASES=0`, `REVENUE_BAT
 ## Local dev
 
 - `npm run go` → prompts Local/Railway, sets `SIM_AUTOSTART` (Local=1, Railway=0). Running sim on Railway = double-tick = 5-8s requests.
-- Local PG 18 on port **5433** (this machine). `npm run db:pull` + `npm run db:seed-dev` for test worlds.
+- Local PG 18 on port **5432** (this machine). `npm run db:pull` + `npm run db:seed-dev` for test worlds.
 - Test worlds: Dev SP 1950/1980/2010 + Dev MP 1950. Login: `support@ams.ceo` (primary) or `dev@local.test`/`devpass` (fallback).
 - db:pull is Windows-safe (temp PGPASSFILE, no `PGPASSWORD=x cmd`).
 - SSL skipped for localhost URLs. `SequelizeConnectionRefusedError` → check PG service + port.
