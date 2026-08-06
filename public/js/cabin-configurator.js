@@ -699,7 +699,8 @@ function renderSeatMap(seatConfig, deckLayout, acType, svgId, toiletCount, midPo
   const maxPossibleRows = Math.ceil((aircraft?.passengerCapacity || 300) / maxPerRow);
   const maxCabinLen = (hasFront ? SERVICE_DEPTH + SERVICE_SPACING + 10 : 0)
     + maxPossibleRows * (CLASS_PITCH.economy + ROW_GAP) + 20
-    + (hasRear || isCompactLav ? SERVICE_SPACING + SERVICE_DEPTH + 2 : 0) + 10;
+    + (hasRear || isCompactLav ? SERVICE_SPACING + SERVICE_DEPTH + 2 : 0)
+    + (isCombi ? BULKHEAD_W + CARGO_BLOCK_W + 4 : 0) + 10;
   const svgW = Math.max(contentW, MARGIN.left + maxCabinLen + MARGIN.right);
 
   // ── Precompute Y positions for each class ──────────────────────
